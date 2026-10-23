@@ -33,3 +33,6 @@ __pycache__/
 # Standalone third-party rebuild caches
 **/.gradle/
 **/.kotlin/
+
+# Local development dashboard metadata
+/.dashboard-props.json

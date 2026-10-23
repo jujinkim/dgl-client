@@ -14,6 +14,7 @@ SSH와 표준 tmux를 사용하는 Windows·Android 터미널 클라이언트입
 - 외부 tmux 변경 이벤트 반영, 연결 복구 중 입력 차단, 입력 재전송 금지
 - 화면 캡처·실시간 출력 순서화, 연결·패널·크기 세대 검사, bounded output / scrollback
 - Android xterm.js/WebView, 데스크톱 JediTerm, 단축키 바, 앱 테마·폰트 크기
+- Android 볼륨 위·아래 키별 단축키·텍스트/키 매크로 설정 (기본 꺼짐)
 - tmux 미설치/버전 미지원 시 일반 SSH 셸. **일반 셸의 작업은 연결 종료 후 보존되지 않을 수 있습니다.**
 
 ## 플랫폼 범위
@@ -60,7 +61,21 @@ python scripts/prepare_temurin_source.py
 4. 기존 세션을 선택하거나 새 세션을 만듭니다. 창·패널을 GUI로 관리합니다.
 5. `연결 종료`는 SSH와 해당 tmux 클라이언트만 닫습니다. `삭제`는 이름을 확인한 뒤 원격 대상을 종료합니다.
 
+터미널 위의 `현재 세션`은 tmux 관리 영역을 접어도 표시됩니다. `tmux 관리`에서 세션·창·패널을 선택하고 조작 행을 좌우로 스크롤하여 분할·크기 변경·이름 변경·삭제를 사용할 수 있습니다. 일반 SSH 모드에서도 관리 영역과 버튼을 표시하며, 사용할 수 없는 조작은 이유와 함께 비활성화합니다.
+
 서버에서 `tmux new-session`, `tmux attach`, `tmux list-sessions`를 그대로 사용할 수 있습니다. 앱은 tmux 서버의 전역 설정·사용자 셸·키 바인딩을 변경하지 않습니다.
+
+tmux는 SSH 기본 PATH, 로그인 셸 PATH, 대표 설치 경로 순서로 탐지합니다. 대표 경로에는 Homebrew·Linuxbrew·MacPorts, `/usr/bin`·`/bin`·`/usr/local/bin`, 사용자 `~/.local/bin`·`~/bin`, Nix·Snap 위치가 포함됩니다. 찾은 절대 경로를 버전 확인·세션 조회·생성·Control Mode 연결에 함께 사용합니다.
+
+탐지나 버전 확인이 실패하면 상태 라벨 옆의 ⓘ를 눌러 호스트·탐지 시도와 결과·검사한 경로·확인 명령을 볼 수 있습니다. 경로 미발견, 실행 실패, 지원 범위 밖 버전, 버전 응답 오류를 구분하며 미설치로 단정하지 않습니다. 상세 대화상자는 관리 영역을 접어도 열 수 있습니다.
+
+Android 설정에서 `볼륨 키로 단축키 실행`을 켜고 위·아래 키를 각각 설정할 수 있습니다.
+`기본 음량 조절`, `단축키`, `매크로` 중 선택하며 편집기의 `저장`으로 적용합니다.
+예를 들어 `Ctrl+B → 텍스트 n` 또는 `텍스트 git status → Enter`를 구성할 수 있습니다.
+텍스트 끝에 Enter를 붙이지 않으며 실제 줄바꿈만 Enter로 변환합니다. `\n`처럼 입력한 문자는 그대로 보냅니다.
+빈 매크로와 UTF-8 변환 후 64 KiB를 넘는 입력은 저장할 수 없습니다.
+선택한 터미널이 보이고 입력 가능한 동안, 키보드 표시 여부와 관계없이 누를 때 한 번 실행합니다.
+설정·입력·확인 대화상자, 호스트 목록만 표시한 화면, 연결 해제·복구 중에는 기본 음량 조절을 사용합니다.
 
 ## 검증
 
@@ -70,6 +85,7 @@ python3 scripts/integration.py
 python3 scripts/integration.py --tmux /path/to/tmux-3.3a
 python3 scripts/build_test_tmux.py 3.3a
 python3 scripts/integration.py --tmux .tools/tmux-3.3a/tmux-3.3a/tmux
+python3 scripts/integration.py --tmux-login-path --command ./gradlew :app:desktopTest --tests kim.jujin.rovessh.IntegrationTest.tmuxDiscoveryUsesLoginPathForCreateListAttachAndReconnect
 ./gradlew :androidApp:connectedDebugAndroidTest
 python3 scripts/integration.py --command python3 scripts/android_integration.py
 python3 scripts/check_prompt.py

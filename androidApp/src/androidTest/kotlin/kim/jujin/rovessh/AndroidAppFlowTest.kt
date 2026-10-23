@@ -44,6 +44,10 @@ class AndroidAppFlowTest {
                     previous = app.local.value
                     app.credentials.write(profile.id, credential)
                     app.update(previous.copy(hosts = previous.hosts + profile, trust = previous.trust + (profile.endpoint to fixture.getString("fingerprint"))))
+                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(volumeKeysEnabled = true,
+                        volumeUp = VolumeBinding(VolumeAction.Macro, listOf(
+                            MacroStep.Text("dgl_volume_count=\$((\${dgl_volume_count:-0}+1)); tmux set-option -p -t \"\$TMUX_PANE\" @dgl-volume-count \"\$dgl_volume_count\""),
+                            MacroStep.Key(TerminalKey.Enter))))))
                     app.open(profile)
                     connection = app.selected.value!!
                 }
@@ -64,6 +68,12 @@ class AndroidAppFlowTest {
                     throw AssertionError("Toolbar timeout: activePackage=${root?.packageName}; children=${root?.childCount}; phase=${connection.status.value.phase}")
                 }
                 stage = "keyboard visibility"
+                val sessionLabel = "현재 세션: $name ($session)"
+                assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, sessionLabel))
+                clickText("tmux 접기")
+                assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, sessionLabel))
+                clickText("tmux 관리")
+                withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 var tapX = 0f; var tapY = 0f
                 scenario.onActivity { activity ->
                     val web = findWebView(activity.window.decorView)!!
@@ -99,6 +109,9 @@ class AndroidAppFlowTest {
                 val bounds = android.graphics.Rect(); toolbar.getBoundsInScreen(bounds)
                 assertTrue("Shortcut bar must stay above the keyboard", bounds.bottom <= imeTop + 8)
                 assertTrue("Shortcut bar must be adjacent to the keyboard", imeTop - bounds.bottom < 160)
+                stage = "volume macro with IME visible"
+                withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                runVolumeMacro(scenario, admin, pane)
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 delay(400) // Wait for IME insets animation and the debounced remote resize.
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
@@ -111,6 +124,8 @@ class AndroidAppFlowTest {
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 stage = "GUI window creation"
+                runVolumeMacro(scenario, admin, splitPane.id)
+                assertEquals("1", admin.execute("tmux show-options -pv -t '$pane' @dgl-volume-count").decodeToString().trim())
                 clickText("+ 창")
                 stage = "GUI name editor"
                 // Wait for the dialog window; the terminal itself also exposes an
@@ -124,6 +139,7 @@ class AndroidAppFlowTest {
                     found
                 }
                 val text = android.os.Bundle().apply { putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "GUI window") }
+                scenario.onActivity { assertFalse(it.volumeKeys.dispatch(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_VOLUME_UP))) }
                 assertTrue(editor.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, text))
                 stage = "GUI name confirmation"
                 clickText("확인")
@@ -173,6 +189,20 @@ class AndroidAppFlowTest {
             runCatching { admin.execute("tmux " + TmuxCommand.killSession(session).wire) }
             admin.close()
         }
+    }
+    private suspend fun runVolumeMacro(scenario: ActivityScenario<MainActivity>, admin: SshjTransport, pane: String) {
+        val time = android.os.SystemClock.uptimeMillis()
+        scenario.onActivity { activity ->
+            val target = activity as android.app.Activity
+            assertTrue(target.dispatchKeyEvent(android.view.KeyEvent(time, time, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_VOLUME_UP, 0)))
+            repeat(5) { assertTrue(target.dispatchKeyEvent(android.view.KeyEvent(time, time + it + 1, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_VOLUME_UP, it + 1))) }
+            assertTrue(target.dispatchKeyEvent(android.view.KeyEvent(time, time + 10, android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_VOLUME_UP, 0)))
+        }
+        withTimeout(5000) {
+            while (runCatching { admin.execute("tmux show-options -pv -t '$pane' @dgl-volume-count").decodeToString().trim() }.getOrNull() != "1") delay(50)
+        }
+        delay(150)
+        assertEquals("1", admin.execute("tmux show-options -pv -t '$pane' @dgl-volume-count").decodeToString().trim())
     }
     private fun findWebView(view: View): WebView? {
         if (view is WebView) return view

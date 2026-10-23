@@ -306,3 +306,128 @@ PTY 셸에는 채널 종료로 hangup을 전달하여 셸 종료 후에도 다�
 사용할 수 있게 한다. 이 차이는 기존 일반 SSH 셸 회귀 검사로 확인한다.
 이전 실패 결과는 보존하며 시간 기준을 늘려 통과시키지 않는다.
 최종 5환경 장시간 측정은 이 수정 이후 코드로 수행해야 한다.
+
+
+## Android 볼륨 키 단축키·매크로 (2026-10-23)
+
+`main` 작업 트리에 Android 전용 설정과 입력 등록을 추가했다. 기본값은 비활성 및
+위·아래 모두 기본 음량 조절이다. 단축키와 매크로는 같은 순서 있는 텍스트/키 단계로
+저장되며, 편집기에서 저장하기 전에는 기존 설정을 바꾸지 않는다. 기존 설정 파일도
+기본값으로 읽고, 저장 후 새 저장소 인스턴스에서 동일한 값을 복원한다.
+공통 단축키 바의 구성·순서는 그대로이며 키 목록과 바이트 변환을 공유한다.
+
+[Android KeyEvent](https://developer.android.com/reference/android/view/KeyEvent#getRepeatCount())의
+반복 횟수와 기기·키·누름 시작 시각을 함께 확인한다. 최초 누름만 실행하고 같은 누름의
+반복·해제는 소비한다. 화면이 바뀌면 이전 실행 대상 등록을 해제하고 누름의 소비 여부만
+해제 이벤트까지 보존한다. 포커스 상실·백그라운드 이동·Activity 파괴 시 누름 상태도 정리한다.
+전면 복귀 때는 현재 화면의 등록만 복구한다. 소프트 키보드 여부는 실행 조건에 넣지 않는다.
+대화상자·호스트 목록만 보이는 화면·입력 불가능 상태에서는 기본 처리로 넘긴다.
+[Activity.dispatchKeyEvent](https://developer.android.com/reference/android/app/Activity#dispatchKeyEvent(android.view.KeyEvent))의
+공개 재정의 지점에서 처리하며 미처리 키는 AndroidX superclass로 전달한다.
+해당 메서드에만 AndroidX Core의 상속된 `RestrictedApi` 진단을 억제했고 이유를 코드에 남겼다.
+
+매크로는 실제 줄바꿈을 Enter로 바꾼 UTF-8 바이트 배열 하나로 `ClientModel.input()`에
+전달한다. 기존 입력 대기열·세대 검사·실패 입력 재전송 금지는 유지한다. 빈 내용과
+64 KiB 초과는 저장 전에 오류를 표시한다. 단계별 JSON 부피를 수용하도록 설정 파일의
+읽기/쓰기 상한을 동일한 16 MiB로 두고, 저장 전에 크기를 검사한다.
+
+볼륨 키 변경 당시 명시적 테스트 목록은 JVM 26개, Android 8개였다. JVM 기본 검사는 18개 통과와
+SSH fixture 7개·Windows 1개의 예상 skip, SSH fixture 검사는 25개 통과와 Windows 1개의
+예상 skip을 요구한다. Android 결과 검증기와 AVD matrix는 8개 전부의 실행·통과를 요구한다.
+테스트 결과 검증기 회귀를 포함한 Python 테스트 48개도 통과했다.
+
+검사 범위는 전체 지원 키 바이트, 기존 바 순서, 혼합 단계 순서, 한글·Unicode,
+실제/문자열 줄바꿈 구분, Enter 자동 추가 없음, 변환 후 크기 경계, 구형 설정과 저장·복원,
+위·아래 독립 지정, 비활성·미지정 처리, 중복 down·반복·up, 실행 대상 교체와 수명주기다.
+Android 화면 검사는 활성화 스위치, 편집기 오류·추가·수정·삭제·순서 변경·저장·취소,
+설정·호스트 편집·삭제 확인·알림 대화상자, 호스트 목록, 복구·해제, 회전·백그라운드 복귀를 포함한다.
+실제 SSH/tmux 화면 검사는 키보드 표시·숨김 상태에서 선택한 패널의 카운터가 한 번만 증가하고
+다른 패널은 그대로인지 확인한다. JVM에서는 tmux 3.3a/3.7c의 선택 패널과 실제 일반 SSH PTY의
+매크로 전송을 확인한다. Android 키 이벤트는 Activity에 계측 주입하며, 실기 물리 키 검증은 미실행이다.
+
+로컬 결과: `artifacts/volume-jvm-base.json`, `volume-jvm-3.3a.json`, `volume-jvm-3.7c.json`.
+Android matrix와 최종 빌드 결과는 아래에 기록한다. 이번 결과는 로컬 작업 트리 검증이며
+새 원격 CI 실행이나 Windows 실기 검증을 의미하지 않는다.
+
+| 검증 | 결과 |
+|---|---|
+| JVM 기본 / tmux 3.3a / tmux 3.7c | 18 / 25 / 25 통과, 예상 skip 8 / 1 / 1 |
+| Android API 34 / 35 / 36 ARM64 | 각각 8 통과, 실패·skip 0 |
+| Android Debug / Release / 계측 APK | 빌드 통과 |
+| Android lintDebug 및 lint 결과 검증기 | 통과, 기존 검토된 경고 12개 |
+| Python 회귀 | 48 통과 |
+
+Android 증거는 `artifacts/android-matrix.json` 및 `android-tests-{34,35,36}.json`에 있다.
+첫 API 34 실행에서 스위치 조작 테스트가 실패하여 스위치와 설명을 하나의 접근 가능한
+행으로 구성한 뒤 세 API 전체를 다시 통과했다. 복구 애니메이션 중 계측의 idle 대기를
+피하도록 테스트의 Activity 조회도 Main dispatcher에서 수행한다.
+최종 빌드 로그는 `.tools/volume-release-lint-final.log`, 전체 Android 로그는
+`.tools/volume-android-matrix-final.log`다. 실행한 전용 에뮬레이터와 임시 SSH/tmux fixture는 종료했다.
+
+### 2026-10-23 tmux 관리 영역 표시 수정
+
+일반 SSH 모드에서도 세션·창·패널 목록 영역과 조작 버튼을 유지하고, 사용할 수 없는
+조작만 비활성화한다. `현재 세션`은 관리 영역을 접어도 남으며, 연결 안 됨·복구 중·
+일반 SSH·세션 미선택 상태를 구분한다. 목록에 `세션`, `창`, `패널`, `조작` 표제를 추가했다.
+
+JVM 기본 테스트 18개 통과·예상 skip 8개, Debug 및 계측 APK 빌드, `lintDebug`와
+기존 경고 12개 검증기를 통과했다. Android API 36 ARM64와 격리 OpenSSH/tmux 3.7c에서
+8개 계측 테스트를 모두 통과했다. 일반 SSH의 버튼 표시·비활성화와 접기·펼치기,
+tmux의 현재 세션 표시 유지·분할·창 생성·키보드·회전 검사를 포함한다.
+로그는 `.tools/tmux-ui-validation.log`, 결과는 `artifacts/android-tests-36.json`이다.
+이번 UI 변경에 대해 API 34/35 및 물리 기기는 재검증하지 않았다.
+
+APK의 앱 ID `kim.jujin.rovessh`, 버전 `0.1.0`/`1`, 출력 경로와 문서 등록 경로는
+기존 대시보드 메타데이터와 일치하며 대시보드 검증기를 통과했다.
+
+### 2026-10-23 로그인 PATH의 tmux 탐지 수정
+
+로컬 macOS의 tmux 3.7c는 `/opt/homebrew/bin/tmux`에 설치되어 있지만 SSH 기본 PATH
+`/usr/bin:/bin:/usr/sbin:/sbin`의 비로그인 zsh에서는 `tmux -V`가 exit 127로 실패했다.
+같은 PATH에서 `zsh -lc`로 실행하면 `.zprofile`의 Homebrew 설정을 읽고 정상 응답했다.
+절대 경로 실행으로 기존 서버의 세션 조회가 성공하는 것까지 읽기 전용으로 확인했다.
+이 차이는 [zsh의 로그인 파일 처리](https://zsh.sourceforge.io/Doc/Release/Files.html)와
+[sshd의 명령 실행 방식](https://man.openbsd.org/sshd.8#LOGIN_PROCESS)에 부합한다.
+
+SSH 기본 PATH에서 먼저 실행 파일을 찾고 실패하면 로그인 셸의 exported PATH로 재탐색한다.
+배너 출력과 경로를 구분하며, 절대 경로만 인용하여 버전 조회·세션 생성·목록·Control Mode
+연결에 재사용한다. 경로 캐시는 SSH 연결별로 유지하고 재연결 시 다시 찾는다.
+경로 미발견·실행 실패·버전 미지원 메시지도 구분하며, 일반 SSH 전환 시 마지막 탐색 위치를
+지우지 않는다. 호스트의 셸 설정이나 tmux 설정은 수정하지 않았다.
+
+`scripts/integration.py --tmux-login-path`는 비로그인 PATH를 비우고 별도 로그인 셸에서만
+격리 tmux 래퍼를 찾게 한다. 공백·작은따옴표가 포함된 설치 경로, 로그인 배너,
+세션 생성·새로고침·선택·입력·분할·재접속을 실제 SSH로 통과했다.
+이 변경 시점의 JVM 테스트 목록은 29개였다. tmux 3.3a/3.7c의 전체 통합 검사는 각각 28개 통과와
+Windows 전용 1개 skip이며, Android API 36의 8개 계측 테스트와 Debug/계측 APK 빌드,
+lint 및 기존 경고 12개 검증, Python 회귀 48개를 통과했다. API 34/35와 물리 기기는
+이번 변경에서 재검증하지 않았다.
+
+로그: `.tools/tmux-login-path-test.log`, `.tools/tmux-discovery-integration.log`,
+`.tools/tmux-discovery-3.3a.log`, `.tools/tmux-discovery-android.log`.
+결과: `artifacts/tmux-discovery-jvm-{3.3a,3.7c}.json`, `artifacts/android-tests-36.json`.
+
+### 2026-10-23 tmux 다중 경로 탐지와 실패 상세 안내
+
+SSH 기본 PATH, 로그인 셸 PATH, 대표 설치 경로 순서로 탐지를 확장했다. 대표 경로는
+Homebrew·Linuxbrew·MacPorts, 표준 시스템 bin, 사용자 `~/.local/bin`·`~/bin`, Nix·Snap을
+포함한 12곳이다. 각 탐지 단계에 4초 응답 제한을 두고 경로 미발견·명령 실패·응답 오류·
+시간 초과를 기록한다. 네트워크 오류와 외부 취소는 탐지 실패로 바꾸지 않는다.
+
+일반 SSH 상태의 실패 라벨 바로 옆에 접근성 설명이 있는 ⓘ 버튼을 추가했다.
+대화상자에는 호스트, 실패 이유, 실제 시도한 방법과 결과, 대표 검사 경로, 발견된 실행
+파일과 버전(있는 경우), 확인 명령과 다음 조치를 표시한다. 원격 표준 출력·오류 전체를
+진단 내용에 저장하지 않는다. 관리 영역을 접어도 상세 안내를 열 수 있고, 안내 중에는
+볼륨 키 매크로를 터미널에 전달하지 않는다. 재연결하면 이전 진단을 지우고 다시 탐지한다.
+
+JVM 목록은 30개이며 기본 21개 통과·예상 skip 9개, 격리 OpenSSH/tmux 3.7c 전체 검사
+29개 통과·Windows 전용 skip 1개다. 별도 로그인 PATH 회귀는 공백·따옴표 경로와 실제
+후보 경로 루프(없는 파일·실행 불가 파일 건너뛰기)도 검증했다. Android API 36의 8개
+계측 검사가 모두 통과했고, 상세 안내 열기·스크롤·닫기와 매크로 차단·입력 복귀를 포함한다.
+Debug/계측 APK, lint와 기존 경고 12개 검증, Python 회귀 48개도 통과했다.
+이번 변경에서 API 34/35, tmux 3.3a 및 물리 기기는 재검증하지 않았다.
+
+로그: `.tools/tmux-details-{build,login-path,integration,android,python}.log`.
+결과: `artifacts/tmux-details-jvm-base.json`, `artifacts/tmux-details-jvm-3.7c.json`,
+`artifacts/android-tests-36.json`. 대시보드 등록 경로·앱 ID·파일 버전은 기존 값과 일치하며
+메타데이터 검증기를 통과했다.

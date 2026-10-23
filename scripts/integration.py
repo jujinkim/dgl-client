@@ -73,6 +73,7 @@ def cleanup_tmux(root, tmux):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tmux', default=shutil.which('tmux'))
+    parser.add_argument('--tmux-login-path', action='store_true', help='Expose tmux only through an isolated login shell PATH')
     parser.add_argument('--command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if not args.tmux:
@@ -89,13 +90,23 @@ def main():
         run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', passphrase, '-f', str(root / 'encrypted')])
         (root / 'authorized_keys').write_text(''.join((root / (name + '.pub')).read_text(encoding="utf-8") for name in ['client', 'rsa', 'encrypted']), encoding="utf-8")
         fingerprint = run(['ssh-keygen', '-lf', str(root / 'host.pub'), '-E', 'sha256']).stdout.split()[1]
-        (root / 'bin').mkdir()
+        # A space and quote exercise executable-path quoting as well as discovery.
+        binary_dir = root / ("login tools' bin" if args.tmux_login_path else 'bin')
+        binary_dir.mkdir()
+        normal_path = str(binary_dir) + ':/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin'
         (root / 'tmux.conf').write_text('set -g default-shell /bin/sh\nset -g default-command /bin/sh\nset -g automatic-rename off\nset-environment -g LANG en_US.UTF-8\nset-environment -g LC_ALL en_US.UTF-8\n', encoding="utf-8")
-        wrapper = root / 'bin/tmux'
-        wrapper.write_text('#!/bin/sh\nexec ' + shlex.quote(tmux) + ' -S ' + shlex.quote(str(root / 'tmux.socket')) + ' -f ' + shlex.quote(str(root / 'tmux.conf')) + ' "$@"\n', encoding="utf-8")
+        wrapper = binary_dir / 'tmux'
+        wrapper.write_text('#!/bin/sh\nexport PATH=' + shlex.quote(normal_path) + '\nexec ' + shlex.quote(tmux) + ' -S ' + shlex.quote(str(root / 'tmux.socket')) + ' -f ' + shlex.quote(str(root / 'tmux.conf')) + ' "$@"\n', encoding="utf-8")
         wrapper.chmod(0o700)
+        environment = 'export PATH=' + shlex.quote(normal_path) + '\n'
+        if args.tmux_login_path:
+            login_shell = root / 'login-shell'
+            login_shell.write_text('#!/bin/sh\n[ "$1" = "-lc" ] || exit 2\nprintf "Login profile banner\\n"\n' + environment + 'exec /bin/sh -c "$2"\n', encoding="utf-8")
+            login_shell.chmod(0o700)
+            (root / 'empty-path').mkdir()
+            environment = 'export PATH=' + shlex.quote(str(root / 'empty-path')) + '\nexport SHELL=' + shlex.quote(str(login_shell)) + '\n'
         dispatcher = root / 'dispatch.sh'
-        dispatcher.write_text('#!/bin/sh\nunset TMUX\nexport PATH=' + shlex.quote(str(root / 'bin') + ':/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin') + '\nif [ -n "$SSH_ORIGINAL_COMMAND" ]; then exec /bin/sh -c "$SSH_ORIGINAL_COMMAND"; else exec /bin/sh -i; fi\n', encoding="utf-8")
+        dispatcher.write_text('#!/bin/sh\nunset TMUX\n' + environment + 'if [ -n "$SSH_ORIGINAL_COMMAND" ]; then exec /bin/sh -c "$SSH_ORIGINAL_COMMAND"; else exec /bin/sh -i; fi\n', encoding="utf-8")
         dispatcher.chmod(0o700)
         with socket.socket() as probe:
             probe.bind(('127.0.0.1', 0))
@@ -136,6 +147,8 @@ LogLevel ERROR
                 env.update(DGL_TEST_ROOT=str(root), DGL_TEST_PORT=str(port), DGL_TEST_USER=getpass.getuser(), DGL_TEST_KEY_FILE=str(root / 'client'),
                            DGL_TEST_RSA_FILE=str(root / 'rsa'), DGL_TEST_ENCRYPTED_FILE=str(root / 'encrypted'),
                            DGL_TEST_PASSPHRASE=passphrase, DGL_TEST_FINGERPRINT=fingerprint,
+                           DGL_TEST_TMUX_LOGIN_PATH='1' if args.tmux_login_path else '0',
+                           DGL_TEST_TMUX_WRAPPER=str(wrapper),
                            DGL_TEST_TMUX_VERSION=run([tmux, '-V']).stdout.strip().removeprefix('tmux '))
                 command = args.command or ['./gradlew', ':app:desktopTest', '--rerun-tasks']
                 print('Isolated OpenSSH ready; ' + run([tmux, '-V']).stdout.strip(), flush=True)

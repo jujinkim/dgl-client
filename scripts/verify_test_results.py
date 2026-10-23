@@ -5,6 +5,11 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'TmuxDiscoveryTest': ['resolvesSearchPathsAndQuotesExecutable', 'recordsFailuresAndPreservesTransportFailures',
+                          'shellFallbackExplainsFailureAndReconnectClearsDetails'],
+    'core.TerminalInputTest': ['everySupportedKeyAndToolbarOrder', 'mixedStepsUnicodeNewlinesAndNoImplicitEnter',
+                               'emptyInvalidAndUtf8SizeLimits', 'oldPreferencesAndIndependentBindingsRoundTrip'],
+    'PreferencesTest': ['repositoryRestoresMacrosAndLegacySettings'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification
         unicodeMaySpanOutputEvents extendedOutputAndEmptyOutput malformedAndOversizedMessagesFailClosed
         inputIsHexAndNamesAreQuoted captureEscapingDiffersFromLiveOutput retryAndInputGates
@@ -13,6 +18,8 @@ TESTS = {
                      'snapshotRestoresRowsWithoutNewlineDuplicationAndCursor', 'scrollbackIsBoundedAndLargeOutputFinishes'],
     'AuthenticationTest': ['passwordSuccessFailureAndGeneratedEd25519Key'],
     'IntegrationTest': ['plainSshShellAndHostileNamesAndErrorRecovery', 'hostTrustMismatchAndKeyAuthentication',
+                        'tmuxDiscoveryUsesLoginPathForCreateListAttachAndReconnect',
+                        'macrosUseSelectedPaneAndPlainShellOnce',
                         'actualSshControlInputExternalChangesAndProcessPreservation',
                         'simultaneousClientsSnapshotDuringOutputAndSessionDeletion'],
     'RecoveryTest': ['repeatedDisconnectBlocksInputPreservesPidAndDoesNotReplaceMissingSession'],

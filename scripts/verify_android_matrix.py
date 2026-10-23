@@ -8,6 +8,7 @@ import socket
 import subprocess
 import time
 from evidence import context, require_passed
+from verify_android_results import EXPECTED_ANDROID
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK = Path(os.environ['ANDROID_HOME'])
@@ -63,9 +64,9 @@ def main():
                     raise SystemExit(result.returncode)
                 tests = json.loads((ROOT / ('artifacts/android-tests-' + avd[-2:] + '.json')).read_text(encoding='utf-8'))
                 require_passed(tests, ctx)
-                if tests.get('passed') != 4 or tests.get('skipped') != 0 or tests.get('api') != avd[-2:]:
+                if tests.get('passed') != len(EXPECTED_ANDROID) or tests.get('skipped') != 0 or tests.get('api') != avd[-2:]:
                     raise ValueError('Incomplete Android tests')
-                results.append({'avd': avd, 'api': avd[-2:], 'tmux': '3.7c', 'passed': 4, 'failed': 0, 'skipped': 0})
+                results.append({'avd': avd, 'api': avd[-2:], 'tmux': '3.7c', 'passed': len(EXPECTED_ANDROID), 'failed': 0, 'skipped': 0})
                 report.write_text(json.dumps({'schema': 1, 'context': ctx, 'complete': False, 'status': 'failed', 'results': results}, indent=2) + '\n', encoding="utf-8")
             finally:
                 # Only terminate the process created by this script.

@@ -85,3 +85,5 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
 }
 
 actual fun copyPublicKey(value: String) { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(value), null) }
+@Composable actual fun PlatformInputRegistration(client: ClientModel, preferences: Preferences, allowed: () -> Boolean) {}
+@Composable actual fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit) {}

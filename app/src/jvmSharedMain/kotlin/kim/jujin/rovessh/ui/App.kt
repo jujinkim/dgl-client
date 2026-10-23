@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kim.jujin.rovessh.*
 import kim.jujin.rovessh.core.*
@@ -19,6 +20,8 @@ import java.util.UUID
 
 @Composable expect fun PlatformTerminal(client: ClientModel, preferences: Preferences, modifier: Modifier)
 @Composable expect fun ImportKeyButton(onKey: (String) -> Unit, onError: (String) -> Unit)
+@Composable expect fun PlatformInputRegistration(client: ClientModel, preferences: Preferences, allowed: () -> Boolean)
+@Composable expect fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit)
 expect fun copyPublicKey(value: String)
 
 @Composable fun App(model: AppModel) {
@@ -79,7 +82,13 @@ expect fun copyPublicKey(value: String)
                         }
                         if (wide || (selected != null && !explorer)) {
                             Box(Modifier.weight(1f).fillMaxHeight()) {
-                                if (selected != null) key(selected) { ConnectionScreen(selected!!, local.preferences) }
+                                if (selected != null) key(selected) {
+                                    val client = selected!!
+                                    ConnectionScreen(client, local.preferences) {
+                                        model.selected.value === client && (wide || !explorer) &&
+                                            !settings && !adding && edit == null && deletion == null && error == null
+                                    }
+                                }
                                 else Column(Modifier.align(Alignment.Center).padding(24.dp)) {
                                     Text("Keep the CLI.", style = MaterialTheme.typography.headlineMedium)
                                     Text("세션은 서버에, 작업은 그대로.", style = MaterialTheme.typography.bodyLarge)
@@ -105,60 +114,94 @@ expect fun copyPublicKey(value: String)
     }
 }
 
-@Composable private fun ConnectionScreen(client: ClientModel, preferences: Preferences) {
+@Composable private fun ConnectionScreen(client: ClientModel, preferences: Preferences, inputAllowed: () -> Boolean) {
     val status by client.status.collectAsState()
     val remote by client.remote.collectAsState()
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
     val trust by client.trustRequest.collectAsState()
     val notice by client.notice.collectAsState()
+    val tmuxProblem by client.tmuxProblem.collectAsState()
+    var tmuxDetails by remember(tmuxProblem) { mutableStateOf(false) }
     var navigation by remember { mutableStateOf(true) }
     var namePrompt by remember { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }
     var deletion by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    PlatformInputRegistration(client, preferences) {
+        inputAllowed() && !tmuxDetails && namePrompt == null && deletion == null &&
+            client.trustRequest.value == null && client.notice.value == null
+    }
     val currentPane = remote.panes.firstOrNull { it.id == pane }
     val currentWindow = remote.windows.firstOrNull { it.id == currentPane?.window && it.session == session }
     val currentSession = remote.sessions.firstOrNull { it.id == session }
+    val canBrowse = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
+    val canManage = status.phase == Phase.Ready
+    val sessionLabel = when (status.phase) {
+        Phase.Shell -> "없음 · 일반 SSH"
+        Phase.Disconnected, Phase.Failed -> "연결 안 됨"
+        Phase.Connecting, Phase.Authenticating, Phase.TrustRequired -> "확인 중"
+        Phase.Reconnecting -> "복구 중"
+        Phase.MissingSession -> "이전 세션 없음"
+        else -> currentSession?.let { "${it.name} (${it.id})" } ?: "선택 안 함"
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(status.message, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f), maxLines = 2)
-            TextButton({ navigation = !navigation }) { Text("탐색") }
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(status.message, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
+            }
             if (status.phase == Phase.Disconnected || status.phase == Phase.Failed || status.phase == Phase.MissingSession) TextButton({ client.connect() }) { Text("재연결") }
             else TextButton({ client.disconnect() }) { Text("연결 종료") }
         }
         Box(Modifier.fillMaxWidth().height(4.dp)) {
             if (status.phase == Phase.Connecting || status.phase == Phase.Restoring || status.phase == Phase.Reconnecting) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        if (navigation && status.phase != Phase.Shell) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("현재 세션: $sessionLabel", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            TextButton({ navigation = !navigation }) { Text(if (navigation) "tmux 접기" else "tmux 관리") }
+        }
+        if (navigation) {
             Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
+                if (status.phase == Phase.Shell) Text("일반 SSH 작업은 연결 종료 시 끝날 수 있습니다.", style = MaterialTheme.typography.labelSmall)
                 Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    remote.sessions.forEach { s -> FilterChip(session == s.id, { client.selectSession(s.id) }, label = { Text("${s.name} · ${s.attached}") }) }
-                    TextButton({ namePrompt = "세션 만들기" to client::createSession }, enabled = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)) { Text("+ 세션") }
-                    TextButton({ client.refresh() }) { Text("새로고침") }
+                    Text("세션", Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
+                    if (remote.sessions.isEmpty() || status.phase == Phase.Shell) Text(
+                        if (status.phase == Phase.Shell) "목록 확인 불가" else if (canBrowse) "세션 없음" else "목록 대기 중",
+                        Modifier.padding(end = 8.dp), style = MaterialTheme.typography.bodySmall)
+                    if (status.phase != Phase.Shell) remote.sessions.forEach { s -> FilterChip(session == s.id, { client.selectSession(s.id) }, enabled = canBrowse, label = { Text("${s.name} · ${s.attached}") }) }
+                    TextButton({ namePrompt = "세션 만들기" to client::createSession }, enabled = canBrowse) { Text("+ 세션") }
+                    TextButton({ client.refresh() }, enabled = canBrowse) { Text("새로고침") }
                 }
-                if (session != null) Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    remote.windows.filter { it.session == session }.forEach { window ->
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    Text("창", Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
+                    if (session == null || status.phase == Phase.Shell) Text("세션을 선택하세요.", Modifier.padding(end = 8.dp), style = MaterialTheme.typography.bodySmall)
+                    if (status.phase != Phase.Shell) remote.windows.filter { it.session == session }.forEach { window ->
                         FilterChip(currentWindow?.id == window.id, {
                             remote.panes.firstOrNull { it.window == window.id && it.active }?.let { client.selectPane(it.id) }
-                        }, label = { Text(window.name) })
+                        }, enabled = canBrowse, label = { Text(window.name) })
                     }
-                    TextButton({ namePrompt = "창 만들기" to { client.manage(TmuxCommand.newWindow(session!!, it)) } }) { Text("+ 창") }
+                    TextButton({ session?.let { target -> namePrompt = "창 만들기" to { client.manage(TmuxCommand.newWindow(target, it)) } } }, enabled = canManage && session != null) { Text("+ 창") }
                 }
-                if (currentWindow != null) Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    remote.panes.filter { it.window == currentWindow.id }.forEach { p ->
-                        FilterChip(pane == p.id, { client.selectPane(p.id) }, label = { Text("${p.id} ${p.command} ${p.width}×${p.height}" + if (p.mode.isNotEmpty()) " · ${p.mode}" else "") })
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    Text("패널", Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
+                    if (currentWindow == null || status.phase == Phase.Shell) Text("창을 선택하세요.", Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall)
+                    if (status.phase != Phase.Shell) remote.panes.filter { it.window == currentWindow?.id }.forEach { p ->
+                        FilterChip(pane == p.id, { client.selectPane(p.id) }, enabled = canBrowse, label = { Text("${p.id} ${p.command} ${p.width}×${p.height}" + if (p.mode.isNotEmpty()) " · ${p.mode}" else "") })
                     }
                 }
-                // Keep the layout stable while a resize snapshot is restoring. Hiding this
-                // row during Restoring changes the viewport and starts another resize.
-                if (pane != null) Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    TextButton({ client.manage(TmuxCommand.split(pane!!, true)) }, enabled = status.phase == Phase.Ready) { Text("좌우 분할") }
-                    TextButton({ client.manage(TmuxCommand.split(pane!!, false)) }, enabled = status.phase == Phase.Ready) { Text("상하 분할") }
-                    listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (label, direction) -> TextButton({ client.manage(TmuxCommand.resizePane(pane!!, direction)) }, enabled = status.phase == Phase.Ready) { Text("크기 $label") } }
-                    TextButton({ namePrompt = "세션 이름 변경" to { client.manage(TmuxCommand.renameSession(session!!, it)) } }, enabled = status.phase == Phase.Ready) { Text("세션 이름") }
-                    TextButton({ namePrompt = "창 이름 변경" to { client.manage(TmuxCommand.renameWindow(currentWindow!!.id, it)) } }, enabled = status.phase == Phase.Ready) { Text("창 이름") }
-                    TextButton({ val target = pane!!; deletion = "패널 $target (${currentPane?.command})" to { client.manage(TmuxCommand.killPane(target)) } }, enabled = status.phase == Phase.Ready) { Text("패널 삭제") }
-                    TextButton({ val target = currentWindow!!.id; deletion = "창 ${currentWindow.name}" to { client.manage(TmuxCommand.killWindow(target)) } }, enabled = status.phase == Phase.Ready) { Text("창 삭제") }
-                    TextButton({ val target = session!!; deletion = "세션 ${currentSession?.name}" to { client.manage(TmuxCommand.killSession(target)) } }, enabled = status.phase == Phase.Ready) { Text("세션 삭제") }
+                // Keep controls discoverable in every connection mode and preserve their
+                // height during snapshot restoration so resize cannot trigger a loop.
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    Text("조작", Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
+                    TextButton({ pane?.let { client.manage(TmuxCommand.split(it, true)) } }, enabled = canManage && pane != null) { Text("좌우 분할") }
+                    TextButton({ pane?.let { client.manage(TmuxCommand.split(it, false)) } }, enabled = canManage && pane != null) { Text("상하 분할") }
+                    listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (label, direction) -> TextButton({ pane?.let { client.manage(TmuxCommand.resizePane(it, direction)) } }, enabled = canManage && pane != null) { Text("크기 $label") } }
+                    TextButton({ session?.let { target -> namePrompt = "세션 이름 변경" to { client.manage(TmuxCommand.renameSession(target, it)) } } }, enabled = canManage && session != null) { Text("세션 이름") }
+                    TextButton({ currentWindow?.let { target -> namePrompt = "창 이름 변경" to { client.manage(TmuxCommand.renameWindow(target.id, it)) } } }, enabled = canManage && currentWindow != null) { Text("창 이름") }
+                    TextButton({ pane?.let { target -> deletion = "패널 $target (${currentPane?.command})" to { client.manage(TmuxCommand.killPane(target)) } } }, enabled = canManage && pane != null) { Text("패널 삭제") }
+                    TextButton({ currentWindow?.let { target -> deletion = "창 ${target.name}" to { client.manage(TmuxCommand.killWindow(target.id)) } } }, enabled = canManage && currentWindow != null) { Text("창 삭제") }
+                    TextButton({ session?.let { target -> deletion = "세션 ${currentSession?.name}" to { client.manage(TmuxCommand.killSession(target)) } } }, enabled = canManage && session != null) { Text("세션 삭제") }
                 }
             }
         }
@@ -167,8 +210,8 @@ expect fun copyPublicKey(value: String)
             PlatformTerminal(client, preferences, Modifier.fillMaxSize())
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            listOf("Esc" to "\u001b", "Tab" to "\t", "Ctrl+C" to "\u0003", "Ctrl+D" to "\u0004", "Ctrl+L" to "\u000c", "↑" to "\u001b[A", "↓" to "\u001b[B", "←" to "\u001b[D", "→" to "\u001b[C", "Home" to "\u001b[H", "End" to "\u001b[F").forEach { (label, bytes) ->
-                TextButton({ client.input(bytes.encodeToByteArray()) }, enabled = status.acceptsInput, contentPadding = PaddingValues(horizontal = 10.dp)) { Text(label) }
+            TerminalKey.toolbar.forEach { shortcut ->
+                TextButton({ client.input(shortcut.bytes()) }, enabled = status.acceptsInput, contentPadding = PaddingValues(horizontal = 10.dp)) { Text(shortcut.label) }
             }
         }
     }
@@ -178,6 +221,9 @@ expect fun copyPublicKey(value: String)
             confirmButton = { TextButton({ client.trust() }) { Text("신뢰하고 연결") } }, dismissButton = { TextButton({ client.trustRequest.value = null; client.disconnect() }) { Text("취소") } })
     }
     namePrompt?.let { (title, action) -> NameDialog(title, { action(it); namePrompt = null }, { namePrompt = null }) }
+    if (tmuxDetails && status.phase == Phase.Shell) tmuxProblem?.let {
+        TmuxFailureDialog(client.host, it) { tmuxDetails = false }
+    }
     deletion?.let { (target, action) -> ConfirmDialog("$target 삭제", "이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?", { action(); deletion = null }, { deletion = null }) }
     notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { TextButton({ client.notice.value = null }) { Text("닫기") } }) }
 }
@@ -245,6 +291,7 @@ expect fun copyPublicKey(value: String)
                 TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize + 1).coerceAtMost(28)))) }) { Text("크게") }
             }
             Text("스크롤백: ${local.preferences.scrollback}줄 · 터미널에서 스크롤·선택·복사")
+            PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
             Text("신뢰한 서버", style = MaterialTheme.typography.titleSmall)
             local.trust.forEach { (endpoint, fingerprint) ->
                 Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; TextButton({ forget = endpoint }) { Text("신뢰 키 삭제") } }

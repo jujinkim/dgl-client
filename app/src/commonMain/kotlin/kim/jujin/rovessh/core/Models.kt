@@ -27,7 +27,12 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     override fun toString() = "Credential([redacted])"
 }
 
-@Serializable data class Preferences(val theme: String = "system", val fontSize: Int = 14, val scrollback: Int = 5000)
+@Serializable data class Preferences(
+    val theme: String = "system", val fontSize: Int = 14, val scrollback: Int = 5000,
+    val volumeKeysEnabled: Boolean = false,
+    val volumeUp: VolumeBinding = VolumeBinding(),
+    val volumeDown: VolumeBinding = VolumeBinding(),
+)
 @Serializable data class LocalState(val hosts: List<HostProfile> = emptyList(), val trust: Map<String, String> = emptyMap(), val preferences: Preferences = Preferences())
 
 data class RemoteSession(val id: String, val name: String, val attached: Int)
@@ -62,8 +67,11 @@ interface CredentialStore {
 }
 
 interface SshTransport {
+    val tmuxDiagnostics: TmuxDiagnostics get() = TmuxDiagnostics()
     suspend fun connect(host: HostProfile, credential: Credential, trustedFingerprint: String?)
     suspend fun execute(command: String): ByteArray
+    suspend fun tmuxVersion(): String = execute("tmux -V").decodeToString()
+    suspend fun executeTmux(command: TmuxCommand): ByteArray = execute(command.shellWire)
     suspend fun openControl(sessionId: String): Stream
     suspend fun openShell(size: Size): Stream
     fun close()

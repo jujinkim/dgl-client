@@ -22,16 +22,20 @@ class LocalRepository(private val directory: File) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     @Synchronized fun read(): LocalState {
         if (!file.exists()) return LocalState()
-        check(file.length() <= 1 shl 20) { "Settings file exceeds limit" }
+        check(file.length() <= MAX_FILE_BYTES) { "Settings file exceeds limit" }
         return json.decodeFromString<LocalState>(file.readText())
     }
     @Synchronized fun save(value: LocalState) {
         directory.mkdirs()
         val temporary = File(directory, "settings.tmp")
-        temporary.writeText(json.encodeToString(LocalState.serializer(), value))
+        val bytes = json.encodeToString(LocalState.serializer(), value).encodeToByteArray()
+        require(bytes.size <= MAX_FILE_BYTES) { "설정 파일이 너무 큽니다." }
+        temporary.writeBytes(bytes)
         try { Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING) }
         catch (_: java.nio.file.AtomicMoveNotSupportedException) { Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING) }
     }
+    // Two 64 KiB macros may contain one serialized key step per byte, with JSON indentation.
+    private companion object { const val MAX_FILE_BYTES = 16 * 1024 * 1024 }
 }
 
 object KeyGeneration {

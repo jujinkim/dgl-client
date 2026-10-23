@@ -90,7 +90,9 @@ class ReportTests(unittest.TestCase):
                     ET.SubElement(case, 'skipped')
             path = root / 'TEST-fixture.xml'
             ET.ElementTree(suite).write(path)
-            self.assertEqual(14, verify_jvm(root, 'windows')['passed'])
+            ssh_tests = sum(any('.' + cls + '.' in name for cls in
+                                ('IntegrationTest', 'RecoveryTest', 'PerformanceTest')) for name in EXPECTED)
+            self.assertEqual(len(EXPECTED) - ssh_tests, verify_jvm(root, 'windows')['passed'])
             dpapi = next(c for c in suite if 'WindowsSecurityTest' in c.attrib['classname'])
             ET.SubElement(dpapi, 'skipped')
             ET.ElementTree(suite).write(path)
@@ -104,9 +106,10 @@ class ReportTests(unittest.TestCase):
         for name in sorted(EXPECTED_ANDROID):
             cls, method = name.rsplit('.', 1)
             output += f'INSTRUMENTATION_STATUS: class={cls}\nINSTRUMENTATION_STATUS: test={method}\nINSTRUMENTATION_STATUS_CODE: 0\n'
-        output += 'OK (4 tests)\n'
-        self.assertEqual(4, verify_android(output)['passed'])
-        for broken in (output.replace('CODE: 0', 'CODE: -3', 1), 'OK (4 tests)', output.replace('OK (4 tests)', 'OK (3 tests)')):
+        summary = f'OK ({len(EXPECTED_ANDROID)} tests)'
+        output += summary + '\n'
+        self.assertEqual(len(EXPECTED_ANDROID), verify_android(output)['passed'])
+        for broken in (output.replace('CODE: 0', 'CODE: -3', 1), summary, output.replace(summary, 'OK (1 tests)')):
             with self.assertRaises(ValueError): verify_android(broken)
 
     def test_windows_collection_rejects_incomplete_failed_stale_or_modified_evidence(self):

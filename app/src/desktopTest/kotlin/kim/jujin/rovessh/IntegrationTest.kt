@@ -3,13 +3,134 @@ package kim.jujin.rovessh
 import kim.jujin.rovessh.core.*
 import kim.jujin.rovessh.ssh.*
 import kim.jujin.rovessh.tmux.ControlClient
+import kim.jujin.rovessh.storage.MemoryCredentialStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
 import org.junit.Assume.assumeTrue
 import java.io.File
 import kotlin.test.*
 
 class IntegrationTest {
+    @Test fun tmuxDiscoveryUsesLoginPathForCreateListAttachAndReconnect() = runBlocking<Unit> {
+        val host = host()
+        val admin = connected()
+        val store = MemoryCredentialStore().apply { write(host.id, credential()) }
+        val local = MutableStateFlow(LocalState(trust = mapOf(host.endpoint to System.getenv("DGL_TEST_FINGERPRINT"))))
+        val model = ClientModel(host, store, local, { local.update(it) })
+        var session: String? = null
+        try {
+            // Run the actual candidate loop over fixture-owned paths, including a
+            // missing file and a non-executable file, without touching user installs.
+            val candidates = listOf(System.getenv("DGL_TEST_ROOT") + "/missing-tmux",
+                System.getenv("DGL_TEST_ROOT") + "/tmux.conf", System.getenv("DGL_TEST_TMUX_WRAPPER"))
+            val fallback = TmuxDiscovery.find { command ->
+                if (command != TmuxDiscovery.common) throw RemoteCommandException(127)
+                admin.execute(TmuxDiscovery.commonCommand(candidates))
+            }
+            assertEquals(System.getenv("DGL_TEST_TMUX_WRAPPER"), fallback.executable)
+            assertEquals(listOf(TmuxProbeOutcome.NotFound, TmuxProbeOutcome.NotFound, TmuxProbeOutcome.Found), fallback.attempts.map { it.outcome })
+            if (System.getenv("DGL_TEST_TMUX_LOGIN_PATH") == "1") {
+                assertEquals(127, assertFailsWith<RemoteCommandException> { admin.execute("tmux -V") }.exitStatus)
+            }
+            assertTrue(supportsTmux(admin.tmuxVersion()))
+            model.connect()
+            withTimeout(10000) { model.status.first { it.phase == Phase.Selecting } }
+            val name = "login-path-${System.nanoTime()}' ;"
+            model.createSession(name)
+            val target = withTimeout(10000) { model.remote.first { it.sessions.any { s -> s.name == name } } }.sessions.single { it.name == name }.id
+            session = target
+            model.refresh()
+            model.selectSession(target)
+            withTimeout(10000) { model.status.first { it.phase == Phase.Ready } }
+            val pane = model.pane.value!!
+            val window = model.remote.value.panes.single { it.id == pane }.window
+            model.input("printf 'LOGIN_%s\\n' PATH_OK\r".encodeToByteArray())
+            withTimeout(5000) { while (!admin.executeTmux(TmuxCommand.capture(pane)).decodeToString().contains("LOGIN_PATH_OK")) delay(50) }
+            model.manage(TmuxCommand.split(pane, true))
+            withTimeout(5000) { model.remote.first { it.panes.count { p -> p.window == window } == 2 } }
+            model.disconnect()
+            model.connect()
+            withTimeout(10000) { model.status.first { it.phase == Phase.Ready } }
+            assertEquals(target, model.session.value)
+            assertEquals(pane, model.pane.value)
+            assertTrue(admin.executeTmux(TmuxCommand.capture(pane)).decodeToString().contains("LOGIN_PATH_OK"))
+        } finally {
+            model.close()
+            session?.let { runCatching { admin.executeTmux(TmuxCommand.killSession(it)) } }
+            admin.close()
+        }
+    }
+
+    @Test fun macrosUseSelectedPaneAndPlainShellOnce() = runBlocking<Unit> {
+        val host = host()
+        val admin = connected()
+        val store = MemoryCredentialStore().apply { write(host.id, credential()) }
+        val local = MutableStateFlow(LocalState(trust = mapOf(host.endpoint to System.getenv("DGL_TEST_FINGERPRINT"))))
+        var model: ClientModel? = null
+        var session: String? = null
+        val macro = TerminalInput.encode(listOf(
+            MacroStep.Text("volume_count=\$((\${volume_count:-0}+1)); printf 'MACRO_RUN_%s\\n' \"\$volume_count\""),
+            MacroStep.Key(TerminalKey.Enter)))
+        try {
+            val name = "volume-${System.nanoTime()}"
+            admin.execute(TmuxCommand.newSession(name).shellWire)
+            val target = RemoteStateDecoder.sessions(admin.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+            session = target
+            val tmuxModel = ClientModel(host.copy(lastSession = target), store, local, { local.update(it) })
+            model = tmuxModel
+            tmuxModel.connect()
+            withTimeout(10000) { tmuxModel.status.first { it.phase == Phase.Ready } }
+            val original = tmuxModel.pane.value!!
+            admin.execute("tmux " + TmuxCommand.split(original, true).wire)
+            val other = withTimeout(5000) { tmuxModel.remote.first { it.panes.size == 2 } }.panes.single { it.id != original }.id
+            tmuxModel.selectPane(other)
+            withTimeout(5000) { tmuxModel.pane.first { it == other }; tmuxModel.status.first { it.phase == Phase.Ready } }
+            tmuxModel.input(macro)
+            suspend fun capture(pane: String) = admin.execute("tmux capture-pane -p -t '$pane'").decodeToString()
+            withTimeout(5000) { while (!capture(other).contains("MACRO_RUN_1")) delay(50) }
+            delay(200)
+            assertFalse(capture(other).contains("MACRO_RUN_2"))
+            assertFalse(capture(original).contains("MACRO_RUN_"))
+            tmuxModel.close()
+
+            // Real SSH PTY, with only tmux discovery reporting unavailable.
+            val output = java.io.ByteArrayOutputStream()
+            val writes = java.util.concurrent.atomic.AtomicInteger()
+            val shellModel = ClientModel(host, store, local, { local.update(it) }) {
+                val transport = SshjTransport()
+                object : SshTransport by transport {
+                    override suspend fun tmuxVersion() = ""
+                    override suspend fun openShell(size: Size): SshTransport.Stream {
+                        val stream = transport.openShell(size)
+                        return object : SshTransport.Stream() {
+                            override suspend fun read() = stream.read()
+                            override suspend fun write(bytes: ByteArray) { writes.incrementAndGet(); stream.write(bytes) }
+                            override suspend fun resize(size: Size) = stream.resize(size)
+                            override fun close() = stream.close()
+                        }
+                    }
+                }
+            }
+            model = shellModel
+            shellModel.bindSurface(object : TerminalSurface {
+                override suspend fun write(bytes: ByteArray) { synchronized(output) { output.write(bytes) } }
+                override suspend fun reset(bytes: ByteArray) { synchronized(output) { output.reset(); output.write(bytes) } }
+                override fun close() {}
+            })
+            shellModel.connect()
+            withTimeout(10000) { shellModel.status.first { it.phase == Phase.Shell } }
+            shellModel.input(macro)
+            withTimeout(5000) { while (!synchronized(output) { output.toByteArray().decodeToString().contains("MACRO_RUN_1") }) delay(50) }
+            delay(200)
+            assertEquals(1, writes.get())
+            assertFalse(synchronized(output) { output.toByteArray().decodeToString().contains("MACRO_RUN_2") })
+        } finally {
+            model?.close()
+            session?.let { runCatching { admin.execute("tmux " + TmuxCommand.killSession(it).wire) } }
+            admin.close()
+        }
+    }
     private fun host(): HostProfile {
         assumeTrue("Run scripts/integration.py to enable real SSH tests", System.getenv("DGL_TEST_PORT") != null)
         return HostProfile("integration", "Isolated test", "127.0.0.1", System.getenv("DGL_TEST_PORT").toInt(), System.getenv("DGL_TEST_USER"), AuthKind.PrivateKey)

@@ -6,6 +6,10 @@ EXPECTED_ANDROID = {
     'kim.jujin.rovessh.AndroidPlatformTest.keystoreRoundTripTamperingAndBackupExclusion',
     'kim.jujin.rovessh.AndroidPlatformTest.bundledRendererImeBridgeResizeAndNavigationIsolation',
     'kim.jujin.rovessh.AndroidAppFlowTest.composeTerminalKeyboardToolbarRotationAndForegroundRestore',
+    'kim.jujin.rovessh.AndroidVolumeKeyTest.independentKeysConsumeOnlyTheInitialPress',
+    'kim.jujin.rovessh.AndroidVolumeKeyTest.defaultHandlingAndLifecycleNeverReplayHeldKeys',
+    'kim.jujin.rovessh.AndroidVolumeKeyTest.visibleShellDialogsSelectionRecoveryAndRecreation',
+    'kim.jujin.rovessh.AndroidVolumeKeyTest.editorSaveCancelValidationAndStepOrdering',
 }
 
 
@@ -24,7 +28,8 @@ def verify(output):
                     raise ValueError('Duplicate, failed or skipped Android test')
                 cases[name] = 'passed'
             fields = {}
-    if set(cases) != EXPECTED_ANDROID or not re.search(r'OK \(4 tests\)', output) or any(
+    count = len(EXPECTED_ANDROID)
+    if set(cases) != EXPECTED_ANDROID or not re.search(rf'OK \({count} tests\)', output) or any(
             token in output for token in ('FAILURES', 'INSTRUMENTATION_FAILED', 'shortMsg=')):
         raise ValueError('Incomplete or failed Android instrumentation')
-    return {'tests': 4, 'passed': 4, 'failed': 0, 'skipped': 0, 'cases': cases}
+    return {'tests': count, 'passed': count, 'failed': 0, 'skipped': 0, 'cases': cases}

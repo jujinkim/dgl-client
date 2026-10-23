@@ -2,6 +2,8 @@ package kim.jujin.rovessh.ssh
 
 import kim.jujin.rovessh.core.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.Buffer
 import net.schmizz.sshj.connection.channel.direct.Session
@@ -22,6 +24,10 @@ class SshjTransport : SshTransport {
     init { SshCrypto.initialize() }
     @Volatile private var client: SSHClient? = null
     private val channels = CopyOnWriteArrayList<Session>()
+    private val tmuxDiscovery = Mutex()
+    @Volatile private var tmuxPath: String? = null
+    @Volatile private var discoveryDetails = TmuxDiagnostics()
+    override val tmuxDiagnostics get() = discoveryDetails
 
     override suspend fun connect(host: HostProfile, credential: Credential, trustedFingerprint: String?) = withContext(Dispatchers.IO) {
         close()
@@ -74,25 +80,43 @@ class SshjTransport : SshTransport {
             withTimeout(15_000) {
                 val process = session.exec(command)
                 coroutineScope {
-                    val errors = async(Dispatchers.IO) { boundedRead(process.errorStream, 65536) }
+                    val errors = async(Dispatchers.IO) { runInterruptible { boundedRead(process.errorStream, 65536) } }
                     val output = runInterruptible { boundedRead(process.inputStream, 4 shl 20) }
                     errors.await()
                     process.join(5, java.util.concurrent.TimeUnit.SECONDS)
-                    if (process.exitStatus != 0) throw RemoteCommandException()
+                    if (process.exitStatus != 0) throw RemoteCommandException(process.exitStatus)
                     output
                 }
             }
         } finally { channels -= session; session.close() }
     }
 
+    private suspend fun tmuxExecutable(): String = tmuxDiscovery.withLock {
+        val owner = connected()
+        tmuxPath ?: run {
+            val result = try { TmuxDiscovery.find(execute = ::execute) } catch (e: TmuxDiscoveryException) {
+                if (client === owner) discoveryDetails = e.diagnostics
+                throw e
+            }
+            if (connected() !== owner) throw ClientFailure(Failure.Network, "SSH 연결이 변경되었습니다.")
+            discoveryDetails = result
+            requireNotNull(result.executable).also { tmuxPath = it }
+        }
+    }
+
+    override suspend fun tmuxVersion() = execute(TmuxCommand.quote(tmuxExecutable()) + " -V").decodeToString()
+
+    override suspend fun executeTmux(command: TmuxCommand) = execute(command.shellWithExecutable(tmuxExecutable()))
+
     override suspend fun openControl(sessionId: String): SshTransport.Stream = withContext(Dispatchers.IO) {
         require(sessionId.matches(Regex("\\$[0-9]+")))
+        val executable = tmuxExecutable()
         val owner = connected()
         val session = owner.startSession()
         channels += session
         try {
             // No PTY. Never -d: attaching must not detach other clients.
-            val command = session.exec("tmux -C attach-session -t " + TmuxCommand.quote(sessionId))
+            val command = session.exec(TmuxCommand.quote(executable) + " -C attach-session -t " + TmuxCommand.quote(sessionId))
             SshStream(owner, session, command.inputStream, command.outputStream, command.errorStream, null)
         } catch (e: Exception) { channels -= session; session.close(); throw e }
     }
@@ -111,6 +135,8 @@ class SshjTransport : SshTransport {
     private fun connected() = client?.takeIf { it.isAuthenticated } ?: throw ClientFailure(Failure.Network, "SSH 연결이 없습니다.")
 
     override fun close() {
+        tmuxPath = null
+        discoveryDetails = TmuxDiagnostics()
         val ssh = client; client = null
         runCatching { ssh?.close() }
         channels.forEach { runCatching { it.close() } }; channels.clear()
@@ -180,7 +206,7 @@ private object SshCrypto {
     }
 }
 
-class RemoteCommandException : Exception("원격 명령을 완료하지 못했습니다. 대상을 새로고침하세요.")
+class RemoteCommandException(val exitStatus: Int? = null) : Exception("원격 명령을 완료하지 못했습니다. 대상을 새로고침하세요.")
 
 private fun boundedRead(input: InputStream, limit: Int): ByteArray {
     val result = ByteArrayOutputStream()

@@ -27,6 +27,7 @@ class ClientModel(
     val pane = MutableStateFlow<String?>(null)
     val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
     val notice = MutableStateFlow<String?>(null)
+    val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
     private val connectionGeneration = AtomicLong()
     private val paneGeneration = AtomicLong()
     private val sizeGeneration = AtomicLong()
@@ -72,6 +73,7 @@ class ClientModel(
     private suspend fun connectLoop(epoch: Long, recovering: Boolean) {
         var attempt = 0
         while (scope.isActive && !manualClose && epoch == connectionGeneration.get()) {
+            tmuxProblem.value = null
             status.value = ConnectionStatus(if (recovering || attempt > 0) Phase.Reconnecting else Phase.Connecting, if (attempt == 0) "SSH 연결 중…" else "재접속 중…", attempt)
             val ssh = transportFactory()
             transport = ssh
@@ -81,13 +83,20 @@ class ClientModel(
                 } ?: throw ClientFailure(Failure.Authentication, "호스트를 편집하여 자격 증명을 입력하세요.")
                 ssh.connect(host, credential, local.value.trust[host.endpoint])
                 if (epoch != connectionGeneration.get()) { ssh.close(); return }
-                val version = try { ssh.execute("tmux -V").decodeToString() } catch (_: RemoteCommandException) { "" }
-                if (!supportsTmux(version)) {
-                    rememberedSession = null; rememberedPane = null
-                    startShell(ssh, epoch)
+                val version = try { ssh.tmuxVersion() } catch (e: TmuxDiscoveryException) {
+                    startShell(ssh, epoch, TmuxProblem(TmuxProblemKind.NotFound, e.diagnostics))
+                    return
+                } catch (e: RemoteCommandException) {
+                    startShell(ssh, epoch, TmuxProblem(TmuxProblemKind.ExecutionFailed, ssh.tmuxDiagnostics, exitStatus = e.exitStatus))
                     return
                 }
-                val rows = try { ssh.execute("tmux " + TmuxCommand.sessions.wire) } catch (_: RemoteCommandException) { byteArrayOf() }
+                if (!supportsTmux(version)) {
+                    val detected = version.trim().takeIf { it.matches(Regex("tmux [0-9][a-zA-Z0-9.+-]{0,30}")) }
+                    startShell(ssh, epoch, TmuxProblem(if (detected != null) TmuxProblemKind.UnsupportedVersion else TmuxProblemKind.InvalidVersion,
+                        ssh.tmuxDiagnostics, detected))
+                    return
+                }
+                val rows = try { ssh.executeTmux(TmuxCommand.sessions) } catch (_: RemoteCommandException) { byteArrayOf() }
                 val sessions = RemoteStateDecoder.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList())
                 remote.value = RemoteState(sessions)
                 updateLocal { current -> current.copy(hosts = current.hosts.map { if (it.id == host.id) it.copy(lastConnected = System.currentTimeMillis()) else it }) }
@@ -187,10 +196,11 @@ class ClientModel(
         saveNavigation()
     }
 
-    private suspend fun startShell(ssh: SshTransport, epoch: Long) {
+    private suspend fun startShell(ssh: SshTransport, epoch: Long, problem: TmuxProblem) {
         val channel = ssh.openShell(size); shell = channel
         surface?.reset(byteArrayOf(27, 99))
-        status.value = ConnectionStatus(Phase.Shell, "일반 SSH · tmux 없음/미지원 · 종료 시 셸 작업이 끝날 수 있습니다.")
+        tmuxProblem.value = problem
+        status.value = ConnectionStatus(Phase.Shell, "일반 SSH · ${problem.label}")
         scope.launch {
             try {
                 while (epoch == connectionGeneration.get()) {
@@ -205,8 +215,8 @@ class ClientModel(
         val command = TmuxCommand.newSession(name)
         if (control != null) { control!!.command(command); control!!.refresh(); remote.value = control!!.state.value }
         else {
-            transport?.execute(command.shellWire)
-            val rows = transport?.execute("tmux " + TmuxCommand.sessions.wire) ?: return@action
+            transport?.executeTmux(command)
+            val rows = transport?.executeTmux(TmuxCommand.sessions) ?: return@action
             remote.value = RemoteState(RemoteStateDecoder.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList()))
         }
     }
@@ -218,14 +228,14 @@ class ClientModel(
     }
     fun refresh() = action {
         if (control != null) control!!.refresh()
-        else transport?.execute("tmux " + TmuxCommand.sessions.wire)?.let { rows ->
+        else transport?.executeTmux(TmuxCommand.sessions)?.let { rows ->
             remote.value = RemoteState(RemoteStateDecoder.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList()))
         }
     }
 
     fun input(bytes: ByteArray) {
         if (bytes.isEmpty() || !status.value.acceptsInput) return
-        if (bytes.size > 65536 || inputQueue.trySend(generation() to bytes.copyOf()).isFailure) notice.value = "입력 대기열이 가득 찼습니다. 입력을 전송하지 않았습니다."
+        if (bytes.size > TerminalInput.MAX_BYTES || inputQueue.trySend(generation() to bytes.copyOf()).isFailure) notice.value = "입력 대기열이 가득 찼습니다. 입력을 전송하지 않았습니다."
     }
 
     fun bindSurface(value: TerminalSurface?) {

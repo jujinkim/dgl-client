@@ -2,6 +2,11 @@ package kim.jujin.rovessh.core
 
 /** Only this encoder constructs commands. Arbitrary terminal input is encoded as hex bytes. */
 class TmuxCommand private constructor(val wire: String, val shellWire: String = "tmux $wire") {
+    fun shellWithExecutable(executable: String): String {
+        require(executable.startsWith('/')) { "Expected an absolute tmux path" }
+        return quote(executable) + " " + shellWire.removePrefix("tmux ")
+    }
+
     companion object {
         private fun id(value: String, prefix: Char): String {
             require(value.matches(Regex("\\${prefix}[0-9]+"))) { "Invalid tmux target" }
