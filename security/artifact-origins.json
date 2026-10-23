@@ -1,0 +1,2254 @@
+{
+  "artifacts": [
+    {
+      "coordinate": "androidx.activity:activity-compose:1.8.2",
+      "artifact": "activity-compose-1.8.2.aar",
+      "sha256": "5a67e984f14ed2afc585aa3a23edff1c1791c80caa2bf68a0f799c1b11a39038",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-compose/1.8.2/activity-compose-1.8.2.aar"
+    },
+    {
+      "coordinate": "androidx.activity:activity-compose:1.8.2",
+      "artifact": "activity-compose-1.8.2.module",
+      "sha256": "0460c0a46ba9a74f92b180e4a78751745384a78f462de2cc240f32da4cefcf46",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-compose/1.8.2/activity-compose-1.8.2.module"
+    },
+    {
+      "coordinate": "androidx.activity:activity-ktx:1.7.0",
+      "artifact": "activity-ktx-1.7.0.module",
+      "sha256": "f4001a709b6f7132b22a5e17c24f8b8a9b3c462a598de3b0f16cc57a4344bab6",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-ktx/1.7.0/activity-ktx-1.7.0.module"
+    },
+    {
+      "coordinate": "androidx.activity:activity-ktx:1.8.2",
+      "artifact": "activity-ktx-1.8.2.aar",
+      "sha256": "5c78283d1956b14b22cf6ad70c712a73aa084116b7535526176c3b85e6a9205a",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-ktx/1.8.2/activity-ktx-1.8.2.aar"
+    },
+    {
+      "coordinate": "androidx.activity:activity-ktx:1.8.2",
+      "artifact": "activity-ktx-1.8.2.module",
+      "sha256": "2c445c6709e5efb061db3551ef3b71f4a53e00db40bbbe782928f5531998980d",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-ktx/1.8.2/activity-ktx-1.8.2.module"
+    },
+    {
+      "coordinate": "androidx.activity:activity:1.8.2",
+      "artifact": "activity-1.8.2.aar",
+      "sha256": "ecc119262530a6e2f9f373207e472d476306bed3d4b216fe61b1ea42e3bef688",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity/1.8.2/activity-1.8.2.aar"
+    },
+    {
+      "coordinate": "androidx.activity:activity:1.8.2",
+      "artifact": "activity-1.8.2.module",
+      "sha256": "c8923871e556cd5467addabac6773e778f3a4d3da19bfc8153bbaee0d145298f",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity/1.8.2/activity-1.8.2.module"
+    },
+    {
+      "coordinate": "androidx.annotation:annotation-experimental:1.4.0",
+      "artifact": "annotation-experimental-1.4.0.module",
+      "sha256": "5930ea7f21fcb6d0deb2ba32748a0ef7c8fd2c42384860582ba7cd20deb90379",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-experimental/1.4.0/annotation-experimental-1.4.0.module"
+    },
+    {
+      "coordinate": "androidx.annotation:annotation-jvm:1.7.0-beta01",
+      "artifact": "annotation-jvm-1.7.0-beta01.module",
+      "sha256": "61514762e567b50287f2d8792698a5f46eb9a73a4b336f0e4e25dbd7a9c980dd",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.7.0-beta01/annotation-jvm-1.7.0-beta01.module"
+    },
+    {
+      "coordinate": "androidx.annotation:annotation:1.1.0",
+      "artifact": "annotation-1.1.0.pom",
+      "sha256": "2e9372ba7780ef44952adbf86b66e1f08682c1e5277c926185f6564a13799efe",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation/1.1.0/annotation-1.1.0.pom"
+    },
+    {
+      "coordinate": "androidx.annotation:annotation:1.7.0-beta01",
+      "artifact": "annotation-1.7.0-beta01.module",
+      "sha256": "2a1e9e0bec82b27c6315a2a501a9bb71659b2f0245cdefd21f15b437f22555f9",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation/1.7.0-beta01/annotation-1.7.0-beta01.module"
+    },
+    {
+      "coordinate": "androidx.arch.core:core-common:2.0.0",
+      "artifact": "core-common-2.0.0.pom",
+      "sha256": "4b6f1d459ddd146b4e85ed6d46e86eb8c2639c5de47904e6db4d698721334220",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/arch/core/core-common/2.0.0/core-common-2.0.0.pom"
+    },
+    {
+      "coordinate": "androidx.collection:collection:1.0.0",
+      "artifact": "collection-1.0.0.jar",
+      "sha256": "9c8d117b5c2bc120a1cdfeb857e05b495b16c36013570372a708f7827e3ac9f9",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/collection/collection/1.0.0/collection-1.0.0.jar"
+    },
+    {
+      "coordinate": "androidx.collection:collection:1.0.0",
+      "artifact": "collection-1.0.0.pom",
+      "sha256": "a7913a5275ad68e555d2612ebe8c14c367b153e14ca48a1872a64899020e54ef",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/collection/collection/1.0.0/collection-1.0.0.pom"
+    },
+    {
+      "coordinate": "androidx.compose.runtime:runtime-saveable-desktop:1.7.0",
+      "artifact": "runtime-saveable-desktop-1.7.0.module",
+      "sha256": "1743735da40e39b36a2ac1593a10e9d385e8eec8142a67a72a7cb4b1eae9bda2",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-saveable-desktop/1.7.0/runtime-saveable-desktop-1.7.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-android:1.9.0",
+      "artifact": "ui-android-1.9.0.module",
+      "sha256": "1df28fb7a1a05ef00961af3c687edc3beda4568d7a5d433453fcd46e85a69696",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-android/1.9.0/ui-android-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-android:1.9.0",
+      "artifact": "ui-release.aar",
+      "sha256": "1393c820e9ae061b58aaddb034003fa9a0e01786928ac628a2e12d2826fbde43",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-android/1.9.0/ui-android-1.9.0.aar"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-geometry-android:1.9.0",
+      "artifact": "ui-geometry-android-1.9.0.module",
+      "sha256": "699650b604706d2cd7f09df375c0181b11adc0fb170c139f828734b4dda7f9a3",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-geometry-android/1.9.0/ui-geometry-android-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-geometry-android:1.9.0",
+      "artifact": "ui-geometry.aar",
+      "sha256": "41c5fa42c90fc24b4d656e837f83cefe0410acc7d114ad78c62bac45098ac6a4",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-geometry-android/1.9.0/ui-geometry-android-1.9.0.aar"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-geometry:1.9.0",
+      "artifact": "ui-geometry-1.9.0.module",
+      "sha256": "3a5da828d5c108faa63cdb2d638850f7e9a9e0fb0071b2d6b5298e76fb96ce9e",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-geometry/1.9.0/ui-geometry-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-graphics-android:1.9.0",
+      "artifact": "ui-graphics-android-1.9.0.module",
+      "sha256": "ad4b6c3e71ed5678f47a21141b1ee2ee14cbba7a81253f1e633ab99eb6b3cfdf",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-graphics-android/1.9.0/ui-graphics-android-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-graphics-android:1.9.0",
+      "artifact": "ui-graphics-release.aar",
+      "sha256": "d015cda06cdb03ab5471a63960e424941e5f217e6f87e339abd7ceee3929209a",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-graphics-android/1.9.0/ui-graphics-android-1.9.0.aar"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-graphics:1.9.0",
+      "artifact": "ui-graphics-1.9.0.module",
+      "sha256": "3ff0afd1359948a813e45cdb59a42de9cfaea54bee73335a6b77e4d26f0199da",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-graphics/1.9.0/ui-graphics-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-text-android:1.9.0",
+      "artifact": "ui-text-android-1.9.0.module",
+      "sha256": "c3e32fd701155eaf6a36be43da74fa8b1c3a8d20165ab206ae37e383afe8e34c",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-text-android/1.9.0/ui-text-android-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-text-android:1.9.0",
+      "artifact": "ui-text.aar",
+      "sha256": "2605e2406625ff0338c888937da22c437af653a2f42afadacaad2174717f5e82",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-text-android/1.9.0/ui-text-android-1.9.0.aar"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-text:1.9.0",
+      "artifact": "ui-text-1.9.0.module",
+      "sha256": "87cdc26a22ca300e493ef6833f134b4e8c75d519d971e4a26090ff5f1879678a",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-text/1.9.0/ui-text-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-unit-android:1.9.0",
+      "artifact": "ui-unit-android-1.9.0.module",
+      "sha256": "f3ee9a6e5d3fb538bf5953e456d93ef55e060e70ad4add7851319c3e52beb46d",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-unit-android/1.9.0/ui-unit-android-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-unit-android:1.9.0",
+      "artifact": "ui-unit.aar",
+      "sha256": "dbeda1aaea03bbd2da1f4df10180346e32cbe8a58239a24f9b8b8cb24202fd8c",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-unit-android/1.9.0/ui-unit-android-1.9.0.aar"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-unit:1.9.0",
+      "artifact": "ui-unit-1.9.0.module",
+      "sha256": "464a794955862870cadf8f11feec521599b965b7ebe3aedda9c9084cc090ae8b",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-unit/1.9.0/ui-unit-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-util-android:1.9.0",
+      "artifact": "ui-util-android-1.9.0.module",
+      "sha256": "6613dd7670cea28a829212374a243c389a914a57183e1f2f9d9de47b080e17fd",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-util-android/1.9.0/ui-util-android-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-util-android:1.9.0",
+      "artifact": "ui-util.aar",
+      "sha256": "9376cbd1ddf0655e7105886637ea1451461fcfd3a3ceeecffecceaeebb53410b",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-util-android/1.9.0/ui-util-android-1.9.0.aar"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui-util:1.9.0",
+      "artifact": "ui-util-1.9.0.module",
+      "sha256": "a31ab539216cfe5608601dbc2e25f83a8e110456db0e298ec9d6eed237d54a49",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-util/1.9.0/ui-util-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.ui:ui:1.9.0",
+      "artifact": "ui-1.9.0.module",
+      "sha256": "8360e8f459820174829ffe5857aa45dad429786a60128f83c2c407f5e5820ce0",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui/1.9.0/ui-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.core:core-ktx:1.5.0",
+      "artifact": "core-ktx-1.5.0.module",
+      "sha256": "b037fdfb267dc0141ab9f4e4e85daf87b175cf311248d54b501b58ec42345315",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/core/core-ktx/1.5.0/core-ktx-1.5.0.module"
+    },
+    {
+      "coordinate": "androidx.core:core-ktx:1.9.0",
+      "artifact": "core-ktx-1.9.0.module",
+      "sha256": "4d46646066c794f2812d5b33a9422d37e4f918c4d809cd1fb2579c7022ef2818",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/core/core-ktx/1.9.0/core-ktx-1.9.0.module"
+    },
+    {
+      "coordinate": "androidx.core:core:1.1.0",
+      "artifact": "core-1.1.0.aar",
+      "sha256": "76c7cfbe596fe3c09a6983bf1c89e889299c08ac9a3b52ce5182a088d056647e",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.1.0/core-1.1.0.aar"
+    },
+    {
+      "coordinate": "androidx.databinding:databinding-common:9.3.3",
+      "artifact": "databinding-common-9.3.3.jar",
+      "sha256": "82816382a2a9dec4f0ab17c79cef08a9e4fe4b97d896ac20d7f215b6dd788b18",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/databinding/databinding-common/9.3.3/databinding-common-9.3.3.jar"
+    },
+    {
+      "coordinate": "androidx.databinding:databinding-common:9.3.3",
+      "artifact": "databinding-common-9.3.3.pom",
+      "sha256": "21d9c32cd0bc87455bde8deb0e8b838d96d5e7afc51a7a57e9c1f46ac87805c1",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/databinding/databinding-common/9.3.3/databinding-common-9.3.3.pom"
+    },
+    {
+      "coordinate": "androidx.databinding:databinding-compiler-common:9.3.3",
+      "artifact": "databinding-compiler-common-9.3.3.jar",
+      "sha256": "3d4e469590f62240ec3c7f3ee5379ee91b35ce3a03ca67a03d4f6ea7b59bcab9",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/databinding/databinding-compiler-common/9.3.3/databinding-compiler-common-9.3.3.jar"
+    },
+    {
+      "coordinate": "androidx.databinding:databinding-compiler-common:9.3.3",
+      "artifact": "databinding-compiler-common-9.3.3.pom",
+      "sha256": "1ed8f4ee55dc759c8854706cb9c68a1aa04411c4a8396aac6342d7064c0d95a9",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/databinding/databinding-compiler-common/9.3.3/databinding-compiler-common-9.3.3.pom"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-common-java8:2.6.1",
+      "artifact": "lifecycle-common-java8-2.6.1.module",
+      "sha256": "1beb0b9fffb630a005deca1d3583d2acbec8685d6de809a3a6e0e433f418b6c3",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common-java8/2.6.1/lifecycle-common-java8-2.6.1.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-common-java8:2.8.7",
+      "artifact": "lifecycle-common-java8-2.8.7.module",
+      "sha256": "e27df2ab2f9c1c02fc16fe87e19da0ebb79b4b3f1e2bd2af17364bed59a0a2a9",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common-java8/2.8.7/lifecycle-common-java8-2.8.7.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-common:2.3.1",
+      "artifact": "lifecycle-common-2.3.1.module",
+      "sha256": "5fb7c8514d8c56cada5e29ef89dc0289e71942ab4cb0b2e6dca137b9dcb8fdd4",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common/2.3.1/lifecycle-common-2.3.1.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-livedata-core:2.6.1",
+      "artifact": "lifecycle-livedata-core-2.6.1.module",
+      "sha256": "e9c0dc3f0ac54419c0cfed8ff5cecb82943a7c58f7a54169f0d849b2c60a3552",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-livedata-core/2.6.1/lifecycle-livedata-core-2.6.1.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-livedata-core:2.6.2",
+      "artifact": "lifecycle-livedata-core-2.6.2.module",
+      "sha256": "527d0e1ac467d1f47cc20ed7c30db170217299fabb868154cf5d1765e4e4dad9",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-livedata-core/2.6.2/lifecycle-livedata-core-2.6.2.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-process:2.4.1",
+      "artifact": "lifecycle-process-2.4.1.module",
+      "sha256": "e3aae3ed04b4744ff31452e98fd299e3adfd28d3b5723661d9678b92fa09ceb4",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-process/2.4.1/lifecycle-process-2.4.1.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-process:2.6.1",
+      "artifact": "lifecycle-process-2.6.1.module",
+      "sha256": "58c9e27371ccf7a22a233f44926d348c9d07e78c41a56588a4265ff6ae76645a",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-process/2.6.1/lifecycle-process-2.6.1.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-compose-android:2.8.7",
+      "artifact": "lifecycle-runtime-compose-android-2.8.7.module",
+      "sha256": "c024a16694c8b5c41ec8ef0ede2365eb612f8a3da25017fdf2ff343029f33902",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-compose-android/2.8.7/lifecycle-runtime-compose-android-2.8.7.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-compose:2.8.7",
+      "artifact": "lifecycle-runtime-compose-2.8.7.module",
+      "sha256": "cc98a8849d81dab3064bc9ff871e43e91b48e0ba7d521f7c99ba26afec25657c",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-compose/2.8.7/lifecycle-runtime-compose-2.8.7.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-ktx:2.6.2",
+      "artifact": "lifecycle-runtime-ktx-2.6.2.module",
+      "sha256": "3c9af03a3a543394e67ab599b727ba331e6f330a55829f6d52f63a8772f4cbdc",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-ktx/2.6.2/lifecycle-runtime-ktx-2.6.2.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-ktx:2.8.7",
+      "artifact": "lifecycle-runtime-ktx-2.8.7.module",
+      "sha256": "09c6dcf0fee2ad69c523db6c2a343168a8d9e9d27743cf84b69c757b7fcab243",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-ktx/2.8.7/lifecycle-runtime-ktx-2.8.7.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime:2.0.0",
+      "artifact": "lifecycle-runtime-2.0.0.pom",
+      "sha256": "a92a46fa7aec8ac326a5d578734a2d5b63206976996b9e06cae171b35b0ab6de",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime/2.0.0/lifecycle-runtime-2.0.0.pom"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime:2.6.2",
+      "artifact": "lifecycle-runtime-2.6.2.module",
+      "sha256": "ea0131846abe1fe9dea59ac6dfe1f0fb9d8b6d600c9eff9a1fd4ad5ee5e7cbc7",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime/2.6.2/lifecycle-runtime-2.6.2.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime:2.9.4",
+      "artifact": "lifecycle-runtime-2.9.4.aar",
+      "sha256": "142b8d22e93e4a6f3871901493c26e2bdfe1d5da1f88f2d8031d46ec6b6cc12b",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime/2.9.4/lifecycle-runtime-2.9.4.aar"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2",
+      "artifact": "lifecycle-viewmodel-ktx-2.6.2.module",
+      "sha256": "16d314c6ec774cf83216c46e6e7fa96c615e1d2611995d368389154b57741861",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-ktx/2.6.2/lifecycle-viewmodel-ktx-2.6.2.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7",
+      "artifact": "lifecycle-viewmodel-ktx-2.8.7.module",
+      "sha256": "a99e3d0218ee92bda8f5c1ebf25d4832b301ef5810604e2e96e4b607ebf6a7f5",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-ktx/2.8.7/lifecycle-viewmodel-ktx-2.8.7.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.1",
+      "artifact": "lifecycle-viewmodel-savedstate-2.6.1.module",
+      "sha256": "dafb8649763d29c29cda27bc22fcdab9a9efc53c0fff9ae3de90882eabaa8944",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-savedstate/2.6.1/lifecycle-viewmodel-savedstate-2.6.1.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.2",
+      "artifact": "lifecycle-viewmodel-savedstate-2.6.2.module",
+      "sha256": "79f9d92880c2fb7827ac6739eb747264245ae456f4c21f77cf39fdb6a50a76ae",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-savedstate/2.6.2/lifecycle-viewmodel-savedstate-2.6.2.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel:2.6.2",
+      "artifact": "lifecycle-viewmodel-2.6.2.module",
+      "sha256": "74e9a9ea46842a25642c91de2190ac24dcc1ea017395aae0eb250057d32699c6",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel/2.6.2/lifecycle-viewmodel-2.6.2.module"
+    },
+    {
+      "coordinate": "androidx.savedstate:savedstate-android:1.3.1",
+      "artifact": "savedstate-android-1.3.1.module",
+      "sha256": "e994994c7def60c071171928edc45a01e3b07e369261c669f5082d306a1b885f",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate-android/1.3.1/savedstate-android-1.3.1.module"
+    },
+    {
+      "coordinate": "androidx.savedstate:savedstate-compose-android:1.3.0",
+      "artifact": "savedstate-compose-android-1.3.0.module",
+      "sha256": "823a95006413fc1fd7676241df3a60e0e7102ede3b73a0a1514dfb82b4a6f018",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate-compose-android/1.3.0/savedstate-compose-android-1.3.0.module"
+    },
+    {
+      "coordinate": "androidx.savedstate:savedstate-ktx:1.3.1",
+      "artifact": "savedstate-ktx-1.3.1.module",
+      "sha256": "59007d8d33cf166fdfd1a9bf56ccfd212e9822c04b3a741966face5918610655",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate-ktx/1.3.1/savedstate-ktx-1.3.1.module"
+    },
+    {
+      "coordinate": "androidx.startup:startup-runtime:1.0.0",
+      "artifact": "startup-runtime-1.0.0.module",
+      "sha256": "40effca0d6ee1fde32bc296897e54ebbcc4cf4aa29b0c531036cbd2a824a3c24",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/startup/startup-runtime/1.0.0/startup-runtime-1.0.0.module"
+    },
+    {
+      "coordinate": "androidx.tracing:tracing:1.1.0",
+      "artifact": "tracing-1.1.0.aar",
+      "sha256": "5b78e2c618fc10b3d14decc01df76158f15954ad746aacf0607766721da081f6",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/tracing/tracing/1.1.0/tracing-1.1.0.aar"
+    },
+    {
+      "coordinate": "androidx.tracing:tracing:1.1.0",
+      "artifact": "tracing-1.1.0.module",
+      "sha256": "b1fed4309623b6f20bc817d8fbd70e4ea7085e40647694cd399ae58d2f0049e3",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/tracing/tracing/1.1.0/tracing-1.1.0.module"
+    },
+    {
+      "coordinate": "androidx.versionedparcelable:versionedparcelable:1.1.0",
+      "artifact": "versionedparcelable-1.1.0.aar",
+      "sha256": "9a1d77140ac222b7866b5054ee7d159bc1800987ed2d46dd6afdd145abb710c1",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/versionedparcelable/versionedparcelable/1.1.0/versionedparcelable-1.1.0.aar"
+    },
+    {
+      "coordinate": "androidx.versionedparcelable:versionedparcelable:1.1.0",
+      "artifact": "versionedparcelable-1.1.0.pom",
+      "sha256": "c729c7be0cc06323bda829d460666e79dbd43b799a21089a44bd3b293dc253b5",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/versionedparcelable/versionedparcelable/1.1.0/versionedparcelable-1.1.0.pom"
+    },
+    {
+      "coordinate": "com.android.application:com.android.application.gradle.plugin:9.3.3",
+      "artifact": "com.android.application.gradle.plugin-9.3.3.pom",
+      "sha256": "cd1870bfe6af076e4b6804411ff9eb104ab7f74f22ce8f9ac29172212d5db587",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/application/com.android.application.gradle.plugin/9.3.3/com.android.application.gradle.plugin-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.databinding:baseLibrary:9.3.3",
+      "artifact": "baseLibrary-9.3.3.jar",
+      "sha256": "96ba2a5f000846d317acdd90de6a7429701ac56573de2ccc8423d2ba40446fd9",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/databinding/baseLibrary/9.3.3/baseLibrary-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.databinding:baseLibrary:9.3.3",
+      "artifact": "baseLibrary-9.3.3.pom",
+      "sha256": "e8023752b4ad93adb2c25b9569ee26fc2396dbaeb02aba1b8105f965dd248e33",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/databinding/baseLibrary/9.3.3/baseLibrary-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.kotlin.multiplatform.library:com.android.kotlin.multiplatform.library.gradle.plugin:9.3.3",
+      "artifact": "com.android.kotlin.multiplatform.library.gradle.plugin-9.3.3.pom",
+      "sha256": "e6d28d48f849651c6cc0942aeb7c5e1b972ff544b73d81dc674d2d17e914589f",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/kotlin/multiplatform/library/com.android.kotlin.multiplatform.library.gradle.plugin/9.3.3/com.android.kotlin.multiplatform.library.gradle.plugin-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:crash:32.3.3",
+      "artifact": "crash-32.3.3.jar",
+      "sha256": "89e33b3eaf05e77576c88ca14a458c47dfe0735efbfa48ee18e5fa85f95f6f2a",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/crash/32.3.3/crash-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:crash:32.3.3",
+      "artifact": "crash-32.3.3.pom",
+      "sha256": "67f5150edade3b9735e099800c6f969965f44607cddbf7ee4e61d87b11875d75",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/crash/32.3.3/crash-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:protos:32.3.3",
+      "artifact": "protos-32.3.3.jar",
+      "sha256": "e9e3f5021b8ec64169b2e9a49232bbe8b2a23e2dcf31223f982163216b32d30f",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/protos/32.3.3/protos-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:protos:32.3.3",
+      "artifact": "protos-32.3.3.pom",
+      "sha256": "f6ea792699001b2a902d5f84511b865979e13977f738b2a7606e4ce01f260e36",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/protos/32.3.3/protos-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:shared:32.3.3",
+      "artifact": "shared-32.3.3.jar",
+      "sha256": "172a037b11dae0f2cb6b5c47a001c901afcf3631c637526f545e4517b973b68b",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/shared/32.3.3/shared-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:shared:32.3.3",
+      "artifact": "shared-32.3.3.pom",
+      "sha256": "064b57c95f0559bb80ac4c423f1d7c10659eb48e2581694b17ac5924ba455480",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/shared/32.3.3/shared-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:tracker:32.3.3",
+      "artifact": "tracker-32.3.3.jar",
+      "sha256": "f083e82627981dbe1312b5e805e9470d26b4ff56d09ae8fddcce8f862d2e807a",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/32.3.3/tracker-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:tracker:32.3.3",
+      "artifact": "tracker-32.3.3.pom",
+      "sha256": "373a0a2fbdf5f54ea7bfc8d592af2d853788293d70607994058762a320996238",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/32.3.3/tracker-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.build:aapt2-proto:9.3.3-15703166",
+      "artifact": "aapt2-proto-9.3.3-15703166.jar",
+      "sha256": "5bcdd71fde7863c68c67ee4a69cf86206fbd3a2de66f5a3e4625ce5fb4ead2b5",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2-proto/9.3.3-15703166/aapt2-proto-9.3.3-15703166.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:aapt2-proto:9.3.3-15703166",
+      "artifact": "aapt2-proto-9.3.3-15703166.module",
+      "sha256": "23ef363ac65f85ddac6e777aee00755ee77e00541e4012c00fdad163a130293d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2-proto/9.3.3-15703166/aapt2-proto-9.3.3-15703166.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:aapt2:9.3.3-15703166",
+      "artifact": "aapt2-9.3.3-15703166-linux.jar",
+      "sha256": "e772a3dae8354764f1b0793903218427f483982445207f2e4ffc8c2026755bd4",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/9.3.3-15703166/aapt2-9.3.3-15703166-linux.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:aapt2:9.3.3-15703166",
+      "artifact": "aapt2-9.3.3-15703166-osx.jar",
+      "sha256": "1e35bc2ce18c3aae840be2a29659ce50d6043e907a44d98ee1cf375d044fa29c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/9.3.3-15703166/aapt2-9.3.3-15703166-osx.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:aapt2:9.3.3-15703166",
+      "artifact": "aapt2-9.3.3-15703166-windows.jar",
+      "sha256": "b1006ecec7e5936257e95e97f3eba7ef439d3e44178967cc048f86c9119fb231",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/9.3.3-15703166/aapt2-9.3.3-15703166-windows.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:aapt2:9.3.3-15703166",
+      "artifact": "aapt2-9.3.3-15703166.pom",
+      "sha256": "faa87aed1e0efaf311f56dbff57ee4dcd5ae83b34929bbda40bdaaac03182d40",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/9.3.3-15703166/aapt2-9.3.3-15703166.pom"
+    },
+    {
+      "coordinate": "com.android.tools.build:aaptcompiler:9.3.3",
+      "artifact": "aaptcompiler-9.3.3.jar",
+      "sha256": "aaa3da8e958ac94c3352284224c82c0f153dcbc9376d9ddc0d8e935087849302",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aaptcompiler/9.3.3/aaptcompiler-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:aaptcompiler:9.3.3",
+      "artifact": "aaptcompiler-9.3.3.module",
+      "sha256": "72ca0a3c78529484ed654c472b43f94e99016b73c4b2ef8c3fc241dd0490723a",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aaptcompiler/9.3.3/aaptcompiler-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:apksig:9.3.3",
+      "artifact": "apksig-9.3.3.jar",
+      "sha256": "562cd0a88890960d2ece48e116c61f12872222f1dcc306890799382bc019b201",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/9.3.3/apksig-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:apksig:9.3.3",
+      "artifact": "apksig-9.3.3.pom",
+      "sha256": "c746c2cff2d37c740cd17af6b2ed83183f64f4be3046468ccd9c2669b93a35f5",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/9.3.3/apksig-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.build:apkzlib:9.3.3",
+      "artifact": "apkzlib-9.3.3.jar",
+      "sha256": "a7146985112bba9118c04b0e9745bab736a6673a8143f1467c2f3e4c262bde24",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/9.3.3/apkzlib-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:apkzlib:9.3.3",
+      "artifact": "apkzlib-9.3.3.pom",
+      "sha256": "b110727c62a9f3fb6ce2147652272d8b62cccfe647547bbef5f27609dac23d1c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/9.3.3/apkzlib-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder-model:9.3.3",
+      "artifact": "builder-model-9.3.3.jar",
+      "sha256": "5c81a6da78e4df5cc5fdfa6b46f7cd39f40adb88a538c8ec8dc7d90a425d6c86",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder-model/9.3.3/builder-model-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder-model:9.3.3",
+      "artifact": "builder-model-9.3.3.module",
+      "sha256": "6c27facc22efa83042db44b530c5884f94242d9f50abd503b34d7a49ad5abf37",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder-model/9.3.3/builder-model-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder-test-api:9.3.3",
+      "artifact": "builder-test-api-9.3.3.jar",
+      "sha256": "3cdf0caf8b2a104eb6239d4ea3e95a6c20ba2e76fa0ad1134c8e93e7757bd432",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder-test-api/9.3.3/builder-test-api-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder-test-api:9.3.3",
+      "artifact": "builder-test-api-9.3.3.module",
+      "sha256": "08ce9d9ac52e6b70d624c27d7aef97bcc55026c51244a5ccef5387ce90688865",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder-test-api/9.3.3/builder-test-api-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder:9.3.3",
+      "artifact": "builder-9.3.3.jar",
+      "sha256": "b31ec36c0f3a8d431348cc8cb116f77bb16ab48107431d05d460ba9313395375",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder/9.3.3/builder-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder:9.3.3",
+      "artifact": "builder-9.3.3.module",
+      "sha256": "f42de6f0f9b7c87086efb59a1d8b3cfd48b824843c339c8305ffe0f95654a263",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder/9.3.3/builder-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:bundletool:1.18.3",
+      "artifact": "bundletool-1.18.3.jar",
+      "sha256": "ccad18514fd97db010856b2bbed40f481f8ba9349368c97ae54d72e3567d0171",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/bundletool/1.18.3/bundletool-1.18.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:bundletool:1.18.3",
+      "artifact": "bundletool-1.18.3.pom",
+      "sha256": "fa674b39b96cae98015f3850f366cfeb00fe6c7aea2d90b20c017b90e0996dae",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/bundletool/1.18.3/bundletool-1.18.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-api:9.3.3",
+      "artifact": "gradle-api-9.3.3.jar",
+      "sha256": "7907d3a74613a572c4ae9dceb2946fcdc5ae50afd4d045a57bc81600c2dca83b",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-api/9.3.3/gradle-api-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-api:9.3.3",
+      "artifact": "gradle-api-9.3.3.module",
+      "sha256": "7f2034fa8f22741aaee04ef3ca1299109a0cd5d24a46c40d9c82efb8deb57b5f",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-api/9.3.3/gradle-api-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-common-api:9.3.3",
+      "artifact": "gradle-common-api-9.3.3.jar",
+      "sha256": "5f8ceb1738037707d166f79b13bde052024a63fc52b8ad11ad2cbc780efbb8d2",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-common-api/9.3.3/gradle-common-api-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-common-api:9.3.3",
+      "artifact": "gradle-common-api-9.3.3.module",
+      "sha256": "3d8cacce6080dc9777fdb3bed8465b88f6c94ce226c8d2b47dc20fba10dbf416",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-common-api/9.3.3/gradle-common-api-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-settings-api:9.3.3",
+      "artifact": "gradle-settings-api-9.3.3.jar",
+      "sha256": "22847e89f125294c301d51ee5b601bf541a4e0c53830cdcfea830046cdc62267",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-settings-api/9.3.3/gradle-settings-api-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-settings-api:9.3.3",
+      "artifact": "gradle-settings-api-9.3.3.module",
+      "sha256": "761c64657dd8ca6163793bb403659f660756f56211ba92efaf6679f2c5f7b2f9",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-settings-api/9.3.3/gradle-settings-api-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle:9.3.3",
+      "artifact": "gradle-9.3.3.jar",
+      "sha256": "5b30e0ba8f3304f95529f1326668ef16497a736838c90a68815a4211ee65b02d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/9.3.3/gradle-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle:9.3.3",
+      "artifact": "gradle-9.3.3.module",
+      "sha256": "5a6cdb7b81bd28cb8141e6600ee0ee370846e136c44f03d627a44ab804f3de66",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/9.3.3/gradle-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:manifest-merger:32.3.3",
+      "artifact": "manifest-merger-32.3.3.jar",
+      "sha256": "e35ff7aa0a4b29660d58b0a667df7b543aa85f7f1dd462a1dd2b021a3a175a30",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/32.3.3/manifest-merger-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:manifest-merger:32.3.3",
+      "artifact": "manifest-merger-32.3.3.module",
+      "sha256": "cbc8f2bfa263af09be410566601cd758cd24d9fbe0a8e4da1cddf65628b2f3e3",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/32.3.3/manifest-merger-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.ddms:ddmlib:32.3.3",
+      "artifact": "ddmlib-32.3.3.jar",
+      "sha256": "8bc8edf0637a9b520febf83b10b57f3120de5f5f3295cb232c90464f65d44318",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/ddms/ddmlib/32.3.3/ddmlib-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.ddms:ddmlib:32.3.3",
+      "artifact": "ddmlib-32.3.3.pom",
+      "sha256": "42cca2f4c5c903089401d11996072fb9f586d2badf5c4b4e31c7c928fd225d8e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/ddms/ddmlib/32.3.3/ddmlib-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.emulator:proto:32.3.3",
+      "artifact": "proto-32.3.3.jar",
+      "sha256": "2997a64898e7e886746c55882453d5697bfc694d956353b242a8831fb12ac9d6",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/emulator/proto/32.3.3/proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.emulator:proto:32.3.3",
+      "artifact": "proto-32.3.3.pom",
+      "sha256": "b5724733afabe1c86df27f02fba7f6bd233d9329a6153d9d7eda8d40f59c945e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/emulator/proto/32.3.3/proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.external.com-intellij:intellij-core:32.3.3",
+      "artifact": "intellij-core-32.3.3.jar",
+      "sha256": "3aa6ed3c10d3c44ba6d2e75975cb05230851b6ce818ce63f20d7ffbbbc3cddaa",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/external/com-intellij/intellij-core/32.3.3/intellij-core-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.external.com-intellij:intellij-core:32.3.3",
+      "artifact": "intellij-core-32.3.3.pom",
+      "sha256": "a07d6285013c3b03a6423bcc712a228e5fd1cb0f2375ba5a63ccf4c1d1a5a8ae",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/external/com-intellij/intellij-core/32.3.3/intellij-core-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.external.com-intellij:kotlin-compiler:32.3.3",
+      "artifact": "kotlin-compiler-32.3.3.jar",
+      "sha256": "2238d5eeec47355deff9f675f6243dc103a93807bfdaf9e6fa71096d92b8edf8",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/external/com-intellij/kotlin-compiler/32.3.3/kotlin-compiler-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.external.com-intellij:kotlin-compiler:32.3.3",
+      "artifact": "kotlin-compiler-32.3.3.pom",
+      "sha256": "6a716b0415ddee6a79a7fe6be098a69330d3088652878027dc81413fc74ce45e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/external/com-intellij/kotlin-compiler/32.3.3/kotlin-compiler-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.external.org-jetbrains:uast:32.3.3",
+      "artifact": "uast-32.3.3.jar",
+      "sha256": "9247a598b5cdbd32ed618f312b1dd64d2db247d87ffffe5566d313ab559f86ec",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/external/org-jetbrains/uast/32.3.3/uast-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.external.org-jetbrains:uast:32.3.3",
+      "artifact": "uast-32.3.3.pom",
+      "sha256": "534614f76f1d0625c1b38638bd965a3ebfffacac8054c76d91b0740ce3f7df1f",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/external/org-jetbrains/uast/32.3.3/uast-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.layoutlib:layoutlib-api:32.3.3",
+      "artifact": "layoutlib-api-32.3.3.jar",
+      "sha256": "124f04eba80033e5080748a05797003a81c906deb5b76663abc289d009943e82",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/layoutlib/layoutlib-api/32.3.3/layoutlib-api-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.layoutlib:layoutlib-api:32.3.3",
+      "artifact": "layoutlib-api-32.3.3.pom",
+      "sha256": "03bfe1a4456ae74a0de9fc7a2e5202b044fbe8d88294a449cfcacba23b266ea3",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/layoutlib/layoutlib-api/32.3.3/layoutlib-api-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-api:32.3.3",
+      "artifact": "lint-api-32.3.3.jar",
+      "sha256": "dd3c0c1f12e04c8b61854119d0f29558b96b581b71685318d7808fc83b0ea6b7",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-api/32.3.3/lint-api-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-api:32.3.3",
+      "artifact": "lint-api-32.3.3.pom",
+      "sha256": "e72e6093c441bdd40565bcd38b89a87ab6e76b63ac4b534dbce2025f96620949",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-api/32.3.3/lint-api-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-checks:32.3.3",
+      "artifact": "lint-checks-32.3.3.jar",
+      "sha256": "1e794f3d8536b3ab4e445dc4eec2a760d229473e49b01f49d9d248963569571d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-checks/32.3.3/lint-checks-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-checks:32.3.3",
+      "artifact": "lint-checks-32.3.3.pom",
+      "sha256": "15884015804ab0b8bbbcbd018a4820cbf889ddab4c41143b27b1d5da7a2fb62d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-checks/32.3.3/lint-checks-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-gradle:32.3.3",
+      "artifact": "lint-gradle-32.3.3.jar",
+      "sha256": "9e457a5bdb3e59428eab1e8b745db2362b4395131e31a346c7a1b74ccaf77a23",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-gradle/32.3.3/lint-gradle-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-gradle:32.3.3",
+      "artifact": "lint-gradle-32.3.3.pom",
+      "sha256": "fd4b2ad191c1d735e6faaaef86a25a66112ae7a0d61a4cc550b72371bae965c9",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-gradle/32.3.3/lint-gradle-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-model:32.3.3",
+      "artifact": "lint-model-32.3.3.jar",
+      "sha256": "dba7719ec2ba9f7e800147dd21fb57be65e0ef315a37356f6878d81222e82fc6",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-model/32.3.3/lint-model-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-model:32.3.3",
+      "artifact": "lint-model-32.3.3.pom",
+      "sha256": "1e29417b6b932d02e870cae77e0339adc754be9a2e77feab7508e329fb9dbec4",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-model/32.3.3/lint-model-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-typedef-remover:32.3.3",
+      "artifact": "lint-typedef-remover-32.3.3.jar",
+      "sha256": "e281e90a6ffc831800e64517be8f1b230a6367bec226f1b0ce1a80d4573deade",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-typedef-remover/32.3.3/lint-typedef-remover-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-typedef-remover:32.3.3",
+      "artifact": "lint-typedef-remover-32.3.3.pom",
+      "sha256": "b2c3540701362625e6f3965bdaeebcc3422f1ff99553ed64fd3232f52712f6e6",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-typedef-remover/32.3.3/lint-typedef-remover-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint:32.3.3",
+      "artifact": "lint-32.3.3.jar",
+      "sha256": "178c00adc88b769a6fc555725907efcd4defa318726e888b9fcc49be6eeadf5f",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint/32.3.3/lint-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint:32.3.3",
+      "artifact": "lint-32.3.3.pom",
+      "sha256": "ff43bdb4429c1925753982cdd52a150e0dda0945a6da6a56e63009918ad95076",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint/32.3.3/lint-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-device-provider-ddmlib-proto:32.3.3",
+      "artifact": "android-device-provider-ddmlib-proto-32.3.3.jar",
+      "sha256": "9e210c80fc7404a847be7890de4dbe688ec762574bcb6fed11c48184898da0e6",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-device-provider-ddmlib-proto/32.3.3/android-device-provider-ddmlib-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-device-provider-ddmlib-proto:32.3.3",
+      "artifact": "android-device-provider-ddmlib-proto-32.3.3.pom",
+      "sha256": "cac40d17adf1bc186c0bbadbdb6485a1226e4873b77f41e5a1f9989eaa724bc4",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-device-provider-ddmlib-proto/32.3.3/android-device-provider-ddmlib-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-device-provider-ddmlib:32.3.3",
+      "artifact": "android-device-provider-ddmlib-32.3.3.jar",
+      "sha256": "6a8fc9399f558786b7380c89f887dea99424a39497a7b487b57d2bfebb78913f",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-device-provider-ddmlib/32.3.3/android-device-provider-ddmlib-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-device-provider-ddmlib:32.3.3",
+      "artifact": "android-device-provider-ddmlib-32.3.3.module",
+      "sha256": "ce1d4246cbc541158a827330bc6d63b5731737a28c7a29a0614d8943672911de",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-device-provider-ddmlib/32.3.3/android-device-provider-ddmlib-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-additional-test-output-proto:32.3.3",
+      "artifact": "android-test-plugin-host-additional-test-output-proto-32.3.3.jar",
+      "sha256": "1bab4d0b9820c1ff390c83316caf233e8bf8cbead24364e4385f8b2fe8a451df",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-additional-test-output-proto/32.3.3/android-test-plugin-host-additional-test-output-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-additional-test-output-proto:32.3.3",
+      "artifact": "android-test-plugin-host-additional-test-output-proto-32.3.3.pom",
+      "sha256": "a9ccd55c7322971d6a14c1f8fd59502a2c0a8c54fce01cbee43241656e6a1862",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-additional-test-output-proto/32.3.3/android-test-plugin-host-additional-test-output-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-additional-test-output:32.3.3",
+      "artifact": "android-test-plugin-host-additional-test-output-32.3.3.jar",
+      "sha256": "fa49e44c56bd06b79977d489fd7f2341ada4fec502bb9f88194c57e20b0b00f8",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-additional-test-output/32.3.3/android-test-plugin-host-additional-test-output-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-additional-test-output:32.3.3",
+      "artifact": "android-test-plugin-host-additional-test-output-32.3.3.module",
+      "sha256": "637954efe8d16e482e4215db3105f33827f2adc0553cfc3192f839eb46a51785",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-additional-test-output/32.3.3/android-test-plugin-host-additional-test-output-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-apk-installer-proto:32.3.3",
+      "artifact": "android-test-plugin-host-apk-installer-proto-32.3.3.jar",
+      "sha256": "16c8b04620c9ef89a59df30c8b92a020d21d7fad87af43921ed0e5684fffa0d3",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-apk-installer-proto/32.3.3/android-test-plugin-host-apk-installer-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-apk-installer-proto:32.3.3",
+      "artifact": "android-test-plugin-host-apk-installer-proto-32.3.3.pom",
+      "sha256": "ccdb32ecab28572a32a44ff3fbbb293592ad082798a6e9b5cd86bc4f4a054524",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-apk-installer-proto/32.3.3/android-test-plugin-host-apk-installer-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-apk-installer:32.3.3",
+      "artifact": "android-test-plugin-host-apk-installer-32.3.3.jar",
+      "sha256": "4bb496d441ac14a1039558f9e101fa6f9fe2582995c88a4212428144e9b01efb",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-apk-installer/32.3.3/android-test-plugin-host-apk-installer-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-apk-installer:32.3.3",
+      "artifact": "android-test-plugin-host-apk-installer-32.3.3.module",
+      "sha256": "49850e4a2d8f25f8af94cbdc44e283ea046a1758f3e4e782ce3511ef7ac4844d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-apk-installer/32.3.3/android-test-plugin-host-apk-installer-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-coverage-proto:32.3.3",
+      "artifact": "android-test-plugin-host-coverage-proto-32.3.3.jar",
+      "sha256": "1b273e16b8eb0f31804d1bfeedca0cb3e63f51bedc241a523004f41269dd38fa",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-coverage-proto/32.3.3/android-test-plugin-host-coverage-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-coverage-proto:32.3.3",
+      "artifact": "android-test-plugin-host-coverage-proto-32.3.3.pom",
+      "sha256": "848a7ce0f38c5a4a356de98d2783c9fb35c1cdb3dcfec1820cda18aef2416d8c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-coverage-proto/32.3.3/android-test-plugin-host-coverage-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-coverage:32.3.3",
+      "artifact": "android-test-plugin-host-coverage-32.3.3.jar",
+      "sha256": "7ca810d8805764ff80d21178314f4789a6e1a319fbb5850bd409e05a103071fb",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-coverage/32.3.3/android-test-plugin-host-coverage-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-coverage:32.3.3",
+      "artifact": "android-test-plugin-host-coverage-32.3.3.module",
+      "sha256": "66cd9507425464d1350077d453456e4d3e1e0cb814b466d1ee84c5f1709a2af4",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-coverage/32.3.3/android-test-plugin-host-coverage-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-device-info-proto:32.3.3",
+      "artifact": "android-test-plugin-host-device-info-proto-32.3.3.jar",
+      "sha256": "fa656dae94af18cfd321c63514cd2ab713ee5ec1db838938bc45a638a3e318b7",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-device-info-proto/32.3.3/android-test-plugin-host-device-info-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-device-info-proto:32.3.3",
+      "artifact": "android-test-plugin-host-device-info-proto-32.3.3.pom",
+      "sha256": "f41e0b0fb80a187c50e6ec2eb564bd20a99a4a85f752888de0fc28074f658423",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-device-info-proto/32.3.3/android-test-plugin-host-device-info-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-device-info:32.3.3",
+      "artifact": "android-test-plugin-host-device-info-32.3.3.jar",
+      "sha256": "59f29e342d8246fb25a979b9dd20a7abc3ccf28b367ba2b5bbc2298d88137fcb",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-device-info/32.3.3/android-test-plugin-host-device-info-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-device-info:32.3.3",
+      "artifact": "android-test-plugin-host-device-info-32.3.3.module",
+      "sha256": "ab9d80c5d152cce3db9e15f83835543bdef13fa63da0d062c923aba9069a04b4",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-device-info/32.3.3/android-test-plugin-host-device-info-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-emulator-control-proto:32.3.3",
+      "artifact": "android-test-plugin-host-emulator-control-proto-32.3.3.jar",
+      "sha256": "9d42092ea872690f24dc9c4ce643841afa31f933c8910ae61be654abe61d0f05",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-emulator-control-proto/32.3.3/android-test-plugin-host-emulator-control-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-emulator-control-proto:32.3.3",
+      "artifact": "android-test-plugin-host-emulator-control-proto-32.3.3.pom",
+      "sha256": "f170d0fc490db7c448d0abbd5ca7088922366d363fe2dbdd9628c3feae24b049",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-emulator-control-proto/32.3.3/android-test-plugin-host-emulator-control-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-emulator-control:32.3.3",
+      "artifact": "android-test-plugin-host-emulator-control-32.3.3.jar",
+      "sha256": "fac52d6112041f1a62bb7a0363934798fac6b91776b0479d9a0ba8a93d7d635f",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-emulator-control/32.3.3/android-test-plugin-host-emulator-control-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-emulator-control:32.3.3",
+      "artifact": "android-test-plugin-host-emulator-control-32.3.3.module",
+      "sha256": "9d36e81196f3d9045beebe9505a061f95a44e23a2c2739af944c4f045228031c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-emulator-control/32.3.3/android-test-plugin-host-emulator-control-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-logcat-proto:32.3.3",
+      "artifact": "android-test-plugin-host-logcat-proto-32.3.3.jar",
+      "sha256": "f190631031abc8bf11e73929d69884a457179629835cc860145794f196d1b4bf",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-logcat-proto/32.3.3/android-test-plugin-host-logcat-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-logcat-proto:32.3.3",
+      "artifact": "android-test-plugin-host-logcat-proto-32.3.3.pom",
+      "sha256": "be9194bb2f531c417946e8cc3f00b11985ff9ca40ac1c9afb5c7333a82af7b05",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-logcat-proto/32.3.3/android-test-plugin-host-logcat-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-logcat:32.3.3",
+      "artifact": "android-test-plugin-host-logcat-32.3.3.jar",
+      "sha256": "22f490f2d2758cc02f255fc9e785f58395921256e0853104cb9839ffec2c00b5",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-logcat/32.3.3/android-test-plugin-host-logcat-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-host-logcat:32.3.3",
+      "artifact": "android-test-plugin-host-logcat-32.3.3.module",
+      "sha256": "c9148b8eba5fe397daca5cd4666500bc91de5350b22658fe013bf938f67f3460",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-host-logcat/32.3.3/android-test-plugin-host-logcat-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-result-listener-gradle-proto:32.3.3",
+      "artifact": "android-test-plugin-result-listener-gradle-proto-32.3.3.jar",
+      "sha256": "ae763a044ac7fc488ce0d13cd4a49ccae5fc9112e70601a145c9a9e7156bf9b1",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-result-listener-gradle-proto/32.3.3/android-test-plugin-result-listener-gradle-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-result-listener-gradle-proto:32.3.3",
+      "artifact": "android-test-plugin-result-listener-gradle-proto-32.3.3.pom",
+      "sha256": "9ba4768a3619df05377fed7bfa24c760a3b98e5be90d4040b8ed84b8257f9eda",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-result-listener-gradle-proto/32.3.3/android-test-plugin-result-listener-gradle-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-result-listener-gradle:32.3.3",
+      "artifact": "android-test-plugin-result-listener-gradle-32.3.3.jar",
+      "sha256": "93114fe5c508102aeae85254a9a12c83f2c4e6307243b2888708bd7309fec535",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-result-listener-gradle/32.3.3/android-test-plugin-result-listener-gradle-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:android-test-plugin-result-listener-gradle:32.3.3",
+      "artifact": "android-test-plugin-result-listener-gradle-32.3.3.module",
+      "sha256": "fa5ba86b7e7bcfcdb9cc4366b67f31a2c4c9fed5de0efd486fe299b4bbce9a4c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/android-test-plugin-result-listener-gradle/32.3.3/android-test-plugin-result-listener-gradle-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:gradle-work-action-api:32.3.3",
+      "artifact": "gradle-work-action-api-32.3.3.jar",
+      "sha256": "de87773a677e87f619c751c306af6ee73a04a7b26e5f205fff287728d8af4ace",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/gradle-work-action-api/32.3.3/gradle-work-action-api-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:gradle-work-action-api:32.3.3",
+      "artifact": "gradle-work-action-api-32.3.3.module",
+      "sha256": "0a8ba9ab58aa506640fb8bbf18fbfe3412b8a8c8cb4fd38ea91d5d721d47b67c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/gradle-work-action-api/32.3.3/gradle-work-action-api-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:gradle-work-action:32.3.3",
+      "artifact": "gradle-work-action-32.3.3.jar",
+      "sha256": "c89422f7d3462bd5525e6e79abb5a9808050e3a1352e0c6ef771b1b7a22fd307",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/gradle-work-action/32.3.3/gradle-work-action-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:gradle-work-action:32.3.3",
+      "artifact": "gradle-work-action-32.3.3.module",
+      "sha256": "fd84198ca62e9f7bff770dbbfc9380b1121e9a23f731c3f37920614c5dd00e03",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/gradle-work-action/32.3.3/gradle-work-action-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.utp:utp-common:32.3.3",
+      "artifact": "utp-common-32.3.3.jar",
+      "sha256": "314f2ef53814f3930787ea02afb4ceed95891ed6c9f4d4259d7c2a63a36dd75d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/utp-common/32.3.3/utp-common-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:utp-common:32.3.3",
+      "artifact": "utp-common-32.3.3.module",
+      "sha256": "7a227dabd057107a80de09cb25472039be22a90f89f72d209e2d3198b87f6e0b",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/utp-common/32.3.3/utp-common-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools:annotations:32.3.3",
+      "artifact": "annotations-32.3.3.jar",
+      "sha256": "32e90226ae4c7b59ed61b06689ae8356bab080cd79f6569455fd92925439a339",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/annotations/32.3.3/annotations-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools:annotations:32.3.3",
+      "artifact": "annotations-32.3.3.pom",
+      "sha256": "d11185200a26255d15a3675885628c712f2c77c2aa5ae1e0b24b2c973655b6a1",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/annotations/32.3.3/annotations-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools:common:32.3.3",
+      "artifact": "common-32.3.3.jar",
+      "sha256": "fad897dad2dc892cb8f09a6621d34e6166738e602002ac3a7625494a64d63d7e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/common/32.3.3/common-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools:common:32.3.3",
+      "artifact": "common-32.3.3.pom",
+      "sha256": "71643e03d1186a16225a90d5363557dffa34a307dd9c2227fc6bb0a22b3ef533",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/common/32.3.3/common-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools:dvlib:32.3.3",
+      "artifact": "dvlib-32.3.3.jar",
+      "sha256": "52e27f1364cdb5d4f531f52e4eec5ae48da040daa9417d4f06ddf6a1799a065e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/dvlib/32.3.3/dvlib-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools:dvlib:32.3.3",
+      "artifact": "dvlib-32.3.3.pom",
+      "sha256": "1580ba0129a3aad412a586fa751fe7d104b8d5f862d4449353e0bf74bb9d53bf",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/dvlib/32.3.3/dvlib-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools:play-sdk-proto:32.3.3",
+      "artifact": "play-sdk-proto-32.3.3.jar",
+      "sha256": "43951d8d287f27b3c1242139179899af5c564e862b760353d558e4f73a881e03",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/play-sdk-proto/32.3.3/play-sdk-proto-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools:play-sdk-proto:32.3.3",
+      "artifact": "play-sdk-proto-32.3.3.pom",
+      "sha256": "8a2012b2f3dacbce3a39db5c869364ef073e1803c4a8a53076f48d863bdfedef",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/play-sdk-proto/32.3.3/play-sdk-proto-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools:repository:32.3.3",
+      "artifact": "repository-32.3.3.jar",
+      "sha256": "b9470bb01fbd8fcad4847e1d10967b20fa93255361c0d2b2103fc6dcff13b177",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/repository/32.3.3/repository-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools:repository:32.3.3",
+      "artifact": "repository-32.3.3.pom",
+      "sha256": "186e56920aaab06306e850ebd2fc1a4c8276b3d99be8d06520a34fb2990c7430",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/repository/32.3.3/repository-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools:sdk-common:32.3.3",
+      "artifact": "sdk-common-32.3.3.jar",
+      "sha256": "7d34308241071e482f47ccb7c5ba53e83858366905061979ae4ed4623c6dcdd6",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdk-common/32.3.3/sdk-common-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools:sdk-common:32.3.3",
+      "artifact": "sdk-common-32.3.3.pom",
+      "sha256": "8134ee2b325a67da5a5a31a1a60c1119e354ba0b476c9870bb5346685da653f2",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdk-common/32.3.3/sdk-common-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools:sdklib:32.3.3",
+      "artifact": "sdklib-32.3.3.jar",
+      "sha256": "4433ca379db0a9f7bd0a5d5b931b0ac671747b10791706dc0d42a348dacbb782",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdklib/32.3.3/sdklib-32.3.3.jar"
+    },
+    {
+      "coordinate": "com.android.tools:sdklib:32.3.3",
+      "artifact": "sdklib-32.3.3.pom",
+      "sha256": "869350c798e644465ecd07ae7f778e1388611266c83e07c52e06e8e5059cb6ee",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdklib/32.3.3/sdklib-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android:signflinger:9.3.3",
+      "artifact": "signflinger-9.3.3.jar",
+      "sha256": "7d82126c9483b540173a65b0354fe27f067ec85c8e64676795873640a06b288d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/signflinger/9.3.3/signflinger-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android:signflinger:9.3.3",
+      "artifact": "signflinger-9.3.3.pom",
+      "sha256": "8770b63d3e5d15d19846c40a376a64f912ce17d9b64b5f557ccefc24a858a44c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/signflinger/9.3.3/signflinger-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.android:zipflinger:9.3.3",
+      "artifact": "zipflinger-9.3.3.jar",
+      "sha256": "0a1984d14cc8070f734ddcc5a947f122dfee364cdbe18595afb691aa803890e0",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/zipflinger/9.3.3/zipflinger-9.3.3.jar"
+    },
+    {
+      "coordinate": "com.android:zipflinger:9.3.3",
+      "artifact": "zipflinger-9.3.3.pom",
+      "sha256": "83495309791193a6c47b84a5437e64ae401ab970daf20bdb116ea495e494552d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/zipflinger/9.3.3/zipflinger-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.google.crypto.tink:tink:1.18.0",
+      "artifact": "tink-1.18.0.jar",
+      "sha256": "30df12a1f59045637213477656e01f6fbcc02616c20da1696cbd4643ada668ef",
+      "source": "https://repo.maven.apache.org/maven2/com/google/crypto/tink/tink/1.18.0/tink-1.18.0.jar"
+    },
+    {
+      "coordinate": "com.google.crypto.tink:tink:1.18.0",
+      "artifact": "tink-1.18.0.pom",
+      "sha256": "08c2dcac9ce37428aca73b1d6aa6a93f35c385224db03b3cae843b74e64d1edf",
+      "source": "https://repo.maven.apache.org/maven2/com/google/crypto/tink/tink/1.18.0/tink-1.18.0.pom"
+    },
+    {
+      "coordinate": "com.google.errorprone:error_prone_annotations:2.22.0",
+      "artifact": "error_prone_annotations-2.22.0.pom",
+      "sha256": "b725c521514168e9c20d3719a76aa01b50e5a7282859f4ea84c251cf9f842080",
+      "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.22.0/error_prone_annotations-2.22.0.pom"
+    },
+    {
+      "coordinate": "com.google.errorprone:error_prone_annotations:2.27.0",
+      "artifact": "error_prone_annotations-2.27.0.jar",
+      "sha256": "24c923372c58e35d0b9f16a028929bb9aedc77521867c274f2bd0735df5ba1f5",
+      "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.27.0/error_prone_annotations-2.27.0.jar"
+    },
+    {
+      "coordinate": "com.google.errorprone:error_prone_annotations:2.36.0",
+      "artifact": "error_prone_annotations-2.36.0.jar",
+      "sha256": "77440e270b0bc9a249903c5a076c36a722c4886ca4f42675f2903a1c53ed61a5",
+      "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.36.0/error_prone_annotations-2.36.0.jar"
+    },
+    {
+      "coordinate": "com.google.errorprone:error_prone_annotations:2.36.0",
+      "artifact": "error_prone_annotations-2.36.0.pom",
+      "sha256": "d79cfd37c85f76d6b754c7501ee1dc8447b7b2642c2382d778252166bd331e9c",
+      "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.36.0/error_prone_annotations-2.36.0.pom"
+    },
+    {
+      "coordinate": "com.google.errorprone:error_prone_parent:2.22.0",
+      "artifact": "error_prone_parent-2.22.0.pom",
+      "sha256": "5d2522bea83df5a581ccd6b227635ca34e0d397b7672de748aca4157080573c7",
+      "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_parent/2.22.0/error_prone_parent-2.22.0.pom"
+    },
+    {
+      "coordinate": "com.google.errorprone:error_prone_parent:2.36.0",
+      "artifact": "error_prone_parent-2.36.0.pom",
+      "sha256": "3a4cfc8a6bed61eb48e969796fc31ea0d270b63e670599946a61883adb7094dc",
+      "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_parent/2.36.0/error_prone_parent-2.36.0.pom"
+    },
+    {
+      "coordinate": "com.google.guava:guava:33.4.0-jre",
+      "artifact": "guava-33.4.0-jre.jar",
+      "sha256": "b918c98a7e44dbe94ebd9fe3e40cddaadb5a93e6a78eb6008b42df237241e538",
+      "source": "https://repo.maven.apache.org/maven2/com/google/guava/guava/33.4.0-jre/guava-33.4.0-jre.jar"
+    },
+    {
+      "coordinate": "com.google.guava:guava:33.4.0-jre",
+      "artifact": "guava-33.4.0-jre.module",
+      "sha256": "820e817e86c493aa7affd6cbb991ee60925b6c8b74541f742cb22070f6f20459",
+      "source": "https://repo.maven.apache.org/maven2/com/google/guava/guava/33.4.0-jre/guava-33.4.0-jre.module"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-bom:4.28.2",
+      "artifact": "protobuf-bom-4.28.2.pom",
+      "sha256": "43666cd072728c646cc45a614aeeead1e0b23f818f652982df279a0e5adaf316",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-bom/4.28.2/protobuf-bom-4.28.2.pom"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-bom:4.28.3",
+      "artifact": "protobuf-bom-4.28.3.pom",
+      "sha256": "be3baa9b418864b5ed7d39c3beb3141d83fa78d124554eaa92083243dcbfb27a",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-bom/4.28.3/protobuf-bom-4.28.3.pom"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-java-util:4.28.3",
+      "artifact": "protobuf-java-util-4.28.3.jar",
+      "sha256": "d706eb7b4fbb63b7a39891106341080ebbadbb78dd8daecba7a6e68d2831c9cd",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java-util/4.28.3/protobuf-java-util-4.28.3.jar"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-java-util:4.28.3",
+      "artifact": "protobuf-java-util-4.28.3.pom",
+      "sha256": "8800be4ec046d97d95992cc4f3c6239c86ceb474ea55782c3d00b3e3e023c21d",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java-util/4.28.3/protobuf-java-util-4.28.3.pom"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-java:4.28.2",
+      "artifact": "protobuf-java-4.28.2.pom",
+      "sha256": "1eaecce23fb47b1ae54996f16c0d5485563a972ec262b78a8180e07f0aa77253",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java/4.28.2/protobuf-java-4.28.2.pom"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-java:4.28.3",
+      "artifact": "protobuf-java-4.28.3.jar",
+      "sha256": "ba02977c0fef8b40af9f85fe69af362d8e13f2685b49a9752750b18da726157e",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java/4.28.3/protobuf-java-4.28.3.jar"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-java:4.28.3",
+      "artifact": "protobuf-java-4.28.3.pom",
+      "sha256": "f70bea74bd0b5325c2d2fc4d58d86163744019738d1ca436e067d733c5f7c125",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java/4.28.3/protobuf-java-4.28.3.pom"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-kotlin:4.28.3",
+      "artifact": "protobuf-kotlin-4.28.3.jar",
+      "sha256": "02f650bef113fd830d26e1932aeb543dc48827c16905033d3acc0c56fe51b49b",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-kotlin/4.28.3/protobuf-kotlin-4.28.3.jar"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-kotlin:4.28.3",
+      "artifact": "protobuf-kotlin-4.28.3.pom",
+      "sha256": "0da5f170879509408409493c7229caa3a3f8b72292080c60f6d11dcf584255f1",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-kotlin/4.28.3/protobuf-kotlin-4.28.3.pom"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-parent:4.28.2",
+      "artifact": "protobuf-parent-4.28.2.pom",
+      "sha256": "f7f23fc16ed463cf52579fffafa03940e8e653b33c6b4f106082c5bf15050f75",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-parent/4.28.2/protobuf-parent-4.28.2.pom"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-parent:4.28.3",
+      "artifact": "protobuf-parent-4.28.3.pom",
+      "sha256": "5364cdc058b2e5a212af6dfc1894299070dd434026a15827bbe313774489f403",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-parent/4.28.3/protobuf-parent-4.28.3.pom"
+    },
+    {
+      "coordinate": "com.google.testing.platform:android-device-provider-local:0.0.9-alpha04",
+      "artifact": "android-device-provider-local-0.0.9-alpha04.jar",
+      "sha256": "07442dc00e29d3f1b888e8e1d02786184fc348dfbdf04040625e25a4af937d77",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/android-device-provider-local/0.0.9-alpha04/android-device-provider-local-0.0.9-alpha04.jar"
+    },
+    {
+      "coordinate": "com.google.testing.platform:android-device-provider-local:0.0.9-alpha04",
+      "artifact": "android-device-provider-local-0.0.9-alpha04.pom",
+      "sha256": "00c8e427d5caa8efd8daca2647b2213cb402b9d39275a3a82d88977f270ff713",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/android-device-provider-local/0.0.9-alpha04/android-device-provider-local-0.0.9-alpha04.pom"
+    },
+    {
+      "coordinate": "com.google.testing.platform:android-driver-instrumentation:0.0.9-alpha04",
+      "artifact": "android-driver-instrumentation-0.0.9-alpha04.jar",
+      "sha256": "ce98aea320c84ac870c3c437c20154c9b438b65d4b188f3006cfbd99540b8b35",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/android-driver-instrumentation/0.0.9-alpha04/android-driver-instrumentation-0.0.9-alpha04.jar"
+    },
+    {
+      "coordinate": "com.google.testing.platform:android-driver-instrumentation:0.0.9-alpha04",
+      "artifact": "android-driver-instrumentation-0.0.9-alpha04.pom",
+      "sha256": "0e3eefae7ec14a100fede68fb586b16b3990d53a68ace4ef3fefbca66c2bb835",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/android-driver-instrumentation/0.0.9-alpha04/android-driver-instrumentation-0.0.9-alpha04.pom"
+    },
+    {
+      "coordinate": "com.google.testing.platform:android-test-plugin:0.0.9-alpha04",
+      "artifact": "android-test-plugin-0.0.9-alpha04.jar",
+      "sha256": "ad63f94ffc0a497b41aeac656fc240d0143927033b8ff2da077b85bcbf7ef37f",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/android-test-plugin/0.0.9-alpha04/android-test-plugin-0.0.9-alpha04.jar"
+    },
+    {
+      "coordinate": "com.google.testing.platform:android-test-plugin:0.0.9-alpha04",
+      "artifact": "android-test-plugin-0.0.9-alpha04.pom",
+      "sha256": "28563d695baea3c45363c8792b9954f7e7c173cda489848fb52a919e90df9576",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/android-test-plugin/0.0.9-alpha04/android-test-plugin-0.0.9-alpha04.pom"
+    },
+    {
+      "coordinate": "com.google.testing.platform:core-proto:0.0.9-alpha04",
+      "artifact": "core-proto-0.0.9-alpha04.jar",
+      "sha256": "f1abe1b26373cb8623c06a229f858b45af17c2ffb680b04fb0beefed6979c087",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/core-proto/0.0.9-alpha04/core-proto-0.0.9-alpha04.jar"
+    },
+    {
+      "coordinate": "com.google.testing.platform:core-proto:0.0.9-alpha04",
+      "artifact": "core-proto-0.0.9-alpha04.pom",
+      "sha256": "6228d96b554334f904c456f19bd6088d4ec62380f41066dc3f56db039dbdc2f0",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/core-proto/0.0.9-alpha04/core-proto-0.0.9-alpha04.pom"
+    },
+    {
+      "coordinate": "com.google.testing.platform:core:0.0.9-alpha04",
+      "artifact": "core-0.0.9-alpha04.jar",
+      "sha256": "d8c6ceb0a5dec0593dbe56d94f0d0451fc14698a89d732c276908bb4748377fe",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/core/0.0.9-alpha04/core-0.0.9-alpha04.jar"
+    },
+    {
+      "coordinate": "com.google.testing.platform:core:0.0.9-alpha04",
+      "artifact": "core-0.0.9-alpha04.pom",
+      "sha256": "a7b6ed15167c7a3c26deca562f76ee99aedb2b8fd35ca6f32c5a9bfb843f69b1",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/core/0.0.9-alpha04/core-0.0.9-alpha04.pom"
+    },
+    {
+      "coordinate": "com.google.testing.platform:launcher:0.0.9-alpha04",
+      "artifact": "launcher-0.0.9-alpha04.jar",
+      "sha256": "fb26d0f83c6d95cd7009b885bc443079060e99cc4d9bd5140429a217bf043c2e",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/launcher/0.0.9-alpha04/launcher-0.0.9-alpha04.jar"
+    },
+    {
+      "coordinate": "com.google.testing.platform:launcher:0.0.9-alpha04",
+      "artifact": "launcher-0.0.9-alpha04.pom",
+      "sha256": "5cbc029be3c3cb9cf757a5979f0d1845dd561826601e3f69f83bd8e0b139280c",
+      "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/launcher/0.0.9-alpha04/launcher-0.0.9-alpha04.pom"
+    },
+    {
+      "coordinate": "com.squareup:javapoet:1.13.0",
+      "artifact": "javapoet-1.13.0.jar",
+      "sha256": "4c7517e848a71b36d069d12bb3bf46a70fd4cda3105d822b0ed2e19c00b69291",
+      "source": "https://repo.maven.apache.org/maven2/com/squareup/javapoet/1.13.0/javapoet-1.13.0.jar"
+    },
+    {
+      "coordinate": "com.squareup:javapoet:1.13.0",
+      "artifact": "javapoet-1.13.0.pom",
+      "sha256": "54a34fa8502a46bc90efdb49262600591fa80bf9a34f5a4c798311aec16ca977",
+      "source": "https://repo.maven.apache.org/maven2/com/squareup/javapoet/1.13.0/javapoet-1.13.0.pom"
+    },
+    {
+      "coordinate": "commons-codec:commons-codec:1.17.1",
+      "artifact": "commons-codec-1.17.1.jar",
+      "sha256": "f9f6cb103f2ddc3c99a9d80ada2ae7bf0685111fd6bffccb72033d1da4e6ff23",
+      "source": "https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.17.1/commons-codec-1.17.1.jar"
+    },
+    {
+      "coordinate": "commons-codec:commons-codec:1.17.1",
+      "artifact": "commons-codec-1.17.1.pom",
+      "sha256": "7fa0db4d8150daf932958b8aea89ee24abb4d18e2316a5de535278fc131512a0",
+      "source": "https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.17.1/commons-codec-1.17.1.pom"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-compress:1.27.1",
+      "artifact": "commons-compress-1.27.1.jar",
+      "sha256": "293d80f54b536b74095dcd7ea3cf0a29bbfc3402519281332495f4420d370d16",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-compress/1.27.1/commons-compress-1.27.1.jar"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-compress:1.27.1",
+      "artifact": "commons-compress-1.27.1.pom",
+      "sha256": "df8cc1a8387d4ce842363b7209fdc6d35df9763839fd3fcab558a0f83f9d841c",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-compress/1.27.1/commons-compress-1.27.1.pom"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-lang3:3.16.0",
+      "artifact": "commons-lang3-3.16.0.jar",
+      "sha256": "08709dd74d602b705ce4017d26544210056a4ba583d5b20c09373406fe7a00f8",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.16.0/commons-lang3-3.16.0.jar"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-lang3:3.16.0",
+      "artifact": "commons-lang3-3.16.0.pom",
+      "sha256": "e280383956c2e72c1deb3a307b3b75f05ee43649b7d43f0215f7b6c7b15eea2c",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.16.0/commons-lang3-3.16.0.pom"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-lang3:3.18.0",
+      "artifact": "commons-lang3-3.18.0.jar",
+      "sha256": "4eeeae8d20c078abb64b015ec158add383ac581571cddc45c68f0c9ae0230720",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.18.0/commons-lang3-3.18.0.jar"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-lang3:3.18.0",
+      "artifact": "commons-lang3-3.18.0.pom",
+      "sha256": "aa254b373b6f6d46bc9dca86331b072a8ab86eb25ea9921fd439618392e98a16",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.18.0/commons-lang3-3.18.0.pom"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-parent:71",
+      "artifact": "commons-parent-71.pom",
+      "sha256": "95b7be70f316ae4ca22f6fbdd08de2182e87cd874a650de7c3d3386a747a82a3",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/71/commons-parent-71.pom"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-parent:72",
+      "artifact": "commons-parent-72.pom",
+      "sha256": "4345debfc767b1aeac68abdd72fc67d18b521d4b390372a11b63ff0c586b2320",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/72/commons-parent-72.pom"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-parent:85",
+      "artifact": "commons-parent-85.pom",
+      "sha256": "d189ff2c0027e96bb65d31e6f227ed2af966169b36af1e973dd5ba08926dc7b5",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/85/commons-parent-85.pom"
+    },
+    {
+      "coordinate": "org.apache:apache:32",
+      "artifact": "apache-32.pom",
+      "sha256": "cfd872c0ec27f53ae68f43dbc0fecded8add773079a53afbd390e407b42ce72f",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/apache/32/apache-32.pom"
+    },
+    {
+      "coordinate": "org.apache:apache:33",
+      "artifact": "apache-33.pom",
+      "sha256": "d78bd8524c5f8380a190a6525686629a95dfe512df21111383a6d8c0923a4415",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/apache/33/apache-33.pom"
+    },
+    {
+      "coordinate": "org.apache:apache:35",
+      "artifact": "apache-35.pom",
+      "sha256": "ea297dcd114136e8b8e8b630230d52a76c2fc69f6c5db25d672b1857000728b8",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/apache/35/apache-35.pom"
+    },
+    {
+      "coordinate": "org.bitbucket.b_c:jose4j:0.9.7",
+      "artifact": "jose4j-0.9.7.jar",
+      "sha256": "f2da13ca454cb04af926b9d830fd429169e0198adbbbd0bd64f6ae94f7b3d3fb",
+      "source": "https://repo.maven.apache.org/maven2/org/bitbucket/b_c/jose4j/0.9.7/jose4j-0.9.7.jar"
+    },
+    {
+      "coordinate": "org.bitbucket.b_c:jose4j:0.9.7",
+      "artifact": "jose4j-0.9.7.pom",
+      "sha256": "b5d9405da5dd2fff5591c08490cb262e80d60f15d903b12515cf8031571fc579",
+      "source": "https://repo.maven.apache.org/maven2/org/bitbucket/b_c/jose4j/0.9.7/jose4j-0.9.7.pom"
+    },
+    {
+      "coordinate": "org.jdom:jdom2:2.0.6.1",
+      "artifact": "jdom2-2.0.6.1.jar",
+      "sha256": "0b20f45e3a0fd8f0d12cdc5316b06776e902b1365db00118876f9175c60f302c",
+      "source": "https://repo.maven.apache.org/maven2/org/jdom/jdom2/2.0.6.1/jdom2-2.0.6.1.jar"
+    },
+    {
+      "coordinate": "org.jdom:jdom2:2.0.6.1",
+      "artifact": "jdom2-2.0.6.1.pom",
+      "sha256": "55795e1018b8ae647b937967cf810a99b08582c2374e7873c128734c8c914bf3",
+      "source": "https://repo.maven.apache.org/maven2/org/jdom/jdom2/2.0.6.1/jdom2-2.0.6.1.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin.jvm:org.jetbrains.kotlin.jvm.gradle.plugin:2.4.21",
+      "artifact": "org.jetbrains.kotlin.jvm.gradle.plugin-2.4.21.pom",
+      "sha256": "8e08073d123182e69c07d24c6dca7b98cc53a37707a73a6af7be88e38218b42b",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/jvm/org.jetbrains.kotlin.jvm.gradle.plugin/2.4.21/org.jetbrains.kotlin.jvm.gradle.plugin-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin.multiplatform:org.jetbrains.kotlin.multiplatform.gradle.plugin:2.4.21",
+      "artifact": "org.jetbrains.kotlin.multiplatform.gradle.plugin-2.4.21.pom",
+      "sha256": "758fe8dc93a1d703fd97dd67c6d6371408087c17ca6796cc96011111f3df7168",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/multiplatform/org.jetbrains.kotlin.multiplatform.gradle.plugin/2.4.21/org.jetbrains.kotlin.multiplatform.gradle.plugin-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:2.4.21",
+      "artifact": "org.jetbrains.kotlin.plugin.compose.gradle.plugin-2.4.21.pom",
+      "sha256": "ee66712b1006e971636f11554af63c56835caf315382ce23e54f59f5b8b9d4f9",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/plugin/compose/org.jetbrains.kotlin.plugin.compose.gradle.plugin/2.4.21/org.jetbrains.kotlin.plugin.compose.gradle.plugin-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin.plugin.serialization:org.jetbrains.kotlin.plugin.serialization.gradle.plugin:2.4.21",
+      "artifact": "org.jetbrains.kotlin.plugin.serialization.gradle.plugin-2.4.21.pom",
+      "sha256": "8420ae740534280aa0d0eb8595bec77dd0ef03e48fc1d044aa4d45472930b725",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/plugin/serialization/org.jetbrains.kotlin.plugin.serialization.gradle.plugin/2.4.21/org.jetbrains.kotlin.plugin.serialization.gradle.plugin-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.4.21",
+      "artifact": "compose-compiler-gradle-plugin-2.4.21-gradle96.jar",
+      "sha256": "17b7d35e53e23f4820e0fb9f3ad71f7ab463970d68bcd8ba7f8d71498b50395f",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/compose-compiler-gradle-plugin/2.4.21/compose-compiler-gradle-plugin-2.4.21-gradle96.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.4.21",
+      "artifact": "compose-compiler-gradle-plugin-2.4.21.module",
+      "sha256": "e7bc61dabd4381f4a8f53c7be30bfb5cccd971af27d55b7c39b0a37b28bef24d",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/compose-compiler-gradle-plugin/2.4.21/compose-compiler-gradle-plugin-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:compose-group-mapping:2.4.21",
+      "artifact": "compose-group-mapping-2.4.21.jar",
+      "sha256": "45bb5caf737fb50cf96fd67f4a45aff8a75cae387333a5be80ad29523442d327",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/compose-group-mapping/2.4.21/compose-group-mapping-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:compose-group-mapping:2.4.21",
+      "artifact": "compose-group-mapping-2.4.21.pom",
+      "sha256": "a1c461dc79493649a9d1eee167c172dd32aa3260a48735751de30ee169cf4620",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/compose-group-mapping/2.4.21/compose-group-mapping-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:fus-statistics-gradle-plugin:2.4.21",
+      "artifact": "fus-statistics-gradle-plugin-2.4.21-gradle96.jar",
+      "sha256": "44a07b9203eb2c75ceb2d33327f89b991f2d35095a96a0f1c224a012c5465367",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/fus-statistics-gradle-plugin/2.4.21/fus-statistics-gradle-plugin-2.4.21-gradle96.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:fus-statistics-gradle-plugin:2.4.21",
+      "artifact": "fus-statistics-gradle-plugin-2.4.21.module",
+      "sha256": "3090b4e873054cdc29991ae94c92fa45afb4c145d460441d803baf6ef165bbb8",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/fus-statistics-gradle-plugin/2.4.21/fus-statistics-gradle-plugin-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-statistics:2.4.21",
+      "artifact": "kotlin-build-statistics-2.4.21.jar",
+      "sha256": "f917249997fe48d1eb1204906b4cabc8230bf32a1d9fb385e52311acaa6ebc68",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-statistics/2.4.21/kotlin-build-statistics-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-statistics:2.4.21",
+      "artifact": "kotlin-build-statistics-2.4.21.pom",
+      "sha256": "4ac9fe3a27069f9ad87dc36ede15fc06335663d4ae46fac09a16bb090e16038c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-statistics/2.4.21/kotlin-build-statistics-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-api:2.4.0",
+      "artifact": "kotlin-build-tools-api-2.4.0.jar",
+      "sha256": "66917335497f9ab75a36c34b3d90bad2bc8dc256c34b2413ecd0c9467fcf597d",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-api/2.4.0/kotlin-build-tools-api-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-api:2.4.0",
+      "artifact": "kotlin-build-tools-api-2.4.0.pom",
+      "sha256": "9686fa8f16867b2aba2e5c0e4cfc4a0aeecf59fe6de419f89f7bd838fdde8e74",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-api/2.4.0/kotlin-build-tools-api-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-api:2.4.21",
+      "artifact": "kotlin-build-tools-api-2.4.21.jar",
+      "sha256": "c5cd6a49bd072b529ae10809111c16a7aa0f92147e95d288354017fd65799461",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-api/2.4.21/kotlin-build-tools-api-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-api:2.4.21",
+      "artifact": "kotlin-build-tools-api-2.4.21.pom",
+      "sha256": "4b909e42d55242520278d5397eca1edd58921fe128942eeff95a6da279c2eb27",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-api/2.4.21/kotlin-build-tools-api-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-compat:2.4.21",
+      "artifact": "kotlin-build-tools-compat-2.4.21.jar",
+      "sha256": "9e71ba89b6d26e46a087d4f8b64bc2f0a774282ea779fc08b26527d0a80d4fe8",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-compat/2.4.21/kotlin-build-tools-compat-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-compat:2.4.21",
+      "artifact": "kotlin-build-tools-compat-2.4.21.pom",
+      "sha256": "9d9b4627d5b7bb8631457061275f21524d874b865550addec4f3b029d8265817",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-compat/2.4.21/kotlin-build-tools-compat-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-cri-impl:2.4.0",
+      "artifact": "kotlin-build-tools-cri-impl-2.4.0.jar",
+      "sha256": "5168b866945f6ac1ffcb6d4c88cf582497249469c2e4a4eafc0bcd35b5a264a9",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-cri-impl/2.4.0/kotlin-build-tools-cri-impl-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-cri-impl:2.4.0",
+      "artifact": "kotlin-build-tools-cri-impl-2.4.0.pom",
+      "sha256": "856d59395489276e93edb4390c99397de83e20d27572c5238c56ed21e43433da",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-cri-impl/2.4.0/kotlin-build-tools-cri-impl-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-cri-impl:2.4.21",
+      "artifact": "kotlin-build-tools-cri-impl-2.4.21.jar",
+      "sha256": "d1849f9b98033f5333905409074ca90e6a0e17258cd0eb8befa47d795e695841",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-cri-impl/2.4.21/kotlin-build-tools-cri-impl-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-cri-impl:2.4.21",
+      "artifact": "kotlin-build-tools-cri-impl-2.4.21.pom",
+      "sha256": "57f3c430dfec2e575bb1b64055412ace12d4ed5d9a02eb97a85dd47f53701ef1",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-cri-impl/2.4.21/kotlin-build-tools-cri-impl-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.0",
+      "artifact": "kotlin-build-tools-impl-2.4.0.jar",
+      "sha256": "076c0a7f84d303f1e390774410c8678b8b584faa3f642435f93d2e4e81dabe7c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-impl/2.4.0/kotlin-build-tools-impl-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.0",
+      "artifact": "kotlin-build-tools-impl-2.4.0.pom",
+      "sha256": "485ca3d511aa384207db5706e0741dc79ace45d40e0489f9ef29731aafb14f7c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-impl/2.4.0/kotlin-build-tools-impl-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.21",
+      "artifact": "kotlin-build-tools-impl-2.4.21.jar",
+      "sha256": "3152b3e1fbaa4d48f3681734a2c0efc438359a48c8a3c5cac00d874670de1377",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-impl/2.4.21/kotlin-build-tools-impl-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-impl:2.4.21",
+      "artifact": "kotlin-build-tools-impl-2.4.21.pom",
+      "sha256": "6ef5cb90e2d8ea75faf9ec668d306b6be7628f11ebd41878a82cae3e17dbedfb",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-impl/2.4.21/kotlin-build-tools-impl-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.0",
+      "artifact": "kotlin-compiler-embeddable-2.4.0.jar",
+      "sha256": "c2b25e8c1c93ec416ba4327f5e31eaec0f0c8847241b9353e294b8db9dce564f",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/2.4.0/kotlin-compiler-embeddable-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.0",
+      "artifact": "kotlin-compiler-embeddable-2.4.0.pom",
+      "sha256": "f5d78540108e7bbc9162253ce52c42507ead2e530945213dd2a3b793b590c53c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/2.4.0/kotlin-compiler-embeddable-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21",
+      "artifact": "kotlin-compiler-embeddable-2.4.21.jar",
+      "sha256": "ef19419c765e7ac8404465fa026ca8fc4dbb8a822de0fc79aa53c8dce29f1d02",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/2.4.21/kotlin-compiler-embeddable-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21",
+      "artifact": "kotlin-compiler-embeddable-2.4.21.pom",
+      "sha256": "e1620d2b18319cf7495dc67697ab03ba23a7d6d9da685285884a7a8aa08ae891",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/2.4.21/kotlin-compiler-embeddable-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-runner:2.4.0",
+      "artifact": "kotlin-compiler-runner-2.4.0.jar",
+      "sha256": "ad9608152740e92d94a278b4ff2ca82c4bf5ff8ef219220e3c07aeb554638cee",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-runner/2.4.0/kotlin-compiler-runner-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-runner:2.4.0",
+      "artifact": "kotlin-compiler-runner-2.4.0.pom",
+      "sha256": "5e1ed156cb8d38b61e2ccc546dbd8b2bde778367eb298f8875bd820fbfd0b0f2",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-runner/2.4.0/kotlin-compiler-runner-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-runner:2.4.21",
+      "artifact": "kotlin-compiler-runner-2.4.21.jar",
+      "sha256": "75cd5956405697559e6925ebc5808449a2e12002d4f017275281ad3d4c0c7985",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-runner/2.4.21/kotlin-compiler-runner-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-runner:2.4.21",
+      "artifact": "kotlin-compiler-runner-2.4.21.pom",
+      "sha256": "619d17c885321949eaa167af0842cad8f7aa83a4a9ca1051e5de04d11a6c0f40",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-runner/2.4.21/kotlin-compiler-runner-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:2.4.21",
+      "artifact": "kotlin-compose-compiler-plugin-embeddable-2.4.21.jar",
+      "sha256": "634f5c17bed5854548208f2901071f2ead5993ffad25b34fea1668ee9e314b53",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compose-compiler-plugin-embeddable/2.4.21/kotlin-compose-compiler-plugin-embeddable-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:2.4.21",
+      "artifact": "kotlin-compose-compiler-plugin-embeddable-2.4.21.pom",
+      "sha256": "d5af6aa743ce0fa940b004a6cbd1777db0a76319e1daa1fded9b03c361aa03a3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compose-compiler-plugin-embeddable/2.4.21/kotlin-compose-compiler-plugin-embeddable-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-client:2.4.0",
+      "artifact": "kotlin-daemon-client-2.4.0.jar",
+      "sha256": "f546f0b3699c4984f320dd03080de05cad61064208ba8f37df0d3f8f4a7fd14a",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/2.4.0/kotlin-daemon-client-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-client:2.4.0",
+      "artifact": "kotlin-daemon-client-2.4.0.pom",
+      "sha256": "143793627382d905eda93e152a28c993f6323fc4b748370a45c7badc99914a13",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/2.4.0/kotlin-daemon-client-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-client:2.4.21",
+      "artifact": "kotlin-daemon-client-2.4.21.jar",
+      "sha256": "095903c4c4713bf91a562d226d7ba0464cf5424e76342d487deec494451ab29b",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/2.4.21/kotlin-daemon-client-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-client:2.4.21",
+      "artifact": "kotlin-daemon-client-2.4.21.pom",
+      "sha256": "c2f18065fa18f5e92eff14f34029e4f70052011070655120796adbce7167ad65",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/2.4.21/kotlin-daemon-client-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.0",
+      "artifact": "kotlin-daemon-embeddable-2.4.0.jar",
+      "sha256": "383093af5e078435b60043d19bfa83eb6191be0f4d13a28fb1c8a0f3ab24fe66",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/2.4.0/kotlin-daemon-embeddable-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.0",
+      "artifact": "kotlin-daemon-embeddable-2.4.0.pom",
+      "sha256": "cb36e780fcb39ee09aab6e398f9bd5ea27f982bb6e19329742a20eb2ebdc2936",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/2.4.0/kotlin-daemon-embeddable-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.21",
+      "artifact": "kotlin-daemon-embeddable-2.4.21.jar",
+      "sha256": "7b3ef24674e5bcffcadfc4e43202ea314194939ecbcdd90a4770b2f1b04e0d07",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/2.4.21/kotlin-daemon-embeddable-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.21",
+      "artifact": "kotlin-daemon-embeddable-2.4.21.pom",
+      "sha256": "95236a3a7e9953545e2ff7c6dc0ea7ffeb27560000f20abe89dc53790fec3c7e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/2.4.21/kotlin-daemon-embeddable-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:2.4.21",
+      "artifact": "kotlin-gradle-plugin-annotations-2.4.21.jar",
+      "sha256": "5c386b0fa287584497b07d62af954e30d05907e6da867221124d0bb936989bbd",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/2.4.21/kotlin-gradle-plugin-annotations-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:2.4.21",
+      "artifact": "kotlin-gradle-plugin-annotations-2.4.21.pom",
+      "sha256": "b0f6b87a35d4be7ae06e554efdb261ea4bc5d59fa282c23ee28061d30805ddd6",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/2.4.21/kotlin-gradle-plugin-annotations-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-api:2.4.21",
+      "artifact": "kotlin-gradle-plugin-api-2.4.21-gradle96.jar",
+      "sha256": "43b8c73f3e4f123b1a5e4bc8e62bd9b258dfa84129e6564bebb03c5fada84d23",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/2.4.21/kotlin-gradle-plugin-api-2.4.21-gradle96.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-api:2.4.21",
+      "artifact": "kotlin-gradle-plugin-api-2.4.21.module",
+      "sha256": "b8ae1c9ee5976145d4fd7925012e5699e2df5df7fe9613bac41d59404a58e815",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/2.4.21/kotlin-gradle-plugin-api-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-idea-proto:2.4.21",
+      "artifact": "kotlin-gradle-plugin-idea-proto-2.4.21.jar",
+      "sha256": "4559d92c5c1758a3e1ec5728822b059b2eb4aebef13c701ee86c7688acf164d5",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea-proto/2.4.21/kotlin-gradle-plugin-idea-proto-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-idea-proto:2.4.21",
+      "artifact": "kotlin-gradle-plugin-idea-proto-2.4.21.pom",
+      "sha256": "3c6eff2166eb46a8474b7bcccaa7d1ca5074260c866cc4bb2ba3678216a7bc15",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea-proto/2.4.21/kotlin-gradle-plugin-idea-proto-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-idea:2.4.21",
+      "artifact": "kotlin-gradle-plugin-idea-2.4.21.jar",
+      "sha256": "086734484c7edf19a620ab1a617d097c40e03bc52602e77840ea5ebd6380e514",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea/2.4.21/kotlin-gradle-plugin-idea-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-idea:2.4.21",
+      "artifact": "kotlin-gradle-plugin-idea-2.4.21.module",
+      "sha256": "ddd2bb8f319a7c468ba2fb5a404b795c69e066bd5ad2d565b47b86fa2a337606",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea/2.4.21/kotlin-gradle-plugin-idea-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21",
+      "artifact": "kotlin-gradle-plugin-2.4.21-gradle96.jar",
+      "sha256": "d0a11912936c8801f1773a47e8fc51835a6ab568d73e4e1d188281955a7f575b",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin/2.4.21/kotlin-gradle-plugin-2.4.21-gradle96.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21",
+      "artifact": "kotlin-gradle-plugin-2.4.21.module",
+      "sha256": "a412aecabbb40c7ed2fad5311d0114d4ca0e3a9690658ad3c4caed619e400d94",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin/2.4.21/kotlin-gradle-plugin-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugins-bom:2.4.21",
+      "artifact": "kotlin-gradle-plugins-bom-2.4.21.module",
+      "sha256": "04f6a73a2c34217ac31599b8ed5ff24b85ebd410d32242eb27965c7b213f56c3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugins-bom/2.4.21/kotlin-gradle-plugins-bom-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugins-bom:2.4.21",
+      "artifact": "kotlin-gradle-plugins-bom-2.4.21.pom",
+      "sha256": "624c0c869b3fcf1665afec9c5c51a807be0a8c983931ebb188548ddcdb055780",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugins-bom/2.4.21/kotlin-gradle-plugins-bom-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-klib-commonizer-api:2.4.21",
+      "artifact": "kotlin-klib-commonizer-api-2.4.21.jar",
+      "sha256": "62ebe32fcf69600125b28388f0a80781276784d90e14d333bbd5080b4807220c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-klib-commonizer-api/2.4.21/kotlin-klib-commonizer-api-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-klib-commonizer-api:2.4.21",
+      "artifact": "kotlin-klib-commonizer-api-2.4.21.pom",
+      "sha256": "186a53ce6f218e43472808dc32cab627e19c144df2517398794bdb53d2df14a0",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-klib-commonizer-api/2.4.21/kotlin-klib-commonizer-api-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-klib-commonizer-embeddable:2.4.21",
+      "artifact": "kotlin-klib-commonizer-embeddable-2.4.21.jar",
+      "sha256": "2f8df89c7567b6f732b83e7184af7bb9c039ecd6290c0805fe015d9743bb5cf7",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-klib-commonizer-embeddable/2.4.21/kotlin-klib-commonizer-embeddable-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-klib-commonizer-embeddable:2.4.21",
+      "artifact": "kotlin-klib-commonizer-embeddable-2.4.21.pom",
+      "sha256": "5f43d7cae54104cf0acc0e0f9dbce0f13f1df0c0138256b0f3299f5ff1e04a07",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-klib-commonizer-embeddable/2.4.21/kotlin-klib-commonizer-embeddable-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-native-utils:2.4.21",
+      "artifact": "kotlin-native-utils-2.4.21.jar",
+      "sha256": "e1858bf1fb5bbb1738c4fa0f9cfb502b911cabf313a5de4cae686d6c50d74814",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/2.4.21/kotlin-native-utils-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-native-utils:2.4.21",
+      "artifact": "kotlin-native-utils-2.4.21.pom",
+      "sha256": "9882156113d96f7911101a721cce2adefe2c8d9acc8844fb6397b8523538db37",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/2.4.21/kotlin-native-utils-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-reflect:2.2.10",
+      "artifact": "kotlin-reflect-2.2.10.jar",
+      "sha256": "c48db4f8cd1bfd67f72d59255065fb41bfda43ca2942dac4d9deb897aa126ba4",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/2.2.10/kotlin-reflect-2.2.10.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-reflect:2.2.10",
+      "artifact": "kotlin-reflect-2.2.10.pom",
+      "sha256": "ae46614906414404cefc41a467435205d6dee67a2390598328a639ad2bacbd11",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/2.2.10/kotlin-reflect-2.2.10.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-reflect:2.4.0",
+      "artifact": "kotlin-reflect-2.4.0.jar",
+      "sha256": "f0d8e8908624eb4478bb131e9f887366680d2e239741195e548fa5c906963b90",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-reflect:2.4.0",
+      "artifact": "kotlin-reflect-2.4.0.pom",
+      "sha256": "9e181ee4f21d49c5c8550c3cfca7199c17590a8df3d1ea293e396798e4f10842",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-script-runtime:2.4.0",
+      "artifact": "kotlin-script-runtime-2.4.0.jar",
+      "sha256": "196e8ecbf63daf477e34e67c2f871ee232ae7bf8b377432d876d1bbf9d273de3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/2.4.0/kotlin-script-runtime-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-script-runtime:2.4.0",
+      "artifact": "kotlin-script-runtime-2.4.0.pom",
+      "sha256": "ce705c50e7e0afb22298acff0a983cdb6ea0f7fe2d1b473cee42b38405bc357f",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/2.4.0/kotlin-script-runtime-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-script-runtime:2.4.21",
+      "artifact": "kotlin-script-runtime-2.4.21.jar",
+      "sha256": "a658cf5902a1525a06c264a5e42b437e97a6679ddeef8ca641246f270cf6a013",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/2.4.21/kotlin-script-runtime-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-script-runtime:2.4.21",
+      "artifact": "kotlin-script-runtime-2.4.21.pom",
+      "sha256": "425d1683a903d085a1718122918242ad6ad0246c79283786697395e4d3a8c801",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/2.4.21/kotlin-script-runtime-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-scripting-common:2.4.21",
+      "artifact": "kotlin-scripting-common-2.4.21.jar",
+      "sha256": "67817eeee13da1f827f7ab9b961e300c2a6c612c290dfebb12db2eafcf0813b3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/2.4.21/kotlin-scripting-common-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-scripting-common:2.4.21",
+      "artifact": "kotlin-scripting-common-2.4.21.pom",
+      "sha256": "5bf1576f1519ef4ee07b35470bf79b921d3b0212b52bce2e2333e88ec54be257",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/2.4.21/kotlin-scripting-common-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable:2.4.21",
+      "artifact": "kotlin-scripting-compiler-embeddable-2.4.21.jar",
+      "sha256": "a9a2f4aab2d01ebec3a8ba91c4cc07a4589205867378e98854f2a3d0ecf0f31a",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-embeddable/2.4.21/kotlin-scripting-compiler-embeddable-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable:2.4.21",
+      "artifact": "kotlin-scripting-compiler-embeddable-2.4.21.pom",
+      "sha256": "cf0fd334e23f41d1a58d1c784b61e8abb3c8ff41f348c631967f98c8d6b039d4",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-embeddable/2.4.21/kotlin-scripting-compiler-embeddable-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-scripting-compiler-impl-embeddable:2.4.21",
+      "artifact": "kotlin-scripting-compiler-impl-embeddable-2.4.21.jar",
+      "sha256": "5794e84bb83b855540c1105997a5963745d7c15d12654bb07304bb115564a7cb",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-impl-embeddable/2.4.21/kotlin-scripting-compiler-impl-embeddable-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-scripting-compiler-impl-embeddable:2.4.21",
+      "artifact": "kotlin-scripting-compiler-impl-embeddable-2.4.21.pom",
+      "sha256": "58f11ca7ed212eb26bf84416ee39a7714618f04a5dd119c09d3708cbbc3cf771",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-impl-embeddable/2.4.21/kotlin-scripting-compiler-impl-embeddable-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-scripting-jvm:2.4.21",
+      "artifact": "kotlin-scripting-jvm-2.4.21.jar",
+      "sha256": "f00bc053865d7c2864e26087ce50b60ee8bdd30f9a252890d21a34e35d398f17",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/2.4.21/kotlin-scripting-jvm-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-scripting-jvm:2.4.21",
+      "artifact": "kotlin-scripting-jvm-2.4.21.pom",
+      "sha256": "f9de68cf49f356252fe4af9185f1dd3a2a5cf6ca236da03452a83513e223dbfc",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/2.4.21/kotlin-scripting-jvm-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:2.4.21",
+      "artifact": "kotlin-serialization-compiler-plugin-embeddable-2.4.21.jar",
+      "sha256": "63b381018a7d45221795d18301150fb80a1d00f30aae7be0550ab86f9ddd0ce8",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-serialization-compiler-plugin-embeddable/2.4.21/kotlin-serialization-compiler-plugin-embeddable-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:2.4.21",
+      "artifact": "kotlin-serialization-compiler-plugin-embeddable-2.4.21.pom",
+      "sha256": "5312290bafa68648ab5de4487932852be2a212a762ed3b103848ef2fab1cec47",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-serialization-compiler-plugin-embeddable/2.4.21/kotlin-serialization-compiler-plugin-embeddable-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-serialization:2.4.21",
+      "artifact": "kotlin-serialization-2.4.21-gradle96.jar",
+      "sha256": "f5b6f5fdf64ec7ae5716816e9e77baa9eda6ae76291ca17b38fe4241e99aad3c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-serialization/2.4.21/kotlin-serialization-2.4.21-gradle96.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-serialization:2.4.21",
+      "artifact": "kotlin-serialization-2.4.21.module",
+      "sha256": "d2360f353ab9ac4dc84bfbc8c9a1d39ed69ba97eb57c68625213e867b6654abc",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-serialization/2.4.21/kotlin-serialization-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-common:2.2.0",
+      "artifact": "kotlin-stdlib-common-2.2.0.module",
+      "sha256": "58fc0d664fc3a67e7e6be9fdbeaedbd212dfa3e527f744f861e792cda72c0e47",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-common/2.2.0/kotlin-stdlib-common-2.2.0.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-common:2.4.21",
+      "artifact": "kotlin-stdlib-common-2.4.21.module",
+      "sha256": "aeae4f24688e1dd7ebee648ab2b12be685cbe33e9c72bc1439730a794d6e2d5b",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-common/2.4.21/kotlin-stdlib-common-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.10",
+      "artifact": "kotlin-stdlib-jdk7-2.2.10.jar",
+      "sha256": "cf95eccc6cc784dff479dee0b8834f3584b93292cc5d91972e82f5d7b9e13e3b",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/2.2.10/kotlin-stdlib-jdk7-2.2.10.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.10",
+      "artifact": "kotlin-stdlib-jdk7-2.2.10.pom",
+      "sha256": "be494907e0e19c78bb821154afa1776d5ad7a058b4ab30090f74354b0e1338de",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/2.2.10/kotlin-stdlib-jdk7-2.2.10.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.10",
+      "artifact": "kotlin-stdlib-jdk8-2.2.10.jar",
+      "sha256": "8974bfdd08b1d81843fe8d11f0729ab6e5b3c1f88d671ebe0c006358129ce149",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/2.2.10/kotlin-stdlib-jdk8-2.2.10.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.10",
+      "artifact": "kotlin-stdlib-jdk8-2.2.10.pom",
+      "sha256": "2569cf5a980724f140157501db36dffab919cd0d443d2e14b5a35a2f96f84fac",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/2.2.10/kotlin-stdlib-jdk8-2.2.10.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.1.0",
+      "artifact": "kotlin-stdlib-2.1.0.module",
+      "sha256": "dcfbc8e8bf32cd67a7efadd91d31152bce9870911d6ec50878f4fdb6e03e70e2",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.1.0/kotlin-stdlib-2.1.0.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.2.0",
+      "artifact": "kotlin-stdlib-2.2.0.jar",
+      "sha256": "65d12d85a3b865c160db9147851712a64b10dadd68b22eea22a95bf8a8670dca",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.2.0/kotlin-stdlib-2.2.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.2.0",
+      "artifact": "kotlin-stdlib-2.2.0.module",
+      "sha256": "a5b98fdcd9db017d542e197225dcee18d658a56de1db2cc41e13196d6b1769a4",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.2.0/kotlin-stdlib-2.2.0.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.2.21",
+      "artifact": "kotlin-stdlib-2.2.21.jar",
+      "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.2.21/kotlin-stdlib-2.2.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.2.21",
+      "artifact": "kotlin-stdlib-2.2.21.module",
+      "sha256": "bfbc657ddd3a8e37e4c8ad417968d5eb0b0b171c9fce48f962c2ad32ee434c21",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.2.21/kotlin-stdlib-2.2.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.0",
+      "artifact": "kotlin-stdlib-2.4.0.jar",
+      "sha256": "ccb14ff83fabcb11458b798dbc9824748ccdffeec79c9aba789e6ed1cda86b1c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.0",
+      "artifact": "kotlin-stdlib-2.4.0.module",
+      "sha256": "c24a47dcbd9295d776f443be41d77ac245309601ed053711dee2b0254be02db6",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+      "artifact": "kotlin-stdlib-2.4.21-all.jar",
+      "sha256": "74d9d7cf112bbf3d14612bb9fb867456a0ae36398d330df8178f0de42a61f476",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21-all.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+      "artifact": "kotlin-stdlib-2.4.21.jar",
+      "sha256": "bd8250210584cb659847dce9cda660f8e9906e5def7fbebcea93dc6dcb6a88a3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+      "artifact": "kotlin-stdlib-2.4.21.module",
+      "sha256": "03b0df67c0cd74a948a45c5b03c4bbcfb31ab9b9879fb380adf7c187b6594b7f",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-test-junit:2.4.21",
+      "artifact": "kotlin-test-junit-2.4.21.jar",
+      "sha256": "ed178dcb76ea94acc8e9317178213a65092f4ecd0133ba748b23c40a11865ebd",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test-junit/2.4.21/kotlin-test-junit-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-test-junit:2.4.21",
+      "artifact": "kotlin-test-junit-2.4.21.module",
+      "sha256": "b4ad48b5ab0e8f34371fcb3b28f0898213ead94fc42554d29b8ceb3b668f1569",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test-junit/2.4.21/kotlin-test-junit-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-test:2.4.21",
+      "artifact": "kotlin-test-2.4.21-all.jar",
+      "sha256": "51d2160793bdd145390829a5ba0dceb45f5e02924be4aac671c3912e4afc8c92",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test/2.4.21/kotlin-test-2.4.21-all.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-test:2.4.21",
+      "artifact": "kotlin-test-2.4.21.jar",
+      "sha256": "4b43f419bf41a9ede07094652db97b5034984a8cdc642f3c5b2bfd4767f6e365",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test/2.4.21/kotlin-test-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-test:2.4.21",
+      "artifact": "kotlin-test-2.4.21.module",
+      "sha256": "9073c451baeadb4e4ee813788a69f37f61778278d9b4583d4292eedeaf3d6ba0",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test/2.4.21/kotlin-test-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-tooling-core:2.4.21",
+      "artifact": "kotlin-tooling-core-2.4.21.jar",
+      "sha256": "5fc5db083803232857408ed5c25bcc307c703b04bdef6cb2c34ebf4db611a622",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-tooling-core/2.4.21/kotlin-tooling-core-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-tooling-core:2.4.21",
+      "artifact": "kotlin-tooling-core-2.4.21.pom",
+      "sha256": "b26b1cb6480001519d4650586cdc6054ea2d2d486ff332431c543eb8f76f41ce",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-tooling-core/2.4.21/kotlin-tooling-core-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-io:2.4.21",
+      "artifact": "kotlin-util-io-2.4.21.jar",
+      "sha256": "5821175f24578ca8f1ef405bc982b3668f3f40f1a5dd28bb3283dd5215a922d1",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/2.4.21/kotlin-util-io-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-io:2.4.21",
+      "artifact": "kotlin-util-io-2.4.21.pom",
+      "sha256": "a16f898aa8c686dc0b83d556ac4adecfcadbb6662ca547fca7802bf536d6d3d3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/2.4.21/kotlin-util-io-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-klib-metadata:2.4.21",
+      "artifact": "kotlin-util-klib-metadata-2.4.21.jar",
+      "sha256": "a47f883b82fc3b99fe3d666498b22312628afb5cc1b9b26e8188175be2da6060",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib-metadata/2.4.21/kotlin-util-klib-metadata-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-klib-metadata:2.4.21",
+      "artifact": "kotlin-util-klib-metadata-2.4.21.pom",
+      "sha256": "a0f7f315c9f60b53458cc1e034a7c55e17619ce7db51db43efb7d3cdacbb5c6c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib-metadata/2.4.21/kotlin-util-klib-metadata-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-klib:2.4.21",
+      "artifact": "kotlin-util-klib-2.4.21.jar",
+      "sha256": "f01f79d54968941dfa83a525ae173be93460bb85b0bf2cc9ff06f6eb0864691e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib/2.4.21/kotlin-util-klib-2.4.21.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-klib:2.4.21",
+      "artifact": "kotlin-util-klib-2.4.21.pom",
+      "sha256": "97b59495de92c789c6963e4e70d5545ceccd2f0fab67d7ce72f7c5a87b948030",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib/2.4.21/kotlin-util-klib-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.9.0",
+      "artifact": "kotlinx-coroutines-bom-1.9.0.pom",
+      "sha256": "bea5511e9001f2c593ab5080df131b219ab5e2085cc5979ce583eacd4946fd78",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-bom/1.9.0/kotlinx-coroutines-bom-1.9.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.7.1",
+      "artifact": "kotlinx-coroutines-core-jvm-1.7.1.module",
+      "sha256": "db1fe0110fa82b565d332d39d3f3e62c1dc7eb6238333e3b15e4377fa56e39cb",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.7.1/kotlinx-coroutines-core-jvm-1.7.1.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0",
+      "artifact": "kotlinx-coroutines-core-jvm-1.9.0.jar",
+      "sha256": "ad89c2892235e670f222d819cb3d81188143cb19a05b59df9889ae4269f5c70a",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.9.0/kotlinx-coroutines-core-jvm-1.9.0.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0",
+      "artifact": "kotlinx-coroutines-core-jvm-1.9.0.module",
+      "sha256": "b321a899e40d3ce345707aa2cfda9983ad0dcc69fea74a9b8bf906a16c1cf8a9",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.9.0/kotlinx-coroutines-core-jvm-1.9.0.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0",
+      "artifact": "kotlinx-coroutines-core-1.9.0.module",
+      "sha256": "ad534034a953b4e12cbeeb874c66adf8b1ca14df15fe0d2e6547aa34e86dfeca",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.module"
+    },
+    {
+      "coordinate": "org.junit:junit-bom:5.11.0-M2",
+      "artifact": "junit-bom-5.11.0-M2.pom",
+      "sha256": "4a3ffc4a4edcfec2cb5d619922706a9407161798571939f854dfda73e4e17cc8",
+      "source": "https://repo.maven.apache.org/maven2/org/junit/junit-bom/5.11.0-M2/junit-bom-5.11.0-M2.pom"
+    },
+    {
+      "coordinate": "org.junit:junit-bom:5.13.1",
+      "artifact": "junit-bom-5.13.1.module",
+      "sha256": "33c07ab9724790a6e5859ba07d69117ac530439724545a81c4179e3272c75de8",
+      "source": "https://repo.maven.apache.org/maven2/org/junit/junit-bom/5.13.1/junit-bom-5.13.1.module"
+    },
+    {
+      "coordinate": "org.junit:junit-bom:5.13.1",
+      "artifact": "junit-bom-5.13.1.pom",
+      "sha256": "fa68451ea830572ed43ffe51d75b6a05f7a5e665a602a51f49d6be02063a65f3",
+      "source": "https://repo.maven.apache.org/maven2/org/junit/junit-bom/5.13.1/junit-bom-5.13.1.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-analysis:9.9",
+      "artifact": "asm-analysis-9.9.jar",
+      "sha256": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-analysis/9.9/asm-analysis-9.9.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-analysis:9.9",
+      "artifact": "asm-analysis-9.9.pom",
+      "sha256": "909f24a710c728e0e5d643ec0b4834a63cb3d30022100d583d5dd6a26e35cda6",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-analysis/9.9/asm-analysis-9.9.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-commons:9.9",
+      "artifact": "asm-commons-9.9.jar",
+      "sha256": "db2f6f26150bbe7c126606b4a1151836bcc22a1e05a423b3585698bece995ff8",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.9/asm-commons-9.9.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-commons:9.9",
+      "artifact": "asm-commons-9.9.pom",
+      "sha256": "18a5d3ef1377e7544b3ca3210f261396b987f6010ef591d3872adae63119ee43",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.9/asm-commons-9.9.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-tree:9.9",
+      "artifact": "asm-tree-9.9.jar",
+      "sha256": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.9/asm-tree-9.9.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-tree:9.9",
+      "artifact": "asm-tree-9.9.pom",
+      "sha256": "d01788ed8e6e8e24acaf6cb4a7bdcc2733416252faa00232959e3e2e9df1bf44",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.9/asm-tree-9.9.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-tree:9.9.1",
+      "artifact": "asm-tree-9.9.1.jar",
+      "sha256": "0f3555096b720b820bbacab0b515589bee0200bee099bda14c561738ae837ba1",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.9.1/asm-tree-9.9.1.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-tree:9.9.1",
+      "artifact": "asm-tree-9.9.1.pom",
+      "sha256": "67fee446ba512871300738f0f956f61a500a852f6861ff70f0a3c7bf0c0fa405",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.9.1/asm-tree-9.9.1.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-util:9.9",
+      "artifact": "asm-util-9.9.jar",
+      "sha256": "3842e13cfe324ee9ab7cdc4914be9943541ead397c17e26daf0b8a755bede717",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.9/asm-util-9.9.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-util:9.9",
+      "artifact": "asm-util-9.9.pom",
+      "sha256": "a98593fda1c53a9e70d7660f416720e308d24db8e1c456fa17e76ba78d272b6b",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.9/asm-util-9.9.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm:9.9",
+      "artifact": "asm-9.9.jar",
+      "sha256": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.9/asm-9.9.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm:9.9",
+      "artifact": "asm-9.9.pom",
+      "sha256": "cf861ef1e745d57154af79ae14df340ed5341e5dcd0157cefcd2eb7f1aa05c57",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.9/asm-9.9.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm:9.9.1",
+      "artifact": "asm-9.9.1.jar",
+      "sha256": "6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.9.1/asm-9.9.1.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm:9.9.1",
+      "artifact": "asm-9.9.1.pom",
+      "sha256": "aca68dee9ba2f6cd90ffde728efdc7e3ebfcf59f3f41fbfe248d2d01d5b866af",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.9.1/asm-9.9.1.pom"
+    }
+  ]
+}

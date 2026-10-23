@@ -1,0 +1,85 @@
+package kim.jujin.rovessh
+
+import android.content.pm.ApplicationInfo
+import android.widget.FrameLayout
+import androidx.test.core.app.ActivityScenario
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import kim.jujin.rovessh.core.*
+import kim.jujin.rovessh.storage.KeyGeneration
+import kim.jujin.rovessh.ui.AndroidTerminal
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+@RunWith(AndroidJUnit4::class)
+class AndroidPlatformTest {
+    private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    @Test fun keystoreRoundTripTamperingAndBackupExclusion() {
+        val context = instrumentation.targetContext
+        val store = AndroidCredentialStore(context)
+        val reference = UUID.randomUUID().toString()
+        val generated = KeyGeneration.ed25519()
+        try {
+            store.write(reference, generated.credential)
+            assertTrue("Protected credential round trip", generated.credential.privateKey == store.read(reference)?.privateKey)
+            val file = File(context.noBackupFilesDir, "credentials/$reference.sealed")
+            assertFalse(file.readBytes().toString(Charsets.UTF_8).contains("PRIVATE KEY"))
+            val bytes = file.readBytes(); bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte(); file.writeBytes(bytes)
+            assertThrows(Exception::class.java) { store.read(reference) }
+            assertEquals(0, context.applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP)
+        } finally { store.delete(reference) }
+    }
+
+    @Test fun bundledRendererImeBridgeResizeAndNavigationIsolation() = runBlocking<Unit> {
+        val input = Channel<ByteArray>(32)
+        val sizes = Channel<Size>(32)
+        lateinit var terminal: AndroidTerminal
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                terminal = AndroidTerminal(activity, Preferences(), { input.trySend(it) }, { sizes.trySend(it) })
+                activity.setContentView(FrameLayout(activity).apply { addView(terminal.view, FrameLayout.LayoutParams(-1, -1)) })
+            }
+            try {
+                withTimeout(20_000) { terminal.reset("\u001b[31m한글 日本語\u001b[0m\r\n".toByteArray()) }
+                withTimeout(5000) { assertTrue(sizes.receive().columns >= 2) }
+                assertTrue(js(terminal, "document.querySelector('.xterm-helper-textarea') !== null").contains("true"))
+                for (text in listOf("한글", "日本語")) {
+                    js(terminal, """(() => {
+                        const t=document.querySelector('.xterm-helper-textarea'); t.focus(); const prefix=t.value;
+                        t.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:''}));
+                        t.value=prefix+'$text';
+                        t.dispatchEvent(new CompositionEvent('compositionupdate',{bubbles:true,data:'$text'}));
+                        t.dispatchEvent(new InputEvent('input',{bubbles:true,data:'$text',isComposing:true,inputType:'insertCompositionText'}));
+                        t.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'$text'}));
+                        return true;
+                    })()""")
+                    val committed = withTimeout(5000) { input.receive().toString(Charsets.UTF_8) }
+                    assertEquals(text, committed)
+                    delay(150)
+                    assertTrue("IME commit must not be duplicated", input.tryReceive().isFailure)
+                }
+                js(terminal, "window.dgl.postMessage(JSON.stringify({type:'resize',columns:-100,rows:999999})); window.dgl.postMessage('{broken'); true")
+                js(terminal, "window.location.href='https://example.invalid/'; true")
+                delay(100)
+                assertTrue(js(terminal, "location.href").contains("appassets.androidplatform.net"))
+                withTimeout(5000) { terminal.write("\u001b[?1049h\u001b[2Jalternate\u001b[?1049l".toByteArray()) }
+                scenario.onActivity { terminal.view.layoutParams = terminal.view.layoutParams.apply { height = 500 } }
+                withTimeout(5000) { terminal.write("resize test".toByteArray()) }
+            } finally { instrumentation.runOnMainSync { terminal.close() } }
+        }
+    }
+
+    private fun js(terminal: AndroidTerminal, script: String): String {
+        val latch = CountDownLatch(1); var result = ""
+        instrumentation.runOnMainSync { terminal.view.evaluateJavascript(script) { result = it; latch.countDown() } }
+        check(latch.await(5, TimeUnit.SECONDS))
+        return result
+    }
+}

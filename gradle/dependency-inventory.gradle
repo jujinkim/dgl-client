@@ -1,0 +1,100 @@
+import groovy.json.JsonOutput
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
+import org.gradle.api.artifacts.result.UnresolvedDependencyResult
+import java.security.MessageDigest
+
+// Use the selected graph, never verification-metadata.xml (which contains historical versions).
+def digest = { File f -> MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+gradle.projectsEvaluated {
+    def shared = project(':app')
+    def targets = []
+    def aapt = shared.configurations.create('inventoryAapt2') { canBeConsumed = false }
+    ['osx', 'linux', 'windows'].each { os ->
+        shared.dependencies.add(aapt.name, "com.android.tools.build:aapt2:9.3.3-15703166:${os}")
+    }
+    targets.add([project: shared, config: aapt, scope: 'build', platform: 'build-hosts'])
+    ['windows-x64', 'linux-x64', 'macos-arm64'].each { os ->
+        def source = shared.configurations.getByName('desktopRuntimeClasspath')
+        def c = shared.configurations.create('inventoryDesktop' + os.replace('-', '_')) {
+            canBeConsumed = false
+            shouldResolveConsistentlyWith(source)
+            source.attributes.keySet().each { key -> attributes.attribute(key, source.attributes.getAttribute(key)) }
+            source.allDependencies.each { dep ->
+                if (!(dep.group == 'org.jetbrains.compose.desktop' && dep.name.startsWith('desktop-jvm-'))) {
+                    dependencies.add(dep.copy())
+                }
+            }
+        }
+        shared.dependencies.add(c.name, "org.jetbrains.compose.desktop:desktop-jvm-${os}:1.9.3")
+        targets.add([project: shared, config: c, scope: 'runtime', platform: os])
+    }
+    allprojects.each { p ->
+        p.configurations.findAll { it.canBeResolved &&
+            (it.name.toLowerCase().contains('classpath') || it.name in ['androidLintTool', 'coreLibraryDesugaring']) &&
+            !it.name.toLowerCase().contains('metadata') && !it.name.startsWith('inventory')
+        }.each { c ->
+            def lower = c.name.toLowerCase()
+            def scope = lower.contains('test') ? 'test' :
+                ((c.name == 'desktopRuntimeClasspath' || c.name == 'androidRuntimeClasspath' ||
+                    (p.path == ':androidApp' && c.name in ['debugRuntimeClasspath', 'releaseRuntimeClasspath'])) ? 'runtime' : 'build')
+            def platform = lower.contains('desktop') ? 'host-desktop' : (p.path == ':androidApp' || lower.contains('android') ? 'android' : 'build-host')
+            targets.add([project: p, config: c, scope: scope, platform: platform])
+        }
+        targets.add([project: p, config: p.buildscript.configurations.getByName('classpath'), scope: 'build', platform: 'build-host'])
+    }
+    def writers = allprojects.collect { owner ->
+      owner.tasks.register('writeDependencyInventoryPart') {
+        notCompatibleWithConfigurationCache('Inspects selected project and plugin dependency graphs')
+        doLast {
+            def packages = [:]
+            def graphs = []
+            targets.findAll { it.project == owner }.each { target ->
+                def c = target.config
+                def usage = [module: target.project.path, configuration: c.name, scope: target.scope, platform: target.platform]
+                def result = c.incoming.resolutionResult
+                def edges = []
+                result.allDependencies.each { dep ->
+                    if (dep instanceof UnresolvedDependencyResult) throw new GradleException("Incomplete inventory: ${usage}: ${dep.attempted}", dep.failure)
+                    if (dep instanceof ResolvedDependencyResult) edges.add([from: dep.from.id.displayName, requested: dep.requested.displayName, to: dep.selected.id.displayName])
+                }
+                def artifacts = c.incoming.artifactView { componentFilter { it instanceof ModuleComponentIdentifier } }.artifacts.artifacts
+                result.allComponents.each { component ->
+                    if (component.id instanceof ModuleComponentIdentifier) {
+                        def id = component.id
+                        def key = "${id.group}:${id.module}:${id.version}".toString()
+                        if (!packages.containsKey(key)) packages[key] = [ecosystem: 'Maven', name: "${id.group}:${id.module}".toString(), version: id.version, usages: [], artifacts: []]
+                        def selectedArtifacts = artifacts.findAll { it.id.componentIdentifier == id }.collect { artifact ->
+                            [name: artifact.file.name, sha256: digest(artifact.file)]
+                        }
+                        packages[key].usages.add(usage + [selected: id.displayName, reasons: component.selectionReason.descriptions.collect { it.description }, artifacts: selectedArtifacts])
+                        selectedArtifacts.each { item ->
+                            if (!packages[key].artifacts.contains(item)) packages[key].artifacts.add(item)
+                        }
+                    }
+                }
+                graphs.add(usage + [root: result.rootComponent.get().id.displayName, edges: edges])
+            }
+            def output = owner.layout.buildDirectory.file('dependency-inventory.json').get().asFile
+            output.parentFile.mkdirs()
+            output.setText(JsonOutput.prettyPrint(JsonOutput.toJson([schema: 1, complete: true, graphs: graphs, packages: packages.values().sort { a, b -> (a.name + a.version) <=> (b.name + b.version) }])) + '\n', 'UTF-8')
+            println "Selected dependency inventory: ${packages.size()} package versions, ${graphs.size()} graphs"
+        }
+    }
+    }
+    tasks.register('writeDependencyInventory') {
+        dependsOn(writers)
+        doLast {
+            def parts = allprojects.collect { new groovy.json.JsonSlurper().parse(it.layout.buildDirectory.file('dependency-inventory.json').get().asFile, 'UTF-8') }
+            def inputs = fileTree(rootDir) {
+                include '*.gradle.kts', 'app/*.gradle.kts', 'androidApp/*.gradle.kts', '**/gradle.lockfile', '*gradle.lockfile', 'gradle.properties', 'gradle/dependency-inventory.gradle', 'web/package-lock.json'
+                exclude '**/build/**', '.tools/**', '.gradle/**', 'licenses/**'
+            }.files.sort().collectEntries { [(rootDir.toPath().relativize(it.toPath()).toString().replace('\\', '/')): digest(it)] }
+            def output = file('artifacts/dependency-inventory.json')
+            output.parentFile.mkdirs()
+            output.setText(JsonOutput.prettyPrint(JsonOutput.toJson([schema: 1, complete: true, inputs: inputs,
+                graphs: parts.collectMany { it.graphs }, packages: parts.collectMany { it.packages }])) + '\n', 'UTF-8')
+        }
+    }
+    shared.tasks.register('writeDependencyInventory') { dependsOn(rootProject.tasks.named('writeDependencyInventory')) }
+}

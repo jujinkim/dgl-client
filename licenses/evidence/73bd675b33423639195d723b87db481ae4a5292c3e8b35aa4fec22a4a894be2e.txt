@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- This module was also published with a richer model, Gradle metadata,  -->
+  <!-- which should be used instead. Do not delete the following line which  -->
+  <!-- is to indicate to Gradle or any Gradle module metadata file consumer  -->
+  <!-- that they should prefer consuming it instead. -->
+  <!-- do_not_remove: published-with-gradle-metadata -->
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.hierynomus</groupId>
+  <artifactId>sshj</artifactId>
+  <version>0.40.0</version>
+  <name>sshj</name>
+  <description>SSHv2 library for Java</description>
+  <url>https://github.com/hierynomus/sshj</url>
+  <inceptionYear>2009</inceptionYear>
+  <licenses>
+    <license>
+      <name>The Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>hierynomus</id>
+      <name>Jeroen van Erp</name>
+      <email>jeroen@hierynomus.com</email>
+    </developer>
+    <developer>
+      <id>shikhar</id>
+      <name>Shikhar Bhushan</name>
+      <email>shikhar@schmizz.net</email>
+      <url>http://schmizz.net</url>
+      <roles>
+        <role>Previous Lead developer</role>
+      </roles>
+    </developer>
+    <developer>
+      <id>iterate</id>
+      <name>David Kocher</name>
+      <email>dkocher@iterate.ch</email>
+      <organization>iterate GmbH</organization>
+      <organizationUrl>https://iterate.ch</organizationUrl>
+      <roles>
+        <role>Developer</role>
+      </roles>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git@github.com:hierynomus/sshj.git</connection>
+    <developerConnection>scm:git@github.com:hierynomus/sshj.git</developerConnection>
+    <url>https://github.com/hierynomus/sshj</url>
+  </scm>
+  <dependencies>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>2.0.17</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>1.80</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk18on</artifactId>
+      <version>1.80</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.hierynomus</groupId>
+      <artifactId>asn-one</artifactId>
+      <version>0.6.0</version>
+      <scope>runtime</scope>
+    </dependency>
+  </dependencies>
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/hierynomus/sshj/issues</url>
+  </issueManagement>
+</project>

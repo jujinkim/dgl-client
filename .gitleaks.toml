@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+# Test keys are generated outside the source tree. These two upstream class exports
+# are false positives from the generic key-name heuristic, not credentials.
+[[allowlists]]
+description = "xterm 6.0.0 exported class identifiers; assets verified against npm integrity"
+condition = "AND"
+paths = ['''(^|/)app/src/androidMain/assets/terminal/xterm\.js$''']
+regexTarget = "match"
+regexes = ['''t\.(FourKeyMap|SequencerByKey)=''']

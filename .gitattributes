@@ -1,0 +1,8 @@
+* text=auto eol=lf
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.jar binary
+# These are hashed upstream/original bytes, including mixed/CRLF line endings.
+KICKOFF_PROMPT.md -text
+licenses/** -text

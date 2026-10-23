@@ -1,0 +1,35 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+.env
+.env.*
+!.env.example
+.local/
+.tools/
+artifacts/
+node_modules/
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*.hprof
+*.log
+*.dump
+captures/
+credentials/
+profiles.json
+known_hosts
+
+# Python verification tools
+__pycache__/
+*.py[cod]
+# Standalone third-party rebuild caches
+**/.gradle/
+**/.kotlin/

@@ -1,0 +1,38 @@
+kotlin.code.style=official
+deploy.version=0.0.0
+
+
+dependencies.skia=m132-a00c390e98-1
+
+# you can override general skia dependencies by passing platform-specific property: 
+# dependencies.skia.android-arm64
+# dependencies.skia.android-x64
+# dependencies.skia.ios-arm64
+# dependencies.skia.ios-x64
+# dependencies.skia.iosSim-arm64
+# dependencies.skia.iosSim-x64
+# dependencies.skia.linux-arm64
+# dependencies.skia.linux-x64
+# dependencies.skia.macos-arm64
+# dependencies.skia.macos-x64
+# dependencies.skia.tvos-arm64
+# dependencies.skia.tvos-x64
+# dependencies.skia.tvosSim-arm64
+# dependencies.skia.tvosSim-x64
+# dependencies.skia.wasm-wasm
+# dependencies.skia.windows-arm64
+# dependencies.skia.windows-x64
+
+org.gradle.jvmargs=-Xmx3G -XX:MaxMetaspaceSize=512m
+
+skiko.awt.enabled=true
+skiko.js.enabled=false
+skiko.wasm.enabled=false
+skiko.android.enabled=false
+skiko.native.enabled=false
+skiko.native.linux.enabled=false
+skiko.native.mac.enabled=false
+skiko.native.ios.enabled=false
+skiko.native.ios.arm64.enabled=false
+skiko.native.ios.simulatorArm64.enabled=false
+skiko.native.ios.x64.enabled=false

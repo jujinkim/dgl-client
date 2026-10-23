@@ -1,0 +1,29 @@
+# Third-party notices
+
+This project uses unmodified third-party libraries. Version and checksum records are in the selected Gradle dependency inventory, dependency lock files and `web/package-lock.json`. `licenses/dependencies.json` maps each selected runtime package/version and artifact hash to its versioned POM (including parent POMs), license text, embedded notices and source URLs. `licenses/native-components.json` records native source revisions and notices.
+
+| Component | Version | License / source |
+|---|---|---|
+| Kotlin, Compose, AndroidX | pinned in Gradle | Apache-2.0; https://github.com/JetBrains/kotlin ; https://github.com/JetBrains/compose-multiplatform ; https://android.googlesource.com/platform/frameworks/support/ |
+| SSHJ | 0.40.0 | Apache-2.0; https://github.com/hierynomus/sshj |
+| Bouncy Castle | 1.86 | Bouncy Castle licence (MIT-style); https://www.bouncycastle.org/licence.html |
+| JediTerm | 3.59 | Artifact POM declares LGPL-3.0; https://github.com/JetBrains/jediterm |
+| xterm.js / addon-fit | 6.0.0 / 0.11.0 | MIT; bundled LICENSE-xterm and LICENSE-fit in Android assets; https://github.com/xtermjs/xterm.js |
+| JNA | 5.18.1 | LGPL-2.1-or-later or Apache-2.0; https://github.com/java-native-access/jna |
+| SLF4J | 2.0.17 | MIT; https://www.slf4j.org/license.html |
+| Apache MINA SSHD | 2.20.0 (tests only) | Apache-2.0; https://github.com/apache/mina-sshd |
+
+The current JediTerm upstream README offers Apache-2.0/LGPL-3.0 dual licensing, but the selected 3.59 artifact declares LGPL-3.0. Treat the selected artifact as LGPL-3.0 until its release licensing is independently confirmed. Its JVM libraries remain separate replaceable JARs in desktop distributions; they are not shaded or modified. A recipient may replace them and rebuild this project with `:app:packageMsi` / `:app:packageExe`. No restriction on reverse engineering for debugging modifications to those libraries is imposed by this project.
+
+Corresponding library sources:
+
+- https://packages.jetbrains.team/maven/p/ij/intellij-dependencies/org/jetbrains/jediterm/jediterm-core/3.59/jediterm-core-3.59-sources.jar
+- https://packages.jetbrains.team/maven/p/ij/intellij-dependencies/org/jetbrains/jediterm/jediterm-ui/3.59/jediterm-ui-3.59-sources.jar
+
+`prepareThirdPartyNotices` copies these notices, reviewed `licenses/` files, both verified 3.59 source JARs, and the packaging JDK's complete `legal/` tree and `release` identity into desktop distribution resources. `SHA256SUMS` enumerates every delivered file. Generated build/cache files are excluded. Android assets include the notices and license evidence; xterm notices are bundled separately. The Android app does not distribute JediTerm or a JVM.
+
+The tested replacement build recipe is `licenses/jediterm-rebuild/README.md`. It builds both published 3.59 source JARs using JDK 17, Kotlin 2.4.21 and Gradle 9.7.0, preserving upstream Kotlin module names. It is not a byte-identical upstream build. The library JARs are replaceable; the original app does not shade or modify them.
+
+Skiko 0.9.22.2 uses Skia revision `a00c390e98`, package `m132-a00c390e98-1`. Versioned Skiko LICENSE/NOTICE, Skia LICENSE/DEPS, archive notices and linked native component notices are included. Portions of this software are copyright the FreeType Project (https://www.freetype.org). JNA 5.18.1 native dispatch and its embedded libffi license are also included. Native notices may conservatively cover additional components present in the upstream Skia archive.
+
+The JVM notice bundle identifies the actual packaging JDK; the local Homebrew JDK notice bundle is development evidence, not proof of a packaged Windows Temurin runtime. Public Windows distribution must retain and verify the Temurin runtime's own legal files and exact source/release identity. Windows packaging/install/replacement verification and signed public release remain outstanding. No repository-wide license for new project code is inferred on the owner's behalf.
