@@ -3,7 +3,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from resource_results import evaluate, parse_meminfo, renderer_pids, PROFILES, MIB
+from resource_results import evaluate, parse_meminfo, parse_macos_threads, renderer_pids, PROFILES, MIB
 
 
 def evidence(profile='soak', android=False):
@@ -29,6 +29,12 @@ def evidence(profile='soak', android=False):
 
 
 class ResourceResultsTest(unittest.TestCase):
+    def test_macos_native_thread_rows_exclude_header(self):
+        output = 'USER PID TT %CPU STAT COMMAND\nuser 123 ?? 0.0 S java\n     123    0.0 S\n     123    0.0 S\n'
+        self.assertEqual(parse_macos_threads(output, 123), 3)
+        with self.assertRaisesRegex(ValueError, 'Missing'):
+            parse_macos_threads('USER PID TT %CPU STAT COMMAND', 123)
+
     def test_normal_soak(self):
         rows, final = evidence()
         result = evaluate(rows, final, 'soak', 'desktop', True)

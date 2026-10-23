@@ -11,6 +11,15 @@ CRITERIA = {'memoryGrowthBytes': 32 * MIB, 'memoryGrowthFraction': .10,
             'sampleSeconds': 2, 'androidDetailSeconds': 10}
 
 
+def parse_macos_threads(output, pid):
+    # macOS ps -M prints the user only on the first thread's row and ignores
+    # an empty custom header. Count PID rows, never the header as a thread.
+    count = sum(str(pid) in line.split()[:2] for line in output.splitlines())
+    if count == 0:
+        raise ValueError('Missing OS thread count')
+    return count
+
+
 def parse_meminfo(output):
     """Android meminfo App Summary; missing is None, never zero."""
     def number(pattern):
@@ -115,7 +124,7 @@ def evaluate(samples, final, profile, platform, completed):
             identities = {tuple(s.get('rendererPids', [])) for s in details if s['phase'] == phase}
             require(len(identities) == 1, phase + '_renderer_pid_changed')
     maxima = {key: max((s[key] for s in samples if isinstance(s.get(key), (int, float))), default=None)
-              for key in required + ('pssBytes', 'rendererRssBytes', 'rendererPssBytes', 'osPeakRssBytes')}
+              for key in required + ('javaThreads', 'pssBytes', 'rendererRssBytes', 'rendererPssBytes', 'osPeakRssBytes')}
     return dict(status='failed' if errors else ('passed' if profile == 'soak' else 'smoke_passed'),
                 memoryAcceptanceEvaluated=profile == 'soak',
                 qualifiesAsSoak=profile == 'soak' and not errors, errors=errors, criteria=CRITERIA,

@@ -20,7 +20,7 @@ import sys
 import time
 
 from evidence import ROOT, context, write_report
-from resource_results import evaluate, parse_meminfo, renderer_pids, PROFILES
+from resource_results import evaluate, parse_meminfo, parse_macos_threads, renderer_pids, PROFILES
 
 PACKAGE = 'kim.jujin.rovessh'
 ENVIRONMENTS = ['desktop-3.3a', 'desktop-3.7c', 'android-34', 'android-35', 'android-36']
@@ -122,6 +122,8 @@ def sample_process(state, adb, port, detail):
             state.update(android_memory(adb, state))
     else:
         state['rssBytes'] = int(run(['ps', '-o', 'rss=', '-p', str(pid)])) * 1024
+        state['javaThreads'] = state['threads']
+        state['threads'] = parse_macos_threads(run(['ps', '-M', '-p', str(pid)]), pid)
         result = subprocess.run(['lsof', '-nP', '-a', '-p', str(pid), '-iTCP', '-sTCP:ESTABLISHED', '-Fn'], capture_output=True, text=True, timeout=10)
         if result.returncode not in (0, 1):
             raise RuntimeError('lsof failed')

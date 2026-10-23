@@ -234,6 +234,8 @@ AndroidTerminal/WebView/xterm을 실행하고 ActivityScenario로 화면을 재�
 앱 배포 코드·공개 API·저장 형식에는 측정용 API를 추가하지 않는다.
 
 앱 힙·GC·FD·스레드·scrollback·출력 버퍼 지표는 2초 간격으로 수집한다.
+스레드 판정은 macOS `ps -M` 및 Android `/proc/self/status`의 OS 스레드 수를
+사용한다. JVM의 Java 스레드 수는 별도 `javaThreads` 지표로 남긴다.
 Android 상세 메모리는 10초 간격이며, `dumpsys activity services`의 호스트 앱
 바인딩에서 렌더러 PID를 찾아 각 PID의 RSS/PSS를 별도로 합산한다. 패키지의
 `meminfo`만으로 렌더러 메모리를 대체하지 않는다.
