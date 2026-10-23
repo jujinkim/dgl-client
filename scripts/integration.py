@@ -69,7 +69,7 @@ ForceCommand /bin/sh {dispatcher}
 LogLevel ERROR
 ''', encoding="utf-8")
         sshd = shutil.which('sshd') or '/usr/sbin/sshd'
-        with (root / 'sshd.log').open('w+') as log:
+        with (root / 'sshd.log').open('w+', encoding='utf-8') as log:
             process = subprocess.Popen([sshd, '-D', '-e', '-f', str(config)], stdout=log, stderr=log)
             try:
                 for _ in range(100):

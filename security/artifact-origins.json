@@ -2179,6 +2179,12 @@
       "source": "https://repo.maven.apache.org/maven2/org/junit/junit-bom/5.13.1/junit-bom-5.13.1.pom"
     },
     {
+      "coordinate": "org.junit:junit-bom:5.9.2",
+      "artifact": "junit-bom-5.9.2.module",
+      "sha256": "ab137ba5a8e32c9b066bf9126a1c76dd5614b724ba5c0b02549772b5e9f4cf1f",
+      "source": "https://repo.maven.apache.org/maven2/org/junit/junit-bom/5.9.2/junit-bom-5.9.2.module"
+    },
+    {
       "coordinate": "org.ow2.asm:asm-analysis:9.9",
       "artifact": "asm-analysis-9.9.jar",
       "sha256": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",

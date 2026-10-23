@@ -37,7 +37,7 @@ def main():
             with socket.socket() as probe:
                 probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 probe.bind(('127.0.0.1', port))
-        with (ROOT / '.tools' / f'p403-{avd}.log').open('w') as log:
+        with (ROOT / '.tools' / f'p403-{avd}.log').open('w', encoding='utf-8') as log:
             process = subprocess.Popen([EMULATOR, '-avd', avd, '-port', str(PORT), '-no-window', '-no-audio',
                                         '-no-boot-anim', '-no-snapshot', '-gpu', 'software'], stdout=log, stderr=log)
             try:

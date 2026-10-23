@@ -126,7 +126,7 @@ tmux 3.3a/3.7c, Android API 34/35/36의 **6개 실행 단위**를 실행한다. 
 `workflow_dispatch`의 `verify_windows=true`로 선택 실행할 수 있게 준비했으나,
 실행하지 않은 Windows 결과를 통과로 간주하지 않는다. P4-03 전체 상태는 진행 중이다.
 
-로컬 후속 검증: Python 보안/증거 회귀 19개 통과. 임시 Git 저장소에서 `core.autocrlf=true/false`
+로컬 후속 검증: Python 보안/증거 회귀 20개 통과. 임시 Git 저장소에서 `core.autocrlf=true/false`
 각각 실제 커밋·체크아웃을 수행해 원문과 라이선스 증거 전체의 바이트/해시 보존을 확인했다.
 일반 소스는 LF, 배치 파일은 CRLF, 원문과 `licenses/**`는 `-text`를 적용한다.
 [Git 속성 규칙](https://git-scm.com/docs/gitattributes)을 따른다.
@@ -169,3 +169,41 @@ Windows collector는 APK를 요구하지 않으며 세 Windows 보고서가 동�
 
 원격 실행 URL·커밋·통과 수·다운로드 해시는 실제 실행 후 아래에 기록한다.
 Windows 10/11 실기·IME, 실제 DPAPI 키 손실, Android 실기, 실제 에이전트, 서명 배포는 후속이다.
+
+
+### 원격 실행 확인
+
+- 실행: [https://github.com/jujinkim/dgl-client/actions/runs/39898373064](https://github.com/jujinkim/dgl-client/actions/runs/39898373064), 커밋 `899ad82b540a5b284c59630b0713a8950b09de4a`, attempt 1. 6개 필수 작업 모두 성공, Windows는 사용자 담당으로 의도한 job skip.
+- 환경: GitHub Actions `ubuntu-24.04`, Ubuntu 24.04.5 x86_64, runner image `20261012.334.1`, Temurin `17.0.20+1`, Node `22.23.4`, Gradle `9.7.0`.
+
+| 실행 단위 | 통과 | 실패 | 예상 skip |
+|---|---:|---:|---:|
+| Linux 기본 JVM | 13 | 0 | 7 (SSH fixture 6, Windows 1) |
+| tmux 3.3a JVM | 19 | 0 | 1 (Windows) |
+| tmux 3.7c JVM | 19 | 0 | 1 (Windows) |
+| Android API 34 | 4 | 0 | 0 |
+| Android API 35 | 4 | 0 | 0 |
+| Android API 36 | 4 | 0 | 0 |
+
+원격 보안 회귀는 당시 19개 통과, OSV는 371버전/경고 0, npm audit 0,
+Gitleaks 작업 트리·전체 index·전체 이력 통과. Lint 승인 조건 검사와 APK 정책 검사 통과.
+현재 로컬은 Temurin sidecar 검증 회귀를 추가한 20개 통과다.
+고지 묶음은 해당 Linux JDK 기준 485개 파일이며 로컬 macOS의 477개와 구분한다.
+
+다운로드한 Actions artifact ZIP 7개의 SHA-256을 GitHub API digest와 대조했고,
+각 테스트 JSON의 커밋·run ID·attempt 일치를 확인했다. APK 36,166,932 bytes의
+SHA-256 `ecdb1b5b68894efe738641278c23dfa7a6e4f5b708e092ad149b0e6808df4ea6`는 수집 manifest와 다운로드 파일에서 일치했다.
+로컬 보존 경로는 `artifacts/remote-ci-39898373064/`이며 Actions 보존 기간은 7일이다.
+이 실행은 고지 ZIP을 업로드하지 않았으므로 고지의 다운로드 대조는 아직 수행하지 않았다.
+후속 수집 보완은 APK·고지 ZIP·manifest·SHA256SUMS를 함께 업로드하고,
+해당 최종 커밋의 별도 실행 및 다운로드 검증을 `artifacts/REMOTE_CI.md`에 기록한다.
+
+처음 실행의 cold-cache parent POM/BOM 메타데이터 누락과 AVD 검색 경로 불일치는 수정했다.
+추가 metadata 3개는 공식 Maven Central에서 독립 재수신해 해시를 확인했으며 잠금 버전은 바꾸지 않았다.
+빈 Gradle 캐시의 별도 checkout에서도 desktop test, debug/release/계측 APK, lint, inventory를
+실행하고 엄격한 무결성 검사로 다시 통과했다.
+
+GitHub Secret scanning / Push protection: **확인 불가**. GitHub 연결 도구의 정규화된
+저장소 응답과 인증 없는 REST 조회에서 `security_and_analysis`가 제공되지 않았다.
+CLI는 미인증 상태이며 SSH push 권한은 확인했다. 설정은 변경하지 않았다.
+[GitHub 저장소 조회 API](https://docs.github.com/en/rest/repos/repos#get-a-repository)의 가시성 제한과 구분해 기록한다.

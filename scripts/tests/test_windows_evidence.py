@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -178,6 +179,32 @@ class NoticeTests(unittest.TestCase):
                 with self.assertRaises(ValueError): collector.verify_desktop_notices(bundle)
                 (bundle / 'SHA256SUMS').write_text(manifest.replace('고지/읽어주세요.txt', 'C:\\고지.txt'), encoding='utf-8')
                 with self.assertRaises(ValueError): collector.verify_desktop_notices(bundle)
+
+
+class TemurinSourceTests(unittest.TestCase):
+    def test_adoptium_source_without_inline_checksum_uses_verified_sidecar(self):
+        import prepare_temurin_source as source
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            jdk = root / 'jdk'; jdk.mkdir()
+            (jdk / 'release').write_text('IMPLEMENTOR="Eclipse Adoptium"\nJAVA_RUNTIME_VERSION="17.0.17+10"\n', encoding='utf-8')
+            archive = b'vendor source fixture'
+            digest = hashlib.sha256(archive).hexdigest()
+            link = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.17%2B10/sources.tar.gz'
+            release = [{'release_name': 'jdk-17.0.17+10', 'release_link': 'https://github.com/adoptium/temurin17-binaries/releases/tag/jdk-17.0.17%2B10',
+                        'version_data': {'semver': '17.0.17+10'}, 'source': {'link': link, 'name': 'sources.tar.gz', 'size': len(archive)}}]
+            def fetch(request, **kwargs):
+                if request.full_url.startswith('https://api.adoptium.net/'):
+                    return io.BytesIO(json.dumps(release).encode('utf-8'))
+                return io.BytesIO((digest + '  sources.tar.gz\n').encode('ascii') if request.full_url.endswith('.sha256.txt') else archive)
+            with patch.object(source, 'ROOT', root), patch.dict(os.environ, JAVA_HOME=str(jdk)), patch.object(source.urllib.request, 'urlopen', side_effect=fetch):
+                source.main()
+                info = json.loads((root / 'app/build/temurin-source/source.json').read_text(encoding='utf-8'))
+                self.assertEqual(digest, info['sourceSha256'])
+                self.assertEqual(link + '.sha256.txt', info['checksumUrl'])
+                digest = '0' * 64
+                with self.assertRaises(ValueError): source.main()
+                self.assertFalse((root / 'app/build/temurin-source/temurin-sources.tar.gz').exists())
 
 
 if __name__ == '__main__':

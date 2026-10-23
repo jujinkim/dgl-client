@@ -21,7 +21,7 @@
 | P3-03 | 출력 흐름·자원 상한 | P1-03,P1-04 | 큐·scrollback 상한, 재접속 자원 회수 | 구현 완료·검증 대기 | 256 KiB desktop pipe, Android 16 KiB ack, parser/입력 상한, 15k줄·client 회수 확인; 장기 최대 RSS·FD 미측정 |
 | P4-01 | APK·Windows 패키징·CI | P3-01,P3-02 | APK, Windows 설치물, 최소 권한 CI | 구현 완료·검증 대기 | debug APK 생성·에뮬레이터 설치; MSI/EXE 작업과 CI 작성, 실제 Windows 빌드 미실행 |
 | P4-02 | 인수 A–F·실제 에이전트 | P4-01 | 실제 수행 결과와 미실행 체크리스트 | 구현 완료·검증 대기 | 부분 자동 검증 연결, docs/VALIDATION.md에 남은 항목; 실제 Codex·Claude·실기 미실행 |
-| P4-03 | 의존성·라이선스·무결성·보안 | P4-01 | 잠금·검증·취약점·비밀·라이선스 검사 | 진행 중 | 로컬: 모듈 분리·Kotlin 2.4.21/AGP 9.3.3/Gradle 9.7.0, 371버전 OSV 전 범위 0, 라이선스 182버전·네이티브/JVM 고지·JediTerm 재빌드·보안 12테스트 통과. API 34/35/36 각 4통과·APK/477개 고지 해시 확인. 원격 보안/CI·Windows 설치·서명/게시 별도 |
+| P4-03 | 의존성·라이선스·무결성·보안 | P4-01 | 잠금·검증·취약점·비밀·라이선스 검사 | 진행 중 | 로컬: 모듈 분리·Kotlin 2.4.21/AGP 9.3.3/Gradle 9.7.0, 371버전 OSV 전 범위 0, 라이선스 182버전·네이티브/JVM 고지·JediTerm 재빌드·보안 12테스트 통과. API 34/35/36 각 4통과·APK/477개 고지 해시 확인. 원격 Linux·tmux·Android 6작업 동일 커밋 통과; Windows 사용자 검증 대기·서명/게시 별도 |
 | P4-04 | 전달 문서·실행 산출물 | P4-02,P4-03 | 재현 명령·지원 범위·제한·산출물 | 검증 완료 | README, ADR 2개, 보안/검증 문서, artifacts/DELIVERY.md; 미실행을 통과로 처리하지 않음 |
 | F-01 | 프로젝트·워크스페이스 메타데이터 | 없음 | 후속 요청 시 설계 | 후속 단계 | MVP 제외 |
 | F-02 | Textbox·사용자 단축키·WSL·추가 플랫폼 | 없음 | 후속 요청 시 구현 | 후속 단계 | MVP 제외 |
@@ -63,6 +63,16 @@
 
 - 사용자 요청: Windows 빌드/실검증은 사용자가 직접 수행. 전용 브랜치 push와 Linux·tmux·Android CI는 계속한다.
 - 일반 push의 필수 원격 실행 단위는 6개(기본 1, tmux 2, Android 3). Windows 자동 검증은 수동 workflow 입력으로 선택 실행한다.
-- 로컬 회귀 19개, 원문/라이선스 바이트 보존의 두 autocrlf 모드, JVM 기본 13 통과·예상 skip 7 확인.
+- 로컬 회귀 20개, 원문/라이선스 바이트 보존의 두 autocrlf 모드, JVM 기본 13 통과·예상 skip 7 확인.
 - Windows DPAPI 두 사용자·설치/제거·Temurin 소스·JediTerm 교체 자동화와 수집 형식은 구현했으나 Windows에서 미실행이다.
 - 원격 결과는 실제 실행 이후 기록하며 P4-03 전체를 검증 완료로 올리지 않는다.
+
+
+### 원격 확인 결과
+
+- [https://github.com/jujinkim/dgl-client/actions/runs/39898373064](https://github.com/jujinkim/dgl-client/actions/runs/39898373064), `899ad82b540a5b284c59630b0713a8950b09de4a`: 필수 6작업 성공. Windows는 사용자 요청으로 미실행.
+- Linux JVM 13/0/7, tmux 각 19/0/1, Android API 34/35/36 각 4/0/0 (통과/실패/예상 skip).
+- Actions ZIP 7개 digest 및 APK SHA-256 `ecdb1b5b68894efe738641278c23dfa7a6e4f5b708e092ad149b0e6808df4ea6`를 다운로드 후 대조했다.
+- OSV 371버전 경고 0·npm audit 0·Gitleaks 3범위·lint·APK 정책 통과. Linux 고지 485파일.
+- GitHub Secret scanning·Push protection 상태는 조회 응답 미제공으로 확인 불가. 설정 미변경.
+- 최종 수집 보완 커밋의 실행/해시 기록: `artifacts/REMOTE_CI.md`. Windows·실기·실제 에이전트·서명은 여전히 후속이며 P4-03 전체는 진행 중.

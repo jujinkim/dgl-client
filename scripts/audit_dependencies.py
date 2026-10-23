@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import sys
 import urllib.request
+from evidence import context
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_GRAPHS = {(':androidApp', 'debugRuntimeClasspath'), (':androidApp', 'releaseRuntimeClasspath'),
@@ -165,13 +166,15 @@ def main():
     report = ROOT / 'artifacts/dependency-audit.json'
     report.parent.mkdir(exist_ok=True)
     # Invalidate a prior successful report before any network or inventory operation.
-    report.write_text(json.dumps({'complete': False, 'status': 'failed'}) + '\n', encoding="utf-8")
+    identity = {'schema': 1, 'context': context()}
+    report.write_text(json.dumps(dict(identity, complete=False, status='failed')) + '\n', encoding="utf-8")
     try:
         packages = combine(load_inventory(args.inventory) + npm_packages(json.loads((ROOT / 'web/package-lock.json').read_text(encoding="utf-8"))))
         findings = apply_exceptions(query_osv(packages), json.loads(args.exceptions.read_text(encoding="utf-8"))['exceptions'])
         blocked = sum(f['status'] == 'blocked' for f in findings)
         runtime = sum(any(u['scope'] == 'runtime' for u in f['usages']) for f in findings)
-        report.write_text(json.dumps({'complete': True, 'date': date.today().isoformat(), 'packages': len(packages),
+        report.write_text(json.dumps({**identity, 'complete': True, 'status': 'failed' if blocked else 'passed',
+                                     'date': date.today().isoformat(), 'packages': len(packages),
                                      'runtime': runtime, 'blocked': blocked, 'findings': findings}, indent=2) + '\n', encoding="utf-8")
         print(f'OSV: {len(packages)} selected versions; {runtime} runtime, {len(findings)-runtime} build/test, {blocked} blocked findings')
         return 1 if blocked else 0

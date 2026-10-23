@@ -203,7 +203,8 @@ def main():
             shutil.copyfile(path, target)
             files.append(target)
     manifest = [{'name': p.name, 'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]
-    (destination / 'build-manifest.json').write_text(json.dumps({'applicationId': 'kim.jujin.rovessh', 'minSdk': 34,
+    (destination / 'build-manifest.json').write_text(json.dumps({'schema': 1, 'complete': True, 'status': 'passed',
+        'context': context(), 'platform': 'android', 'applicationId': 'kim.jujin.rovessh', 'minSdk': 34,
         'compileSdk': 36, 'targetSdk': 36, 'androidSigning': 'debug; release APK only verified unsigned',
         'apkChecks': checks, 'desktopNoticeFiles': notice_count, 'files': manifest}, indent=2) + '\n', encoding="utf-8")
     (destination / 'SHA256SUMS').write_text(''.join(item['sha256'] + '  ' + item['name'] + '\n' for item in manifest), encoding="utf-8")

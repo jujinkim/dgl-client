@@ -68,3 +68,12 @@ JediTerm 3.59는 POM의 LGPL 취급을 유지한다. source JAR 2개, LGPL/GPL, 
 - [ ] 서명된 배포 산출물에 키·개인 설정·터미널 기록이 없는지 검사
 
 이번 로컬 작업에서는 원격 저장소 보안 설정과 Windows CI 실행 여부를 확인하지 않았다. 원격 설정을 변경하거나 코드·산출물을 게시하지 않았다. 노출이 발견되면 먼저 해당 자격 증명을 폐기·교체한다.
+
+
+## 원격 CI 후속
+
+원격 Linux·tmux·Android 6작업의 동일 커밋 결과와 다운로드 해시는 [VALIDATION.md](VALIDATION.md)에 기록한다.
+Windows 실검증은 사용자 담당으로 남겼으며 수동 `verify_windows` workflow로 자동화도 선택 실행할 수 있다.
+Windows 패키징은 실제 Temurin 버전에 대응하는 vendor 소스 archive와 공개 SHA-256 sidecar를 확보해야 한다.
+일반 소스 줄바꿈과 원문/라이선스 바이트 보존을 분리했고, 전체 staged snapshot을 파일 경로를 유지한 채 검사한다.
+GitHub Secret scanning·Push protection은 API 응답에 상태가 없어 확인 불가이며 설정을 변경하지 않았다.

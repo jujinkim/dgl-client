@@ -68,7 +68,11 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-debug
-          path: androidApp/build/outputs/apk/debug/androidApp-debug.apk
+          path: |
+            artifacts/dgl-client-0.1.0-debug.apk
+            artifacts/desktop-third-party.zip
+            artifacts/build-manifest.json
+            artifacts/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
   windows:
