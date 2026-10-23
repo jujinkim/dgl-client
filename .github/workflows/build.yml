@@ -164,6 +164,8 @@ jobs:
   android-integration:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      ANDROID_AVD_HOME: ${{ github.workspace }}/.tools/ci-avds
     strategy:
       fail-fast: false
       matrix:
@@ -181,8 +183,10 @@ jobs:
       - run: sudo mkdir -p /run/sshd && sudo chmod 666 /dev/kvm
       - name: Prepare dedicated test AVD
         run: |
+          mkdir -p "$ANDROID_AVD_HOME"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-${{ matrix.api }};google_apis;x86_64"
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name "Dgl_API${{ matrix.api }}" --package "system-images;android-${{ matrix.api }};google_apis;x86_64" --device pixel_6
+          "$ANDROID_HOME/emulator/emulator" -list-avds
       - run: python3 scripts/build_test_tmux.py 3.7c
       - run: python3 scripts/verify_android_matrix.py --apis '${{ matrix.api }}'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

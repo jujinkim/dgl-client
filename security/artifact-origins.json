@@ -1183,6 +1183,12 @@
       "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_parent/2.36.0/error_prone_parent-2.36.0.pom"
     },
     {
+      "coordinate": "com.google.guava:guava-parent:33.4.0-jre",
+      "artifact": "guava-parent-33.4.0-jre.pom",
+      "sha256": "3a499ed34a0d9ee0f1bcc39230021a1cd4e2f7dd0426ab6844f585465d41dcd7",
+      "source": "https://repo.maven.apache.org/maven2/com/google/guava/guava-parent/33.4.0-jre/guava-parent-33.4.0-jre.pom"
+    },
+    {
       "coordinate": "com.google.guava:guava:33.4.0-jre",
       "artifact": "guava-33.4.0-jre.jar",
       "sha256": "b918c98a7e44dbe94ebd9fe3e40cddaadb5a93e6a78eb6008b42df237241e538",
@@ -2147,6 +2153,12 @@
       "artifact": "kotlinx-coroutines-core-1.9.0.module",
       "sha256": "ad534034a953b4e12cbeeb874c66adf8b1ca14df15fe0d2e6547aa34e86dfeca",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.module"
+    },
+    {
+      "coordinate": "org.junit:junit-bom:5.11.0-M2",
+      "artifact": "junit-bom-5.11.0-M2.module",
+      "sha256": "86477abcf490d6ca059aa9973cb108d22a506f49d1a5569bb32cc6cbf43c2cce",
+      "source": "https://repo.maven.apache.org/maven2/org/junit/junit-bom/5.11.0-M2/junit-bom-5.11.0-M2.module"
     },
     {
       "coordinate": "org.junit:junit-bom:5.11.0-M2",

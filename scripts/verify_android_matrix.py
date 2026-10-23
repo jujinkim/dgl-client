@@ -21,10 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--apis', nargs='+', choices=['34', '35', '36'], default=['34', '35', '36'])
     args = parser.parse_args()
-    avds = subprocess.check_output([EMULATOR, '-list-avds'], text=True, encoding="utf-8").splitlines()
     required = ['Dgl_API' + api for api in args.apis]
-    if not set(required) <= set(avds):
-        raise SystemExit('Missing dedicated test AVDs: ' + str(set(required) - set(avds)))
     results = []
     suffix = '' if args.apis == ['34', '35', '36'] else '-' + '-'.join(args.apis)
     report = ROOT / ('artifacts/android-matrix' + suffix + '.json')
@@ -32,6 +29,9 @@ def main():
     (ROOT / '.tools').mkdir(exist_ok=True)
     ctx = context()
     report.write_text(json.dumps({'schema': 1, 'context': ctx, 'complete': False, 'status': 'failed', 'results': []}) + '\n', encoding="utf-8")
+    avds = subprocess.check_output([EMULATOR, '-list-avds'], text=True, encoding="utf-8").splitlines()
+    if not set(required) <= set(avds):
+        raise SystemExit('Missing dedicated test AVDs: ' + str(set(required) - set(avds)))
     for avd in required:
         for port in (PORT, PORT + 1):
             with socket.socket() as probe:
