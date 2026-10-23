@@ -144,8 +144,12 @@ class SshjTransport : SshTransport {
                 runCatching {
                     coroutineScope {
                         val discard = launch { runInterruptible { val bytes = ByteArray(16384); while (input.read(bytes) >= 0) {} } }
-                        runInterruptible { output.close() }
-                        discard.join()
+                        // A PTY shell does not interpret SSH stdin EOF as terminal
+                        // hangup; closing its channel supplies that signal instead.
+                        if (shell == null) {
+                            runInterruptible { output.close() }
+                            discard.join()
+                        }
                         runInterruptible { session.close() }
                     }
                 }.isSuccess
