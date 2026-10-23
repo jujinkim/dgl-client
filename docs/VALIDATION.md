@@ -121,8 +121,9 @@ P4-03의 전용 AVD 자동 실행: `python3 scripts/verify_android_matrix.py` (A
 
 ## P4-03 원격 CI 후속 (2026-10-23)
 
-사용자 요청에 따라 Windows 실검증은 사용자가 직접 수행한다. 일반 push는 Linux 기본 검증,
-tmux 3.3a/3.7c, Android API 34/35/36의 **6개 실행 단위**를 실행한다. Windows job은
+사용자 요청에 따라 Windows 실검증은 사용자가 직접 수행한다. 당시 일반 push는 Linux 기본 검증,
+tmux 3.3a/3.7c, Android API 34/35/36의 **6개 실행 단위**를 실행했다. 현재 실행 범위는
+[README의 검증 안내](../README.md#검증)를 따른다. Windows job은
 `workflow_dispatch`의 `verify_windows=true`로 선택 실행할 수 있게 준비했으나,
 실행하지 않은 Windows 결과를 통과로 간주하지 않는다. P4-03 전체 상태는 진행 중이다.
 

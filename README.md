@@ -102,7 +102,20 @@ python3 scripts/collect_artifacts.py
 
 통합 테스트는 로컬 OpenSSH와 임시 키·독립 tmux 소켓을 사용합니다. 기존 `authorized_keys`, 사용자 tmux 서버와 호스트 설정을 사용하지 않습니다. Android 통합 실행에는 실행 중인 에뮬레이터가 필요합니다(`ANDROID_SERIAL` 기본값 `emulator-5554`). 기본 JVM 테스트는 외부 SSH 환경이 없으면 해당 테스트를 **skip**합니다.
 
-테스트용 tmux 빌드는 Python 3.9 이상, C 컴파일러, make, libevent·ncurses 개발 헤더가 필요합니다. `.tools/`에만 빌드하며 사용자 tmux를 덮어쓰지 않습니다. 일반 push CI는 Linux 기본 검사, 같은 두 tmux 버전, Android API 34/35/36의 6개 작업을 실행합니다. Windows 실검증은 사용자 담당이며, 자동 검사는 수동 workflow의 `verify_windows` 입력으로 선택 실행할 수 있습니다. 실제 원격 결과는 검증 문서에 기록합니다.
+테스트용 tmux 빌드는 Python 3.9 이상, C 컴파일러, make, libevent·ncurses 개발 헤더가 필요합니다. `.tools/`에만 빌드하며 사용자 tmux를 덮어쓰지 않습니다.
+
+`main` push와 `main` 대상 PR에서는 Linux 기본 검증 **1개 작업**만 자동 실행합니다. JVM 단위 테스트, Debug APK 빌드, lint, Python 검사, Wrapper·비밀정보·터미널 번들 검사를 포함합니다. `docs/**`, `README.md`, `TASKS.md`, `AGENTS.md`만 바뀌면 실행하지 않습니다. Debug APK는 `android-debug` artifact에서 받을 수 있습니다.
+
+GitHub Actions의 **Build and verify → Run workflow**에서 아래 검사를 각각 추가할 수 있습니다. 기본값은 모두 꺼짐이며, 기본 검증은 수동 실행에도 포함됩니다.
+
+| 수동 입력 | 추가 검사 |
+|---|---|
+| `verify_packaging` | Release·계측 APK 빌드, 의존성 취약점·라이선스·배포 파일 검증 |
+| `verify_ssh` | 실제 SSH와 tmux 3.3a/3.7c 통합 테스트 |
+| `verify_android` | Android API 34/35/36 에뮬레이터 테스트 |
+| `verify_windows` | Windows 설치물·DPAPI 검증 |
+
+Windows 실검증은 사용자 담당입니다. 실제 원격 결과는 검증 문서에 기록합니다.
 
 `collect_artifacts.py`는 APK의 앱 ID·SDK·번들 파일·민감 파일 이름을 확인하고 `artifacts/`에 APK, 라이선스/source 묶음, SHA-256을 모읍니다. 무인자 동작은 기존 APK 수집을 유지합니다. `--platform windows`는 APK 없이 Windows 설치물·고지·해시를 수집하며, 동일 커밋의 DPAPI·설치/제거·JediTerm 교체 보고서가 모두 통과해야 합니다. Windows 빌드 전 Temurin 소스 확보 절차는 [검증 문서](docs/VALIDATION.md)를 따릅니다.
 

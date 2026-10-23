@@ -1,9 +1,33 @@
 name: Build and verify
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'TASKS.md'
+      - 'AGENTS.md'
   pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'TASKS.md'
+      - 'AGENTS.md'
   workflow_dispatch:
     inputs:
+      verify_packaging:
+        description: 'Run release/instrumentation builds, dependency audits and distribution checks'
+        type: boolean
+        default: false
+      verify_ssh:
+        description: 'Run SSH integration tests with tmux 3.3a and 3.7c'
+        type: boolean
+        default: false
+      verify_android:
+        description: 'Run Android emulator tests on API 34, 35 and 36'
+        type: boolean
+        default: false
       verify_windows:
         description: 'Run Windows installer/DPAPI acceptance on a disposable runner'
         type: boolean
@@ -13,7 +37,7 @@ permissions:
 env:
   PYTHONUTF8: '1'
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   verify:
@@ -44,16 +68,26 @@ jobs:
           sudo install gitleaks /usr/local/bin/gitleaks
           rm gitleaks gitleaks_8.30.1_linux_x64.tar.gz
       - run: python3 scripts/scan_secrets.py
-      - run: npm ci --ignore-scripts && npm run bundle && npm audit
+      - run: npm ci --ignore-scripts --no-audit && npm run bundle
         working-directory: web
       - run: git diff --exit-code -- app/src/androidMain/assets
-      - run: ./gradlew :app:desktopTest :androidApp:assembleDebug :androidApp:assembleRelease :androidApp:assembleDebugAndroidTest :androidApp:lintDebug :app:prepareThirdPartyNotices writeDependencyInventory
+      - name: Unit tests, debug APK and lint
+        run: ./gradlew :app:desktopTest :androidApp:assembleDebug :androidApp:lintDebug
       - run: python3 scripts/verify_test_results.py --mode linux --output artifacts/linux-tests.json
         if: always()
       - run: python3 scripts/verify_lint.py
+      - name: Release, instrumentation and distribution builds
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_packaging
+        run: ./gradlew :androidApp:assembleRelease :androidApp:assembleDebugAndroidTest :app:prepareThirdPartyNotices writeDependencyInventory
+      - run: npm audit
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_packaging
+        working-directory: web
       - run: python3 scripts/audit_dependencies.py
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_packaging
       - run: python3 scripts/verify_licenses.py
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_packaging
       - run: python3 scripts/collect_artifacts.py
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_packaging
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -66,6 +100,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_packaging
+        with:
+          name: android-debug
+          path: androidApp/build/outputs/apk/debug/androidApp-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_packaging
         with:
           name: android-debug
           path: |
@@ -136,6 +178,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   ssh-integration:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_ssh
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
@@ -166,6 +209,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
   android-integration:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_android
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:

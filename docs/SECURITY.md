@@ -17,6 +17,8 @@
 
 CI는 contents:read, Action SHA 고정, persist-credentials:false, PR에 비밀정보·쓰기 권한 없음, APK/MSI/EXE 경로만 업로드를 사용한다. `pull_request_target`과 release 자동 게시를 사용하지 않는다. Wrapper 배포 checksum과 wrapper JAR 공식 SHA-256을 확인했다. Gradle artifact SHA-256 verification, dependency lock, npm lock을 커밋 대상으로 둔다. 검증 메타데이터 재생성은 자동 업데이트로 승인하지 말고 변경 원인을 검토한다.
 
+2026-10-24부터 일반 push·PR에서는 기본 빌드·단위 테스트·lint와 Wrapper·비밀정보·번들 검사를 실행한다. 의존성 OSV/npm 취약점·라이선스·배포 파일 검증은 수동 `verify_packaging` 입력으로 실행한다. 기본 CI 성공만으로 릴리스 검증 완료를 의미하지 않는다.
+
 ## 선택 의존성과 실패 기준
 
 2026-10-23 P4-03 로컬 갱신: Kotlin/Compose compiler **2.4.21**, AGP **9.3.3**, Gradle **9.7.0**, JDK **17**, Build Tools **36.0.0**. Compose Multiplatform 1.9.3과 앱 직접 의존성은 유지했다. `:app`은 Android KMP library·desktop, `:androidApp`은 AGP 내장 Kotlin 앱이다. 앱 ID·SDK·저장 형식·Keystore 별칭은 유지했다.
@@ -72,7 +74,7 @@ JediTerm 3.59는 POM의 LGPL 취급을 유지한다. source JAR 2개, LGPL/GPL, 
 
 ## 원격 CI 후속
 
-원격 Linux·tmux·Android 6작업의 동일 커밋 결과와 다운로드 해시는 [VALIDATION.md](VALIDATION.md)에 기록한다.
+기존 원격 Linux·tmux·Android 6작업의 동일 커밋 결과와 다운로드 해시는 [VALIDATION.md](VALIDATION.md)에 기록한다. 현재 자동 실행은 Linux 기본 검증 1개이며 SSH·Android 통합 검사는 수동 입력으로 선택한다.
 Windows 실검증은 사용자 담당으로 남겼으며 수동 `verify_windows` workflow로 자동화도 선택 실행할 수 있다.
 Windows 패키징은 실제 Temurin 버전에 대응하는 vendor 소스 archive와 공개 SHA-256 sidecar를 확보해야 한다.
 일반 소스 줄바꿈과 원문/라이선스 바이트 보존을 분리했고, 전체 staged snapshot을 파일 경로를 유지한 채 검사한다.

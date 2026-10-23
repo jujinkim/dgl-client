@@ -62,7 +62,7 @@
 ## P4-03 원격 CI 후속 범위 조정 (2026-10-23)
 
 - 사용자 요청: Windows 빌드/실검증은 사용자가 직접 수행. 전용 브랜치 push와 Linux·tmux·Android CI는 계속한다.
-- 일반 push의 필수 원격 실행 단위는 6개(기본 1, tmux 2, Android 3). Windows 자동 검증은 수동 workflow 입력으로 선택 실행한다.
+- 당시 일반 push의 필수 원격 실행 단위는 6개(기본 1, tmux 2, Android 3)였다. 2026-10-24부터 자동 실행은 기본 검증 1개로 축소하고 SSH·Android 통합 검사와 배포 검증은 수동 입력으로 선택한다. Windows도 기존처럼 수동 선택한다.
 - 로컬 회귀 20개, 원문/라이선스 바이트 보존의 두 autocrlf 모드, JVM 기본 13 통과·예상 skip 7 확인.
 - Windows DPAPI 두 사용자·설치/제거·Temurin 소스·JediTerm 교체 자동화와 수집 형식은 구현했으나 Windows에서 미실행이다.
 - 원격 결과는 실제 실행 이후 기록하며 P4-03 전체를 검증 완료로 올리지 않는다.
