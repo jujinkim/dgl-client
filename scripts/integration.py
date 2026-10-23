@@ -22,6 +22,54 @@ def run(args, **kwargs):
     return subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8", **kwargs)
 
 
+def process_snapshot():
+    rows = run(['ps', '-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args=']).stdout.splitlines()
+    return {int(parts[0]): (int(parts[1]), parts[2]) for row in rows if len(parts := row.strip().split(None, 2)) == 3}
+
+
+def fixture_processes(root, snapshot, server_pid=None):
+    """Only exact private paths (or the PID returned by this private socket)."""
+    owned = set()
+    for pid, (_, command) in snapshot.items():
+        try:
+            args = shlex.split(command)
+        except ValueError:
+            args = command.split()
+        if any(arg.startswith(str(root) + '/') for arg in args):
+            owned.add(pid)
+    if server_pid in snapshot:
+        owned.add(server_pid)
+    while True:
+        children = {pid for pid, (parent, _) in snapshot.items() if parent in owned}
+        if children <= owned:
+            return {pid: snapshot[pid] for pid in owned}
+        owned |= children
+
+
+def cleanup_tmux(root, tmux):
+    server_pid = None
+    try:
+        server_pid = int(run([tmux, '-S', str(root / 'tmux.socket'), 'display-message', '-p', '#{pid}'], timeout=3).stdout)
+    except (subprocess.SubprocessError, ValueError):
+        pass
+    owned = fixture_processes(root, process_snapshot(), server_pid)
+    try:
+        subprocess.run([tmux, '-S', str(root / 'tmux.socket'), 'kill-server'], capture_output=True, timeout=5)
+    finally:
+        # Older tmux can retain a dead control client while flushing its output.
+        # kill-server returning is therefore not proof that its processes exited.
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            current = process_snapshot()
+            for pid, identity in owned.items():
+                if current.get(pid) == identity:
+                    try:
+                        os.kill(pid, sig)
+                    except ProcessLookupError:
+                        pass
+            if sig == signal.SIGTERM:
+                time.sleep(.2)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tmux', default=shutil.which('tmux'))
@@ -105,7 +153,7 @@ LogLevel ERROR
                     raise SystemExit(result.returncode)
             finally:
                 try:
-                    subprocess.run([tmux, '-S', str(root / 'tmux.socket'), 'kill-server'], capture_output=True, timeout=5)
+                    cleanup_tmux(root, tmux)
                 finally:
                     process.terminate()
                     try:

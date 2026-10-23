@@ -141,10 +141,12 @@ class ControlClient(
 
     override fun close() {
         closed = true
-        stream.close()
+        // Release a suspended terminal consumer before draining channel shutdown.
+        scope.cancel()
         active?.done?.cancel()
         requests.tryReceive().getOrNull()?.done?.cancel()
-        requests.close(); changes.close(); scope.cancel()
+        requests.close(); changes.close()
+        stream.close()
     }
 
     companion object {

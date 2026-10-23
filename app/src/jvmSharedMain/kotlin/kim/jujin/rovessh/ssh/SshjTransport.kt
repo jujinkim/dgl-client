@@ -119,14 +119,15 @@ class SshjTransport : SshTransport {
         val owner: SSHClient, val session: Session, val input: InputStream, val output: OutputStream, errors: InputStream, val shell: Session.Shell?,
     ) : SshTransport.Stream() {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        @Volatile private var closed = false
         init { scope.launch { runCatching { boundedRead(errors, 65536) }; } }
         override suspend fun read(): ByteArray? = runInterruptible(Dispatchers.IO) {
             // SSHJ may retain a receive window after close. Do not make a slow
             // renderer drain that obsolete output before detecting the disconnect.
-            if (client !== owner || !owner.isConnected) return@runInterruptible null
+            if (closed || client !== owner || !owner.isConnected) return@runInterruptible null
             val bytes = ByteArray(16384)
             val n = input.read(bytes)
-            if (n < 0 || client !== owner || !owner.isConnected) null else bytes.copyOf(n)
+            if (n < 0 || closed || client !== owner || !owner.isConnected) null else bytes.copyOf(n)
         }
         override suspend fun write(bytes: ByteArray) = runInterruptible(Dispatchers.IO) { output.write(bytes); output.flush() }
         override suspend fun resize(size: Size) = withContext(Dispatchers.IO) {
@@ -134,7 +135,16 @@ class SshjTransport : SshTransport {
             Unit
         }
         override fun close() {
-            runCatching { session.close() }; channels -= session; scope.cancel()
+            if (closed) return
+            closed = true
+            // EOF tells the control client to exit. Drain its bounded pending
+            // output without rendering it, so a full receive window cannot hold
+            // the peer's shutdown behind terminal backpressure.
+            scope.launch {
+                runCatching { runInterruptible { val bytes = ByteArray(16384); while (input.read(bytes) >= 0) {} } }
+            }
+            try { runCatching { output.close() }; runCatching { session.close() } }
+            finally { channels -= session; scope.cancel() }
         }
     }
 }

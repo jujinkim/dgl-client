@@ -106,6 +106,28 @@ class ResourceResultsTest(unittest.TestCase):
 
 
 class ResourceCollectorTest(unittest.TestCase):
+    @unittest.skipIf(sys.platform == 'win32', 'Isolated OpenSSH fixture uses POSIX processes')
+    def test_fixture_cleanup_kills_only_its_private_process(self):
+        import subprocess
+        import tempfile
+        from integration import cleanup_tmux
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'fixture'
+            root.mkdir()
+            command = [sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print("ready",flush=True); time.sleep(60)']
+            owned = subprocess.Popen(command + [str(root / 'owned')], stdout=subprocess.PIPE, text=True)
+            other = subprocess.Popen(command + [str(root) + '-other/owned'], stdout=subprocess.PIPE, text=True)
+            try:
+                self.assertEqual(owned.stdout.readline().strip(), 'ready')
+                self.assertEqual(other.stdout.readline().strip(), 'ready')
+                cleanup_tmux(root, '/usr/bin/false')
+                owned.wait(timeout=2)
+                self.assertIsNone(other.poll(), 'A sibling path is not part of this fixture')
+            finally:
+                for process in (owned, other):
+                    if process.poll() is None: process.kill()
+                    process.wait(); process.stdout.close()
+
     def test_closed_renderer_at_phase_boundary_is_not_a_stall(self):
         rows, final = evidence(android=True)
         ending = [s for s in rows if s['phase'] == 'recreate'][-1]
