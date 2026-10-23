@@ -244,6 +244,13 @@ Android 상세 메모리는 10초 간격이며, `dumpsys activity services`의 �
 중 렌더러 PID 교체는 기록하되 앱 PID 교체는 실패다. 샘플 최대 RSS와 OS 최대
 RSS(macOS time, Android VmHWM)를 구분한다. 수집할 수 없는 값은 null/누락이며
 0으로 보완하지 않는다. 단말 앱 ANR/crash 이벤트도 확인한다.
+상세 메모리 조회는 단일 별도 worker에서 수행하여 2초 앱 지표 수집을 막지 않는다.
+조회 시작·종료 시각을 기록하며 메모리 비교 구간은 결과 병합 시각 대신 조회
+시작 시각을 사용한다. 조회 중 단계나 연결 상태가 바뀐 결과는 구간 비교에서 제외한다.
+Android UI 지표 조회는 Main dispatcher에서 실행한다. 테스트 helper의
+`onActivity`를 작업 스레드에서 호출하면 `waitForIdleSync`를 기다려 연속 출력
+중 수집과 단계 시작을 지연시킬 수 있기 때문이다.
+[AndroidX ActivityScenario 구현](https://github.com/android/android-test/blob/main/core/java/androidx/test/core/app/ActivityScenario.java)을 확인하고 이 대기를 제거했다.
 
 고정 기준: 각 10분 단계의 첫/마지막 2분 중앙값 RSS/PSS 증가가
 `max(32 MiB, 시작값 × 10%)` 이하여야 한다. 힙·GC는 함께 제시하되 RSS 증가만으로

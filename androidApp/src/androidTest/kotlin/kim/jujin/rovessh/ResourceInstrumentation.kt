@@ -51,7 +51,10 @@ private class AndroidResourcePlatform(private val scenario: ActivityScenario<Mai
     }
     private suspend fun web(): WebView = withTimeout(15000) {
         var result: WebView? = null
-        while (result == null) { scenario.onActivity { result = find(it.window.decorView) }; if (result == null) delay(50) }
+        while (result == null) {
+            withContext(Dispatchers.Main) { scenario.onActivity { result = find(it.window.decorView) } }
+            if (result == null) delay(50)
+        }
         result!!
     }
     private suspend fun js(view: WebView, script: String): String = withTimeout(5000) {
@@ -91,7 +94,12 @@ private class AndroidResourcePlatform(private val scenario: ActivityScenario<Mai
         val status = File("/proc/self/status").readText()
         fun value(name: String) = Regex("(?m)^$name:\\s+(\\d+)").find(status)?.groupValues?.get(1)?.toLong() ?: error("missing_$name")
         var view: WebView? = null
-        scenario.onActivity { view = find(it.window.decorView) }
+        // onActivity from a worker calls waitForIdleSync, which can starve under
+        // continuous terminal output. Main-thread dispatch performs the bounded
+        // lookup directly, without waiting for the application to become idle.
+        withContext(Dispatchers.Main) {
+            if (app.selected.value != null) scenario.onActivity { view = find(it.window.decorView) }
+        }
         var scrollback = 0L; var rendered = 0L; var queued = 0L
         view?.let {
             val raw = js(it, """JSON.stringify((()=>{const t=window.__resourceTerm;if(!t)return {h:0,n:0,q:0};

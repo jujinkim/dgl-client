@@ -6,6 +6,7 @@ Interruptions produce failed evidence and unwind only resources owned by this ru
 """
 import argparse
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 import os
@@ -137,8 +138,19 @@ def collect(process, read_state, adb, port, profile, output):
     last_elapsed = -1
     next_tick = time.monotonic()
     next_detail = next_tick
+    detail_future = None
+    detail_origin = None
+    def memory_sample(origin):
+        detail = android_memory(adb, origin)
+        ending = json.loads(read_state())
+        stable = (ending['phase'] == origin['phase'] and origin.get('modelPhase') == 'Ready'
+                  and ending.get('modelPhase') == 'Ready')
+        detail.update(memoryPhase=origin['phase'] if stable else 'transition',
+                      memoryPhaseElapsed=origin['phaseElapsed'],
+                      memoryStartedElapsed=origin['elapsed'], memoryFinishedElapsed=ending['elapsed'])
+        return detail
     deadline = next_tick + PROFILES[profile]['warmup'] + 3 * PROFILES[profile]['phase'] + PROFILES[profile]['observe'] + 240
-    with (output / 'samples.jsonl').open('w') as stream:
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix='resource-meminfo') as details, (output / 'samples.jsonl').open('w') as stream:
         while time.monotonic() < deadline:
             value = read_state()
             if value:
@@ -148,9 +160,8 @@ def collect(process, read_state, adb, port, profile, output):
                 if final['elapsed'] > last_elapsed:
                     last_elapsed = final['elapsed']
                     if final['phase'] != 'setup' and process.poll() is None:
-                        detail = time.monotonic() >= next_detail
                         try:
-                            state = sample_process(dict(final), adb, port, detail)
+                            state = sample_process(dict(final), adb, port, False)
                         except (subprocess.CalledProcessError, ValueError):
                             # The app may exit between reading its last state and /proc.
                             # Accept only an explicit completed state plus successful exit.
@@ -159,19 +170,31 @@ def collect(process, read_state, adb, port, profile, output):
                                 final = json.loads(latest)
                                 break
                             raise
-                        if state.get('memoryDetail'):
-                            latest = json.loads(read_state())
-                            state['memoryPhase'] = state['phase'] if latest['phase'] == state['phase'] else 'transition'
+                        if detail_future is not None and detail_future.done():
+                            detail = detail_future.result()
+                            if detail['memoryPhase'] != state['phase']:
+                                detail['memoryPhase'] = 'transition'
+                            state.update(detail)
+                            detail_future = None
+                        if adb and detail_future is None and time.monotonic() >= next_detail:
+                            detail_origin = dict(final)
+                            detail_future = details.submit(memory_sample, detail_origin)
+                            next_detail = max(next_detail + 10, time.monotonic())
                         samples.append(state)
                         stream.write(json.dumps(state) + '\n'); stream.flush()
-                        if detail:
-                            next_detail = max(next_detail + 10, time.monotonic())
             if process.poll() is not None:
                 break
             next_tick += 2
             time.sleep(max(0, next_tick - time.monotonic()))
         else:
             raise TimeoutError('Resource scenario deadline')
+        if detail_future is not None:
+            try:
+                detail_future.result()
+            except (subprocess.SubprocessError, ValueError):
+                # Only the final idle query may race a successfully completed app.
+                if not (final.get('complete') and detail_origin['phase'] == 'observe'):
+                    raise
     process.wait(timeout=30)
     return samples, final, process.returncode == 0
 

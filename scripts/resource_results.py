@@ -80,8 +80,10 @@ def evaluate(samples, final, profile, platform, completed):
                 continue
             values = [s for s in rows if s.get(metric) is not None and
                       (metric in ('rssBytes', 'heapBytes') or s.get('memoryPhase', phase) == phase)]
-            first = [s[metric] for s in values if s['phaseElapsed'] <= spec['window']]
-            last = [s[metric] for s in values if s['phaseElapsed'] >= spec['phase'] - spec['window']]
+            def metric_time(sample):
+                return sample['phaseElapsed'] if metric in ('rssBytes', 'heapBytes') else sample.get('memoryPhaseElapsed', sample['phaseElapsed'])
+            first = [s[metric] for s in values if metric_time(s) <= spec['window']]
+            last = [s[metric] for s in values if metric_time(s) >= spec['phase'] - spec['window']]
             require(bool(first) and bool(last), phase + '_missing_windows_' + metric)
             if profile == 'soak':
                 minimum = 9 if metric in ('pssBytes', 'rendererRssBytes', 'rendererPssBytes') else 45

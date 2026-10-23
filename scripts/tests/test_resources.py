@@ -112,6 +112,44 @@ class ResourceResultsTest(unittest.TestCase):
 
 
 class ResourceCollectorTest(unittest.TestCase):
+    def test_slow_memory_detail_does_not_block_app_samples(self):
+        import json
+        import tempfile
+        import threading
+        from unittest.mock import Mock, patch
+        from verify_resources import collect
+        release = threading.Event()
+        count = 0
+        def read_state():
+            return json.dumps(dict(elapsed=(count + 1) * 2, phase='output', phaseElapsed=count * 2,
+                                   modelPhase='Ready', complete=count >= 4))
+        def memory(*args):
+            if not release.wait(timeout=2):
+                raise AssertionError('Detail collection blocked periodic app sampling')
+            return dict(memoryDetail=True, pssBytes=100)
+        def app_sample(state, adb, port, detail):
+            nonlocal count
+            count += 1
+            if count == 4: release.set()
+            if detail: state.update(memory())
+            return state
+        process = Mock(returncode=0)
+        process.poll.return_value = None
+        with tempfile.TemporaryDirectory() as directory, patch('verify_resources.time.sleep'), \
+             patch('verify_resources.sample_process', side_effect=app_sample), \
+             patch('verify_resources.android_memory', side_effect=memory) as detailed:
+            rows, _, completed = collect(process, read_state, ['adb'], 2222, 'smoke', Path(directory))
+        self.assertTrue(completed)
+        self.assertEqual(len(rows), 4)
+        detailed.assert_called_once()
+
+    def test_memory_windows_use_query_time_not_merge_time(self):
+        rows, final = evidence(android=True)
+        for row in rows:
+            if row.get('memoryDetail'): row['memoryPhaseElapsed'] = row['phaseElapsed'] + 250
+        errors = evaluate(rows, final, 'soak', 'android', True)['errors']
+        self.assertIn('output_missing_windows_pssBytes', errors)
+
     @unittest.skipIf(sys.platform == 'win32', 'Isolated OpenSSH fixture uses POSIX processes')
     def test_fixture_cleanup_kills_only_its_private_process(self):
         import subprocess
