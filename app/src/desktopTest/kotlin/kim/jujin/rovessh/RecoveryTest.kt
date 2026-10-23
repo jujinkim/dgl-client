@@ -95,7 +95,21 @@ class RecoveryTest {
             model.manage(TmuxCommand.newWindow(target, "resize-dialog"))
             withTimeout(5000) { model.remote.first { state -> state.windows.any { it.session == target && it.name == "resize-dialog" } } }
             ready()
+            // Disconnect must not wait for a channel-close acknowledgement while
+            // its receive window is full and the terminal consumer is stalled.
+            val stalled = CompletableDeferred<Unit>()
+            model.bindSurface(object : TerminalSurface {
+                override suspend fun write(bytes: ByteArray) { stalled.complete(Unit); awaitCancellation() }
+                override suspend fun reset(bytes: ByteArray) {}
+                override fun close() {}
+            })
+            val outputPane = model.pane.value!!
+            admin.execute("tmux send-keys -t '$outputPane' " + TmuxCommand.quote("while :; do printf '%01024d\\n' 0; done") + " Enter")
+            withTimeout(5000) { stalled.await() }
+            delay(1000)
+            val closeStarted = System.nanoTime()
             model.disconnect()
+            assertTrue((System.nanoTime() - closeStarted) / 1e9 < 2, "Disconnect must finish within two seconds with a stalled consumer")
             clients(0)
             admin.execute("tmux " + TmuxCommand.killSession(target).wire)
             model.connect()

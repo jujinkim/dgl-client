@@ -298,8 +298,11 @@ class ClientModel(
     private fun releaseConnection() {
         snapshotGeneration = null
         stateJob?.cancel(); stateJob = null
-        control?.close(); control = null; shell?.close(); shell = null
+        // A stalled terminal can fill the SSH receive window. Closing a channel
+        // first then waits for a peer acknowledgement behind that output. End the
+        // connection first so SSHJ releases its channel waiters immediately.
         transport?.close(); transport = null
+        control?.close(); control = null; shell?.close(); shell = null
         while (inputQueue.tryReceive().isSuccess) { /* never replay input */ }
     }
     fun disconnect() {
