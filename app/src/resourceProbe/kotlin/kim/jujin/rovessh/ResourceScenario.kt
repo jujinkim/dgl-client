@@ -134,7 +134,7 @@ class ResourceScenario(private val config: JsonObject, private val stateFile: Fi
             open(); phase("warmup"); linger(warmup)
             progress(); close()
             command(str("pauseCommand")); System.gc(); phase("baseline"); linger(if (soak) 20 else 6)
-            open(); progress(); val initialBytes = outputBytes
+            phase("connecting"); open(); progress(); val initialBytes = outputBytes
             command(str("resumeCommand")); phase("output")
             val outputEnd = System.nanoTime() + duration * 1_000_000_000
             // Stall the actual consumer briefly; producer/bridge must remain bounded.

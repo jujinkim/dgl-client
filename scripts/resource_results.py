@@ -100,7 +100,7 @@ def evaluate(samples, final, profile, platform, completed):
         trends[phase] = trend
     for phase, duration in [('warmup', spec['warmup']), ('observe', spec['observe'])]:
         require(max((s['phaseElapsed'] for s in samples + [final] if s.get('phase') == phase), default=0) >= duration - 3, phase + '_duration')
-    baseline = [s for s in samples if s['phase'] == 'baseline']
+    baseline = [s for s in samples if s['phase'] == 'baseline' and s.get('modelPhase') == 'Disconnected']
     after = [s for s in samples if s['phase'] == 'observe' and s['phaseElapsed'] >= spec['observe'] / 2]
     idle = {}
     require(bool(baseline) and bool(after), 'missing_idle_comparison')
@@ -108,6 +108,11 @@ def evaluate(samples, final, profile, platform, completed):
         for metric, limit in [('fd', 4), ('threads', 4), ('liveTerminals', 0), ('sshSockets', 0)]:
             a = [s[metric] for s in baseline if s.get(metric) is not None]
             b = [s[metric] for s in after if s.get(metric) is not None]
+            if metric == 'liveTerminals':
+                # Collection may complete during the observation interval (ART
+                # can schedule explicit GC asynchronously). Require zero at the
+                # end, rather than inventing a fractional retained object count.
+                b = [final[metric]] if type(final.get(metric)) is int and final[metric] >= 0 else []
             require(bool(a) and bool(b), 'missing_idle_' + metric)
             if a and b:
                 growth = statistics.median(b) - statistics.median(a)

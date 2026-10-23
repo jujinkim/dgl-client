@@ -17,7 +17,8 @@ def evidence(profile='soak', android=False):
             row = dict(elapsed=elapsed, phase=phase, phaseElapsed=t, appPid='123', remotePid=456,
                        rssBytes=100*MIB, heapBytes=40*MIB, fd=30, threads=20, gcCount=3, gcMillis=100,
                        liveTerminals=0 if phase in ('baseline', 'observe') else 1, scrollback=10000,
-                       renderSequence=elapsed, queuedBytes=4096, sshSockets=1, modelPhase='Ready')
+                       renderSequence=elapsed, queuedBytes=4096, sshSockets=1,
+                       modelPhase='Disconnected' if phase in ('baseline', 'observe') else 'Ready')
             if android and t % 10 == 0:
                 row.update(pssBytes=60*MIB, rendererRssBytes=50*MIB, rendererPssBytes=40*MIB,
                            rendererPids=[789], memoryDetail=True, anrCount=0, crashCount=0)
@@ -29,6 +30,22 @@ def evidence(profile='soak', android=False):
 
 
 class ResourceResultsTest(unittest.TestCase):
+    def test_connecting_samples_cannot_inflate_idle_baseline(self):
+        rows, final = evidence()
+        baseline = [s for s in rows if s['phase'] == 'baseline']
+        for row in baseline[3:]: row.update(modelPhase='Connecting', fd=100)
+        for row in rows:
+            if row['phase'] == 'observe': row['fd'] = 35
+        self.assertIn('idle_growth_fd', evaluate(rows, final, 'soak', 'desktop', True)['errors'])
+
+    def test_terminal_collection_is_required_at_end_of_observation(self):
+        rows, final = evidence()
+        for row in rows:
+            if row['phase'] == 'observe': row['liveTerminals'] = 1
+        self.assertEqual(evaluate(rows, final, 'soak', 'desktop', True)['errors'], [])
+        final['liveTerminals'] = 1
+        self.assertIn('retained_liveTerminals', evaluate(rows, final, 'soak', 'desktop', True)['errors'])
+
     def test_macos_native_thread_rows_exclude_header(self):
         output = 'USER PID TT %CPU STAT COMMAND\nuser 123 ?? 0.0 S java\n     123    0.0 S\n     123    0.0 S\n'
         self.assertEqual(parse_macos_threads(output, 123), 3)
