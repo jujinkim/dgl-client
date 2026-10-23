@@ -66,7 +66,8 @@ class SshjTransport : SshTransport {
     }
 
     override suspend fun execute(command: String): ByteArray = withContext(Dispatchers.IO) {
-        val session = connected().startSession()
+        val owner = connected()
+        val session = owner.startSession()
         channels += session
         try {
             withTimeout(15_000) {
@@ -85,22 +86,24 @@ class SshjTransport : SshTransport {
 
     override suspend fun openControl(sessionId: String): SshTransport.Stream = withContext(Dispatchers.IO) {
         require(sessionId.matches(Regex("\\$[0-9]+")))
-        val session = connected().startSession()
+        val owner = connected()
+        val session = owner.startSession()
         channels += session
         try {
             // No PTY. Never -d: attaching must not detach other clients.
             val command = session.exec("tmux -C attach-session -t " + TmuxCommand.quote(sessionId))
-            SshStream(session, command.inputStream, command.outputStream, command.errorStream, null)
+            SshStream(owner, session, command.inputStream, command.outputStream, command.errorStream, null)
         } catch (e: Exception) { channels -= session; session.close(); throw e }
     }
 
     override suspend fun openShell(size: Size): SshTransport.Stream = withContext(Dispatchers.IO) {
-        val session = connected().startSession()
+        val owner = connected()
+        val session = owner.startSession()
         channels += session
         try {
             session.allocatePTY("xterm-256color", size.columns, size.rows, 0, 0, emptyMap())
             val shell = session.startShell()
-            SshStream(session, shell.inputStream, shell.outputStream, shell.errorStream, shell)
+            SshStream(owner, session, shell.inputStream, shell.outputStream, shell.errorStream, shell)
         } catch (e: Exception) { channels -= session; session.close(); throw e }
     }
 
@@ -113,14 +116,17 @@ class SshjTransport : SshTransport {
     }
 
     private inner class SshStream(
-        val session: Session, val input: InputStream, val output: OutputStream, errors: InputStream, val shell: Session.Shell?,
+        val owner: SSHClient, val session: Session, val input: InputStream, val output: OutputStream, errors: InputStream, val shell: Session.Shell?,
     ) : SshTransport.Stream() {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         init { scope.launch { runCatching { boundedRead(errors, 65536) }; } }
         override suspend fun read(): ByteArray? = runInterruptible(Dispatchers.IO) {
+            // SSHJ may retain a receive window after close. Do not make a slow
+            // renderer drain that obsolete output before detecting the disconnect.
+            if (client !== owner || !owner.isConnected) return@runInterruptible null
             val bytes = ByteArray(16384)
             val n = input.read(bytes)
-            if (n < 0) null else bytes.copyOf(n)
+            if (n < 0 || client !== owner || !owner.isConnected) null else bytes.copyOf(n)
         }
         override suspend fun write(bytes: ByteArray) = runInterruptible(Dispatchers.IO) { output.write(bytes); output.flush() }
         override suspend fun resize(size: Size) = withContext(Dispatchers.IO) {

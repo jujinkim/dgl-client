@@ -153,6 +153,21 @@
         "androidApp/src/main/res/mipmap-anydpi/ic_launcher.xml"
       ],
       "condition": "Only this exact lint diagnostic; dependency/source/API changes require review. No OSV runtime waiver."
+    },
+    {
+      "id": "NewerVersionAvailable",
+      "messageSha256": "1cc64c17583ad22d394e895a612bf16e3e3606a3e4b5aa9c8c2ba05d408305b8",
+      "locationSuffix": "androidApp/build.gradle.kts",
+      "reviewed": "2026-10-23",
+      "recheck": "2026-11-22",
+      "expires": "2026-12-22",
+      "reason": "The opt-in resource instrumentation uses the same serialization 1.9.0 already locked and verified in app runtime. Only androidTest visibility changes; application runtime versions are unchanged.",
+      "evidence": [
+        "app/build.gradle.kts",
+        "androidApp/gradle.lockfile",
+        "docs/VALIDATION.md"
+      ],
+      "condition": "Only this exact version advisory for the test dependency. No vulnerability waiver; OSV continues to cover the selected graph."
     }
   ]
 }

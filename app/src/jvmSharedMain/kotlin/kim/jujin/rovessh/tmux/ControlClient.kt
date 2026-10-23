@@ -67,7 +67,10 @@ class ControlClient(
                         }
                     }
                 }
-                parser.finish()
+                // EOF can split a control record when the network disappears.
+                // Discard that connection's partial parser state and recover from
+                // a fresh snapshot. Complete malformed records still fail closed
+                // inside feed(); a remote %exit is handled separately above.
                 if (!closed) throw ClientFailure(Failure.Network, "SSH 연결이 끊어졌습니다.")
             } catch (e: Exception) {
                 startup.completeExceptionally(e)

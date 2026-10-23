@@ -18,7 +18,7 @@
 | P2-03 | 호스트키·재접속·fallback | P2-02,P1-03 | TOFU·변경 차단·백오프·입력 차단·일반 SSH | 검증 완료 | 변경 지문·오인증 차단, 3회 강제 단절, 입력 미재전송, 세션 소멸, SSH PTY 통과 |
 | P3-01 | GUI 탐색·tmux 관리 | P2-01,P2-03 | 생성·이름·분할·선택·크기·삭제 확인·외부 변경 | 구현 완료·검증 대기 | 공유 GUI·이벤트 재조회·삭제 대상 고정; Android GUI 분할·선택·창 생성 검증, 전체 Windows GUI 인수 필요 |
 | P3-02 | Android 입력·화면·설정 | P3-01,P1-04 | IME·단축키·회전·복귀·테마·폰트·선택 | 구현 완료·검증 대기 | API 34/35/36 각 4개 통과, 폰트 변경·renderer 재연결 포함; 실제 키보드 조합·기기 선택/scroll 별도 |
-| P3-03 | 출력 흐름·자원 상한 | P1-03,P1-04 | 큐·scrollback 상한, 재접속 자원 회수 | 구현 완료·검증 대기 | 256 KiB desktop pipe, Android 16 KiB ack, parser/입력 상한, 15k줄·client 회수 확인; 장기 최대 RSS·FD 미측정 |
+| P3-03 | 출력 흐름·자원 상한 | P1-03,P1-04 | 큐·scrollback 상한, 재접속 자원 회수 | 구현 완료·검증 대기 | 256 KiB desktop pipe, Android 16 KiB ack, parser/입력 상한. 별도 자원 수집·판정 도구 및 중단 정리 구현; 5환경 본 측정·판정 대기 |
 | P4-01 | APK·Windows 패키징·CI | P3-01,P3-02 | APK, Windows 설치물, 최소 권한 CI | 구현 완료·검증 대기 | debug APK 생성·에뮬레이터 설치; MSI/EXE 작업과 CI 작성, 실제 Windows 빌드 미실행 |
 | P4-02 | 인수 A–F·실제 에이전트 | P4-01 | 실제 수행 결과와 미실행 체크리스트 | 구현 완료·검증 대기 | 부분 자동 검증 연결, docs/VALIDATION.md에 남은 항목; 실제 Codex·Claude·실기 미실행 |
 | P4-03 | 의존성·라이선스·무결성·보안 | P4-01 | 잠금·검증·취약점·비밀·라이선스 검사 | 진행 중 | 로컬: 모듈 분리·Kotlin 2.4.21/AGP 9.3.3/Gradle 9.7.0, 371버전 OSV 전 범위 0, 라이선스 182버전·네이티브/JVM 고지·JediTerm 재빌드·보안 12테스트 통과. API 34/35/36 각 4통과·APK/477개 고지 해시 확인. 원격 Linux·tmux·Android 6작업 동일 커밋 통과; Windows 사용자 검증 대기·서명/게시 별도 |
@@ -76,3 +76,9 @@
 - OSV 371버전 경고 0·npm audit 0·Gitleaks 3범위·lint·APK 정책 통과. Linux 고지 485파일.
 - GitHub Secret scanning·Push protection 상태는 조회 응답 미제공으로 확인 불가. 설정 미변경.
 - 최종 수집 보완 커밋의 실행/해시 기록: `artifacts/REMOTE_CI.md`. Windows·실기·실제 에이전트·서명은 여전히 후속이며 P4-03 전체는 진행 중.
+
+## P3-03 시작 전 main 통합 (2026-10-23)
+
+- `codex/p4-03-ci-windows`의 3개 커밋을 로컬·원격 `main`에 fast-forward 통합했다. 원격 SHA는 `3baeb566843bf9db6d27cb8bf1c6d6c92b89b94d`다.
+- main CI: https://github.com/jujinkim/dgl-client/actions/runs/39904361260 . 최초 API 35 GUI pane split 접근성 시간 초과 1건, 해당 작업 재실행 후 필수 6개 성공. 최초 실패를 안정성 통과 근거에서 제외한다. Windows는 미실행이다.
+- 후속 구현은 `codex/p3-03-resource-soak`에서 수행한다. smoke는 장기 메모리 합격을 의미하지 않으며 P3-03 전체 상태를 올리지 않는다.

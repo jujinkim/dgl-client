@@ -15,10 +15,12 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = if (providers.gradleProperty("dglResourceProbe").orNull == "true")
+            "kim.jujin.rovessh.ResourceInstrumentation" else "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true }
+    sourceSets.getByName("androidTest").kotlin.srcDir("../app/src/resourceProbe/kotlin")
     packaging {
         resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/INDEX.LIST", "META-INF/DEPENDENCIES")
         resources.merges += setOf("META-INF/LICENSE.md", "META-INF/LICENSE", "META-INF/NOTICE.md", "META-INF/NOTICE")
@@ -35,6 +37,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 }
 dependencyLocking { lockAllConfigurations(); lockMode.set(LockMode.LENIENT) }
 abstract class NoticeAssets : Sync() {

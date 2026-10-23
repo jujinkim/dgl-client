@@ -60,6 +60,7 @@ kotlin {
             }
         }
         val desktopTest by getting {
+            kotlin.srcDir("src/resourceProbe/kotlin")
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation("org.apache.sshd:sshd-core:2.20.0")
@@ -95,6 +96,14 @@ tasks.withType<Test>().configureEach {
 
 // Kept outside the production distribution. Used only by isolated Windows CI accounts.
 val desktopTests = kotlin.targets.getByName("desktop").compilations.getByName("test")
+// A main class, never a JUnit test; the normal exact test inventory is unchanged.
+tasks.register<Sync>("prepareResourceProbe") {
+    dependsOn("desktopTestClasses")
+    from(desktopTests.output.allOutputs)
+    from(desktopTests.runtimeDependencyFiles)
+    into(layout.buildDirectory.dir("resource-probe"))
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 tasks.register<Sync>("prepareDpapiProbe") {
     dependsOn("desktopTestClasses")
     from(desktopTests.output.allOutputs)

@@ -3,6 +3,7 @@ package kim.jujin.rovessh
 import kim.jujin.rovessh.core.*
 import kim.jujin.rovessh.ssh.SshjTransport
 import kim.jujin.rovessh.storage.MemoryCredentialStore
+import kim.jujin.rovessh.tmux.ControlClient
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.junit.Assume.assumeTrue
@@ -16,6 +17,33 @@ class RecoveryTest {
         val host = HostProfile("recovery", "Recovery", "127.0.0.1", System.getenv("DGL_TEST_PORT").toInt(), System.getenv("DGL_TEST_USER"), AuthKind.PrivateKey)
         val credential = Credential(privateKey = File(System.getenv("DGL_TEST_KEY_FILE")).readText())
         val fingerprint = System.getenv("DGL_TEST_FINGERPRINT")
+        // Closing a connection must not drain queued output into a slow renderer
+        // before reporting EOF. That postpones reconnect while input still looks ready.
+        val buffered = SshjTransport()
+        try {
+            buffered.connect(host, credential, fingerprint)
+            val stream = buffered.openShell(Size())
+            stream.write("i=0; while [ \"\$i\" -lt 256 ]; do printf '%01024d\\n' 0; i=\$((i+1)); done\r".encodeToByteArray())
+            assertNotNull(withTimeout(5000) { stream.read() })
+            delay(300) // Let the peer fill SSHJ's bounded receive window.
+            buffered.close()
+            assertNull(withTimeout(2000) { stream.read() }, "Closed transport must discard buffered output")
+        } finally { buffered.close() }
+        // A socket can close halfway through a control line. The next connection
+        // restores a snapshot; an unfinished old line must not disable recovery.
+        var pending = true
+        val truncated = ControlClient(object : SshTransport.Stream() {
+            override suspend fun read(): ByteArray? = if (pending) {
+                pending = false; "%output %0 unfinished".encodeToByteArray()
+            } else null
+            override suspend fun write(bytes: ByteArray) {}
+            override suspend fun resize(size: Size) {}
+            override fun close() {}
+        }, this, onOutput = {})
+        try {
+            val error = assertFailsWith<ClientFailure> { truncated.start() }
+            assertEquals(Failure.Network, error.kind)
+        } finally { truncated.close() }
         val admin = SshjTransport()
         admin.connect(host, credential, fingerprint)
         val name = "recovery-${System.nanoTime()}"

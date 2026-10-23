@@ -207,3 +207,70 @@ GitHub Secret scanning / Push protection: **확인 불가**. GitHub 연결 도�
 저장소 응답과 인증 없는 REST 조회에서 `security_and_analysis`가 제공되지 않았다.
 CLI는 미인증 상태이며 SSH push 권한은 확인했다. 설정은 변경하지 않았다.
 [GitHub 저장소 조회 API](https://docs.github.com/en/rest/repos/repos#get-a-repository)의 가시성 제한과 구분해 기록한다.
+
+## P3-03 자원 측정 도구
+
+`python3 scripts/verify_resources.py --platform all --profile soak`는 macOS JVM
+× tmux 3.3a/3.7c, 전용 Dgl_API34/35/36 AVD × tmux 3.7c를 순차 실행한다.
+기본값은 `all`, `soak`이며 변경 사항을 커밋한 깨끗한 작업 트리가 필요하다.
+`--profile smoke`는 예열 20초·각 부하 30초·반복 2회·종료 관찰 10초로
+수집기와 수명주기를 검사한다. smoke에는 2분 비교 구간이 없으므로 메모리
+합격 판정을 하지 않으며 `qualifiesAsSoak=false`를 기록한다.
+
+본 측정은 환경마다 예열 5분, 동일 유휴 상태 기준선 20초, 출력·강제 단절 복구·
+정상 종료/터미널 재생성 각 10분, 종료 후 관찰 2분이다. 5환경 본 부하는
+150분이며 예열·관찰·기준선·빌드·부팅 시간은 별도다. 복구와 재생성은 각각
+20회다. 전용 원격 Python 프로세스는 Unicode/ANSI 행을 약 64 KiB/s로 출력하고
+PID·진행 번호·수신 입력 바이트 수만 덮어쓴다. 복구 중 입력은 차단되어야 하고
+같은 원격 PID가 유지되어야 한다. 회복 후 control client 1개, 종료 후 0개를
+매번 검사한다. 소비자를 잠시 지연시켜 출력 제어도 실행한다.
+
+JVM은 Gradle daemon과 분리한 프로세스에서 실제 ClientModel → DesktopConnector
+(256 KiB pipe) → JediTerm 스트림 파서/터미널 버퍼를 사용한다. 그래픽 디스플레이는
+headless이며 Swing 페인팅·Windows GUI/IME를 검증한 것으로 해석하지 않는다.
+Android는 별도 `-PdglResourceProbe=true` 계측 APK로 실제 MainActivity/Compose와
+AndroidTerminal/WebView/xterm을 실행하고 ActivityScenario로 화면을 재생성한다.
+일반 JVM 20개·Android 4개의 정확한 테스트 목록과 기본 runner는 그대로 유지한다.
+앱 배포 코드·공개 API·저장 형식에는 측정용 API를 추가하지 않는다.
+
+앱 힙·GC·FD·스레드·scrollback·출력 버퍼 지표는 2초 간격으로 수집한다.
+Android 상세 메모리는 10초 간격이며, `dumpsys activity services`의 호스트 앱
+바인딩에서 렌더러 PID를 찾아 각 PID의 RSS/PSS를 별도로 합산한다. 패키지의
+`meminfo`만으로 렌더러 메모리를 대체하지 않는다.
+[Android WebView 메모리 측정 지침](https://developer.android.com/develop/ui/views/layout/webapps/manage-webview-memory)을 따른다.
+프로세스 교체·누락·수집 공백·실패·중단은 실패 근거로 기록한다. 정상 화면 재생성
+중 렌더러 PID 교체는 기록하되 앱 PID 교체는 실패다. 샘플 최대 RSS와 OS 최대
+RSS(macOS time, Android VmHWM)를 구분한다. 수집할 수 없는 값은 null/누락이며
+0으로 보완하지 않는다. 단말 앱 ANR/crash 이벤트도 확인한다.
+
+고정 기준: 각 10분 단계의 첫/마지막 2분 중앙값 RSS/PSS 증가가
+`max(32 MiB, 시작값 × 10%)` 이하여야 한다. 힙·GC는 함께 제시하되 RSS 증가만으로
+누수를 단정하지 않는다. 예열 후와 종료 후 유휴 FD·스레드 중앙값 증가는 각각
+4 이하여야 한다. 이전 터미널은 약한 참조로만 추적하며 종료 후 남으면 실패다.
+SSH 소켓은 유휴 상태의 관찰용 admin 연결 1개를 제외하고 회수되어야 한다.
+scrollback 10,000줄과 출력 버퍼 상한, 반복 완료, 출력 진행과 속도도 확인한다.
+메모리 판정 수치는 결과에 맞추어 완화하지 않는다.
+
+실행별 `artifacts/resources-{profile}-{UTC}/`에 `matrix.json`, 환경별 `summary.json`,
+`samples.jsonl`, 프로세스 진단을 저장한다. 요약에는 코드 커밋·작업 트리 변경 여부,
+환경·시간·반복 횟수·기준·판정이 포함된다. 터미널 원문과 실제 자격 증명은
+기록하지 않는다. 임시 SSH 키/서버/tmux socket, 자체 생성한 AVD/앱 프로세스,
+adb reverse 포트는 종료·실패·중단 시 정리한다.
+
+현재 도구 구현과 smoke/회귀 확인 단계이며, 아래에 최종 커밋의 본 측정 결과가
+기록되기 전에는 P3-03 장시간 검증 통과로 취급하지 않는다. Windows는 사용자
+검증 담당, Android 실기는 후속 범위로 유지한다.
+
+### 부하 smoke에서 재현한 복구 결함
+
+API 35에서 출력이 밀린 상태로 SSH를 강제 종료하면 소켓이 사라진 뒤에도
+`Ready` 상태에서 과거 버퍼를 처리하여 복구 전환이 지연됐다. 기존 RecoveryTest에
+수신 버퍼를 채운 뒤 연결을 닫는 검사를 추가해 수정 전 실패를 확인했다.
+SshStream은 자신을 만든 SSH 연결의 동일성/연결 상태를 읽기 전후에 확인하여
+닫힌 연결의 버퍼를 더 전달하지 않도록 수정했다.
+
+또한 제어 레코드 중간의 EOF가 `ProtocolException`으로 분류되어 재접속을 차단하는
+경우를 별도 fake stream으로 재현했다. EOF는 이전 파서 상태를 폐기하고 네트워크
+단절로 복구하며, 완성된 잘못된 레코드의 파싱 오류와 원격 `%exit` 처리는 유지한다.
+두 재현 검사는 기존 RecoveryTest 안에 두어 정확한 JVM 20개 목록을 유지한다.
+최종 5환경 장시간 측정은 이 수정 이후 코드로 수행해야 한다.

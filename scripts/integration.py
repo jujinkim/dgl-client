@@ -15,6 +15,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import signal
 
 
 def run(args, **kwargs):
@@ -29,6 +30,8 @@ def main():
     if not args.tmux:
         raise SystemExit('tmux is required')
     tmux = str(Path(args.tmux).resolve())
+    if not Path(tmux).is_file():
+        raise SystemExit('Test tmux binary does not exist')
     with tempfile.TemporaryDirectory(prefix='dgl-integration-') as folder:
         root = Path(folder)
         os.chmod(root, 0o700)
@@ -82,23 +85,35 @@ LogLevel ERROR
                     except OSError:
                         time.sleep(.1)
                 env = os.environ.copy()
-                env.update(DGL_TEST_PORT=str(port), DGL_TEST_USER=getpass.getuser(), DGL_TEST_KEY_FILE=str(root / 'client'),
+                env.update(DGL_TEST_ROOT=str(root), DGL_TEST_PORT=str(port), DGL_TEST_USER=getpass.getuser(), DGL_TEST_KEY_FILE=str(root / 'client'),
                            DGL_TEST_RSA_FILE=str(root / 'rsa'), DGL_TEST_ENCRYPTED_FILE=str(root / 'encrypted'),
                            DGL_TEST_PASSPHRASE=passphrase, DGL_TEST_FINGERPRINT=fingerprint,
                            DGL_TEST_TMUX_VERSION=run([tmux, '-V']).stdout.strip().removeprefix('tmux '))
                 command = args.command or ['./gradlew', ':app:desktopTest', '--rerun-tasks']
                 print('Isolated OpenSSH ready; ' + run([tmux, '-V']).stdout.strip(), flush=True)
-                result = subprocess.run(command, env=env)
+                result = subprocess.Popen(command, env=env)
+                try:
+                    result.wait()
+                finally:
+                    if result.poll() is None:
+                        result.terminate()
+                        try:
+                            result.wait(timeout=30)
+                        except subprocess.TimeoutExpired:
+                            result.kill(); result.wait()
                 if result.returncode:
                     raise SystemExit(result.returncode)
             finally:
-                subprocess.run([tmux, '-S', str(root / 'tmux.socket'), 'kill-server'], capture_output=True)
-                process.terminate()
                 try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
+                    subprocess.run([tmux, '-S', str(root / 'tmux.socket'), 'kill-server'], capture_output=True, timeout=5)
+                finally:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill(); process.wait()
 
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     main()
