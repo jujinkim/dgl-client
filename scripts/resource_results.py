@@ -84,8 +84,9 @@ def evaluate(samples, final, profile, platform, completed):
                 return sample['phaseElapsed'] if metric in ('rssBytes', 'heapBytes') else sample.get('memoryPhaseElapsed', sample['phaseElapsed'])
             first = [s[metric] for s in values if metric_time(s) <= spec['window']]
             last = [s[metric] for s in values if metric_time(s) >= spec['phase'] - spec['window']]
-            require(bool(first) and bool(last), phase + '_missing_windows_' + metric)
+            require(bool(values), phase + '_missing_' + metric)
             if profile == 'soak':
+                require(bool(first) and bool(last), phase + '_missing_windows_' + metric)
                 minimum = 9 if metric in ('pssBytes', 'rendererRssBytes', 'rendererPssBytes') else 45
                 require(len(first) >= minimum and len(last) >= minimum, phase + '_insufficient_samples_' + metric)
             if first and last:
@@ -122,7 +123,7 @@ def evaluate(samples, final, profile, platform, completed):
                     # One admin SSH socket lives through both idle observations.
                     require(statistics.median(b) <= (1 if metric == 'sshSockets' else 0), 'retained_' + metric)
     if platform == 'android':
-        details = [s for s in samples if s.get('memoryDetail') and s.get('modelPhase') == 'Ready' and
+        details = [s for s in samples if s.get('memoryDetail') and s.get('modelPhase') in ('Ready', 'Restoring') and
                    s.get('memoryPhase', s['phase']) == s['phase']]
         require(bool(details), 'missing_renderer_detail')
         require(all(s.get('anrCount') == 0 and s.get('crashCount') == 0 for s in details), 'android_anr_crash_or_missing')

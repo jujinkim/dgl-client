@@ -132,6 +132,19 @@ def sample_process(state, adb, port, detail):
     return state
 
 
+def sample_android_memory(read_state, adb, origin):
+    detail = android_memory(adb, origin)
+    ending = json.loads(read_state())
+    active = ('Ready', 'Restoring')
+    stable = (ending['phase'] == origin['phase'] and origin.get('modelPhase') in active
+              and ending.get('modelPhase') in active)
+    detail.update(memoryPhase=origin['phase'] if stable else 'transition',
+                  memoryPhaseElapsed=origin['phaseElapsed'],
+                  memoryStartedElapsed=origin['elapsed'], memoryFinishedElapsed=ending['elapsed'],
+                  memoryStartedModelPhase=origin.get('modelPhase'), memoryFinishedModelPhase=ending.get('modelPhase'))
+    return detail
+
+
 def collect(process, read_state, adb, port, profile, output):
     samples = []
     final = {}
@@ -140,15 +153,6 @@ def collect(process, read_state, adb, port, profile, output):
     next_detail = next_tick
     detail_future = None
     detail_origin = None
-    def memory_sample(origin):
-        detail = android_memory(adb, origin)
-        ending = json.loads(read_state())
-        stable = (ending['phase'] == origin['phase'] and origin.get('modelPhase') == 'Ready'
-                  and ending.get('modelPhase') == 'Ready')
-        detail.update(memoryPhase=origin['phase'] if stable else 'transition',
-                      memoryPhaseElapsed=origin['phaseElapsed'],
-                      memoryStartedElapsed=origin['elapsed'], memoryFinishedElapsed=ending['elapsed'])
-        return detail
     deadline = next_tick + PROFILES[profile]['warmup'] + 3 * PROFILES[profile]['phase'] + PROFILES[profile]['observe'] + 240
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix='resource-meminfo') as details, (output / 'samples.jsonl').open('w') as stream:
         while time.monotonic() < deadline:
@@ -178,7 +182,7 @@ def collect(process, read_state, adb, port, profile, output):
                             detail_future = None
                         if adb and detail_future is None and time.monotonic() >= next_detail:
                             detail_origin = dict(final)
-                            detail_future = details.submit(memory_sample, detail_origin)
+                            detail_future = details.submit(sample_android_memory, read_state, adb, detail_origin)
                             next_detail = max(next_detail + 10, time.monotonic())
                         samples.append(state)
                         stream.write(json.dumps(state) + '\n'); stream.flush()

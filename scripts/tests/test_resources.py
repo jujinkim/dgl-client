@@ -30,6 +30,18 @@ def evidence(profile='soak', android=False):
 
 
 class ResourceResultsTest(unittest.TestCase):
+    def test_smoke_checks_collection_without_two_minute_memory_windows(self):
+        rows, final = evidence('smoke', android=True)
+        for row in rows:
+            if row['phaseElapsed'] < 15:
+                for key in ('pssBytes', 'rendererRssBytes', 'rendererPssBytes'):
+                    row.pop(key, None)
+                row['memoryDetail'] = False
+        result = evaluate(rows, final, 'smoke', 'android', True)
+        self.assertEqual(result['errors'], [])
+        self.assertFalse(result['memoryAcceptanceEvaluated'])
+        self.assertFalse(result['qualifiesAsSoak'])
+
     def test_connecting_samples_cannot_inflate_idle_baseline(self):
         rows, final = evidence()
         baseline = [s for s in rows if s['phase'] == 'baseline']
@@ -129,6 +141,17 @@ class ResourceResultsTest(unittest.TestCase):
 
 
 class ResourceCollectorTest(unittest.TestCase):
+    def test_restoring_is_valid_memory_and_disconnection_is_not(self):
+        import json
+        from unittest.mock import patch
+        from verify_resources import sample_android_memory
+        origin = dict(phase='recreate', phaseElapsed=8, elapsed=108, modelPhase='Restoring')
+        with patch('verify_resources.android_memory', return_value=dict(memoryDetail=True, pssBytes=100)):
+            result = sample_android_memory(lambda: json.dumps(origin), ['adb'], origin)
+            self.assertEqual(result['memoryPhase'], 'recreate')
+            result = sample_android_memory(lambda: json.dumps(dict(origin, modelPhase='Disconnected')), ['adb'], origin)
+            self.assertEqual(result['memoryPhase'], 'transition')
+
     def test_slow_memory_detail_does_not_block_app_samples(self):
         import json
         import tempfile
