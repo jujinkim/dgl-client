@@ -68,7 +68,9 @@ def package(binary, output, version):
             f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(stage).as_posix()}\n" for p in files
         ), encoding="utf-8")
         archive = Path(temp) / f"{NAME}.zip"
-        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zipped:
+        # Registry archives may give license files pre-1980 timestamps. Clamp
+        # only ZIP metadata; keep their contents and SHA-256 hashes unchanged.
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as zipped:
             for file in sorted(p for p in stage.rglob("*") if p.is_file()):
                 zipped.write(file, f"{NAME}/{file.relative_to(stage).as_posix()}")
         # Publish only after every file and the archive have been generated.

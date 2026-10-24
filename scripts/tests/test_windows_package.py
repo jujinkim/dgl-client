@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import sys
@@ -46,6 +47,10 @@ class WindowsPackageTest(unittest.TestCase):
                 self.assertEqual(target, windows.TARGET)
                 destination.mkdir()
                 (destination / "DEPENDENCIES.json").write_text("[]\n")
+                # Cargo registry files commonly have an epoch timestamp.
+                license_file = destination / "LICENSE"
+                license_file.write_bytes(b"dependency license\n")
+                os.utime(license_file, (315532800 - 86400, 315532800 - 86400))
 
             with patch.object(windows, "collect", side_effect=notices):
                 archive = windows.package(binary, output, "0.1.0")
@@ -59,6 +64,8 @@ class WindowsPackageTest(unittest.TestCase):
                 self.assertEqual(manifest["runtimeValidation"], "not-performed")
                 self.assertEqual(manifest["binarySha256"], hashlib.sha256(binary.read_bytes()).hexdigest())
                 self.assertIn(prefix + "third-party-rust/DEPENDENCIES.json", zipped.namelist())
+                self.assertEqual(zipped.read(prefix + "third-party-rust/LICENSE"), b"dependency license\n")
+                self.assertEqual(zipped.getinfo(prefix + "third-party-rust/LICENSE").date_time[:3], (1980, 1, 1))
                 sums = zipped.read(prefix + "SHA256SUMS").decode().splitlines()
                 self.assertEqual(len(sums), len(zipped.namelist()) - 1)
                 for line in sums:

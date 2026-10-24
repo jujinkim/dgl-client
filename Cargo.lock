@@ -1779,6 +1779,7 @@ dependencies = [
  "alacritty_terminal",
  "dgl-core",
  "gpui",
+ "raw-window-handle",
  "security-framework",
  "serde",
  "serde_json",
