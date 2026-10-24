@@ -12,6 +12,8 @@ mod text_input;
 mod theme;
 #[cfg(test)]
 mod ui_tests;
+#[cfg(target_os = "windows")]
+mod windows_ime;
 mod workspace;
 mod workspace_ui;
 use dgl_core::{
@@ -921,7 +923,13 @@ fn main() {
                     }),
                     ..Default::default()
                 },
-                move |_, cx| cx.new(|cx| Desktop::new(runtime, path, cx)),
+                move |window, cx| {
+                    #[cfg(target_os = "windows")]
+                    windows_ime::install(window).expect("Windows IME handler unavailable");
+                    #[cfg(not(target_os = "windows"))]
+                    let _ = window;
+                    cx.new(|cx| Desktop::new(runtime, path, cx))
+                },
             )
             .unwrap();
             cx.activate(true);
