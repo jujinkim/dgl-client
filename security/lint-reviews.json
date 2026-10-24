@@ -127,21 +127,6 @@
       "condition": "Only this exact lint diagnostic; dependency/source/API changes require review. No OSV runtime waiver."
     },
     {
-      "id": "TrustAllX509TrustManager",
-      "messageSha256": "2132694714d368abd035396d16bec0b2489c1b57595c419347b92a2419c94471",
-      "locationSuffix": "bcpkix-jdk18on-1.86.jar",
-      "reviewed": "2026-10-23",
-      "recheck": "2026-11-22",
-      "expires": "2026-12-22",
-      "reason": "BC EST/TLS helper is not called by this SSH application; SSHJ host-key verification and WebView origin/network restrictions remain active.",
-      "evidence": [
-        "app/src/jvmSharedMain/kotlin/kim/jujin/rovessh/ssh/SshjTransport.kt",
-        "app/src/androidMain/kotlin/kim/jujin/rovessh/ui/AndroidTerminal.kt",
-        "org.bouncycastle.est.jcajce.JcaJceUtils.getTrustAllTrustManager: javap inspection of bcpkix-jdk18on 1.86"
-      ],
-      "condition": "Only this exact lint diagnostic; dependency/source/API changes require review. No OSV runtime waiver."
-    },
-    {
       "id": "ObsoleteSdkInt",
       "messageSha256": "cc5cde8542fee330d4123b7c9503a78772e76125e6f6bcf6b95e79ec6a3dc1b6",
       "locationSuffix": "androidApp/src/main/res/mipmap-anydpi-v26",
@@ -168,6 +153,36 @@
         "docs/VALIDATION.md"
       ],
       "condition": "Only this exact version advisory for the test dependency. No vulnerability waiver; OSV continues to cover the selected graph."
+    },
+    {
+      "id": "NewerVersionAvailable",
+      "messageSha256": "a40554c9042247d123123d34f8bd2ab7d55543568c65261c980c3290ec270334",
+      "locationSuffix": "androidApp/build.gradle.kts",
+      "reviewed": "2026-10-24",
+      "recheck": "2026-11-22",
+      "expires": "2026-12-22",
+      "reason": "Existing pinned SSH fixture dependencies moved from production runtime to androidTestImplementation. The Rust app APK excludes SSHJ and SLF4J; this change does not upgrade test dependency versions.",
+      "evidence": [
+        "androidApp/build.gradle.kts",
+        "app/src/referenceTest/README.md",
+        "scripts/collect_rust_android.py"
+      ],
+      "condition": "Only this exact newer-version advisory for the test dependency. No vulnerability waiver; the selected graph remains subject to OSV audit."
+    },
+    {
+      "id": "NewerVersionAvailable",
+      "messageSha256": "f99c0d0b4ca5aa6ab0d068bb92fb9ad49dbea99df2cbdb5c22dee316c78022f4",
+      "locationSuffix": "androidApp/build.gradle.kts",
+      "reviewed": "2026-10-24",
+      "recheck": "2026-11-22",
+      "expires": "2026-12-22",
+      "reason": "Existing pinned SSH fixture dependencies moved from production runtime to androidTestImplementation. The Rust app APK excludes SSHJ and SLF4J; this change does not upgrade test dependency versions.",
+      "evidence": [
+        "androidApp/build.gradle.kts",
+        "app/src/referenceTest/README.md",
+        "scripts/collect_rust_android.py"
+      ],
+      "condition": "Only this exact newer-version advisory for the test dependency. No vulnerability waiver; the selected graph remains subject to OSV audit."
     }
   ]
 }

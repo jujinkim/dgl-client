@@ -8,4 +8,7 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "dgl-client"
-include(":app", ":androidApp")
+include(":app", ":androidApp", ":coreBindings", ":mobileUi")
+require(!providers.gradleProperty("dglEngine").isPresent) {
+    "dglEngine was removed. Android uses the Rust engine; omit -PdglEngine."
+}

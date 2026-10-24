@@ -24,7 +24,7 @@ class ResourceInstrumentation : AndroidJUnitRunner() {
             val config = Json.parseToJsonElement(File(targetContext.cacheDir, "resource-config.json").readText()).jsonObject.toMutableMap()
             config["appPid"] = JsonPrimitive(Process.myPid())
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                val platform = AndroidResourcePlatform(scenario)
+                val platform = AndroidResourcePlatform(scenario, config["presentationMode"]?.jsonPrimitive?.content == "first-presentation")
                 try { runBlocking { ResourceScenario(JsonObject(config), File(targetContext.cacheDir, "resource-state.json"), platform).run() }; success = true }
                 finally { platform.restore() }
             }
@@ -32,7 +32,7 @@ class ResourceInstrumentation : AndroidJUnitRunner() {
         finish(if (success) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply { putString("resource_result", if (success) "passed" else "failed") })
     }
 }
-private class AndroidResourcePlatform(private val scenario: ActivityScenario<MainActivity>) : ResourcePlatform {
+private class AndroidResourcePlatform(private val scenario: ActivityScenario<MainActivity>, private val firstPresentation: Boolean) : ResourcePlatform {
     private lateinit var app: AppModel
     private lateinit var original: LocalState
     private val live = WeakHashMap<WebView, Boolean>()
@@ -85,6 +85,7 @@ private class AndroidResourcePlatform(private val scenario: ActivityScenario<Mai
         }
     }
     override suspend fun recreate() { scenario.recreate() }
+    override suspend fun presentation() { MigrationPresentationProbe(scenario, web(), firstPresentation).run() }
     override suspend fun slowConsumer(enabled: Boolean) {
         val view = web()
         if (!enabled) check(js(view, "window.__resourceDelayed > 0") == "true") { "backpressure_not_exercised" }

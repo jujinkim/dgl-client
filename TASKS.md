@@ -3,6 +3,11 @@
 상태: 예정 / 진행 중 / 구현 완료·검증 대기 / 검증 완료 / 차단 / 후속 단계.
 미실행 검증은 통과로 취급하지 않는다. 원격 상태는 tmux가 기준이며 정상 종료는 연결만 닫는다.
 
+이어서 진행할 작업: [NEXT_WORK.md](NEXT_WORK.md). 2026-10-24 후속으로 API36 표시 계측 훅과
+Perfetto frame 연결 수집기를 추가했다. 짧은 훅 검증과 정식 성능 인수는 구분한다.
+
+2026-10-24 공통 코어·모바일 UI·데스크톱 UI 분리 전환은 [별도 작업 계획](docs/ARCHITECTURE_MIGRATION.md)의 R0–R7로 추적한다. **R1 진행 중**: 공통 fixture 120건과 JVM 소비 테스트 6개, 기능 대조표·API 계약, 고정 성능 계약·수집/판정 도구를 추가했다. 사용자 후속 지시로 이번 검증은 현재 Mac(macOS 26.6.2)과 API36 AVD만 수행한다. [R1 결과·남은 작업](docs/migration/R1_BASELINE.md)을 따른다. R1a 계약 120건은 Rust에서도 통과했고 R2–R5 후보를 구현했다. 성능은 R1b 후속으로 분리했다. Mac GUI·Keychain과 전체 기능 화면 인수가 남아 후보 완료·최종 채택은 미확정이다. 후속 지시로 Android는 Rust 단일 엔진으로 전환하고 이전 JVM 앱 실행·패키징은 제거한다. 아래 표는 기존 KMP/Compose 구현 당시의 기록이며 현재 실행·배포 설정은 README를 따른다.
+
 | ID | 단계 / 작업 | 선행 | 완료 조건 | 상태 | 검증 결과 / 남은 문제 |
 |---|---|---|---|---|---|
 | P0-01 | 원문 보존·작업 문서 | 없음 | 원문 SHA-256 기록 및 변경 없음 | 검증 완료 | `ab825dd3b3021319df8f963edfd9aa49250b580a86e786c4832a0f4025e57ea8` |
@@ -82,3 +87,9 @@
 - `codex/p4-03-ci-windows`의 3개 커밋을 로컬·원격 `main`에 fast-forward 통합했다. 원격 SHA는 `3baeb566843bf9db6d27cb8bf1c6d6c92b89b94d`다.
 - main CI: https://github.com/jujinkim/dgl-client/actions/runs/39904361260 . 최초 API 35 GUI pane split 접근성 시간 초과 1건, 해당 작업 재실행 후 필수 6개 성공. 최초 실패를 안정성 통과 근거에서 제외한다. Windows는 미실행이다.
 - 후속 구현은 `codex/p3-03-resource-soak`에서 수행한다. smoke는 장기 메모리 합격을 의미하지 않으며 P3-03 전체 상태를 올리지 않는다.
+
+## Mac·Android 후보 전환 — 2026-10-24 우선순위 변경
+
+성능 계측을 기능 구현의 선행 게이트에서 분리하고 기존 MVP 기능·기본 디자인을 먼저 이식한다.
+Rust 코어/UniFFI/GPUI와 Android 후보 연결·기본 화면을 구현했고 tmux 3.3a/3.7c 및 API36 검증을 진행했다. Android는 Rust만 빌드·실행하며 별도 테스트 저장 영역을 쓴다. 이전 엔진은 테스트 소스에만 보존한다. 실제 진행 상태와 검증 명령은
+[후보 구현 기록](docs/migration/CANDIDATE.md), [다음 작업](NEXT_WORK.md)을 따른다.

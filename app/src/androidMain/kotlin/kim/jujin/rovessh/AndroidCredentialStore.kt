@@ -11,7 +11,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class AndroidCredentialStore(context: Context) : ProtectedFileStore(File(context.noBackupFilesDir, "credentials")) {
+class AndroidCredentialStore(context: Context, directory: File = context.noBackupFilesDir) : ProtectedFileStore(File(directory, "credentials")) {
     private val alias = "kim.jujin.rovessh.credentials.v1"
     private fun key(create: Boolean): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

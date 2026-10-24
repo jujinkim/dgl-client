@@ -14,20 +14,20 @@ import kotlin.random.Random
 
 /** One instance per connection. No cached remote state is persisted. */
 class ClientModel(
-    val host: HostProfile,
+    override val host: HostProfile,
     private val credentials: CredentialStore,
     private val local: StateFlow<LocalState>,
     private val updateLocal: ((LocalState) -> LocalState) -> Unit,
     private val transportFactory: () -> SshTransport = { SshjTransport() },
-) {
+) : ClientConnection {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val status = MutableStateFlow(ConnectionStatus())
-    val remote = MutableStateFlow(RemoteState())
-    val session = MutableStateFlow<String?>(null)
-    val pane = MutableStateFlow<String?>(null)
-    val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
-    val notice = MutableStateFlow<String?>(null)
-    val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
+    override val status = MutableStateFlow(ConnectionStatus())
+    override val remote = MutableStateFlow(RemoteState())
+    override val session = MutableStateFlow<String?>(null)
+    override val pane = MutableStateFlow<String?>(null)
+    override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
+    override val notice = MutableStateFlow<String?>(null)
+    override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
     private val connectionGeneration = AtomicLong()
     private val paneGeneration = AtomicLong()
     private val sizeGeneration = AtomicLong()
@@ -62,7 +62,7 @@ class ClientModel(
     }
 
     private fun generation() = Generation(connectionGeneration.get(), paneGeneration.get(), sizeGeneration.get())
-    fun connect() {
+    override fun connect() {
         manualClose = false
         connectionJob?.cancel()
         val epoch = connectionGeneration.incrementAndGet()
@@ -123,14 +123,14 @@ class ClientModel(
         }
     }
 
-    fun trust() {
+    override fun trust() {
         val request = trustRequest.value ?: return
         updateLocal { it.copy(trust = it.trust + (request.endpoint to request.fingerprint)) }
         trustRequest.value = null
         connect()
     }
 
-    fun selectSession(id: String) = action {
+    override fun selectSession(id: String) = action {
         rememberedSession = id; rememberedPane = null
         attach(id, connectionGeneration.get())
     }
@@ -182,7 +182,7 @@ class ClientModel(
         if (target == null) status.value = ConnectionStatus(Phase.Selecting, "패널을 선택하세요.") else selectPaneInternal(target.id)
     }
 
-    fun selectPane(id: String) = action { selectPaneInternal(id) }
+    override fun selectPane(id: String) = action { selectPaneInternal(id) }
     private suspend fun selectPaneInternal(id: String) {
         val controller = control ?: return
         val target = remote.value.panes.firstOrNull { it.id == id } ?: return
@@ -211,7 +211,7 @@ class ClientModel(
         }
     }
 
-    fun createSession(name: String) = action {
+    override fun createSession(name: String) = action {
         val command = TmuxCommand.newSession(name)
         if (control != null) { control!!.command(command); control!!.refresh(); remote.value = control!!.state.value }
         else {
@@ -220,31 +220,31 @@ class ClientModel(
             remote.value = RemoteState(RemoteStateDecoder.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList()))
         }
     }
-    fun manage(command: TmuxCommand) = action {
+    override fun manage(command: TmuxCommand) = action {
         // Dialog IME insets can schedule a resize before its confirmation arrives.
         // The operations mutex serializes both; do not discard the user's command.
         if (status.value.phase !in setOf(Phase.Ready, Phase.Restoring)) return@action
         control?.command(command); control?.refresh()
     }
-    fun refresh() = action {
+    override fun refresh() = action {
         if (control != null) control!!.refresh()
         else transport?.executeTmux(TmuxCommand.sessions)?.let { rows ->
             remote.value = RemoteState(RemoteStateDecoder.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList()))
         }
     }
 
-    fun input(bytes: ByteArray) {
+    override fun input(bytes: ByteArray) {
         if (bytes.isEmpty() || !status.value.acceptsInput) return
         if (bytes.size > TerminalInput.MAX_BYTES || inputQueue.trySend(generation() to bytes.copyOf()).isFailure) notice.value = "입력 대기열이 가득 찼습니다. 입력을 전송하지 않았습니다."
     }
 
-    fun bindSurface(value: TerminalSurface?) {
+    override fun bindSurface(value: TerminalSurface?) {
         surface = value
         if (value != null && pane.value != null && control != null) restore()
     }
-    fun unbindSurface(expected: TerminalSurface) { if (surface === expected) surface = null }
+    override fun unbindSurface(expected: TerminalSurface) { if (surface === expected) surface = null }
 
-    fun resize(value: Size) {
+    override fun resize(value: Size) {
         if (size == value) return
         size = value; sizeGeneration.incrementAndGet()
         if (status.value.phase == Phase.Ready) status.value = ConnectionStatus(Phase.Restoring, "화면 크기 변경 중…")
@@ -258,7 +258,7 @@ class ClientModel(
             }
         }
     }
-    fun restore() = action { restoreInternal() }
+    override fun restore() = action { restoreInternal() }
     private suspend fun restoreInternal() {
         val target = pane.value ?: return
         val controller = control ?: return
@@ -312,28 +312,11 @@ class ClientModel(
         transport?.close(); transport = null
         while (inputQueue.tryReceive().isSuccess) { /* never replay input */ }
     }
-    fun disconnect() {
+    override fun disconnect() {
         manualClose = true
         connectionGeneration.incrementAndGet(); connectionJob?.cancel(); resizeJob?.cancel()
         releaseConnection()
         status.value = ConnectionStatus()
     }
-    fun close() { disconnect(); surface = null; scope.cancel() }
-}
-
-class AppModel(val repository: LocalRepository, val credentials: CredentialStore, val storageDescription: String) {
-    val local = MutableStateFlow(repository.read())
-    val connections = MutableStateFlow<List<ClientModel>>(emptyList())
-    val selected = MutableStateFlow<ClientModel?>(null)
-    @Synchronized fun update(value: LocalState) { repository.save(value); local.value = value }
-    @Synchronized fun modify(transform: (LocalState) -> LocalState) { update(transform(local.value)) }
-    fun open(host: HostProfile) {
-        val connection = ClientModel(host, credentials, local, ::modify)
-        connections.value += connection; selected.value = connection; connection.connect()
-    }
-    fun removeConnection(connection: ClientModel) {
-        connection.close(); connections.value -= connection
-        if (selected.value == connection) selected.value = connections.value.lastOrNull()
-    }
-    fun close() { connections.value.forEach { it.close() } }
+    override fun close() { disconnect(); surface = null; scope.cancel() }
 }

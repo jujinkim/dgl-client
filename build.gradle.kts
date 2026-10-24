@@ -20,6 +20,7 @@ plugins {
     id("org.jetbrains.compose") version "1.9.3" apply false
     id("com.android.kotlin.multiplatform.library") version "9.3.3" apply false
     id("com.android.application") version "9.3.3" apply false
+    id("com.android.library") version "9.3.3" apply false
 }
 
 apply(from = "gradle/dependency-inventory.gradle")

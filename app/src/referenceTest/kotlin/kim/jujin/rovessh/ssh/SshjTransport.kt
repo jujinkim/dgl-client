@@ -191,7 +191,7 @@ class SshjTransport : SshTransport {
     }
 }
 
-private object SshCrypto {
+internal object SshCrypto {
     private var initialized = false
     @Synchronized fun initialize() {
         if (initialized) return

@@ -1,0 +1,15 @@
+[package]
+name = "dgl-desktop"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dgl-core = { path = "../crates/dgl-core" }
+gpui = "=0.2.2"
+alacritty_terminal = "=0.26.0"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+security-framework = "=3.5.1"
+
+unicode-segmentation = "=1.13.3"

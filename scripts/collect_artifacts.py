@@ -11,6 +11,7 @@ import subprocess
 import zipfile
 from audit_dependencies import ROOT
 from verify_licenses import main as verify_licenses
+from collect_rust_android import verify_rust_payload
 from evidence import context, require_passed, safe_relative, sha256, write_report
 
 
@@ -47,6 +48,7 @@ def verify_apk(source, aapt, release=False):
     if rules.count('A: path="."') != 10 or 'A: disableIfNoEncryptionCapabilities=true' not in rules:
         raise ValueError('Backup paths or encryption policy changed')
     with zipfile.ZipFile(source) as apk:
+        libraries = verify_rust_payload(apk)
         names = apk.namelist()
         if any(re.search(r'(^|/)(settings\.json|integration\.json|authorized_keys|id_rsa|id_ed25519|local\.properties|\.env)$|\.(keystore|jks|sealed|log)$|/(\.gradle|\.tools)/', n) for n in names):
             raise ValueError('Private runtime/build file found in APK')
@@ -60,7 +62,7 @@ def verify_apk(source, aapt, release=False):
         for name, path in expected.items():
             if apk.read(name) != path.read_bytes():
                 raise ValueError('Bundled asset mismatch: ' + name)
-    return {'name': source.name, 'policy': 'passed', 'terminalAssets': len(list(terminal.iterdir())), 'release': release}
+    return {'name': source.name, 'policy': 'passed', 'terminalAssets': len(list(terminal.iterdir())), 'release': release, 'engine': 'rust', 'librarySha256': libraries}
 
 
 def verify_desktop_notices(directory):
@@ -140,46 +142,11 @@ def verify_windows_reports(destination, sources, expected_context):
     return reports
 
 
-def collect_windows():
-    from verify_windows_installers import installers
-    destination = ROOT / 'artifacts'
-    destination.mkdir(exist_ok=True)
-    sources = installers()
-    ctx = context()
-    reports = verify_windows_reports(destination, sources, ctx)
-    notices = ROOT / 'app/build/generated/distributionResources/common/third-party'
-    count = verify_desktop_notices(notices)
-    source = json.loads((notices / 'jvm/source/source.json').read_text(encoding='utf-8'))
-    if sha256(notices / 'jvm/source/temurin-sources.tar.gz') != source['sourceSha256'] or any(
-            any(record['temurin'].get(k) != v for k, v in source.items()) for record in reports['windows-installation']['installers']):
-        raise ValueError('Installed Temurin source differs from collected bundle')
-    files = [destination / (name + '.json') for name in reports]
-    for path in sources.values():
-        target = destination / path.name
-        shutil.copyfile(path, target)
-        files.append(target)
-    notice_zip = destination / 'windows-third-party.zip'
-    with zipfile.ZipFile(notice_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(notices.rglob('*')):
-            if path.is_file():
-                archive.write(path, path.relative_to(notices).as_posix())
-    files.append(notice_zip)
-    manifest = [{'name': p.name, 'bytes': p.stat().st_size, 'sha256': sha256(p)} for p in files]
-    write_report(destination / 'windows-build-manifest.json', {'schema': 1, 'complete': True, 'status': 'passed',
-                 'context': ctx, 'platform': 'windows', 'signing': 'unsigned CI validation only',
-                 'desktopNoticeFiles': count, 'files': manifest})
-    (destination / 'windows-SHA256SUMS').write_text(''.join(item['sha256'] + '  ' + item['name'] + '\n' for item in manifest), encoding='utf-8')
-    print('Validated and collected Windows installers, notices and verification reports')
-
-
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--platform', choices=['android', 'windows'], default='android')
+    parser.add_argument('--platform', choices=['android'], default='android')
     args = parser.parse_args()
     verify_licenses()
-    if args.platform == 'windows':
-        collect_windows()
-        return
     destination = ROOT / 'artifacts'
     destination.mkdir(exist_ok=True)
     sdk = Path(os.environ['ANDROID_HOME'])
@@ -187,26 +154,14 @@ def main():
     base = ROOT / 'androidApp/build/outputs/apk'
     source = base / 'debug/androidApp-debug.apk'
     checks = [verify_apk(source, aapt), verify_apk(base / 'release/androidApp-release-unsigned.apk', aapt, release=True)]
-    notices = ROOT / 'app/build/generated/distributionResources/common/third-party'
-    notice_count = verify_desktop_notices(notices)
     apk_path = destination / 'dgl-client-0.1.0-debug.apk'
     shutil.copyfile(source, apk_path)
-    notice_zip = destination / 'desktop-third-party.zip'
-    with zipfile.ZipFile(notice_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(notices.rglob('*')):
-            if path.is_file():
-                archive.write(path, path.relative_to(notices).as_posix())
-    files = [apk_path, notice_zip]
-    for extension in ['msi', 'exe']:
-        for path in sorted((ROOT / 'app/build/compose/binaries/main' / extension).glob('*.' + extension)):
-            target = destination / path.name
-            shutil.copyfile(path, target)
-            files.append(target)
+    files = [apk_path]
     manifest = [{'name': p.name, 'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]
     (destination / 'build-manifest.json').write_text(json.dumps({'schema': 1, 'complete': True, 'status': 'passed',
         'context': context(), 'platform': 'android', 'applicationId': 'kim.jujin.rovessh', 'minSdk': 34,
         'compileSdk': 36, 'targetSdk': 36, 'androidSigning': 'debug; release APK only verified unsigned',
-        'apkChecks': checks, 'desktopNoticeFiles': notice_count, 'files': manifest}, indent=2) + '\n', encoding="utf-8")
+        'engine': 'rust', 'apkChecks': checks, 'files': manifest}, indent=2) + '\n', encoding="utf-8")
     (destination / 'SHA256SUMS').write_text(''.join(item['sha256'] + '  ' + item['name'] + '\n' for item in manifest), encoding="utf-8")
     print('Validated and collected: ' + ', '.join(item['name'] for item in manifest))
 

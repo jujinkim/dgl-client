@@ -14,29 +14,14 @@ gradle.projectsEvaluated {
         shared.dependencies.add(aapt.name, "com.android.tools.build:aapt2:9.3.3-15703166:${os}")
     }
     targets.add([project: shared, config: aapt, scope: 'build', platform: 'build-hosts'])
-    ['windows-x64', 'linux-x64', 'macos-arm64'].each { os ->
-        def source = shared.configurations.getByName('desktopRuntimeClasspath')
-        def c = shared.configurations.create('inventoryDesktop' + os.replace('-', '_')) {
-            canBeConsumed = false
-            shouldResolveConsistentlyWith(source)
-            source.attributes.keySet().each { key -> attributes.attribute(key, source.attributes.getAttribute(key)) }
-            source.allDependencies.each { dep ->
-                if (!(dep.group == 'org.jetbrains.compose.desktop' && dep.name.startsWith('desktop-jvm-'))) {
-                    dependencies.add(dep.copy())
-                }
-            }
-        }
-        shared.dependencies.add(c.name, "org.jetbrains.compose.desktop:desktop-jvm-${os}:1.9.3")
-        targets.add([project: shared, config: c, scope: 'runtime', platform: os])
-    }
     allprojects.each { p ->
         p.configurations.findAll { it.canBeResolved &&
             (it.name.toLowerCase().contains('classpath') || it.name in ['androidLintTool', 'coreLibraryDesugaring']) &&
             !it.name.toLowerCase().contains('metadata') && !it.name.startsWith('inventory')
         }.each { c ->
             def lower = c.name.toLowerCase()
-            def scope = lower.contains('test') ? 'test' :
-                ((c.name == 'desktopRuntimeClasspath' || c.name == 'androidRuntimeClasspath' ||
+            def scope = (lower.contains('test') || lower.contains('desktop')) ? 'test' :
+                ((c.name == 'androidRuntimeClasspath' ||
                     (p.path == ':androidApp' && c.name in ['debugRuntimeClasspath', 'releaseRuntimeClasspath'])) ? 'runtime' : 'build')
             def platform = lower.contains('desktop') ? 'host-desktop' : (p.path == ':androidApp' || lower.contains('android') ? 'android' : 'build-host')
             targets.add([project: p, config: c, scope: scope, platform: platform])
@@ -87,7 +72,7 @@ gradle.projectsEvaluated {
         doLast {
             def parts = allprojects.collect { new groovy.json.JsonSlurper().parse(it.layout.buildDirectory.file('dependency-inventory.json').get().asFile, 'UTF-8') }
             def inputs = fileTree(rootDir) {
-                include '*.gradle.kts', 'app/*.gradle.kts', 'androidApp/*.gradle.kts', '**/gradle.lockfile', '*gradle.lockfile', 'gradle.properties', 'gradle/dependency-inventory.gradle', 'web/package-lock.json'
+                include '*.gradle.kts', 'app/*.gradle.kts', 'androidApp/*.gradle.kts', 'coreBindings/*.gradle.kts', 'mobileUi/*.gradle.kts', '**/gradle.lockfile', '*gradle.lockfile', 'gradle.properties', 'gradle/dependency-inventory.gradle', 'web/package-lock.json'
                 exclude '**/build/**', '.tools/**', '.gradle/**', 'licenses/**'
             }.files.sort().collectEntries { [(rootDir.toPath().relativize(it.toPath()).toString().replace('\\', '/')): digest(it)] }
             def output = file('artifacts/dependency-inventory.json')

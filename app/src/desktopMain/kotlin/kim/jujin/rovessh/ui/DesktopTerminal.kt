@@ -11,7 +11,7 @@ import com.jediterm.terminal.TerminalColor
 import com.jediterm.terminal.RequestOrigin
 import com.jediterm.terminal.ui.JediTermWidget
 import com.jediterm.terminal.ui.settings.DefaultSettingsProvider
-import kim.jujin.rovessh.ClientModel
+import kim.jujin.rovessh.ClientConnection
 import kim.jujin.rovessh.core.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
@@ -23,7 +23,7 @@ import java.awt.datatransfer.StringSelection
 import java.io.*
 import javax.swing.SwingUtilities
 
-@Composable actual fun PlatformTerminal(client: ClientModel, preferences: Preferences, modifier: Modifier) {
+@Composable actual fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier) {
     val connector = remember(client, preferences.fontSize, preferences.scrollback) { DesktopConnector(client::input, client::resize) }
     val widget = remember(connector) {
         JediTermWidget(object : DefaultSettingsProvider() {
@@ -85,5 +85,5 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
 }
 
 actual fun copyPublicKey(value: String) { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(value), null) }
-@Composable actual fun PlatformInputRegistration(client: ClientModel, preferences: Preferences, allowed: () -> Boolean) {}
+@Composable actual fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean) {}
 @Composable actual fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit) {}

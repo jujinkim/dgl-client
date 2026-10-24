@@ -15,12 +15,14 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         testInstrumentationRunner = if (providers.gradleProperty("dglResourceProbe").orNull == "true")
             "kim.jujin.rovessh.ResourceInstrumentation" else "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     sourceSets.getByName("androidTest").kotlin.srcDir("../app/src/resourceProbe/kotlin")
+    sourceSets.getByName("androidTest").kotlin.srcDir("../app/src/referenceTest/kotlin")
     packaging {
         resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/INDEX.LIST", "META-INF/DEPENDENCIES")
         resources.merges += setOf("META-INF/LICENSE.md", "META-INF/LICENSE", "META-INF/NOTICE.md", "META-INF/NOTICE")
@@ -30,10 +32,15 @@ android {
 kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 dependencies {
     implementation(project(":app"))
+    implementation(project(":mobileUi"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.jetbrains.compose.runtime:runtime:1.9.3")
+    androidTestImplementation("com.hierynomus:sshj:0.40.0")
+    androidTestImplementation("org.bouncycastle:bcprov-jdk18on:1.86")
+    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
+    androidTestImplementation("org.slf4j:slf4j-nop:2.0.17")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:core:1.6.1")

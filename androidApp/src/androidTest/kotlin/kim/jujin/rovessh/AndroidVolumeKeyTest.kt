@@ -114,6 +114,7 @@ class AndroidVolumeKeyTest {
                 withTimeout(10000) { first.status.first { it.phase == Phase.Shell }; second.status.first { it.phase == Phase.Shell } }
                 waitForText("Esc"); delay(200)
                 waitForText("현재 세션: 없음 · 일반 SSH")
+                click("tmux 관리")
                 waitForText("목록 확인 불가")
                 listOf("+ 세션", "+ 창", "좌우 분할", "상하 분할").forEach { label ->
                     val text = waitForText(label)
@@ -124,7 +125,8 @@ class AndroidVolumeKeyTest {
                         ancestors.joinToString { "${it.className}(enabled=${it.isEnabled}, clickable=${it.isClickable})" },
                         ancestors.any { !it.isEnabled })
                 }
-                click("tmux 접기")
+                press(scenario, false)
+                click("터미널로 돌아가기")
                 waitForText("현재 세션: 없음 · 일반 SSH")
                 waitForText("일반 SSH · tmux 탐지 실패")
                 click("tmux 실패 상세 정보")
@@ -137,6 +139,8 @@ class AndroidVolumeKeyTest {
                 assertNull(withTimeoutOrNull(200) { firstWire.writes.receive() })
                 click("tmux 관리")
                 waitForText("좌우 분할")
+                press(scenario, false)
+                click("터미널로 돌아가기"); delay(200)
                 press(scenario, true)
                 assertArrayEquals("한글\\n\r".encodeToByteArray(), withTimeout(3000) { firstWire.writes.receive() })
                 press(scenario, true, key = KeyEvent.KEYCODE_VOLUME_DOWN)

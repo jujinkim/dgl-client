@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "revision": "2026-10-24-r1",
+  "scope": ["macos-current-arm64", "android-api36-avd"],
+  "samples": {"coldStartup": 30, "warmStartup": 30, "localInput": 200, "frames": 3600},
+  "idle": {"stabilizeSeconds": 30, "measureSeconds": 60, "intervalSeconds": 1, "connections": 1, "terminals": 1},
+  "desktop": {"startupP95Ms": 1000, "localInputP95Ms": 33, "frameP95Ms": 16.7, "idleCpuOneCorePercent": 1, "idleRssBytes": 157286400, "downloadBytes": 52428800, "installedBytes": 157286400},
+  "android": {"maximumLatencyRatio": 1.1, "maximumMemoryRatio": 1.1},
+  "percentile": "nearest-rank-ceil",
+  "displayHz": 60,
+  "memoryMetric": {"macos": "process-tree-rss-bytes", "android": "app-plus-webview-rss-bytes"}
+}

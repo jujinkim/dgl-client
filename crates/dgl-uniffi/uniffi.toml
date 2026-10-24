@@ -1,0 +1,4 @@
+[bindings.kotlin]
+package_name = "uniffi.dgl_core"
+cdylib_name = "dgl_uniffi"
+android = true

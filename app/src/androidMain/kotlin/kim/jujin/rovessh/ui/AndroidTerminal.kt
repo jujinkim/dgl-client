@@ -17,7 +17,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import kim.jujin.rovessh.ClientModel
+import kim.jujin.rovessh.ClientConnection
 import kim.jujin.rovessh.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -27,7 +27,7 @@ import java.io.ByteArrayInputStream
 import java.util.Base64
 import java.lang.ref.WeakReference
 
-@Composable actual fun PlatformTerminal(client: ClientModel, preferences: Preferences, modifier: Modifier) {
+@Composable actual fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier) {
     val context = LocalContext.current
     val terminal = remember(client, preferences.fontSize, preferences.scrollback) { AndroidTerminal(context, preferences, client::input, client::resize) }
     DisposableEffect(terminal) {

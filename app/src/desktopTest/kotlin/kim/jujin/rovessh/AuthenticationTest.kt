@@ -29,6 +29,8 @@ class AuthenticationTest {
             assertEquals(Failure.Authentication, assertFailsWith<ClientFailure> { ssh.connect(host, Credential("invalid"), unknown.fingerprint) }.kind)
             val generated = KeyGeneration.ed25519()
             assertTrue(generated.publicKey.startsWith("ssh-ed25519 "))
+            assertEquals(generated.publicKey, KeyGeneration.publicKey(generated.credential))
+            assertFails { KeyGeneration.publicKey(Credential(privateKey = "invalid")) }
             ssh.connect(host.copy(auth = AuthKind.PrivateKey), generated.credential, unknown.fingerprint)
         } finally { ssh.close(); server.stop(true) }
     }

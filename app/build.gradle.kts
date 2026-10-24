@@ -1,4 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.security.MessageDigest
 
@@ -35,12 +34,6 @@ kotlin {
         }
         val jvmSharedMain by creating {
             dependsOn(commonMain.get())
-            dependencies {
-                implementation("com.hierynomus:sshj:0.40.0")
-                implementation("org.bouncycastle:bcprov-jdk18on:1.86")
-                implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
-                implementation("org.slf4j:slf4j-nop:2.0.17")
-            }
         }
         androidMain {
             dependsOn(jvmSharedMain)
@@ -61,33 +54,21 @@ kotlin {
         }
         val desktopTest by getting {
             kotlin.srcDir("src/resourceProbe/kotlin")
+            kotlin.srcDir("src/referenceTest/kotlin")
+            resources.srcDir(rootProject.file("fixtures"))
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation("org.apache.sshd:sshd-core:2.20.0")
+                implementation("com.hierynomus:sshj:0.40.0")
+                implementation("org.bouncycastle:bcprov-jdk18on:1.86")
+                implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
+                implementation("org.slf4j:slf4j-nop:2.0.17")
             }
         }
     }
 }
 
-compose.desktop {
-    application {
-        mainClass = "kim.jujin.rovessh.MainKt"
-        nativeDistributions {
-            targetFormats(TargetFormat.Msi, TargetFormat.Exe)
-            packageName = "dgl-client"
-            packageVersion = "0.1.0"
-            description = "SSH and tmux terminal client"
-            vendor = "dgl client"
-            modules("java.naming", "jdk.crypto.ec", "jdk.unsupported")
-            appResourcesRootDir.set(layout.buildDirectory.dir("generated/distributionResources"))
-            windows {
-                menuGroup = "dgl client"
-                shortcut = true
-                upgradeUuid = "db8ee957-3c5c-494d-a786-3daf2dbf57d9"
-            }
-        }
-    }
-}
+// JVM target remains for historical contract/rendering tests; the shipped desktop is GPUI.
 
 tasks.withType<Test>().configureEach {
     testLogging {
@@ -157,7 +138,4 @@ val prepareThirdPartyNotices by tasks.registering {
             "$sha  ${it.relativeTo(directory).invariantSeparatorsPath}"
         })
     }
-}
-tasks.matching { it.name == "createDistributable" || it.name == "prepareAppResources" || it.name.startsWith("packageMsi") || it.name.startsWith("packageExe") }.configureEach {
-    dependsOn(prepareThirdPartyNotices)
 }

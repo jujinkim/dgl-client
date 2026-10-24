@@ -4290,6 +4290,10 @@
         {
           "name": "jna-5.18.1.jar",
           "sha256": "260c4b1e22b1db9e110ee441c4f13ce115f841fa48c41d78750986214b395557"
+        },
+        {
+          "name": "jna-5.18.1.aar",
+          "sha256": "7f053e3ec99e14dd71259c82c1c8a02738d64a13c31226b2acc170f3060951e0"
         }
       ],
       "licenses": [
@@ -4313,6 +4317,12 @@
           "path": "licenses/evidence/07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1.txt",
           "sha256": "07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1",
           "source": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.jar!/META-INF/LICENSE",
+          "kind": "embedded-notice"
+        },
+        {
+          "path": "licenses/evidence/07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1.txt",
+          "sha256": "07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1",
+          "source": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.aar!/classes.jar!/META-INF/LICENSE",
           "kind": "embedded-notice"
         }
       ],

@@ -8,7 +8,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
-import kim.jujin.rovessh.ClientModel
+import kim.jujin.rovessh.ClientConnection
 import kim.jujin.rovessh.core.Preferences
 
 interface VolumeKeyHost : LifecycleOwner { val volumeKeys: VolumeKeyDispatcher }
@@ -58,7 +58,7 @@ private tailrec fun Context.volumeKeyHost(): VolumeKeyHost? = when (this) {
     else -> null
 }
 
-@Composable actual fun PlatformInputRegistration(client: ClientModel, preferences: Preferences, allowed: () -> Boolean) {
+@Composable actual fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean) {
     val host = LocalContext.current.volumeKeyHost() ?: return
     val currentAllowed by rememberUpdatedState(allowed)
     val currentPreferences by rememberUpdatedState(preferences)

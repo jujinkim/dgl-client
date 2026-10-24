@@ -1,13 +1,21 @@
 package kim.jujin.rovessh.core
 
+import kotlinx.serialization.json.*
+
 /** Only this encoder constructs commands. Arbitrary terminal input is encoded as hex bytes. */
-class TmuxCommand private constructor(val wire: String, val shellWire: String = "tmux $wire") {
+class TmuxCommand private constructor(val wire: String, val shellWire: String = "tmux $wire", val nativeOperation: JsonObject? = null) {
     fun shellWithExecutable(executable: String): String {
         require(executable.startsWith('/')) { "Expected an absolute tmux path" }
         return quote(executable) + " " + shellWire.removePrefix("tmux ")
     }
 
     companion object {
+        private fun operation(op: String, target: String? = null, name: String? = null, horizontal: Boolean? = null, direction: Char? = null) = buildJsonObject {
+            put("op", op)
+            target?.let { put("target", it) }; name?.let { put("name", it) }
+            horizontal?.let { put("horizontal", it) }; direction?.let { put("direction", it.toString()) }
+        }
+
         private fun id(value: String, prefix: Char): String {
             require(value.matches(Regex("\\${prefix}[0-9]+"))) { "Invalid tmux target" }
             return quote(value)
@@ -26,21 +34,21 @@ class TmuxCommand private constructor(val wire: String, val shellWire: String = 
             // tmux's argv parser treats a trailing semicolon as a command separator,
             // even after the remote shell removed its quotes. Escape that second layer.
             val argument = name.replace("#", "##").let { if (it.endsWith(';')) it.dropLast(1) + "\\;" else it }
-            return TmuxCommand("new-session -d -s $encoded", "tmux new-session -d -s ${quote(argument)}")
+            return TmuxCommand("new-session -d -s $encoded", "tmux new-session -d -s ${quote(argument)}", operation("newSession", name = name))
         }
-        fun renameSession(session: String, name: String) = TmuxCommand("rename-session -t ${id(session, '$')} ${name(name)}")
-        fun killSession(session: String) = TmuxCommand("kill-session -t ${id(session, '$')}")
-        fun switchSession(session: String) = TmuxCommand("switch-client -t ${id(session, '$')}")
-        fun newWindow(session: String, name: String) = TmuxCommand("new-window -t ${id(session, '$')} -n ${name(name)}")
-        fun renameWindow(window: String, name: String) = TmuxCommand("rename-window -t ${id(window, '@')} ${name(name)}")
-        fun selectWindow(window: String) = TmuxCommand("select-window -t ${id(window, '@')}")
-        fun killWindow(window: String) = TmuxCommand("kill-window -t ${id(window, '@')}")
-        fun split(pane: String, horizontal: Boolean) = TmuxCommand("split-window ${if (horizontal) "-h" else "-v"} -t ${id(pane, '%')}")
-        fun selectPane(pane: String) = TmuxCommand("select-pane -t ${id(pane, '%')}")
-        fun killPane(pane: String) = TmuxCommand("kill-pane -t ${id(pane, '%')}")
+        fun renameSession(session: String, name: String) = TmuxCommand("rename-session -t ${id(session, '$')} ${name(name)}", nativeOperation = operation("renameSession", target = session, name = name))
+        fun killSession(session: String) = TmuxCommand("kill-session -t ${id(session, '$')}", nativeOperation = operation("killSession", target = session))
+        fun switchSession(session: String) = TmuxCommand("switch-client -t ${id(session, '$')}", nativeOperation = operation("switchSession", target = session))
+        fun newWindow(session: String, name: String) = TmuxCommand("new-window -t ${id(session, '$')} -n ${name(name)}", nativeOperation = operation("newWindow", target = session, name = name))
+        fun renameWindow(window: String, name: String) = TmuxCommand("rename-window -t ${id(window, '@')} ${name(name)}", nativeOperation = operation("renameWindow", target = window, name = name))
+        fun selectWindow(window: String) = TmuxCommand("select-window -t ${id(window, '@')}", nativeOperation = operation("selectWindow", target = window))
+        fun killWindow(window: String) = TmuxCommand("kill-window -t ${id(window, '@')}", nativeOperation = operation("killWindow", target = window))
+        fun split(pane: String, horizontal: Boolean) = TmuxCommand("split-window ${if (horizontal) "-h" else "-v"} -t ${id(pane, '%')}", nativeOperation = operation("split", target = pane, horizontal = horizontal))
+        fun selectPane(pane: String) = TmuxCommand("select-pane -t ${id(pane, '%')}", nativeOperation = operation("selectPane", target = pane))
+        fun killPane(pane: String) = TmuxCommand("kill-pane -t ${id(pane, '%')}", nativeOperation = operation("killPane", target = pane))
         fun resizePane(pane: String, direction: Char) : TmuxCommand {
             require(direction in "LRUD")
-            return TmuxCommand("resize-pane -t ${id(pane, '%')} -$direction 3")
+            return TmuxCommand("resize-pane -t ${id(pane, '%')} -$direction 3", nativeOperation = operation("resizePane", target = pane, direction = direction))
         }
         fun clientSize(size: Size) = TmuxCommand("refresh-client -C ${size.columns},${size.rows}")
         fun send(pane: String, bytes: ByteArray): TmuxCommand {

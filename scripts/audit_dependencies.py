@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_GRAPHS = {(':androidApp', 'debugRuntimeClasspath'), (':androidApp', 'releaseRuntimeClasspath'),
                    (':app', 'desktopRuntimeClasspath'), (':app', 'desktopTestRuntimeClasspath'),
                    (':androidApp', 'debugAndroidTestRuntimeClasspath'), (':', 'classpath'),
-                   (':androidApp', 'androidLintTool'), (':app', 'androidLintTool'), (':app', 'inventoryAapt2')}
-PLATFORMS = {'windows-x64', 'linux-x64', 'macos-arm64'}
+                   (':androidApp', 'androidLintTool'), (':app', 'androidLintTool'), (':app', 'inventoryAapt2'),
+                   (':coreBindings', 'debugRuntimeClasspath'), (':mobileUi', 'debugRuntimeClasspath')}
 
 
 def load_inventory(path, root=ROOT):
@@ -28,8 +28,6 @@ def load_inventory(path, root=ROOT):
     graphs = data.get('graphs', [])
     if not REQUIRED_GRAPHS <= {(g['module'], g['configuration']) for g in graphs}:
         raise ValueError('Missing required dependency graphs')
-    if not PLATFORMS <= {g['platform'] for g in graphs if g['scope'] == 'runtime'}:
-        raise ValueError('Missing desktop platform graph')
     for graph in graphs:
         selected = {u.get('selected') for p in data['packages'] for u in p['usages']
                     if all(u[k] == graph[k] for k in ('module', 'configuration', 'platform', 'scope'))}
@@ -50,22 +48,12 @@ def load_inventory(path, root=ROOT):
                 raise ValueError('Package absent from selected graph: ' + p['name'])
             if p['name'] == 'com.android.tools.build:aapt2' and u['scope'] == 'runtime':
                 raise ValueError('Build tool in runtime inventory')
-            if 'skiko-awt-runtime-' in p['name'] and u['platform'] in PLATFORMS:
-                if not p['name'].endswith(u['platform']):
-                    raise ValueError('Foreign native artifact in desktop graph')
-    # Native packages vary by OS; the shipped Java artifacts must be identical.
-    payloads = {platform: set() for platform in PLATFORMS | {'host-desktop'}}
-    for p in data['packages']:
-        if p['name'].startswith('org.jetbrains.compose.desktop:desktop-jvm-') or 'skiko-awt-runtime-' in p['name']:
-            continue
-        for u in p['usages']:
-            if u['scope'] == 'runtime' and u['platform'] in payloads:
-                for artifact in u.get('artifacts', []):
-                    if artifact not in p['artifacts']:
-                        raise ValueError('Usage artifact missing from package hashes')
-                    payloads[u['platform']].add((p['name'], p['version'], artifact['name'], artifact['sha256']))
-    if any(payloads[p] != payloads['host-desktop'] for p in PLATFORMS):
-        raise ValueError('Desktop Java payload differs across OS inventories')
+            if u['scope'] == 'runtime' and (p['name'].startswith((
+                    'com.hierynomus:sshj', 'org.bouncycastle:', 'org.jetbrains.jediterm:',
+                    'org.jetbrains.compose.desktop:', 'org.jetbrains.skiko:')) or u['platform'] == 'host-desktop'):
+                raise ValueError('Retired JVM dependency in production runtime: ' + p['name'])
+            if any(artifact not in p['artifacts'] for artifact in u.get('artifacts', [])):
+                raise ValueError('Usage artifact missing from package hashes')
     return data['packages']
 
 

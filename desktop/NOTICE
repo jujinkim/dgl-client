@@ -1,0 +1,7 @@
+dgl Rust candidate
+
+text_input.rs adapts the GPUI 0.2.2 text input example.
+Copyright Zed Industries contributors. Licensed under Apache License 2.0.
+Upstream: https://github.com/zed-industries/zed/tree/main/crates/gpui
+Modifications: candidate forms, secret masking, field focus and scoped key bindings.
+See LICENSE-APACHE-GPUI and packaged dependency notices.

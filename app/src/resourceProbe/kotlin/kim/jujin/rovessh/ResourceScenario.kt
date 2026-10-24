@@ -17,6 +17,7 @@ interface ResourcePlatform {
     suspend fun recreate()
     suspend fun metrics(): Map<String, Long>
     suspend fun slowConsumer(enabled: Boolean)
+    suspend fun presentation() { error("presentation_probe_unavailable") }
 }
 
 class ResourceScenario(private val config: JsonObject, private val stateFile: File, private val platform: ResourcePlatform) {
@@ -131,7 +132,28 @@ class ResourceScenario(private val config: JsonObject, private val stateFile: Fi
             profile = profile.copy(lastSession = session)
             store.write(profile.id, credential)
             local.value = LocalState(listOf(profile), mapOf(profile.endpoint to str("fingerprint")), Preferences(scrollback = 10000))
-            open(); phase("warmup"); linger(warmup)
+            open()
+            if (str("profile") == "migration-presentation") {
+                // Short hook verification, separate from idle and the canceled soak.
+                linger(2); command(str("pauseCommand")); linger(2)
+                progress(); val pausedBytes = outputBytes
+                sampler.cancelAndJoin() // No ADB/JS metrics polling during presentation tracing.
+                phase("presentation")
+                platform.presentation()
+                progress(); check(outputBytes == pausedBytes) { "presentation_output_changed" }
+                close(); finished = true
+                return@coroutineScope
+            }
+            if (str("profile") == "migration-idle") {
+                // Separate connected-idle baseline; never claim the soak workload ran.
+                command(str("pauseCommand")); phase("stabilize"); linger(30)
+                progress(); val idleBytes = outputBytes
+                phase("idle"); linger(65); progress()
+                check(outputBytes == idleBytes) { "idle_output_changed" }
+                close(); phase("observe"); linger(5); finished = true
+                return@coroutineScope
+            }
+            phase("warmup"); linger(warmup)
             progress(); close()
             command(str("pauseCommand")); System.gc(); phase("baseline"); linger(if (soak) 20 else 6)
             phase("connecting"); open(); progress(); val initialBytes = outputBytes

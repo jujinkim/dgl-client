@@ -48,6 +48,18 @@ def stop(process, group=False):
             process.wait(timeout=10)
 
 
+def root_owned_adb(adb):
+    # adbd can close the transport while successfully restarting as root. Its
+    # exit status alone is insufficient; require a reconnected, actual root UID.
+    try:
+        run(adb + ['root'])
+    except subprocess.CalledProcessError:
+        pass
+    run(adb + ['wait-for-device'])
+    if run(adb + ['shell', 'id', '-u']) != '0':
+        raise RuntimeError('Owned AVD adbd did not become root')
+
+
 @contextmanager
 def emulator(api, output):
     sdk = Path(os.environ['ANDROID_HOME'])
@@ -77,7 +89,7 @@ def emulator(api, output):
                 raise TimeoutError('Emulator boot timeout')
             if run(adb + ['emu', 'avd', 'name']).splitlines()[0] != name:
                 raise RuntimeError('Wrong AVD identity')
-            run(adb + ['root']); run(adb + ['wait-for-device'])
+            root_owned_adb(adb)
             run(adb + ['shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'])
             run(adb + ['shell', 'wm', 'dismiss-keyguard'])
             yield adb

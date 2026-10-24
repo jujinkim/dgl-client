@@ -6,7 +6,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kim.jujin.rovessh.core.*
-import kim.jujin.rovessh.storage.KeyGeneration
+import kim.jujin.dgl.RustKeyTools
 import kim.jujin.rovessh.ui.AndroidTerminal
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -25,7 +25,7 @@ class AndroidPlatformTest {
         val context = instrumentation.targetContext
         val store = AndroidCredentialStore(context)
         val reference = UUID.randomUUID().toString()
-        val generated = KeyGeneration.ed25519()
+        val generated = RustKeyTools.ed25519()
         try {
             store.write(reference, generated.credential)
             assertTrue("Protected credential round trip", generated.credential.privateKey == store.read(reference)?.privateKey)

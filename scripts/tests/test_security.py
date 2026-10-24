@@ -108,29 +108,27 @@ class LicenseTests(unittest.TestCase):
 
 
 class InventoryTests(unittest.TestCase):
-    def test_native_separation_and_incomplete_graph(self):
+    def test_reference_dependency_scopes_and_incomplete_graph(self):
         import tempfile
         import hashlib
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'build.gradle.kts').write_text('fixture', encoding="utf-8")
             graphs = [{'module': m, 'configuration': c, 'platform': 'android', 'scope': 'runtime', 'edges': []}
-                      for m, c in audit.REQUIRED_GRAPHS]
-            for platform in audit.PLATFORMS:
-                graphs.append({'module': ':app', 'configuration': 'native' + platform, 'platform': platform,
-                               'scope': 'runtime', 'edges': [{'to': 'native'}]})
-            package = {'ecosystem': 'Maven', 'name': 'org.jetbrains.skiko:skiko-awt-runtime-linux-x64', 'version': '1',
-                       'artifacts': [{'name': 'native.jar', 'sha256': 'a'*64}],
-                       'usages': [dict(graphs[-1], selected='native')]}
-            package['usages'][0]['platform'] = 'windows-x64'
-            package['usages'][0]['configuration'] = 'nativewindows-x64'
+                      for m, c in sorted(audit.REQUIRED_GRAPHS)]
+            reference = {'module': ':app', 'configuration': 'referenceTest', 'platform': 'host-desktop',
+                         'scope': 'runtime', 'edges': [{'to': 'com.hierynomus:sshj:0.40.0'}]}
+            graphs.append(reference)
+            package = {'ecosystem': 'Maven', 'name': 'com.hierynomus:sshj', 'version': '0.40.0',
+                       'artifacts': [{'name': 'sshj.jar', 'sha256': 'a'*64}],
+                       'usages': [dict(reference, selected='com.hierynomus:sshj:0.40.0')]}
             data = {'schema': 1, 'complete': True, 'packages': [package], 'graphs': graphs,
                     'inputs': {'build.gradle.kts': hashlib.sha256(b'fixture').hexdigest()}}
             path = root / 'inventory.json'
             path.write_text(json.dumps(data), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, 'Foreign native'):
+            with self.assertRaisesRegex(ValueError, 'Retired JVM dependency'):
                 audit.load_inventory(path, root)
-            package['name'] = 'org.jetbrains.skiko:skiko-awt-runtime-windows-x64'
+            reference['scope'] = package['usages'][0]['scope'] = 'test'
             path.write_text(json.dumps(data), encoding="utf-8")
             self.assertEqual(1, len(audit.load_inventory(path, root)))
             data['graphs'].pop()

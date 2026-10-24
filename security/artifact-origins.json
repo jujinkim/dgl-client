@@ -427,6 +427,12 @@
       "source": "https://dl.google.com/dl/android/maven2/com/android/kotlin/multiplatform/library/com.android.kotlin.multiplatform.library.gradle.plugin/9.3.3/com.android.kotlin.multiplatform.library.gradle.plugin-9.3.3.pom"
     },
     {
+      "coordinate": "com.android.library:com.android.library.gradle.plugin:9.3.3",
+      "artifact": "com.android.library.gradle.plugin-9.3.3.pom",
+      "sha256": "4291ffe4e2a19ea28ca9d2d1e8376d963c710716158f6bd2a716897a83c9ce7e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/library/com.android.library.gradle.plugin/9.3.3/com.android.library.gradle.plugin-9.3.3.pom"
+    },
+    {
       "coordinate": "com.android.tools.analytics-library:crash:32.3.3",
       "artifact": "crash-32.3.3.jar",
       "sha256": "89e33b3eaf05e77576c88ca14a458c47dfe0735efbfa48ee18e5fa85f95f6f2a",
@@ -1361,6 +1367,12 @@
       "artifact": "commons-codec-1.17.1.pom",
       "sha256": "7fa0db4d8150daf932958b8aea89ee24abb4d18e2316a5de535278fc131512a0",
       "source": "https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.17.1/commons-codec-1.17.1.pom"
+    },
+    {
+      "coordinate": "net.java.dev.jna:jna:5.18.1",
+      "artifact": "jna-5.18.1.aar",
+      "sha256": "7f053e3ec99e14dd71259c82c1c8a02738d64a13c31226b2acc170f3060951e0",
+      "source": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.aar"
     },
     {
       "coordinate": "org.apache.commons:commons-compress:1.27.1",

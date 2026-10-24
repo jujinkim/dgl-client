@@ -1,5 +1,24 @@
 # 실행 검증과 인수 상태
 
+> 2026-10-24 현재 실행 대상은 Rust 기반 Android와 Mac GPUI다. 이전 JVM 앱의 실행·Windows
+> 설치물 경로는 제거했으며, 아래 결과는 당시 검증 기록으로 보존한다. 최신 명령·산출물은
+> [후보 기록](migration/CANDIDATE.md)을 따른다. 이전 엔진 코드는 테스트 APK/JVM 검사에만 사용한다.
+
+
+## 아키텍처 전환 R1 (2026-10-24)
+
+이번 실행 대상은 사용자 후속 지시에 따라 **현재 macOS 26.6.2 ARM64와 Android API36**이다.
+macOS 14/Windows/Linux/Android 34·35를 이번에 검증했다고 표시하지 않는다.
+공통 fixture 120건을 읽는 JVM 테스트 6개를 추가했다. 변경 전 JVM은 21 통과·9 예상 skip,
+fixture 추가 후 실제 OpenSSH + tmux 3.3a/3.7c는 각각 35 통과·Windows 전용 1 skip,
+API36 전용 AVD는 8개 계측 테스트 모두 통과했다. 기존 기본 CI 작업 안에서 fixture와
+Python 판정 도구 테스트를 실행하며 새 자동 job을 추가하지 않았다.
+
+Mac `:app:run`은 이번 셸에서도 `HeadlessException`으로 종료됐다. SSH callback 지연을
+GUI 표시 지연으로 대체하지 않는다. 기동·로컬 presentation·프레임 계측이 남아 R1 전체는
+진행 중이며 R2 이후를 통과 처리하지 않았다. 명령·측정·미완료 항목은
+[R1 기준선 보고서](migration/R1_BASELINE.md)에 기록한다. 이하 기존 검증 이력은 보존한다.
+
 검증일: 2026-10-23. 개발 호스트: macOS ARM64, JDK 17. 초기 검증은 Gradle 8.13, P4-03 이관은 Gradle 9.7.0이다. 테스트 자격 증명은 실행 중 생성하여 종료 시 폐기했다. 실제 사용자 서버·tmux 소켓·authorized_keys를 사용하지 않았다.
 
 ## P4-03 이관 검증
@@ -432,3 +451,28 @@ Debug/계측 APK, lint와 기존 경고 12개 검증, Python 회귀 48개도 통
 결과: `artifacts/tmux-details-jvm-base.json`, `artifacts/tmux-details-jvm-3.7c.json`,
 `artifacts/android-tests-36.json`. 대시보드 등록 경로·앱 ID·파일 버전은 기존 값과 일치하며
 메타데이터 검증기를 통과했다.
+
+### 2026-10-24 R1 API36 화면 표시 계측 훅
+
+실제 앱·xterm의 테스트 전용 입력/그리기 표식과 Perfetto SurfaceFlinger 표시 시각을
+연결했다. 최종 짧은 검증은 입력 8회·스크롤 표시 간격 80개, 연결 종료 후 control client 0,
+원격 입력 0, 전용 AVD 정리로 통과했다. Python 관련 20개·JVM fixture 6개와 Android
+debug/계측 APK 빌드도 통과했다. 종료 후 기본 `AndroidJUnitRunner`를 확인했다.
+
+증거: `artifacts/migration-r1/android-presentation-20261023T195311Z/summary.json`.
+입력 값은 첫 표시 시각의 확정치가 아닌 drawable-frame 표시 상한이며, 정식 표본 수·
+resize/탭 전환·오버헤드와 Mac GUI 계측은 남아 있다. R1 전체 통과나 R2 채택을 의미하지
+않는다. 실패 시도와 세부 결과는 [R1 보고서](migration/R1_BASELINE.md), 이어갈 작업은
+[NEXT_WORK.md](../NEXT_WORK.md)를 따른다. 중단된 장시간 soak나 전체 matrix는 재개하지 않았다.
+
+
+## 2026-10-24 Rust Mac·Android 후보
+
+R1 성능 계측과 기능 검증을 분리하고 Rust/UniFFI/GPUI 후보를 추가했다.
+120 공통 fixture, 제한 큐·취소·종료, 격리 OpenSSH/tmux 3.3a·3.7c 인증·자동 복구·동일 PID,
+API36 Rust 후보의 5개 계측 검사를 실행했다. 명령·산출물·정확한 범위와 미검증 항목은
+[migration/CANDIDATE.md](migration/CANDIDATE.md)를 따른다. 이 기록은 기존 R1 성능 결과,
+Windows/실기/실제 에이전트 미완료 상태를 변경하지 않는다.
+
+Mac GUI 창 조회와 Keychain 쓰기(-25308)는 현재 세션에서 검증을 진행할 수 없어 대기다.
+개발용 번들 생성이나 합성 IME를 실제 GUI/물리 입력 인수로 대체하지 않는다.

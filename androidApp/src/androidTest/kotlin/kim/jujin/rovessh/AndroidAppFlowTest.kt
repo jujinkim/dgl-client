@@ -21,14 +21,19 @@ import java.io.File
 
 class AndroidAppFlowTest {
     private lateinit var app: AppModel
-    private lateinit var connection: ClientModel
+    private lateinit var connection: ClientConnection
     private lateinit var previous: LocalState
     @Test fun composeTerminalKeyboardToolbarRotationAndForegroundRestore() = runBlocking<Unit> {
         assumeTrue(InstrumentationRegistry.getArguments().getString("dgl.fixture") == "true")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val fixture = JSONObject(File(instrumentation.targetContext.cacheDir, "integration.json").readText())
         val credential = Credential(privateKey = fixture.getString("key"))
-        var profile = HostProfile("android-ui-test", "UI test", "127.0.0.1", fixture.getInt("port"), fixture.getString("user"), AuthKind.PrivateKey)
+        run {
+            assertTrue(kim.jujin.dgl.RustKeyTools.publicKey(credential).startsWith("ssh-ed25519 "))
+            assertTrue(kim.jujin.dgl.RustKeyTools.publicKey(Credential(privateKey = fixture.getString("rsa"))).startsWith("ssh-rsa "))
+            assertTrue(kim.jujin.dgl.RustKeyTools.publicKey(Credential(privateKey = fixture.getString("encrypted"), passphrase = fixture.getString("passphrase"))).startsWith("ssh-ed25519 "))
+        }
+        var profile = HostProfile("android-ui-test", "개발 서버 · 긴 호스트 이름 확인용 · production candidate", "127.0.0.1", fixture.getInt("port"), fixture.getString("user"), AuthKind.PrivateKey)
         val admin = SshjTransport()
         admin.connect(profile, credential, fixture.getString("fingerprint"))
         val name = "android-ui-${System.nanoTime()}"
@@ -51,6 +56,11 @@ class AndroidAppFlowTest {
                     app.open(profile)
                     connection = app.selected.value!!
                 }
+                run {
+                    withTimeout(20000) { connection.status.first { it.phase == Phase.TrustRequired } }
+                    assertEquals(fixture.getString("fingerprint"), connection.trustRequest.value!!.fingerprint)
+                    scenario.onActivity { connection.trust() }
+                }
                 stage = "connection ready"
                 withTimeout(20000) { connection.status.first { it.phase == Phase.Ready } }
                 val pane = connection.pane.value!!
@@ -70,10 +80,21 @@ class AndroidAppFlowTest {
                 stage = "keyboard visibility"
                 val sessionLabel = "현재 세션: $name ($session)"
                 assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, sessionLabel))
-                clickText("tmux 접기")
+
                 assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, sessionLabel))
                 clickText("tmux 관리")
+                clickText("터미널로 돌아가기")
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                withTimeout(5000) {
+                    while (true) {
+                        var focused = false
+                        scenario.onActivity { focused = it.hasWindowFocus() && it.volumeKeys.focused }
+                        if (focused) break
+                        delay(20)
+                    }
+                }
+                instrumentation.waitForIdleSync()
+                delay(350) // The modal window must finish its IME-control handoff before a new tap.
                 var tapX = 0f; var tapY = 0f
                 scenario.onActivity { activity ->
                     val web = findWebView(activity.window.decorView)!!
@@ -117,15 +138,18 @@ class AndroidAppFlowTest {
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 stage = "GUI pane split"
                 val originalPaneIds = connection.remote.value.panes.map { it.id }.toSet()
+                clickText("tmux 관리")
                 clickText("좌우 분할")
                 stage = "GUI split remote update"
                 val splitPane = withTimeout(10000) { connection.remote.first { state -> state.panes.any { it.id !in originalPaneIds } } }.panes.single { it.id !in originalPaneIds }
                 clickMatching { it.text?.toString()?.startsWith(splitPane.id + " ") == true }
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                clickText("터미널로 돌아가기")
                 stage = "GUI window creation"
                 runVolumeMacro(scenario, admin, splitPane.id)
                 assertEquals("1", admin.execute("tmux show-options -pv -t '$pane' @dgl-volume-count").decodeToString().trim())
+                clickText("tmux 관리")
                 clickText("+ 창")
                 stage = "GUI name editor"
                 // Wait for the dialog window; the terminal itself also exposes an
@@ -145,6 +169,7 @@ class AndroidAppFlowTest {
                 clickText("확인")
                 stage = "GUI remote window update"
                 withTimeout(10000) { connection.remote.first { state -> state.windows.any { it.name == "GUI window" && it.session == session } } }
+                clickText("터미널로 돌아가기")
                 stage = "font setting and renderer replacement"
                 var previousView: WebView? = null
                 scenario.onActivity { previousView = findWebView(it.window.decorView) }
@@ -159,6 +184,43 @@ class AndroidAppFlowTest {
                         if (replaced && connection.status.value.phase == Phase.Ready) break
                         delay(50)
                     }
+                }
+                run {
+                    for (theme in listOf("light", "dark")) {
+                        scenario.onActivity { app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(theme = theme))) }
+                        instrumentation.waitForIdleSync()
+                        delay(900) // Await compositing after the theme changes on the software GPU.
+                        captureTerminal(scenario, "rust-$theme")
+                    }
+                    clickText("호스트"); clickText("+ 호스트")
+                    withTimeout(5000) { while (findText(instrumentation.uiAutomation.rootInActiveWindow, "SSH 호스트 추가") == null) delay(50) }
+                    assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, "저장"))
+                    assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, "취소"))
+                    instrumentation.waitForIdleSync()
+                    delay(350)
+                    val hostField = findNode(instrumentation.uiAutomation.rootInActiveWindow) { it.isEditable }!!
+                    val hostBounds = android.graphics.Rect(); hostField.getBoundsInScreen(hostBounds)
+                    val tapTime = android.os.SystemClock.uptimeMillis()
+                    instrumentation.sendPointerSync(android.view.MotionEvent.obtain(tapTime, tapTime, android.view.MotionEvent.ACTION_DOWN, hostBounds.centerX().toFloat(), hostBounds.centerY().toFloat(), 0))
+                    instrumentation.sendPointerSync(android.view.MotionEvent.obtain(tapTime, tapTime + 80, android.view.MotionEvent.ACTION_UP, hostBounds.centerX().toFloat(), hostBounds.centerY().toFloat(), 0))
+                    var editorImeTop = 0
+                    withTimeout(5000) {
+                        while (editorImeTop == 0) {
+                            scenario.onActivity {
+                                android.view.inspector.WindowInspector.getGlobalWindowViews().firstOrNull { view -> view.hasWindowFocus() && view.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true }?.let { view ->
+                                    val position = IntArray(2); view.getLocationOnScreen(position)
+                                    editorImeTop = position[1] + view.height - view.rootWindowInsets.getInsets(WindowInsets.Type.ime()).bottom
+                                }
+                            }
+                            delay(50)
+                        }
+                    }
+                    delay(250)
+                    val saveBounds = android.graphics.Rect()
+                    findText(instrumentation.uiAutomation.rootInActiveWindow, "저장")!!.getBoundsInScreen(saveBounds)
+                    assertTrue("Host save must stay above IME", saveBounds.bottom <= editorImeTop + 8)
+                    instrumentation.uiAutomation.takeScreenshot()?.let { bitmap -> File(instrumentation.targetContext.cacheDir, "rust-editor.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
+                    clickText("취소"); clickText("터미널")
                 }
                 stage = "rotation and foreground"
                 scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
@@ -190,7 +252,47 @@ class AndroidAppFlowTest {
             admin.close()
         }
     }
+    private suspend fun captureTerminal(scenario: ActivityScenario<MainActivity>, name: String) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        withTimeout(10000) {
+            while (true) {
+                val bounds = android.graphics.Rect()
+                scenario.onActivity { findWebView(it.window.decorView)?.getGlobalVisibleRect(bounds) }
+                val visual = CompletableDeferred<Unit>()
+                scenario.onActivity { findWebView(it.window.decorView)?.postVisualStateCallback(0, object : WebView.VisualStateCallback() {
+                    override fun onComplete(requestId: Long) { visual.complete(Unit) }
+                }) ?: visual.complete(Unit) }
+                withTimeout(5000) { visual.await() }
+                val bitmap = instrumentation.uiAutomation.takeScreenshot()
+                if (bitmap != null) {
+                    var ink = 0; var dark = 0; var samples = 0
+                    for (y in (bounds.top + 64).coerceAtLeast(0) until minOf(bounds.top + 400, bounds.bottom - 16, bitmap.height) step 3)
+                        for (x in (bounds.left + 24).coerceAtLeast(0) until minOf(bounds.right - 24, bitmap.width) step 3) {
+                            val pixel = bitmap.getPixel(x, y); samples++
+                            val red = android.graphics.Color.red(pixel); val green = android.graphics.Color.green(pixel); val blue = android.graphics.Color.blue(pixel)
+                            if (red > 100 && green > 100 && blue > 100) ink++
+                            if (red < 24 && green < 28 && blue < 35) dark++
+                        }
+                    if (ink > 40 && dark > samples * 0.8) {
+                        File(instrumentation.targetContext.cacheDir, "$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                        bitmap.recycle()
+                        return@withTimeout
+                    }
+                    bitmap.recycle()
+                }
+                delay(100)
+            }
+        }
+    }
     private suspend fun runVolumeMacro(scenario: ActivityScenario<MainActivity>, admin: SshjTransport, pane: String) {
+        withTimeout(5000) {
+            while (true) {
+                var ready = false
+                scenario.onActivity { ready = it.volumeKeys.focused && it.volumeKeys.resumed && connection.status.value.acceptsInput }
+                if (ready) break
+                delay(20)
+            }
+        }
         val time = android.os.SystemClock.uptimeMillis()
         scenario.onActivity { activity ->
             val target = activity as android.app.Activity

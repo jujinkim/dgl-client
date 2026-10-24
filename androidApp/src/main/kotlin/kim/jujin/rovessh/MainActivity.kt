@@ -7,15 +7,16 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
+import androidx.compose.runtime.*
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
-import kim.jujin.rovessh.storage.LocalRepository
 import kim.jujin.rovessh.ui.App
 import kim.jujin.rovessh.ui.VolumeKeyDispatcher
 import kim.jujin.rovessh.ui.VolumeKeyHost
 
 class ClientViewModel(application: Application) : AndroidViewModel(application) {
-    val app = AppModel(LocalRepository(application.noBackupFilesDir), AndroidCredentialStore(application), "자격 증명: Android Keystore · 백업 제외")
+    val app = createEngine(application)
     override fun onCleared() { app.close() }
 }
 
@@ -26,7 +27,19 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         holder = ViewModelProvider(this)[ClientViewModel::class.java]
-        setContent { App(holder.app) }
+        setContent {
+            val local by holder.app.local.collectAsState()
+            val dark = when (local.preferences.theme) {
+                "dark" -> true; "light" -> false
+                else -> resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+            }
+            SideEffect {
+                val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
+            App(holder.app, mobileLayout = true)
+        }
     }
     override fun onResume() {
         super.onResume()

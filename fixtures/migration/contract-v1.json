@@ -1,0 +1,931 @@
+{
+  "schema": 1,
+  "protocol": [
+    {
+      "id": "utf8-boundaries",
+      "wire": "%begin 1 2 1\nrow\n%end 1 2 1\n%output %3 안녕\\015\\012\\134\n%output %4 日本語\n",
+      "events": [
+        {
+          "type": "response",
+          "timestamp": 1,
+          "number": 2,
+          "flags": 1,
+          "linesHex": [
+            "726f77"
+          ],
+          "failed": false
+        },
+        {
+          "type": "output",
+          "pane": "%3",
+          "bytesHex": "ec9588eb85950d0a5c"
+        },
+        {
+          "type": "output",
+          "pane": "%4",
+          "bytesHex": "e697a5e69cace8aa9e"
+        }
+      ]
+    },
+    {
+      "id": "forged-body",
+      "wire": "%begin 3 4 1\n%output %1 forged\n%end 0 9 1\n%begin 3 5 1\n%error 3 4 1\n",
+      "events": [
+        {
+          "type": "response",
+          "timestamp": 3,
+          "number": 4,
+          "flags": 1,
+          "linesHex": [
+            "256f757470757420253120666f72676564",
+            "25656e64203020392031",
+            "25626567696e203320352031"
+          ],
+          "failed": true
+        }
+      ]
+    },
+    {
+      "id": "utf8-spans-events",
+      "wire": "%output %0 \\354\\225\n%output %0 \\210\n",
+      "events": [
+        {
+          "type": "output",
+          "pane": "%0",
+          "bytesHex": "ec95"
+        },
+        {
+          "type": "output",
+          "pane": "%0",
+          "bytesHex": "88"
+        }
+      ]
+    },
+    {
+      "id": "extended-empty-notification",
+      "wire": "%extended-output %5 10 future : x\\000\n%output %7 \n%layout-change @1 layout\n",
+      "events": [
+        {
+          "type": "output",
+          "pane": "%5",
+          "bytesHex": "7800"
+        },
+        {
+          "type": "output",
+          "pane": "%7",
+          "bytesHex": ""
+        },
+        {
+          "type": "notification",
+          "name": "%layout-change",
+          "arguments": "@1 layout"
+        }
+      ]
+    },
+    {
+      "id": "line-limit-inclusive",
+      "wire": "%x 12345\n",
+      "maxLine": 8,
+      "events": [
+        {
+          "type": "notification",
+          "name": "%x",
+          "arguments": "12345"
+        }
+      ]
+    },
+    {
+      "id": "response-limit-inclusive",
+      "wire": "%begin 1 1 1\na\n%end 1 1 1\n",
+      "maxResponse": 2,
+      "events": [
+        {
+          "type": "response",
+          "timestamp": 1,
+          "number": 1,
+          "flags": 1,
+          "linesHex": [
+            "61"
+          ],
+          "failed": false
+        }
+      ]
+    },
+    {
+      "id": "invalid-1",
+      "wire": "%end 1 1 1\n",
+      "error": true
+    },
+    {
+      "id": "invalid-2",
+      "wire": "%begin bad\n",
+      "error": true
+    },
+    {
+      "id": "invalid-3",
+      "wire": "%begin -1 1 1\n",
+      "error": true
+    },
+    {
+      "id": "invalid-4",
+      "wire": "%output %x a\n",
+      "error": true
+    },
+    {
+      "id": "invalid-5",
+      "wire": "%output %1 \\999\n",
+      "error": true
+    },
+    {
+      "id": "invalid-6",
+      "wire": "%output %1 \\400\n",
+      "error": true
+    },
+    {
+      "id": "invalid-7",
+      "wire": "%extended-output %1 bad\n",
+      "error": true
+    },
+    {
+      "id": "invalid-8",
+      "wire": "plain\n",
+      "error": true
+    },
+    {
+      "id": "invalid-9",
+      "wire": "%output %0 x",
+      "error": true
+    },
+    {
+      "id": "invalid-10",
+      "wire": "%begin 1 1 1\n",
+      "error": true
+    },
+    {
+      "id": "invalid-11",
+      "wire": "%output %1 \\01\n",
+      "error": true
+    },
+    {
+      "id": "line-overflow",
+      "wire": "123456789",
+      "maxLine": 8,
+      "error": true
+    },
+    {
+      "id": "response-overflow",
+      "wire": "%begin 1 1 1\nabc\n",
+      "maxResponse": 2,
+      "error": true
+    }
+  ],
+  "escapes": [
+    {
+      "id": "live-octal",
+      "mode": "live",
+      "source": "\\000\\033\\134\\377",
+      "bytesHex": "001b5cff"
+    },
+    {
+      "id": "capture-literal",
+      "mode": "capture",
+      "source": "\\\\033literal\\033[31mred",
+      "bytesHex": "5c3033336c69746572616c1b5b33316d726564"
+    },
+    {
+      "id": "live-invalid-2",
+      "mode": "live",
+      "source": "\\",
+      "error": true
+    },
+    {
+      "id": "live-invalid-3",
+      "mode": "live",
+      "source": "\\01",
+      "error": true
+    },
+    {
+      "id": "live-invalid-4",
+      "mode": "live",
+      "source": "\\999",
+      "error": true
+    },
+    {
+      "id": "live-invalid-5",
+      "mode": "live",
+      "source": "\\400",
+      "error": true
+    },
+    {
+      "id": "live-invalid-6",
+      "mode": "live",
+      "source": "\\\\",
+      "error": true
+    }
+  ],
+  "commands": [
+    {
+      "id": "newSession-0",
+      "op": "newSession",
+      "name": "safe'; kill-server; #",
+      "wire": "new-session -d -s 'safe'\\''; kill-server; ##'",
+      "shellWire": "tmux new-session -d -s 'safe'\\''; kill-server; ##'"
+    },
+    {
+      "id": "newSession-1",
+      "op": "newSession",
+      "name": "tail;",
+      "shellWire": "tmux new-session -d -s 'tail\\;'",
+      "wire": "new-session -d -s 'tail;'"
+    },
+    {
+      "id": "renameSession-2",
+      "op": "renameSession",
+      "target": "$1",
+      "name": "#(touch forbidden)",
+      "wire": "rename-session -t '$1' '##(touch forbidden)'",
+      "shellWire": "tmux rename-session -t '$1' '##(touch forbidden)'"
+    },
+    {
+      "id": "killSession-3",
+      "op": "killSession",
+      "target": "$1",
+      "wire": "kill-session -t '$1'",
+      "shellWire": "tmux kill-session -t '$1'"
+    },
+    {
+      "id": "switchSession-4",
+      "op": "switchSession",
+      "target": "$1",
+      "wire": "switch-client -t '$1'",
+      "shellWire": "tmux switch-client -t '$1'"
+    },
+    {
+      "id": "newWindow-5",
+      "op": "newWindow",
+      "target": "$1",
+      "name": "#(touch forbidden)",
+      "wire": "new-window -t '$1' -n '##(touch forbidden)'",
+      "shellWire": "tmux new-window -t '$1' -n '##(touch forbidden)'"
+    },
+    {
+      "id": "renameWindow-6",
+      "op": "renameWindow",
+      "target": "@2",
+      "name": "#(touch forbidden)",
+      "wire": "rename-window -t '@2' '##(touch forbidden)'",
+      "shellWire": "tmux rename-window -t '@2' '##(touch forbidden)'"
+    },
+    {
+      "id": "selectWindow-7",
+      "op": "selectWindow",
+      "target": "@2",
+      "wire": "select-window -t '@2'",
+      "shellWire": "tmux select-window -t '@2'"
+    },
+    {
+      "id": "killWindow-8",
+      "op": "killWindow",
+      "target": "@2",
+      "wire": "kill-window -t '@2'",
+      "shellWire": "tmux kill-window -t '@2'"
+    },
+    {
+      "id": "selectPane-9",
+      "op": "selectPane",
+      "target": "%3",
+      "wire": "select-pane -t '%3'",
+      "shellWire": "tmux select-pane -t '%3'"
+    },
+    {
+      "id": "killPane-10",
+      "op": "killPane",
+      "target": "%3",
+      "wire": "kill-pane -t '%3'",
+      "shellWire": "tmux kill-pane -t '%3'"
+    },
+    {
+      "id": "capture-11",
+      "op": "capture",
+      "target": "%3",
+      "wire": "capture-pane -p -e -C -N -t '%3'",
+      "shellWire": "tmux capture-pane -p -e -C -N -t '%3'"
+    },
+    {
+      "id": "captureMain-12",
+      "op": "captureMain",
+      "target": "%3",
+      "wire": "capture-pane -p -a -q -e -C -N -t '%3'",
+      "shellWire": "tmux capture-pane -p -a -q -e -C -N -t '%3'"
+    },
+    {
+      "id": "pending-13",
+      "op": "pending",
+      "target": "%3",
+      "wire": "capture-pane -p -P -C -t '%3'",
+      "shellWire": "tmux capture-pane -p -P -C -t '%3'"
+    },
+    {
+      "id": "pause-14",
+      "op": "pause",
+      "target": "%3",
+      "wire": "refresh-client -A '%3:pause'",
+      "shellWire": "tmux refresh-client -A '%3:pause'"
+    },
+    {
+      "id": "resume-15",
+      "op": "resume",
+      "target": "%3",
+      "wire": "refresh-client -A '%3:continue'",
+      "shellWire": "tmux refresh-client -A '%3:continue'"
+    },
+    {
+      "id": "split-16",
+      "op": "split",
+      "target": "%3",
+      "horizontal": true,
+      "wire": "split-window -h -t '%3'",
+      "shellWire": "tmux split-window -h -t '%3'"
+    },
+    {
+      "id": "split-17",
+      "op": "split",
+      "target": "%3",
+      "horizontal": false,
+      "wire": "split-window -v -t '%3'",
+      "shellWire": "tmux split-window -v -t '%3'"
+    },
+    {
+      "id": "resizePane-18",
+      "op": "resizePane",
+      "target": "%3",
+      "direction": "L",
+      "wire": "resize-pane -t '%3' -L 3",
+      "shellWire": "tmux resize-pane -t '%3' -L 3"
+    },
+    {
+      "id": "clientSize-19",
+      "op": "clientSize",
+      "columns": 80,
+      "rows": 24,
+      "wire": "refresh-client -C 80,24",
+      "shellWire": "tmux refresh-client -C 80,24"
+    },
+    {
+      "id": "send-20",
+      "op": "send",
+      "target": "%3",
+      "bytesHex": "000d1b273bff",
+      "wire": "send-keys -H -t '%3' 00 0d 1b 27 3b ff",
+      "shellWire": "tmux send-keys -H -t '%3' 00 0d 1b 27 3b ff"
+    },
+    {
+      "id": "flowControl-21",
+      "op": "flowControl",
+      "wire": "refresh-client -f 'pause-after=2'",
+      "shellWire": "tmux refresh-client -f 'pause-after=2'"
+    },
+    {
+      "id": "newSession-22",
+      "op": "newSession",
+      "error": true,
+      "name": "x\nkill-server"
+    },
+    {
+      "id": "newSession-23",
+      "op": "newSession",
+      "error": true,
+      "name": "a.b"
+    },
+    {
+      "id": "newSession-24",
+      "op": "newSession",
+      "error": true,
+      "name": "a:b"
+    },
+    {
+      "id": "killPane-25",
+      "op": "killPane",
+      "error": true,
+      "target": "%1; kill-server"
+    },
+    {
+      "id": "killPane-26",
+      "op": "killPane",
+      "error": true,
+      "target": "@1"
+    },
+    {
+      "id": "resizePane-27",
+      "op": "resizePane",
+      "error": true,
+      "target": "%1",
+      "direction": "X"
+    },
+    {
+      "id": "send-28",
+      "op": "send",
+      "error": true,
+      "target": "%1",
+      "bytesHex": ""
+    },
+    {
+      "id": "send-29",
+      "op": "send",
+      "error": true,
+      "target": "%1",
+      "bytesHex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "clientSize-30",
+      "op": "clientSize",
+      "error": true,
+      "columns": 501,
+      "rows": 24
+    }
+  ],
+  "keys": {
+    "Escape": "1b",
+    "Tab": "09",
+    "CtrlA": "01",
+    "CtrlB": "02",
+    "CtrlC": "03",
+    "CtrlD": "04",
+    "CtrlE": "05",
+    "CtrlF": "06",
+    "CtrlG": "07",
+    "CtrlH": "08",
+    "CtrlI": "09",
+    "CtrlJ": "0a",
+    "CtrlK": "0b",
+    "CtrlL": "0c",
+    "CtrlM": "0d",
+    "CtrlN": "0e",
+    "CtrlO": "0f",
+    "CtrlP": "10",
+    "CtrlQ": "11",
+    "CtrlR": "12",
+    "CtrlS": "13",
+    "CtrlT": "14",
+    "CtrlU": "15",
+    "CtrlV": "16",
+    "CtrlW": "17",
+    "CtrlX": "18",
+    "CtrlY": "19",
+    "CtrlZ": "1a",
+    "Up": "1b5b41",
+    "Down": "1b5b42",
+    "Left": "1b5b44",
+    "Right": "1b5b43",
+    "Home": "1b5b48",
+    "End": "1b5b46",
+    "Enter": "0d",
+    "Backspace": "7f",
+    "Delete": "1b5b337e",
+    "PageUp": "1b5b357e",
+    "PageDown": "1b5b367e"
+  },
+  "input": [
+    {
+      "id": "explicit-enter",
+      "steps": [
+        {
+          "type": "text",
+          "text": "git status"
+        },
+        {
+          "type": "key",
+          "key": "Enter"
+        }
+      ],
+      "bytesHex": "676974207374617475730d"
+    },
+    {
+      "id": "no-implicit-enter",
+      "steps": [
+        {
+          "type": "text",
+          "text": "git status"
+        }
+      ],
+      "bytesHex": "67697420737461747573"
+    },
+    {
+      "id": "mixed",
+      "steps": [
+        {
+          "type": "key",
+          "key": "CtrlB"
+        },
+        {
+          "type": "text",
+          "text": "n"
+        }
+      ],
+      "bytesHex": "026e"
+    },
+    {
+      "id": "unicode-newlines",
+      "steps": [
+        {
+          "type": "text",
+          "text": "한글 日本語 😀\\n\n두\r\n세\r끝"
+        }
+      ],
+      "bytesHex": "ed959ceab88020e697a5e69cace8aa9e20f09f98805c6e0deb91900dec84b80deb819d"
+    },
+    {
+      "id": "ctrl-j-not-normalized",
+      "steps": [
+        {
+          "type": "key",
+          "key": "CtrlJ"
+        }
+      ],
+      "bytesHex": "0a"
+    },
+    {
+      "id": "empty",
+      "steps": [],
+      "error": true
+    },
+    {
+      "id": "empty-text",
+      "steps": [
+        {
+          "type": "text",
+          "text": ""
+        }
+      ],
+      "error": true
+    },
+    {
+      "id": "ascii-limit",
+      "steps": [
+        {
+          "type": "text",
+          "text": "a",
+          "repeat": 65536
+        }
+      ],
+      "expectedSize": 65536,
+      "expectedPatternHex": "61"
+    },
+    {
+      "id": "ascii-over-limit",
+      "steps": [
+        {
+          "type": "text",
+          "text": "a",
+          "repeat": 65536
+        },
+        {
+          "type": "key",
+          "key": "Enter"
+        }
+      ],
+      "error": true
+    },
+    {
+      "id": "utf8-over-limit",
+      "steps": [
+        {
+          "type": "text",
+          "text": "한",
+          "repeat": 21846
+        }
+      ],
+      "error": true
+    },
+    {
+      "id": "newline-normalize-before-limit",
+      "steps": [
+        {
+          "type": "text",
+          "text": "\r\n",
+          "repeat": 65536
+        }
+      ],
+      "expectedSize": 65536,
+      "expectedPatternHex": "0d"
+    }
+  ],
+  "settings": [
+    {
+      "id": "empty-defaults",
+      "source": {},
+      "expected": {
+        "hosts": [],
+        "trust": {},
+        "preferences": {
+          "theme": "system",
+          "fontSize": 14,
+          "scrollback": 5000,
+          "volumeKeysEnabled": false,
+          "volumeUp": {
+            "action": "Default",
+            "steps": []
+          },
+          "volumeDown": {
+            "action": "Default",
+            "steps": []
+          }
+        }
+      }
+    },
+    {
+      "id": "legacy-preferences",
+      "source": {
+        "preferences": {
+          "theme": "dark",
+          "fontSize": 19
+        }
+      },
+      "expected": {
+        "hosts": [],
+        "trust": {},
+        "preferences": {
+          "theme": "dark",
+          "fontSize": 19,
+          "scrollback": 5000,
+          "volumeKeysEnabled": false,
+          "volumeUp": {
+            "action": "Default",
+            "steps": []
+          },
+          "volumeDown": {
+            "action": "Default",
+            "steps": []
+          }
+        }
+      }
+    },
+    {
+      "id": "host-trust-macros",
+      "source": {
+        "hosts": [
+          {
+            "id": "fixture-1",
+            "alias": "합성 호스트",
+            "hostname": "EXAMPLE.test",
+            "username": "tester"
+          }
+        ],
+        "trust": {
+          "example.test:22": "SHA256:synthetic-test-only"
+        },
+        "preferences": {
+          "theme": "system",
+          "fontSize": 14,
+          "scrollback": 5000,
+          "volumeKeysEnabled": true,
+          "volumeUp": {
+            "action": "Shortcut",
+            "steps": [
+              {
+                "type": "key",
+                "key": "CtrlB"
+              }
+            ]
+          },
+          "volumeDown": {
+            "action": "Macro",
+            "steps": [
+              {
+                "type": "text",
+                "text": "한글\\n\n"
+              },
+              {
+                "type": "key",
+                "key": "Enter"
+              }
+            ]
+          }
+        },
+        "unknownFutureField": true
+      },
+      "expected": {
+        "hosts": [
+          {
+            "id": "fixture-1",
+            "alias": "합성 호스트",
+            "hostname": "EXAMPLE.test",
+            "username": "tester",
+            "port": 22,
+            "auth": "Password",
+            "credentialRef": "fixture-1",
+            "favorite": false,
+            "lastConnected": 0,
+            "lastSession": null,
+            "lastPane": null
+          }
+        ],
+        "trust": {
+          "example.test:22": "SHA256:synthetic-test-only"
+        },
+        "preferences": {
+          "theme": "system",
+          "fontSize": 14,
+          "scrollback": 5000,
+          "volumeKeysEnabled": true,
+          "volumeUp": {
+            "action": "Shortcut",
+            "steps": [
+              {
+                "type": "key",
+                "key": "CtrlB"
+              }
+            ]
+          },
+          "volumeDown": {
+            "action": "Macro",
+            "steps": [
+              {
+                "type": "text",
+                "text": "한글\\n\n"
+              },
+              {
+                "type": "key",
+                "key": "Enter"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "explicit-identity",
+      "source": {
+        "hosts": [
+          {
+            "id": "fixture-1",
+            "alias": "합성 호스트",
+            "hostname": "EXAMPLE.test",
+            "username": "tester",
+            "credentialRef": "credential-2",
+            "auth": "PrivateKey",
+            "favorite": true,
+            "lastConnected": 123456789,
+            "lastSession": "$1",
+            "lastPane": "%2"
+          }
+        ]
+      },
+      "expected": {
+        "hosts": [
+          {
+            "id": "fixture-1",
+            "alias": "합성 호스트",
+            "hostname": "EXAMPLE.test",
+            "username": "tester",
+            "port": 22,
+            "auth": "PrivateKey",
+            "credentialRef": "credential-2",
+            "favorite": true,
+            "lastConnected": 123456789,
+            "lastSession": "$1",
+            "lastPane": "%2"
+          }
+        ],
+        "trust": {},
+        "preferences": {
+          "theme": "system",
+          "fontSize": 14,
+          "scrollback": 5000,
+          "volumeKeysEnabled": false,
+          "volumeUp": {
+            "action": "Default",
+            "steps": []
+          },
+          "volumeDown": {
+            "action": "Default",
+            "steps": []
+          }
+        }
+      }
+    },
+    {
+      "id": "bad-id",
+      "source": {
+        "hosts": [
+          {
+            "id": "../escape",
+            "alias": "합성 호스트",
+            "hostname": "EXAMPLE.test",
+            "username": "tester"
+          }
+        ]
+      },
+      "error": true
+    },
+    {
+      "id": "bad-port",
+      "source": {
+        "hosts": [
+          {
+            "id": "fixture-1",
+            "alias": "합성 호스트",
+            "hostname": "EXAMPLE.test",
+            "username": "tester",
+            "port": 0
+          }
+        ]
+      },
+      "error": true
+    },
+    {
+      "id": "bad-host",
+      "source": {
+        "hosts": [
+          {
+            "id": "fixture-1",
+            "alias": "합성 호스트",
+            "hostname": "bad host",
+            "username": "tester"
+          }
+        ]
+      },
+      "error": true
+    },
+    {
+      "id": "bad-user",
+      "source": {
+        "hosts": [
+          {
+            "id": "fixture-1",
+            "alias": "합성 호스트",
+            "hostname": "EXAMPLE.test",
+            "username": "a\n"
+          }
+        ]
+      },
+      "error": true
+    }
+  ],
+  "state": [
+    {
+      "id": "session-escaped",
+      "kind": "sessions",
+      "rows": [
+        "$1|my\\ session\\|name|2"
+      ],
+      "expected": [
+        {
+          "id": "$1",
+          "name": "my session|name",
+          "attached": 2
+        }
+      ]
+    },
+    {
+      "id": "window",
+      "kind": "windows",
+      "rows": [
+        "$1|@2|hello\\ world|1|abcd,80x24,0,0,3"
+      ],
+      "expected": [
+        {
+          "id": "@2",
+          "session": "$1",
+          "name": "hello world",
+          "active": true,
+          "layout": "abcd,80x24,0,0,3"
+        }
+      ]
+    },
+    {
+      "id": "pane",
+      "kind": "panes",
+      "rows": [
+        "%3|@2|80|24|1||sh"
+      ],
+      "expected": [
+        {
+          "id": "%3",
+          "window": "@2",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "sh"
+        }
+      ]
+    },
+    {
+      "id": "bad-state-id",
+      "kind": "sessions",
+      "rows": [
+        "@1|wrong|0"
+      ],
+      "error": true
+    },
+    {
+      "id": "wrong-field-count",
+      "kind": "panes",
+      "rows": [
+        "%1|@1|80"
+      ],
+      "error": true
+    }
+  ]
+}

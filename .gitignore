@@ -36,3 +36,8 @@ __pycache__/
 
 # Local development dashboard metadata
 /.dashboard-props.json
+
+# Rust and native candidate outputs
+/target/
+/coreBindings/src/main/jniLibs/
+/coreBindings/src/main/kotlin/uniffi/

@@ -2,18 +2,18 @@
 
 **Keep the CLI. Simplify the workflow.**
 
-SSH와 표준 tmux를 사용하는 Windows·Android 터미널 클라이언트입니다. 원격 데몬 없이 기존 세션을 탐색하고, 연결을 닫은 뒤 같은 프로세스로 돌아갑니다. 현재 **개발용 MVP**이며 Windows 실기·서명 배포와 실제 Codex/Claude 인수 검증은 아직 완료되지 않았습니다.
+SSH와 표준 tmux를 사용하는 Mac·Android 터미널 클라이언트입니다. 원격 데몬 없이 기존 세션을 탐색하고, 연결을 닫은 뒤 같은 프로세스로 돌아갑니다. Rust 코어를 사용하는 **개발용 후보**입니다. Mac 실제 GUI·Keychain, 전체 기능 화면 인수와 실제 Codex/Claude 검증은 아직 완료되지 않았습니다.
 
 ## 현재 구현
 
 - 호스트 추가·편집·삭제, 별칭·즐겨찾기·최근 접속, 독립된 여러 연결
 - 비밀번호, RSA/Ed25519 및 암호화 개인키 가져오기, Ed25519 생성·공개키 복사
 - 최초 호스트키 지문 확인, 저장된 키 변경 시 차단, 신뢰 키 삭제
-- Android Keystore / Windows 사용자 DPAPI 보호 저장. 실패 시 저장 중단
+- Android Keystore / Mac Keychain 보호 저장. 실패 시 저장 중단
 - tmux Control Mode 세션·창·패널 조회·선택, 생성·이름 변경·분할·크기 변경·삭제 확인
 - 외부 tmux 변경 이벤트 반영, 연결 복구 중 입력 차단, 입력 재전송 금지
 - 화면 캡처·실시간 출력 순서화, 연결·패널·크기 세대 검사, bounded output / scrollback
-- Android xterm.js/WebView, 데스크톱 JediTerm, 단축키 바, 앱 테마·폰트 크기
+- Android xterm.js/WebView, Mac GPUI/alacritty_terminal, 단축키 바, 앱 테마·폰트 크기
 - Android 볼륨 위·아래 키별 단축키·텍스트/키 매크로 설정 (기본 꺼짐)
 - tmux 미설치/버전 미지원 시 일반 SSH 셸. **일반 셸의 작업은 연결 종료 후 보존되지 않을 수 있습니다.**
 
@@ -22,36 +22,41 @@ SSH와 표준 tmux를 사용하는 Windows·Android 터미널 클라이언트입
 | 대상 | 설정 | 실제 확인 |
 |---|---|---|
 | Android 14 / 15 / 16 | `minSdk=34`, `compileSdk=36`, `targetSdk=36` | ARM64 에뮬레이터에서 APK·Keystore·SSH·합성 IME·키보드·단축키 바·회전·복귀 검증 |
-| Windows 10/11 x64 | JVM 17, MSI/EXE 작업·CI | 로컬 Windows 실행·DPAPI 실기·설치 검증 **미실행** |
-| macOS ARM64 | 개발용 JVM 실행 | 공통 코드·실제 SSH/tmux 통합 테스트. 자격 증명은 메모리에만 보관 |
+| Windows / Linux | 후속 Rust 데스크톱 대상 | 현재 배포 없음; 이전 JVM 실행·패키징은 제거 |
+| macOS ARM64 | GPUI + alacritty_terminal, macOS Keychain | 빌드·코어 SSH/tmux 통과; 실제 GUI·Keychain 저장 인수 **대기** |
 | tmux | 3.3–3.7 범위만 Control Mode 사용 | **3.3a, 3.7c** 실제 서버 검증 |
 
 앱 ID: `kim.jujin.rovessh`. 추가 플랫폼과 WSL 제품 연동은 후속 단계입니다.
 
 ## 빌드·실행
 
-JDK 17, Android SDK(플랫폼 36, Build Tools 36.0.0), Node.js와 npm이 필요합니다. `JAVA_HOME`과 `ANDROID_HOME`을 각 개발 환경에 맞게 설정하세요. Gradle 9.7.0 Wrapper, Kotlin/Compose compiler 2.4.21, AGP 9.3.3을 사용합니다. `:app`은 공통 코드·Android KMP library·desktop, `:androidApp`은 Android 앱 진입점과 APK를 담당합니다.
+Android는 Rust 코어만 사용합니다. 엔진 선택 옵션과 이전 JVM 앱 실행·설치물 빌드는 제거했습니다.
+`dglEngine` 속성을 넘기면 오류로 중단합니다. 기존 엔진은 회귀 검사와 격리 SSH 관리에 필요한
+`app/src/referenceTest`에만 남으며 앱 APK에는 포함하지 않습니다.
+
+JDK 17, Android SDK 36 / Build Tools 36.0.0 / NDK 29.0.14206865,
+Rust 1.98.1, Node.js/npm이 필요합니다. `JAVA_HOME`과 `ANDROID_HOME`을 설정하세요.
+Gradle 9.7.0, Kotlin 2.4.21, AGP 9.3.3을 사용합니다. Mac은 Xcode 26.6과 Metal Toolchain이 필요합니다.
 
 ```sh
-cd web
-npm ci --ignore-scripts
-npm run bundle
-cd ..
+rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 ./gradlew :app:desktopTest :androidApp:assembleDebug :androidApp:assembleRelease :androidApp:lintDebug
-./gradlew :app:run
+python3 scripts/collect_rust_android.py
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 scripts/package_rust_mac.py
 ```
 
-APK: `androidApp/build/outputs/apk/debug/androidApp-debug.apk` (개발용 debug 서명).
+- Android: `androidApp/build/outputs/apk/debug/androidApp-debug.apk` (debug 서명, 네 ABI).
+  전달용 복사본: `artifacts/rust-candidate/android/dgl-rust-debug.apk`.
+- Mac: `artifacts/rust-candidate/mac/dgl Rust Candidate.app` (ARM64, 로컬 ad-hoc 서명).
+- Release APK는 미서명이며 공개 배포용 서명·공증은 하지 않았습니다.
 
-Windows에서는 Eclipse Temurin JDK 17과 WiX 3를 준비하고 패키징 전에 해당 JDK의 소스와 고지를 확보합니다:
+Android 앱 ID `kim.jujin.rovessh`는 유지합니다. 기존 앱에 설치하면 바이너리는 교체되지만
+설정·자격 증명은 `noBackupFilesDir/rust-candidate-v1`에서 따로 저장합니다.
+이전 사용자 데이터는 자동으로 이전하거나 삭제하지 않습니다.
 
-```powershell
-python scripts/prepare_temurin_source.py
-.\gradlew.bat :app:run
-.\gradlew.bat :app:desktopTest :app:packageMsi :app:packageExe
-```
-
-설치 파일: `app/build/compose/binaries/main/msi/`, `exe/`. Windows 패키징은 Windows에서 실행해야 합니다. 사용자 릴리스 서명 키는 저장소에 포함하지 않습니다.
+`crates/dgl-core`는 Rust 연결·tmux 코어, `crates/dgl-uniffi`/`:coreBindings`는 바인딩,
+`:mobileUi`는 Rust 어댑터, `:app`은 공통 모델·Compose/xterm 컴포넌트,
+`:androidApp`은 Android 진입점, `desktop`은 GPUI 앱입니다.
 
 ## 연결 방법
 
@@ -81,13 +86,13 @@ Android 설정에서 `볼륨 키로 단축키 실행`을 켜고 위·아래 키�
 
 ```sh
 ./gradlew :app:desktopTest
-python3 scripts/integration.py
+cargo test --locked -p dgl-core -p dgl-uniffi
 python3 scripts/integration.py --tmux /path/to/tmux-3.3a
 python3 scripts/build_test_tmux.py 3.3a
 python3 scripts/integration.py --tmux .tools/tmux-3.3a/tmux-3.3a/tmux
 python3 scripts/integration.py --tmux-login-path --command ./gradlew :app:desktopTest --tests kim.jujin.rovessh.IntegrationTest.tmuxDiscoveryUsesLoginPathForCreateListAttachAndReconnect
 ./gradlew :androidApp:connectedDebugAndroidTest
-python3 scripts/integration.py --command python3 scripts/android_integration.py
+python3 scripts/integration.py --command python3 scripts/rust_android_integration.py
 python3 scripts/check_prompt.py
 python3 scripts/verify_wrapper.py
 python3 scripts/scan_secrets.py
@@ -96,7 +101,6 @@ python3 -m unittest discover -s scripts/tests -v
 python3 scripts/audit_dependencies.py
 python3 scripts/verify_licenses.py
 python3 scripts/verify_lint.py
-./gradlew :app:prepareThirdPartyNotices
 python3 scripts/collect_artifacts.py
 ```
 
@@ -113,22 +117,33 @@ GitHub Actions의 **Build and verify → Run workflow**에서 아래 검사를 �
 | `verify_packaging` | Release·계측 APK 빌드, 의존성 취약점·라이선스·배포 파일 검증 |
 | `verify_ssh` | 실제 SSH와 tmux 3.3a/3.7c 통합 테스트 |
 | `verify_android` | Android API 34/35/36 에뮬레이터 테스트 |
-| `verify_windows` | Windows 설치물·DPAPI 검증 |
 
-Windows 실검증은 사용자 담당입니다. 실제 원격 결과는 검증 문서에 기록합니다.
-
-`collect_artifacts.py`는 APK의 앱 ID·SDK·번들 파일·민감 파일 이름을 확인하고 `artifacts/`에 APK, 라이선스/source 묶음, SHA-256을 모읍니다. 무인자 동작은 기존 APK 수집을 유지합니다. `--platform windows`는 APK 없이 Windows 설치물·고지·해시를 수집하며, 동일 커밋의 DPAPI·설치/제거·JediTerm 교체 보고서가 모두 통과해야 합니다. Windows 빌드 전 Temurin 소스 확보 절차는 [검증 문서](docs/VALIDATION.md)를 따릅니다.
+Windows의 이전 JVM 설치물 CI는 제거했습니다. 이번 작업에서 원격 CI나 전체 에뮬레이터 matrix를 실행하지 않았습니다.
+`collect_artifacts.py`는 APK ID·SDK·번들·네 ABI와 Rust 엔진을 검사합니다.
+기존 연결 엔진·SSHJ·Bouncy Castle이 앱 DEX에 있으면 실패합니다. 이 의존성들은 테스트 APK에만 허용합니다.
 
 검증 결과·실기 체크리스트는 [docs/VALIDATION.md](docs/VALIDATION.md), 단계별 상태는 [TASKS.md](TASKS.md)에 기록합니다.
 
+다음 구현 순서와 종료 조건은 [NEXT_WORK.md](NEXT_WORK.md)를 따릅니다. API36의 테스트 전용
+화면 표시 계측의 미해결 결과는 보존합니다. R1b 성능 작업은 후속이며 기능 구현을 막지 않습니다.
+
+공통 코어·모바일 UI·Windows/macOS/Linux 데스크톱 UI 분리 전환은 [아키텍처 전환 작업 계획](docs/ARCHITECTURE_MIGRATION.md)으로 추적합니다. R1에서 공통 fixture 120건, 코어 계약, 성능 수집·판정 도구를 추가했습니다. 이번 검증 범위는 현재 Mac(macOS 26.6.2)과 Android API 36이며, [기준선 보고서](docs/migration/R1_BASELINE.md)에 결과와 미완료 항목을 기록합니다. Rust 코어·UniFFI·Mac GPUI 후보와 Android 후보를 구현했습니다. Android 기본 실행은 Rust이며, Mac 실제 화면·Keychain 인수가 남아 후보 완료와 툴킷 최종 채택을 선언하지 않습니다.
+
 ## 남은 한계
 
-- Windows 실제 설치·한글 IME·DPAPI, 물리 Android 기기·실제 한글/일본어 키보드, 실제 Wi-Fi↔셀룰러 전환은 별도 검증이 필요합니다.
+- Windows/Linux 새 앱과 물리 Android 기기·실제 한글/일본어 키보드, 실제 Wi-Fi↔셀룰러 전환은 별도 검증이 필요합니다.
 - 실제 Codex·Claude의 로그인·권한 요청·장시간 실행 중 재접속은 미검증입니다. 이 단계 전에는 에이전트 호환성을 확정하지 않습니다.
 - 스냅샷은 화면·alternate screen·커서·주요 모드를 복원합니다. tmux가 제공하지 않는 현재 SGR pen, 모든 VT 상태와 이전 로컬 scrollback의 완전 복원은 보장하지 않습니다. 필요하면 터미널에서 다시 그리기(Ctrl+L)를 사용합니다.
 - 패널 전환·재접속 시 로컬 scrollback은 초기화됩니다. tmux Copy Mode는 별도 상태로 표시하며 해당 화면을 일반 pane 출력으로 오인하지 않습니다.
 - 자동 재접속은 최대 8회 시도합니다. 네트워크 오류만 재시도하며 인증·호스트키·프로토콜 오류는 멈춥니다. Android의 지속적인 백그라운드 연결은 보장하지 않습니다.
-- 원격 pane 크기는 최대 500×250셀입니다. JCEF 비교는 설계 비교까지만 수행했으며 실행 비교와 최종 Windows 렌더러 판정은 남아 있습니다.
+- 원격 pane 크기는 최대 500×250셀입니다. Windows/Linux 새 데스크톱의 실행·패키징은 후속입니다.
 - 2026-10-23 선택 의존성 371개 버전의 OSV 런타임·빌드·테스트 경고는 모두 0건입니다. 공개 릴리스 전 [보안 검토](docs/SECURITY.md)를 완료해야 합니다.
 
 원문 요구사항은 [KICKOFF_PROMPT.md](KICKOFF_PROMPT.md)와 SHA-256으로 보존합니다. 기술 결정: [ADR 001](docs/decisions/001-architecture.md), [ADR 002](docs/decisions/002-terminal-restoration.md). 라이선스: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Mac·Android 후보 전환 — 2026-10-24
+
+성능 계측을 기능 구현의 선행 게이트에서 분리하고 기존 MVP 기능·기본 디자인을 먼저 이식합니다.
+후속 사용자 지시인 “legacy는 불필요”에 따라 Android는 Rust만 빌드하고 Mac은 GPUI 앱으로 실행합니다.
+현재 검증 결과와 남은 화면 인수는 [후보 구현 기록](docs/migration/CANDIDATE.md),
+[다음 작업](NEXT_WORK.md)을 따릅니다.
