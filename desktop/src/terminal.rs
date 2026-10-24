@@ -14,6 +14,8 @@ use dgl_core::{
 };
 use gpui::{prelude::*, *};
 use std::{collections::HashSet, ops::Range, sync::Arc};
+mod paint;
+use paint::{CellLayer, paint_grid};
 #[derive(Clone)]
 struct Listener(Arc<Connection>);
 impl EventListener for Listener {
@@ -452,11 +454,11 @@ impl Render for Terminal {
                             let content = this.term.renderable_content();
                             let cursor = content.cursor.point;
                             let offset = content.display_offset as i32;
-                            for indexed in content.display_iter {
+                            paint_grid(&this.term, |layer, indexed| {
                                 let cell = indexed.cell;
                                 let row = indexed.point.line.0 + offset;
                                 if row < 0 {
-                                    continue;
+                                    return;
                                 }
                                 let origin = point(
                                     bounds.left() + px(indexed.point.column.0 as f32 * w),
@@ -476,13 +478,12 @@ impl Render for Terminal {
                                     bg = rgb(0x8acdd0).into();
                                     fg = rgb(0x11151b).into();
                                 }
-                                window
-                                    .paint_quad(fill(Bounds::new(origin, size(px(w), px(h))), bg));
-                                if cell.c != ' '
-                                    && !cell
-                                        .flags
-                                        .intersects(Flags::WIDE_CHAR_SPACER | Flags::HIDDEN)
-                                {
+                                if layer == CellLayer::Background {
+                                    window.paint_quad(fill(
+                                        Bounds::new(origin, size(px(w), px(h))),
+                                        bg,
+                                    ));
+                                } else {
                                     let mut text = cell.c.to_string();
                                     if let Some(z) = cell.zerowidth() {
                                         text.extend(z);
@@ -506,7 +507,7 @@ impl Render for Terminal {
                                     );
                                     let _ = line.paint(origin, px(h), window, cx);
                                 }
-                            }
+                            });
                             if !this.marked.is_empty() {
                                 let origin = point(
                                     bounds.left() + px(cursor.column.0 as f32 * w),
