@@ -16,6 +16,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -295,12 +297,19 @@ expect fun copyPublicKey(value: String)
 }
 @Composable private fun TreeRow(label: String, depth: Int, active: Boolean, expanded: Boolean?, toggle: () -> Unit,
     select: () -> Unit, enabled: Boolean, actions: List<Pair<String, () -> Unit>>) {
-    Row(Modifier.fillMaxWidth().background(if (active) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+    val background = when {
+        active -> MaterialTheme.colorScheme.secondaryContainer
+        depth == 0 -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+            .compositeOver(MaterialTheme.colorScheme.surfaceContainer)
+        else -> Color.Transparent
+    }
+    Row(Modifier.fillMaxWidth().background(background)
         .padding(start = (depth * 18).dp).semantics { selected = active }, verticalAlignment = Alignment.CenterVertically) {
         if (expanded != null) IconButton(toggle, modifier = Modifier.semantics { contentDescription = "$label ${if (expanded) "접기" else "펼치기"}" }) { Text(if (expanded) "▾" else "▸") }
         else Spacer(Modifier.width(48.dp))
         TextButton(select, enabled = enabled, shape = RectangleShape, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-            Text(label, Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                fontWeight = if (depth == 0) FontWeight.Bold else null)
         }
         TreeMenu("$label 메뉴", actions, enabled)
     }

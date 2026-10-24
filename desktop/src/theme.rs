@@ -2,6 +2,7 @@
 pub struct Palette {
     pub bg: u32,
     pub panel: u32,
+    pub session_header: u32,
     pub fg: u32,
     pub muted: u32,
     pub line: u32,
@@ -15,6 +16,7 @@ impl Palette {
             Self {
                 bg: 0x1e1f22,
                 panel: 0x25262a,
+                session_header: 0x303239,
                 fg: 0xdadce0,
                 muted: 0x9ca1aa,
                 line: 0x3b3d42,
@@ -26,6 +28,7 @@ impl Palette {
             Self {
                 bg: 0xf7f7f8,
                 panel: 0xeeeef0,
+                session_header: 0xe1e3e8,
                 fg: 0x24262b,
                 muted: 0x626670,
                 line: 0xd7d9df,

@@ -782,6 +782,7 @@ impl Desktop {
                 div()
                     .flex()
                     .items_center()
+                    .bg(rgb(p.session_header))
                     .when(state.session.as_ref() == Some(&sid), |d| {
                         d.bg(rgb(p.selection))
                     })
@@ -813,6 +814,7 @@ impl Desktop {
                                 }
                             },
                         )
+                        .font_weight(FontWeight::BOLD)
                         .flex_1()
                         .min_w_0()
                         .truncate(),
