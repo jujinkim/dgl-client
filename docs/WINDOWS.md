@@ -5,6 +5,9 @@ Windows **빌드 환경은 유지하며 실제 Windows 실행·실기 검증은 
 설치물 작업은 사용하지 않는다. 아래 스크립트와 수동 CI를 추가했으며, 이 Mac 작업에서
 Windows 네이티브 빌드·DPAPI 실행·GUI 인수를 통과했다고 표시하지 않는다.
 
+하단 `…`의 Claude Code·Codex 실행 메뉴도 공통 GPUI 구현에 포함된다.
+아이콘은 실행 파일에 내장되며 ZIP에는 `simple-icons-LICENSE.md`가 함께 포함된다.
+
 ## 1. 빌드 환경 준비
 
 1. Git for Windows, Python 3.9 이상(`python.exe`가 PATH에 있어야 함),

@@ -41,6 +41,11 @@ import javax.swing.SwingUtilities
         client.bindSurface(connector.surface)
         onDispose { client.unbindSurface(connector.surface); connector.close(); SwingUtilities.invokeLater { widget.close() } }
     }
+    val focus = LocalTerminalFocus.current
+    DisposableEffect(widget, focus) {
+        focus.request = { SwingUtilities.invokeLater { widget.requestFocusInWindow() } }
+        onDispose { focus.request = {} }
+    }
     key(connector) { SwingPanel(factory = { widget }, modifier = modifier) }
 }
 

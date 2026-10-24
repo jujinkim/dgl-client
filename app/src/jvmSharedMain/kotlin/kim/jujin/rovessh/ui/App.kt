@@ -164,10 +164,12 @@ expect fun copyPublicKey(value: String)
     var navigation by remember { mutableStateOf(!mobileLayout) }
     var namePrompt by remember { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }
     var deletion by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
-    PlatformInputRegistration(client, preferences) {
+    val terminalFocus = remember(client) { TerminalFocus() }
+    val terminalInputAllowed = {
         inputAllowed() && !(mobileLayout && navigation) && !tmuxDetails && namePrompt == null && deletion == null &&
             client.trustRequest.value == null && client.notice.value == null
     }
+    PlatformInputRegistration(client, preferences, terminalInputAllowed)
     val currentPane = remote.panes.firstOrNull { it.id == pane }
     val currentWindow = remote.windows.firstOrNull { it.id == currentPane?.window && it.session == session }
     val currentSession = remote.sessions.firstOrNull { it.id == session }
@@ -252,13 +254,11 @@ expect fun copyPublicKey(value: String)
         if (navigation && !mobileLayout) navigationContent(Modifier)
         if (currentPane?.mode?.isNotBlank() == true) Text("tmux ${currentPane.mode} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
-            PlatformTerminal(client, preferences, Modifier.fillMaxSize())
-        }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            TerminalKey.toolbar.forEach { shortcut ->
-                TextButton({ client.input(shortcut.bytes()) }, enabled = status.acceptsInput, contentPadding = PaddingValues(horizontal = 10.dp)) { Text(shortcut.label) }
+            CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
+                PlatformTerminal(client, preferences, Modifier.fillMaxSize())
             }
         }
+        TerminalShortcutBar(client, terminalInputAllowed, terminalFocus)
     }
     if (mobileLayout && navigation) ModalBottomSheet(onDismissRequest = { navigation = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Text("tmux 세션 · 창 · 패널", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)

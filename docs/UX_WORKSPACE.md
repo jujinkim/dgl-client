@@ -61,6 +61,39 @@ Mac의 짧은 실제 화면 확인은 임시 `DGL_CANDIDATE_DIR`로 시도했지
 
 GPUI 0.2.2는 앱이 사용할 OS 접근성 이름/트리 API를 제공하지 않는다. 따라서 데스크톱 `↻`의 OS 스크린리더 노출은 구현·검증 완료로 표시하지 않는다. 현재 같은 이름의 툴팁과 컨트롤 ID까지 제공하며, OS 접근성 브리지 지원은 별도 과제다. Android의 접근성 설명은 실제 계측에서 사용했다.
 
+## CLI 실행 메뉴 후속 검증 — 2026-10-24
+
+Mac·Windows 공통 GPUI와 Android Compose의 단축키 바 오른쪽에 고정 `…`를 추가했다.
+위로 열리는 두 행은 Claude Code / Codex 각각 일반 실행 60%, 번개 Bypass 40%로 나뉜다.
+명령과 CR을 기존 입력 경로로 한 번 보내며 별도 확인이나 CLI 설치·로그인을 수행하지 않는다.
+연결·탭·그룹·패널 변경과 입력 불가 상태를 실행 직전 재검사한다.
+상태 변경, 바깥 클릭, Esc/Android 뒤로가기로 닫히며 실행 후 터미널 포커스를 복원한다.
+공개 연결 API·저장 형식은 바꾸지 않았다.
+
+- Rust 데스크톱: 10 통과, interactive Keychain 1 ignored. 네 명령의 정확한 CR·1회 처리,
+  대상·연결/패널 세대 변경 차단, Shell/Ready 허용, 복구·종료 차단을 검사했다.
+  GPUI TestPlatform에서 640×480 창의 고정 버튼, 위쪽 메뉴, 6:4 비율,
+  비활성 항목 무전송, Esc·바깥 클릭·탭 변경 닫기와 포커스 복귀를 검사했다.
+  데스크톱 all-targets Clippy `-D warnings`와 Rust fmt 검사도 통과했다.
+- JVM: 38개 중 29 통과, 외부 SSH·Windows 전용 9 예상 skip.
+  두 연결 사이의 대상 선택, 네 명령과 CR, 중복 실행·상태/패널 변경 차단을 검사했다.
+- Android API 36: 새 실행 메뉴 계측 1개와 기존 볼륨 키·WebView/IME 회귀 2개 통과.
+  실제 ClientConnection 입력 경로를 테스트 SSH transport로 받아 네 명령의 단일 전송과
+  다른 연결 무전송, 실행 후 WebView/xterm 포커스를 확인했다. 두 테마의 아이콘,
+  메뉴 위치와 비율, Esc·Back·바깥 터치, 복구/종료 중 비활성화·패널/연결 변경 닫기를 확인했다.
+  처음 바깥 클릭 검사는 source가 없는 합성 MotionEvent로 실패했다. 실제 터치스크린
+  source와 앱 내부 좌표를 지정한 재실행에서 통과했다. 제품의 Popup 동작은 변경하지 않았다.
+- Android debug·계측 APK 빌드, lint 오류 0/기존 검토 경고 13, 네 ABI·Rust 엔진·v2 서명 검사 통과.
+  Mac debug .app 생성과 로컬 ad-hoc 서명 검사, Windows ZIP 패키징 단위 검사 3개 통과.
+- README·아이콘 출처/CC0 라이선스와 양쪽 데스크톱 패키지 라이선스를 갱신했다.
+  대시보드 메타데이터 검증 및 Git 제외 유지 확인을 완료했다.
+
+새 Android 화면·계측 원문은 `artifacts/rust-candidate/android/cli-launcher-{light,dark}.png`,
+`cli-launcher-api36.txt`, `cli-launcher-regression-api36.txt`에 보존했다.
+이번 세션의 Computer Use는 `CUA_REPL_ENABLED_SURFACES is required`로 사용할 수 없어
+Mac 네이티브 메뉴 화면 검사를 완료하지 않았다. 임시 앱 프로세스는 종료했다.
+Windows 네이티브 빌드·실기 검증 및 실제 Claude/Codex CLI 실행은 이번 검증에 포함하지 않는다.
+
 ## 재현
 
 ```sh

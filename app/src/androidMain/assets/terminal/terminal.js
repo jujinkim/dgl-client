@@ -36,6 +36,7 @@
   // xterm owns composition events; forwarding key/input events separately duplicates IME commits.
   // Focus after the WebView's default touch/mouse focus change. Doing this on
   // pointerdown lets the subsequent default click blur the textarea and hide IME.
-  document.getElementById('terminal').addEventListener('click', () => term.focus());
+  window.focusTerminal = () => term.focus();
+  document.getElementById('terminal').addEventListener('click', window.focusTerminal);
   post({ type: 'ready' });
 })();

@@ -6,7 +6,7 @@ struct DragTab {
     id: TabId,
     label: String,
 }
-struct Tip(String);
+pub(super) struct Tip(pub(super) String);
 impl Render for Tip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -159,6 +159,8 @@ impl Desktop {
             .unwrap_or_else(|| "빈 그룹 · 왼쪽 호스트를 선택하여 연결".into());
         let mut shortcuts = div()
             .id("shortcut-bar")
+            .flex_1()
+            .min_w_0()
             .flex()
             .overflow_x_scroll()
             .text_xs()
@@ -200,6 +202,10 @@ impl Desktop {
             .text_color(rgb(p.fg))
             .track_focus(&self.focus)
             .capture_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
+                if s.launcher.opened.is_some() && e.keystroke.key == "escape" {
+                    s.launcher_escape(w, cx);
+                    return;
+                }
                 if s.dialog.is_some() {
                     match e.keystroke.key.as_str() {
                         "tab" => {
@@ -322,7 +328,16 @@ impl Desktop {
                             .child(sidebar)
                             .child(div().flex_1().min_w_0().child(workspace)),
                     )
-                    .child(shortcuts)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .h(px(40.))
+                            .flex_shrink_0()
+                            .bg(rgb(p.panel))
+                            .child(shortcuts)
+                            .child(self.launcher_button(cx)),
+                    )
                     .child(
                         div()
                             .h(px(26.))
@@ -336,6 +351,7 @@ impl Desktop {
                             .child(status),
                     ),
             )
+            .children(self.render_launcher(cx))
     }
     fn render_layout(
         &mut self,

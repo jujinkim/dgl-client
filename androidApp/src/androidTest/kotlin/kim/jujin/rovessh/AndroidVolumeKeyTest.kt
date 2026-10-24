@@ -223,6 +223,116 @@ class AndroidVolumeKeyTest {
         }
     }
 
+    @Test fun cliLauncherCommandsLayoutDismissalAndTargetChanges() = runBlocking<Unit> {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            lateinit var app: AppModel; lateinit var previous: LocalState
+            lateinit var first: ClientModel; lateinit var second: ClientModel
+            val firstWire = ShellTransport(); val secondWire = ShellTransport()
+            scenario.onMainActivity { activity ->
+                app = ViewModelProvider(activity)[ClientViewModel::class.java].app
+                previous = app.local.value
+                val store = MemoryCredentialStore().apply { write("cli-test", Credential("test")) }
+                val host = HostProfile("cli-test", "CLI test", "example.test", username = "test")
+                first = ClientModel(host, store, app.local, app::modify) { firstWire }
+                second = ClientModel(host.copy(alias = "Second CLI"), store, app.local, app::modify) { secondWire }
+                app.connections.value = listOf(first, second); app.selected.value = first
+                app.update(previous.copy(preferences = Preferences()))
+                first.connect(); second.connect()
+            }
+            try {
+                withTimeout(10000) { first.status.first { it.phase == Phase.Shell }; second.status.first { it.phase == Phase.Shell } }
+                waitForText("CLI 실행 메뉴")
+                val actions = listOf("Claude Code 실행" to "claude\r", "Claude Code Bypass 실행" to "claude --dangerously-skip-permissions\r",
+                    "Codex 실행" to "codex\r", "Codex Bypass 실행" to "codex --yolo\r")
+                for (theme in listOf("light", "dark")) {
+                    scenario.onMainActivity { app.update(app.local.value.copy(preferences = Preferences(theme = theme))) }
+                    for ((label, command) in actions) {
+                        val trigger = android.graphics.Rect().also { waitForText("CLI 실행 메뉴").getBoundsInScreen(it) }
+                        assertTrue(trigger.width() > 0)
+                        click("CLI 실행 메뉴")
+                        val normal = android.graphics.Rect().also { waitForText("Claude Code 실행").getBoundsInScreen(it) }
+                        val bypass = android.graphics.Rect().also { waitForText("Claude Code Bypass 실행").getBoundsInScreen(it) }
+                        assertEquals(1.5, normal.width().toDouble() / bypass.width(), 0.03)
+                        assertTrue("Menu opens upwards", normal.bottom <= trigger.top)
+                        if (label == actions.first().first) {
+                            automation.takeScreenshot()?.let { bitmap ->
+                                val context = InstrumentationRegistry.getInstrumentation().targetContext
+                                java.io.File(context.cacheDir, "cli-launcher-$theme.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                                bitmap.recycle()
+                            }
+                        }
+                        click(label)
+                        assertArrayEquals(command.encodeToByteArray(), withTimeout(3000) { firstWire.writes.receive() })
+                        assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
+                        assertNull(withTimeoutOrNull(150) { secondWire.writes.receive() })
+                        awaitUi("launcher closes") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
+                        awaitUi("terminal focus restored") {
+                            while (true) {
+                                var focused = false
+                                scenario.onMainActivity { activity ->
+                                    fun web(view: android.view.View): android.webkit.WebView? {
+                                        if (view is android.webkit.WebView) return view
+                                        if (view is android.view.ViewGroup) for (i in 0 until view.childCount) web(view.getChildAt(i))?.let { return it }
+                                        return null
+                                    }
+                                    web(activity.window.decorView)?.let { v ->
+                                        v.evaluateJavascript("document.activeElement.classList.contains('xterm-helper-textarea')") { focused = it == "true" && v.hasFocus() }
+                                    }
+                                }
+                                delay(100)
+                                if (focused) break
+                            }
+                        }
+                    }
+                }
+                // Esc, Android Back and outside touch dismiss without typing to the shell.
+                for (method in 0..2) {
+                    click("CLI 실행 메뉴"); waitForText("Claude Code 실행")
+                    when (method) {
+                        0 -> InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE)
+                        1 -> automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                        else -> {
+                            val now = SystemClock.uptimeMillis()
+                            for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
+                                val touch = android.view.MotionEvent.obtain(now, now, action, 100f, 500f, 0)
+                                touch.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+                                automation.injectInputEvent(touch, true); touch.recycle()
+                            }
+                        }
+                    }
+                    awaitUi("dismiss method $method") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
+                    assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
+                }
+                for (phase in listOf(Phase.Reconnecting, Phase.Restoring, Phase.Disconnected)) {
+                    click("CLI 실행 메뉴"); waitForText("Claude Code 실행")
+                    scenario.onMainActivity { first.status.value = ConnectionStatus(phase) }
+                    awaitUi("phase dismiss") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
+                    click("CLI 실행 메뉴")
+                    for ((label, _) in actions) {
+                        val item = waitForText(label)
+                        assertTrue("Disabled $label", generateSequence(item) { it.parent }.any { !it.isEnabled })
+                        item.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    }
+                    assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
+                    scenario.onMainActivity { first.status.value = ConnectionStatus(Phase.Shell) }
+                    awaitUi("recovery dismiss") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
+                }
+                click("CLI 실행 메뉴"); waitForText("Claude Code 실행")
+                scenario.onMainActivity { first.pane.value = "%changed" }
+                awaitUi("pane dismiss") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
+                click("CLI 실행 메뉴"); waitForText("Claude Code 실행")
+                scenario.onMainActivity { app.selected.value = second }
+                awaitUi("connection dismiss") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
+                click("CLI 실행 메뉴"); click("Codex 실행")
+                assertArrayEquals("codex\r".encodeToByteArray(), withTimeout(3000) { secondWire.writes.receive() })
+                assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
+            } finally {
+                first.close(); second.close()
+                scenario.onMainActivity { app.connections.value = emptyList(); app.selected.value = null; app.update(previous) }
+            }
+        }
+    }
+
     private suspend fun press(scenario: ActivityScenario<MainActivity>, consumed: Boolean, key: Int = KeyEvent.KEYCODE_VOLUME_UP) {
         // ModalBottomSheet returns window focus asynchronously. Observe that handoff,
         // rather than assuming a fixed animation delay means the Activity can consume input.

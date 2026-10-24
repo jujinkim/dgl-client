@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'CliLauncherTest': ['exactCommandsOnceForActiveShellAndPane', 'targetChangesAndUnavailableInputNeverSendOrReplay'],
     'MigrationContractTest': ['controlStreamFixturesAtEveryBoundary', 'escapeFixtures',
                               'commandFixtures', 'inputFixtures', 'settingsFixtures', 'stateFixtures'],
     'TmuxDiscoveryTest': ['resolvesSearchPathsAndQuotesExecutable', 'recordsFailuresAndPreservesTransportFailures',

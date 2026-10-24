@@ -17,6 +17,7 @@ SSH와 표준 tmux를 사용하는 Windows·Mac·Android 터미널 클라이언�
 - 외부 tmux 변경 이벤트 반영, 연결 복구 중 입력 차단, 입력 재전송 금지
 - 화면 캡처·실시간 출력 순서화, 연결·패널·크기 세대 검사, bounded output / scrollback
 - Android xterm.js/WebView, Mac GPUI/alacritty_terminal, 단축키 바, 앱 테마·폰트 크기
+- 하단 `…` 메뉴에서 Claude Code·Codex 일반 실행 또는 Bypass 실행
 - Android 볼륨 위·아래 키별 단축키·텍스트/키 매크로 설정 (기본 꺼짐)
 - tmux 미설치/버전 미지원 시 일반 SSH 셸. **일반 셸의 작업은 연결 종료 후 보존되지 않을 수 있습니다.**
 
@@ -106,6 +107,24 @@ Android 설정에서 `볼륨 키로 단축키 실행`을 켜고 위·아래 키�
 빈 매크로와 UTF-8 변환 후 64 KiB를 넘는 입력은 저장할 수 없습니다.
 선택한 터미널이 보이고 입력 가능한 동안, 키보드 표시 여부와 관계없이 누를 때 한 번 실행합니다.
 설정·입력·확인 대화상자, 호스트 목록만 표시한 화면, 연결 해제·복구 중에는 기본 음량 조절을 사용합니다.
+
+Mac·Windows·Android의 하단 단축키 바 오른쪽 `…`는 위쪽으로 CLI 실행 메뉴를 엽니다.
+각 행의 왼쪽 60%는 서비스 일반 실행, 오른쪽 40%의 번개 `Bypass`는 권한 확인을 건너뛰는 실행입니다.
+
+| 서비스 | 일반 실행 | Bypass 실행 |
+|---|---|---|
+| Claude Code | `claude` | `claude --dangerously-skip-permissions` |
+| Codex | `codex` | `codex --yolo` |
+
+선택한 명령과 Enter를 현재 활성 터미널에 한 번 보내고 메뉴를 닫아 터미널 입력으로 돌아갑니다.
+현재 원격 셸의 작업 디렉터리·환경을 그대로 사용하며, CLI는 원격 환경에 미리 설치·로그인되어 있어야 합니다.
+앱은 설치·로그인·기존 프로세스 종료를 수행하지 않으며 추가 확인창도 표시하지 않습니다.
+입력할 수 없는 연결 상태에서는 항목이 비활성화됩니다. 연결·탭·패널 변경, 바깥 클릭,
+Esc 또는 Android 뒤로가기로 메뉴가 닫힙니다.
+Bypass의 의미는 [Claude Code CLI 문서](https://code.claude.com/docs/en/cli-reference)와
+[Codex CLI 문서](https://learn.chatgpt.com/docs/developer-commands?surface=cli)를 따릅니다.
+서비스·번개 아이콘은 앱에 번들되며 네트워크 다운로드 없이 테마 색상으로 표시됩니다.
+데스크톱 패키지는 아이콘의 `simple-icons-LICENSE.md`도 포함합니다.
 
 ## 검증
 

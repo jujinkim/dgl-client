@@ -29,6 +29,7 @@ def main():
         "NSHighResolutionCapable": True}))
     for name in ["NOTICE", "LICENSE-APACHE-GPUI"]:
         shutil.copy2(ROOT / "desktop" / name, app / "Resources" / name)
+    shutil.copy2(ROOT / "licenses/simple-icons-LICENSE.md", app / "Resources/simple-icons-LICENSE.md")
     collect("dgl-desktop", app / "Resources/third-party-rust")
     # Local ad-hoc signing only; no Developer ID or notarization is claimed.
     subprocess.run(["codesign", "--force", "--sign", "-", str(app.parent)], check=True)

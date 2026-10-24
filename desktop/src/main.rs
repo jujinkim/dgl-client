@@ -3,6 +3,7 @@
     windows_subsystem = "windows"
 )]
 
+mod launcher;
 mod modal;
 mod platform;
 mod storage;
@@ -83,6 +84,7 @@ struct Desktop {
     modal: modal::Modal,
     expanded: HashSet<String>,
     menu: Option<String>,
+    launcher: launcher::LaunchMenu,
     group_bounds: HashMap<GroupId, Bounds<Pixels>>,
     split_bounds: HashMap<Vec<bool>, Bounds<Pixels>>,
     resizing: Option<Vec<bool>>,
@@ -121,6 +123,7 @@ impl Desktop {
             modal: modal::Modal::default(),
             expanded: HashSet::new(),
             menu: None,
+            launcher: launcher::LaunchMenu::default(),
             group_bounds: HashMap::new(),
             split_bounds: HashMap::new(),
             resizing: None,
@@ -539,6 +542,7 @@ impl Render for Desktop {
             ),
         };
         self.palette = theme::Palette::new(dark);
+        self.sync_launcher(window, cx);
         let bg = self.palette.bg;
         if self.dialog.is_none() {
             self.modal.restore(window);
@@ -901,23 +905,25 @@ fn main() {
     let path = platform::data_dir()
         .expect("application data directory unavailable")
         .join("settings.json");
-    Application::new().run(move |cx: &mut App| {
-        text_input::bind_keys(cx);
-        cx.on_action(|_: &Quit, cx| cx.quit());
-        cx.bind_keys([KeyBinding::new(platform::QUIT_KEY, Quit, None)]);
-        let bounds = Bounds::centered(None, size(px(1240.), px(800.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("dgl — Rust 후보".into()),
+    Application::new()
+        .with_assets(launcher::Assets)
+        .run(move |cx: &mut App| {
+            text_input::bind_keys(cx);
+            cx.on_action(|_: &Quit, cx| cx.quit());
+            cx.bind_keys([KeyBinding::new(platform::QUIT_KEY, Quit, None)]);
+            let bounds = Bounds::centered(None, size(px(1240.), px(800.)), cx);
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("dgl — Rust 후보".into()),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            },
-            move |_, cx| cx.new(|cx| Desktop::new(runtime, path, cx)),
-        )
-        .unwrap();
-        cx.activate(true);
-    });
+                },
+                move |_, cx| cx.new(|cx| Desktop::new(runtime, path, cx)),
+            )
+            .unwrap();
+            cx.activate(true);
+        });
 }

@@ -2,6 +2,7 @@
 import re
 
 EXPECTED_ANDROID = {
+    'kim.jujin.rovessh.AndroidVolumeKeyTest.cliLauncherCommandsLayoutDismissalAndTargetChanges',
     'kim.jujin.rovessh.AndroidSshTest.sshKeysControlAndReconnectionKeepRemoteProcess',
     'kim.jujin.rovessh.AndroidPlatformTest.keystoreRoundTripTamperingAndBackupExclusion',
     'kim.jujin.rovessh.AndroidPlatformTest.bundledRendererImeBridgeResizeAndNavigationIsolation',

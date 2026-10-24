@@ -30,6 +30,14 @@ import java.lang.ref.WeakReference
 @Composable actual fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier) {
     val context = LocalContext.current
     val terminal = remember(client, preferences.fontSize, preferences.scrollback) { AndroidTerminal(context, preferences, client::input, client::resize) }
+    val focus = LocalTerminalFocus.current
+    DisposableEffect(terminal, focus) {
+        focus.request = { terminal.view.post {
+            terminal.view.requestFocus()
+            terminal.view.evaluateJavascript("window.focusTerminal && window.focusTerminal()", null)
+        }; Unit }
+        onDispose { focus.request = {} }
+    }
     DisposableEffect(terminal) {
         client.bindSurface(terminal)
         onDispose { client.unbindSurface(terminal); terminal.close() }

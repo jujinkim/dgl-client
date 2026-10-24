@@ -5,3 +5,7 @@ Copyright Zed Industries contributors. Licensed under Apache License 2.0.
 Upstream: https://github.com/zed-industries/zed/tree/main/crates/gpui
 Modifications: candidate forms, secret masking, field focus and scoped key bindings.
 See LICENSE-APACHE-GPUI and packaged dependency notices.
+
+CLI launcher Claude and OpenAI marks: Simple Icons 14.15.0, CC0-1.0.
+Source: https://github.com/simple-icons/simple-icons/tree/14.15.0/icons
+See simple-icons-LICENSE.md. Names and marks remain their owners' trademarks.

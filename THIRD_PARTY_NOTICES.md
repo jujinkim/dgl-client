@@ -12,6 +12,7 @@ This project uses unmodified third-party libraries. Version and checksum records
 | JNA | 5.18.1 | LGPL-2.1-or-later or Apache-2.0; https://github.com/java-native-access/jna |
 | SLF4J (reference tests only) | 2.0.17 | MIT; https://www.slf4j.org/license.html |
 | Apache MINA SSHD | 2.20.0 (tests only) | Apache-2.0; https://github.com/apache/mina-sshd |
+| Simple Icons (Claude / OpenAI marks) | 14.15.0 | CC0-1.0; `licenses/simple-icons-LICENSE.md`; https://github.com/simple-icons/simple-icons/tree/14.15.0 |
 
 The current JediTerm upstream README offers Apache-2.0/LGPL-3.0 dual licensing, but the selected 3.59 artifact declares LGPL-3.0. Treat the selected artifact as LGPL-3.0 until its release licensing is independently confirmed. The previous JVM application and its installer tasks have been removed. JediTerm remains in
 reference rendering tests only; Android and the GPUI application do not distribute it.

@@ -43,6 +43,7 @@ def package(binary, output, version):
         shutil.copy2(binary, stage / "dgl-desktop.exe")
         for name in ["NOTICE", "LICENSE-APACHE-GPUI"]:
             shutil.copy2(ROOT / "desktop" / name, stage / name)
+        shutil.copy2(ROOT / "licenses/simple-icons-LICENSE.md", stage / "simple-icons-LICENSE.md")
         collect("dgl-desktop", stage / "third-party-rust", target=TARGET)
         (stage / "README.txt").write_text(
             "dgl Rust Candidate - Windows x64\n\n"

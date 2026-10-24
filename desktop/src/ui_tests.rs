@@ -260,3 +260,56 @@ fn group_split_drag_move_merge_and_terminal_identity(cx: &mut TestAppContext) {
     redraw(cx);
     assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 2);
 }
+
+#[gpui::test]
+fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx);
+    add_terminal(&view, cx);
+    cx.simulate_resize(gpui::size(px(640.), px(480.)));
+    redraw(cx);
+    for theme in ["light", "dark"] {
+        let terminal = view.read_with(cx, |s, _| s.active_tab().unwrap().terminal.clone());
+        view.update(cx, |s, cx| {
+            s.local.preferences.theme = theme.into();
+            cx.notify();
+        });
+        redraw(cx);
+        let trigger = cx.debug_bounds("cli-launcher").unwrap();
+        assert!(trigger.right() <= px(640.));
+        assert!(trigger.size.width >= px(40.));
+        cx.simulate_click(trigger.center(), Modifiers::default());
+        redraw(cx);
+        let menu = cx.debug_bounds("cli-launcher-menu").unwrap();
+        assert!(menu.bottom() <= trigger.top());
+        for (normal, bypass) in [
+            ("launch-Claude Code-normal", "launch-Claude Code-bypass"),
+            ("launch-Codex-normal", "launch-Codex-bypass"),
+        ] {
+            let normal = cx.debug_bounds(normal).unwrap();
+            let bypass = cx.debug_bounds(bypass).unwrap();
+            assert!(
+                (f32::from(normal.size.width) / f32::from(bypass.size.width) - 1.5).abs() < 0.02
+            );
+            cx.simulate_click(normal.center(), Modifiers::default());
+            cx.simulate_click(bypass.center(), Modifiers::default());
+            assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+            assert!(view.read_with(cx, |s, _| s.launcher.opened.is_some()));
+        }
+        cx.simulate_keystrokes("escape");
+        redraw(cx);
+        assert!(view.read_with(cx, |s, _| s.launcher.opened.is_none()));
+        assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+        assert!(cx.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+        cx.simulate_click(trigger.center(), Modifiers::default());
+        redraw(cx);
+        cx.simulate_click(point(px(300.), px(100.)), Modifiers::default());
+        redraw(cx);
+        assert!(view.read_with(cx, |s, _| s.launcher.opened.is_none()));
+        cx.simulate_click(trigger.center(), Modifiers::default());
+        redraw(cx);
+        // Changing active tabs invalidates the open menu without sending anything.
+        add_terminal(&view, cx);
+        redraw(cx);
+        assert!(view.read_with(cx, |s, _| s.launcher.opened.is_none()));
+    }
+}
