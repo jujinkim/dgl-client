@@ -5,7 +5,7 @@ use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, ElementId, ElementInputHandler, Entity,
     EntityInputHandler, FocusHandle, Focusable, GlobalElementId, KeyBinding, LayoutId, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine,
-    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, fill, hsla,
+    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, fill,
     point, prelude::*, px, relative, rgb, rgba, size,
 };
 use unicode_segmentation::*;
@@ -32,6 +32,8 @@ actions!(
 
 pub struct TextInput {
     secret: bool,
+    secret_visible: bool,
+    pub palette: crate::theme::Palette,
     focus_handle: FocusHandle,
     pub content: SharedString,
     placeholder: SharedString,
@@ -47,6 +49,8 @@ impl TextInput {
     pub fn new(value: &str, placeholder: &str, secret: bool, cx: &mut Context<Self>) -> Self {
         Self {
             secret,
+            secret_visible: false,
+            palette: crate::theme::Palette::new(true),
             focus_handle: cx.focus_handle(),
             content: value.to_string().into(),
             placeholder: placeholder.to_string().into(),
@@ -57,6 +61,23 @@ impl TextInput {
             last_bounds: None,
             is_selecting: false,
         }
+    }
+
+    pub fn is_composing(&self) -> bool {
+        self.marked_range.is_some()
+    }
+
+    pub fn secret_visible(&self) -> bool {
+        self.secret_visible
+    }
+
+    pub fn toggle_secret_visibility(&mut self, cx: &mut Context<Self>) {
+        self.secret_visible = !self.secret_visible;
+        cx.notify();
+    }
+
+    fn masked(&self) -> bool {
+        self.secret && !self.secret_visible
     }
 
     fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
@@ -195,7 +216,29 @@ impl TextInput {
         if position.y > bounds.bottom() {
             return self.content.len();
         }
-        line.closest_index_for_x(position.x - bounds.left())
+        self.content_index(line.closest_index_for_x(position.x - bounds.left()))
+    }
+
+    // Masked text uses one ASCII glyph per character; its offsets are not UTF-8
+    // byte offsets into the password. Keep hit testing and painting in agreement.
+    fn display_index(&self, index: usize) -> usize {
+        if self.masked() {
+            self.content[..index].chars().count()
+        } else {
+            index
+        }
+    }
+
+    fn content_index(&self, index: usize) -> usize {
+        if self.masked() {
+            self.content
+                .char_indices()
+                .nth(index)
+                .map(|(offset, _)| offset)
+                .unwrap_or(self.content.len())
+        } else {
+            index.min(self.content.len())
+        }
     }
 
     fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
@@ -212,10 +255,14 @@ impl TextInput {
     }
 
     fn offset_from_utf16(&self, offset: usize) -> usize {
+        Self::utf8_offset(&self.content, offset)
+    }
+
+    fn utf8_offset(text: &str, offset: usize) -> usize {
         let mut utf8_offset = 0;
         let mut utf16_count = 0;
 
-        for ch in self.content.chars() {
+        for ch in text.chars() {
             if utf16_count >= offset {
                 break;
             }
@@ -311,6 +358,10 @@ impl EntityInputHandler for TextInput {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Single-line editors must not insert the Enter used to commit an IME.
+        if new_text == "\n" || new_text == "\r" {
+            return;
+        }
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -349,8 +400,10 @@ impl EntityInputHandler for TextInput {
         }
         self.selected_range = new_selected_range_utf16
             .as_ref()
-            .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .map(|new_range| new_range.start + range.start..new_range.end + range.end)
+            .map(|selection| {
+                range.start + Self::utf8_offset(new_text, selection.start)
+                    ..range.start + Self::utf8_offset(new_text, selection.end)
+            })
             .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
 
         cx.notify();
@@ -367,11 +420,11 @@ impl EntityInputHandler for TextInput {
         let range = self.range_from_utf16(&range_utf16);
         Some(Bounds::from_corners(
             point(
-                bounds.left() + last_layout.x_for_index(range.start),
+                bounds.left() + last_layout.x_for_index(self.display_index(range.start)),
                 bounds.top(),
             ),
             point(
-                bounds.left() + last_layout.x_for_index(range.end),
+                bounds.left() + last_layout.x_for_index(self.display_index(range.end)),
                 bounds.bottom(),
             ),
         ))
@@ -386,8 +439,7 @@ impl EntityInputHandler for TextInput {
         let line_point = self.last_bounds?.localize(&point)?;
         let last_layout = self.last_layout.as_ref()?;
 
-        assert_eq!(last_layout.text, self.content);
-        let utf8_index = last_layout.index_for_x(point.x - line_point.x)?;
+        let utf8_index = self.content_index(last_layout.index_for_x(line_point.x)?);
         Some(self.offset_to_utf16(utf8_index))
     }
 }
@@ -446,16 +498,17 @@ impl Element for TextElement {
     ) -> Self::PrepaintState {
         let input = self.input.read(cx);
         let content = input.content.clone();
-        let selected_range = input.selected_range.clone();
-        let cursor = input.cursor_offset();
+        let selected_range = input.display_index(input.selected_range.start)
+            ..input.display_index(input.selected_range.end);
+        let cursor = input.display_index(input.cursor_offset());
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), hsla(0., 0., 0., 0.2))
+            (input.placeholder.clone(), rgb(input.palette.muted).into())
         } else {
             (
-                if input.secret {
-                    "*".repeat(content.len()).into()
+                if input.masked() {
+                    "*".repeat(content.chars().count()).into()
                 } else {
                     content
                 },
@@ -472,6 +525,8 @@ impl Element for TextElement {
             strikethrough: None,
         };
         let runs = if let Some(marked_range) = input.marked_range.as_ref() {
+            let marked_range =
+                input.display_index(marked_range.start)..input.display_index(marked_range.end);
             vec![
                 TextRun {
                     len: marked_range.start,
@@ -512,7 +567,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    gpui::blue(),
+                    rgb(input.palette.accent),
                 )),
             )
         } else {
@@ -528,7 +583,7 @@ impl Element for TextElement {
                             bounds.bottom(),
                         ),
                     ),
-                    rgba(0x3311ff30),
+                    rgba(input.palette.selection << 8 | 0xff),
                 )),
                 None,
             )
@@ -600,7 +655,11 @@ impl Render for TextInput {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
-            .bg(rgb(0x20262e))
+            .bg(rgb(self.palette.input))
+            .border_1()
+            .border_color(rgb(self.palette.line))
+            .focus(|s| s.border_color(rgb(self.palette.accent)))
+            .text_color(rgb(self.palette.fg))
             .line_height(px(30.))
             .text_size(px(14.))
             .child(
@@ -608,7 +667,7 @@ impl Render for TextInput {
                     .h(px(30. + 4. * 2.))
                     .w_full()
                     .p(px(4.))
-                    .bg(rgb(0x20262e))
+                    .bg(rgb(self.palette.input))
                     .child(TextElement { input: cx.entity() }),
             )
     }
@@ -651,4 +710,56 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("home", Home, Some("TextInput")),
         KeyBinding::new("end", End, Some("TextInput")),
     ]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[gpui::test]
+    fn masked_unicode_click_and_input_method_hit_testing(cx: &mut gpui::TestAppContext) {
+        struct Editor(Entity<TextInput>);
+        impl Render for Editor {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().w(px(300.)).child(self.0.clone())
+            }
+        }
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            Editor(cx.new(|cx| TextInput::new("한😀a", "password", true, cx)))
+        });
+        let input = view.read_with(cx, |view, _| view.0.clone());
+        cx.run_until_parked();
+        let position = input.read_with(cx, |input, _| {
+            let line = input.last_layout.as_ref().unwrap();
+            let bounds = input.last_bounds.unwrap();
+            assert_eq!(line.text.as_ref(), "***");
+            point(bounds.left() + line.x_for_index(1), bounds.center().y)
+        });
+        cx.update(|w, cx| {
+            input.update(cx, |input, cx| {
+                assert_eq!(input.character_index_for_point(position, w, cx), Some(1));
+            });
+        });
+        cx.simulate_click(position, gpui::Modifiers::default());
+        cx.simulate_input("b");
+        assert_eq!(
+            input
+                .read_with(cx, |input, _| input.content.clone())
+                .as_ref(),
+            "한b😀a"
+        );
+        cx.update(|w, cx| {
+            input.update(cx, |input, cx| {
+                input.replace_text_in_range(Some(0..5), "", w, cx)
+            });
+            w.refresh();
+        });
+        cx.run_until_parked();
+        cx.update(|w, cx| {
+            input.update(cx, |input, cx| {
+                // Placeholder text is also different from the content and must not panic.
+                assert_eq!(input.character_index_for_point(position, w, cx), Some(0));
+            });
+        });
+    }
 }

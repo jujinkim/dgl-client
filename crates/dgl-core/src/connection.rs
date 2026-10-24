@@ -63,12 +63,26 @@ pub enum CompletionOutcome {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "camelCase")]
 pub enum Action {
-    SelectSession { id: String },
-    SelectPane { id: String },
-    Manage { operation: Operation },
+    SelectSession {
+        id: String,
+    },
+    SelectTarget {
+        session: String,
+        window: Option<String>,
+        pane: Option<String>,
+    },
+    SelectPane {
+        id: String,
+    },
+    Manage {
+        operation: Operation,
+    },
     Refresh,
     Snapshot,
-    Resize { columns: u16, rows: u16 },
+    Resize {
+        columns: u16,
+        rows: u16,
+    },
 }
 enum RequestKind {
     Input { target: PaneTarget, bytes: Vec<u8> },
@@ -270,6 +284,19 @@ impl Connection {
         match &action {
             Action::SelectSession { id } => {
                 crate::command::target(id, '$')?;
+            }
+            Action::SelectTarget {
+                session,
+                window,
+                pane,
+            } => {
+                crate::command::target(session, '$')?;
+                if let Some(id) = window {
+                    crate::command::target(id, '@')?;
+                }
+                if let Some(id) = pane {
+                    crate::command::target(id, '%')?;
+                }
             }
             Action::SelectPane { id } => {
                 crate::command::target(id, '%')?;
@@ -627,16 +654,67 @@ async fn list(ssh: &Ssh) -> Result<RemoteState> {
     if code != 0 {
         return Ok(RemoteState::default());
     }
+    fn rows(bytes: &[u8]) -> Vec<Vec<u8>> {
+        bytes
+            .split(|b| *b == b'\n')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_vec())
+            .collect()
+    }
+    let sessions = model::sessions(&rows(&bytes))?;
+    if sessions.is_empty() {
+        return Ok(RemoteState::default());
+    }
+    let (code, bytes) = ssh
+        .execute_tmux(&Command::new(&Operation::Windows)?)
+        .await?;
+    if code != 0 {
+        return Err(Error::InvalidArgument);
+    }
+    let windows = model::windows(&rows(&bytes))?;
+    let (code, bytes) = ssh.execute_tmux(&Command::new(&Operation::Panes)?).await?;
+    if code != 0 {
+        return Err(Error::InvalidArgument);
+    }
+    let mut panes = model::panes(&rows(&bytes))?;
+    let mut seen = HashSet::new();
+    panes.retain(|p| seen.insert(p.id.clone()));
     Ok(RemoteState {
-        sessions: model::sessions(
-            &bytes
-                .split(|b| *b == b'\n')
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_vec())
-                .collect::<Vec<_>>(),
-        )?,
-        ..Default::default()
+        sessions,
+        windows,
+        panes,
     })
+}
+fn resolve_target(
+    remote: &RemoteState,
+    session: &str,
+    window: Option<&str>,
+    pane: Option<&str>,
+) -> Result<String> {
+    if !remote.sessions.iter().any(|s| s.id == session) {
+        return Err(Error::InvalidArgument);
+    }
+    let windows: Vec<_> = remote
+        .windows
+        .iter()
+        .filter(|w| w.session == session && window.is_none_or(|id| id == w.id))
+        .collect();
+    let candidates: Vec<_> = remote
+        .panes
+        .iter()
+        .filter(|p| windows.iter().any(|w| w.id == p.window) && pane.is_none_or(|id| id == p.id))
+        .collect();
+    candidates
+        .iter()
+        .find(|p| {
+            p.active
+                && windows
+                    .iter()
+                    .any(|w| w.id == p.window && (window.is_some() || w.active))
+        })
+        .or_else(|| candidates.first())
+        .map(|p| p.id.clone())
+        .ok_or(Error::InvalidArgument)
 }
 async fn attach(
     ssh: &Ssh,
@@ -916,6 +994,45 @@ async fn connected(
                                     attach(ssh, shared.clone(), id.clone(), *size, None).await?,
                                 );
                             }
+                            Action::SelectTarget {
+                                session,
+                                window,
+                                pane,
+                            } => {
+                                if !tmux {
+                                    return Err(Error::NotReady);
+                                }
+                                let remote = list(ssh).await?;
+                                let selected = resolve_target(
+                                    &remote,
+                                    session,
+                                    window.as_deref(),
+                                    pane.as_deref(),
+                                )?;
+                                let current = shared.state.lock().unwrap().session.clone();
+                                if let Some(c) = control
+                                    .as_mut()
+                                    .filter(|_| current.as_ref() == Some(session))
+                                {
+                                    c.refresh().await?;
+                                    c.select_pane(selected.clone()).await?;
+                                } else {
+                                    if let Some(c) = control.take() {
+                                        let _ = c.stream.close().await;
+                                    }
+                                    control = Some(
+                                        attach(
+                                            ssh,
+                                            shared.clone(),
+                                            session.clone(),
+                                            *size,
+                                            Some(selected.clone()),
+                                        )
+                                        .await?,
+                                    );
+                                }
+                                *remembered = Some(selected);
+                            }
                             Action::SelectPane { id } => {
                                 control
                                     .as_mut()
@@ -926,13 +1043,61 @@ async fn connected(
                             }
                             Action::Manage { operation } => {
                                 if let Some(c) = control.as_mut() {
-                                    c.command(operation.clone()).await?;
-                                    c.refresh().await?;
-                                    if shared.target().is_some() {
-                                        c.snapshot().await?;
+                                    // Directional selection starts at this connection's displayed pane.
+                                    // Other connections keep their own PaneTarget, even in the same tmux window.
+                                    let selected_window = match operation {
+                                        Operation::FocusPane { target, .. }
+                                        | Operation::Split { target, .. } => {
+                                            let state = shared.state.lock().unwrap().clone();
+                                            if state.pane.as_ref() != Some(target) {
+                                                return Err(Error::StaleGeneration);
+                                            }
+                                            Some(
+                                                state
+                                                    .remote
+                                                    .panes
+                                                    .iter()
+                                                    .find(|p| &p.id == target)
+                                                    .ok_or(Error::InvalidArgument)?
+                                                    .window
+                                                    .clone(),
+                                            )
+                                        }
+                                        Operation::SelectWindow { target } => Some(target.clone()),
+                                        _ => None,
+                                    };
+                                    if let Operation::SelectPane { target } = operation {
+                                        c.select_pane(target.clone()).await?;
+                                    } else {
+                                        c.command(operation.clone()).await?;
+                                        c.refresh().await?;
+                                        if let Some(window) = selected_window {
+                                            let remote =
+                                                shared.state.lock().unwrap().remote.clone();
+                                            let pane = remote
+                                                .panes
+                                                .iter()
+                                                .find(|p| p.window == window && p.active)
+                                                .ok_or(Error::InvalidArgument)?
+                                                .id
+                                                .clone();
+                                            c.select_pane(pane.clone()).await?;
+                                            *remembered = Some(pane);
+                                        } else if shared.target().is_some() {
+                                            c.snapshot().await?;
+                                        }
                                     }
                                 } else if tmux {
-                                    if !matches!(operation, Operation::NewSession { .. }) {
+                                    if !matches!(
+                                        operation,
+                                        Operation::NewSession { .. }
+                                            | Operation::NewWindow { .. }
+                                            | Operation::RenameSession { .. }
+                                            | Operation::RenameWindow { .. }
+                                            | Operation::KillSession { .. }
+                                            | Operation::KillWindow { .. }
+                                            | Operation::KillPane { .. }
+                                    ) {
                                         return Err(Error::NotReady);
                                     }
                                     let (code, _) =

@@ -6,6 +6,10 @@
 > 후속 지시에 따라 Windows Rust 빌드·ZIP·수동 CI 경로를 추가했다. Windows 실기 검증 제외는
 > 빌드 환경 제외를 뜻하지 않는다. [현재 Windows 절차](WINDOWS.md)를 우선하며 아래 JVM 기록과 구분한다.
 
+## flat UX·데스크톱 탭 그룹 (2026-10-24)
+
+새 조작법, 자동화·실제 실행 결과, 남은 플랫폼 검증 범위는 [UX 작업 기록](UX_WORKSPACE.md)을 따른다. 아래 결과는 이전 작업의 이력이다.
+
 ## Windows 빌드 환경 추가 (2026-10-24)
 
 Windows x64 MSVC 준비 스크립트, GPUI Release EXE·ZIP 생성, 수동 빌드 workflow,

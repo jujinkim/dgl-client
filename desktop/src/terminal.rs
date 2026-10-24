@@ -51,6 +51,12 @@ pub struct Terminal {
     selection: Range<usize>,
     dragging: bool,
     requested: Size,
+    sent_size: Size,
+    resize_request: Option<u64>,
+    displayed_pane: Option<String>,
+    pub enabled: bool,
+    #[cfg(test)]
+    pub sent: Vec<Vec<u8>>,
     pub notice: Option<String>,
     input_requests: HashSet<u64>,
 }
@@ -80,11 +86,27 @@ impl Terminal {
             selection: 0..0,
             dragging: false,
             requested: Size::default(),
+            sent_size: Size::default(),
+            resize_request: None,
+            displayed_pane: None,
+            enabled: true,
+            #[cfg(test)]
+            sent: Vec::new(),
             notice: None,
             input_requests: HashSet::new(),
         }
     }
     pub fn tick(&mut self, cx: &mut Context<Self>) {
+        if self.resize_request.is_none()
+            && self.requested != self.sent_size
+            && let Ok(id) = self.connection.action(Action::Resize {
+                columns: self.requested.columns,
+                rows: self.requested.rows,
+            })
+        {
+            self.resize_request = Some(id);
+            self.sent_size = self.requested;
+        }
         let output = self.connection.output();
         for _ in 0..64 {
             let Ok(Some(e)) = output.poll(self.subscription) else {
@@ -96,8 +118,7 @@ impl Terminal {
                         .term
                         .resize(GridSize(e.size.columns as usize, e.size.rows as usize)),
                     OutputKind::ResetBegin => {
-                        self.parser = Processor::new();
-                        self.parser.advance(&mut self.term, &e.bytes);
+                        self.begin_snapshot(&e.target.pane_id, &e.bytes);
                     }
                     _ => self.parser.advance(&mut self.term, &e.bytes),
                 }
@@ -106,7 +127,39 @@ impl Terminal {
             cx.notify();
         }
     }
+    fn begin_snapshot(&mut self, pane: &str, reset: &[u8]) {
+        // A resize or moving a tab must not discard local history/scroll position.
+        // Reset terminal modes, then restore the primary grid's history and clear only its viewport.
+        let same_pane = self.displayed_pane.as_deref() == Some(pane);
+        let saved = if same_pane {
+            if self.term.mode().contains(TermMode::ALT_SCREEN) {
+                self.term.swap_alt();
+            }
+            let empty = alacritty_terminal::grid::Grid::new(
+                self.term.screen_lines(),
+                self.term.columns(),
+                0,
+            );
+            Some(std::mem::replace(self.term.grid_mut(), empty))
+        } else {
+            None
+        };
+        self.parser = Processor::new();
+        self.parser.advance(&mut self.term, reset);
+        if let Some(mut grid) = saved {
+            grid.cursor = Default::default();
+            grid.reset_region(Line(0)..);
+            grid.saved_cursor = Default::default();
+            *self.term.grid_mut() = grid;
+        }
+        self.displayed_pane = Some(pane.into());
+    }
     pub fn send(&mut self, bytes: Vec<u8>) {
+        if !self.enabled {
+            return;
+        }
+        #[cfg(test)]
+        self.sent.push(bytes.clone());
         if let Some(t) = self.connection.target() {
             match self.connection.input(t, bytes) {
                 Ok(id) => {
@@ -117,6 +170,9 @@ impl Terminal {
         }
     }
     pub fn complete(&mut self, id: u64) -> bool {
+        if self.resize_request == Some(id) {
+            self.resize_request = None;
+        }
         self.input_requests.remove(&id)
     }
     pub fn set_font(&mut self, n: i32) {
@@ -137,6 +193,10 @@ impl Terminal {
         )
     }
     fn key(&mut self, e: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.enabled {
+            cx.stop_propagation();
+            return;
+        }
         let k = &e.keystroke;
         if !self.marked.is_empty() {
             return;
@@ -369,6 +429,7 @@ impl Render for Terminal {
         let entity = cx.entity();
         let paint_entity = entity.clone();
         div()
+            .debug_selector(|| "terminal".into())
             .size_full()
             .min_h_0()
             .track_focus(&self.focus)
@@ -379,6 +440,9 @@ impl Render for Terminal {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, e: &MouseDownEvent, window, cx| {
+                    if !this.enabled {
+                        return;
+                    }
                     window.focus(&this.focus);
                     this.dragging = true;
                     if e.modifiers.shift || !this.mouse_report(e.position, 0, false) {
@@ -416,6 +480,9 @@ impl Render for Terminal {
                 cx.listener(|this, _, _, _| this.dragging = false),
             )
             .on_scroll_wheel(cx.listener(|this, e: &ScrollWheelEvent, _, cx| {
+                if !this.enabled {
+                    return;
+                }
                 let delta = e.delta.pixel_delta(px(this.font_size));
                 let lines = (f32::from(delta.y) / this.font_size).round() as i32;
                 if !this.mouse_report(e.position, if lines > 0 { 64 } else { 65 }, false) {
@@ -436,10 +503,6 @@ impl Render for Terminal {
                             .unwrap();
                             if this.requested != requested {
                                 this.requested = requested;
-                                let _ = this.connection.action(Action::Resize {
-                                    columns: requested.columns,
-                                    rows: requested.rows,
-                                });
                             }
                         });
                     },
@@ -544,5 +607,81 @@ impl Render for Terminal {
                 )
                 .size_full(),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GridSize, Terminal};
+    use alacritty_terminal::{
+        grid::{Dimensions, Scroll},
+        index::{Column, Line},
+        term::TermMode,
+    };
+    use dgl_core::{
+        connection::Connection,
+        model::{AuthKind, Credential, HostProfile, Size},
+    };
+    use gpui::{AppContext, TestAppContext};
+    #[gpui::test]
+    fn resize_coalesces_and_same_pane_snapshot_preserves_history(cx: &mut TestAppContext) {
+        // This runtime deliberately stays unpolled: an in-flight request cannot complete.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _enter = runtime.enter();
+        let host = HostProfile {
+            id: "fixture".into(),
+            alias: "fixture".into(),
+            hostname: "127.0.0.1".into(),
+            port: 1,
+            username: "test".into(),
+            auth: AuthKind::Password,
+            credential_ref: "fixture".into(),
+            favorite: false,
+            last_connected: 0,
+            last_session: None,
+            last_pane: None,
+        };
+        let connection = Connection::start(host, Credential::default(), None);
+        let terminal = cx.new(|cx| Terminal::new(connection.clone(), 14, 5000, cx));
+        terminal.update(cx, |t, cx| {
+            t.requested = Size::new(90, 30).unwrap();
+            t.tick(cx);
+            let request = t.resize_request.unwrap();
+            for columns in 91..150 {
+                t.requested = Size::new(columns, 31).unwrap();
+                t.tick(cx);
+                assert_eq!(t.resize_request, Some(request));
+            }
+            assert_eq!(t.sent_size.columns, 90);
+            t.complete(request);
+            t.tick(cx);
+            assert_ne!(t.resize_request, Some(request));
+            assert_eq!(t.sent_size, Size::new(149, 31).unwrap());
+            t.term.resize(GridSize(80, 10));
+            t.begin_snapshot("%1", b"\x1bc");
+            for _ in 0..80 {
+                t.parser.advance(&mut t.term, b"retained history\r\n");
+            }
+            t.term.scroll_display(Scroll::Delta(20));
+            let history = t.term.history_size();
+            let offset = t.term.grid().display_offset();
+            assert!(history > 20);
+            t.begin_snapshot("%1", b"\x1bc");
+            assert_eq!(t.term.history_size(), history);
+            assert_eq!(t.term.grid().display_offset(), offset);
+            assert_eq!(t.term.grid()[Line(-1)][Column(0)].c, 'r');
+            t.parser.advance(&mut t.term, b"\x1b[?1049hALT");
+            assert!(t.term.mode().contains(TermMode::ALT_SCREEN));
+            t.begin_snapshot("%1", b"\x1bc");
+            assert!(!t.term.mode().contains(TermMode::ALT_SCREEN));
+            assert_eq!(t.term.history_size(), history);
+            t.begin_snapshot("%2", b"\x1bc");
+            assert_eq!(t.term.history_size(), 0);
+        });
+        connection.close();
+        runtime.block_on(connection.join());
     }
 }

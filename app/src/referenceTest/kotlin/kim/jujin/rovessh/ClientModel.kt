@@ -21,6 +21,7 @@ class ClientModel(
     private val transportFactory: () -> SshTransport = { SshjTransport() },
 ) : ClientConnection {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    override val refreshing = MutableStateFlow(false)
     override val status = MutableStateFlow(ConnectionStatus())
     override val remote = MutableStateFlow(RemoteState())
     override val session = MutableStateFlow<String?>(null)
@@ -182,6 +183,12 @@ class ClientModel(
         if (target == null) status.value = ConnectionStatus(Phase.Selecting, "패널을 선택하세요.") else selectPaneInternal(target.id)
     }
 
+    override fun selectTarget(session: String, window: String?, pane: String?) = action {
+        if (this.session.value != session) attach(session, connectionGeneration.get())
+        val windows = remote.value.windows.filter { it.session == session && (window == null || it.id == window) }
+        val target = remote.value.panes.firstOrNull { p -> windows.any { it.id == p.window } && (pane == null && p.active || p.id == pane) }
+        target?.let { selectPaneInternal(it.id) }
+    }
     override fun selectPane(id: String) = action { selectPaneInternal(id) }
     private suspend fun selectPaneInternal(id: String) {
         val controller = control ?: return

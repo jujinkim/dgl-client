@@ -115,8 +115,8 @@ class AndroidVolumeKeyTest {
                 waitForText("Esc"); delay(200)
                 waitForText("현재 세션: 없음 · 일반 SSH")
                 click("tmux 관리")
-                waitForText("목록 확인 불가")
-                listOf("+ 세션", "+ 창", "좌우 분할", "상하 분할").forEach { label ->
+                waitForText("일반 SSH · tmux 목록 확인 불가")
+                listOf("+", "tmux 패널 분할 ↔", "tmux 패널 분할 ↕", "포커스 ←").forEach { label ->
                     val text = waitForText(label)
                     assertTrue("Tmux actions must remain visible: $label", text.isVisibleToUser)
                     // Compose exposes the label separately from the disabled action node.
@@ -138,7 +138,7 @@ class AndroidVolumeKeyTest {
                 assertEquals(Phase.Shell, first.status.value.phase)
                 assertNull(withTimeoutOrNull(200) { firstWire.writes.receive() })
                 click("tmux 관리")
-                waitForText("좌우 분할")
+                waitForText("tmux 패널 분할 ↔")
                 press(scenario, false)
                 click("터미널로 돌아가기"); delay(200)
                 press(scenario, true)
@@ -150,7 +150,7 @@ class AndroidVolumeKeyTest {
                 click("설정"); waitForText("터미널 글자 크기: 14")
                 press(scenario, false); click("닫기"); delay(200)
                 click("호스트"); delay(200); press(scenario, false)
-                click("삭제"); waitForText("호스트 삭제"); press(scenario, false); click("취소")
+                click("Volume test 메뉴"); click("삭제…"); waitForText("호스트 삭제"); press(scenario, false); click("취소")
                 click("+ 호스트"); waitForText("SSH 호스트 추가"); press(scenario, false); click("취소")
                 click("터미널"); waitForText("Esc"); delay(200)
                 scenario.onMainActivity { first.notice.value = "Volume notice" }
@@ -224,11 +224,25 @@ class AndroidVolumeKeyTest {
     }
 
     private suspend fun press(scenario: ActivityScenario<MainActivity>, consumed: Boolean, key: Int = KeyEvent.KEYCODE_VOLUME_UP) {
+        // ModalBottomSheet returns window focus asynchronously. Observe that handoff,
+        // rather than assuming a fixed animation delay means the Activity can consume input.
+        var focusState = "not observed"
+        if (consumed) awaitUi("volume window focus", { focusState }) {
+            while (true) {
+                var ready = false
+                scenario.onMainActivity {
+                    focusState = "window=${it.hasWindowFocus()}, focused=${it.volumeKeys.focused}, resumed=${it.volumeKeys.resumed}"
+                    ready = it.hasWindowFocus() && it.volumeKeys.focused && it.volumeKeys.resumed
+                }
+                if (ready) break
+                delay(20)
+            }
+        }
         val time = SystemClock.uptimeMillis()
         scenario.onMainActivity { activity ->
             if (consumed) {
                 // Enter through the actual Activity hook, with the normal AndroidX fallback intact.
-                assertTrue((activity as Activity).dispatchKeyEvent(event(key, time = time)))
+                assertTrue("Volume shortcut: focused=${activity.volumeKeys.focused}, resumed=${activity.volumeKeys.resumed}, window=${activity.hasWindowFocus()}", (activity as Activity).dispatchKeyEvent(event(key, time = time)))
                 repeat(5) { assertTrue((activity as Activity).dispatchKeyEvent(event(key, repeat = it + 1, time = time))) }
                 assertTrue((activity as Activity).dispatchKeyEvent(event(key, KeyEvent.ACTION_UP, time = time)))
             } else {
@@ -246,20 +260,40 @@ class AndroidVolumeKeyTest {
     }
 
     private val automation get() = InstrumentationRegistry.getInstrumentation().uiAutomation
+    private suspend fun <T> awaitUi(label: String, detail: () -> String = { "" }, block: suspend CoroutineScope.() -> T): T = try {
+        withTimeout(5000, block)
+    } catch (failure: TimeoutCancellationException) {
+        val root = automation.rootInActiveWindow
+        val labels = mutableListOf<String>()
+        fun describe(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+            (node.text ?: node.contentDescription)?.let { labels += it.toString() }
+            for (index in 0 until node.childCount) describe(node.getChild(index))
+        }
+        describe(root)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        automation.takeScreenshot()?.let { bitmap ->
+            java.io.File(context.cacheDir, "volume-ui-failure.png").outputStream().use {
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            bitmap.recycle()
+        }
+        throw AssertionError("Timed out: $label; ${detail()}; package=${root?.packageName}; UI=$labels", failure)
+    }
     private fun find(node: AccessibilityNodeInfo?, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
         if (node == null) return null
         if (predicate(node)) return node
         for (i in 0 until node.childCount) find(node.getChild(i), predicate)?.let { return it }
         return null
     }
-    private suspend fun waitForText(text: String): AccessibilityNodeInfo = withTimeout(5000) {
+    private suspend fun waitForText(text: String): AccessibilityNodeInfo = awaitUi("find $text") {
         while (true) {
-            find(automation.rootInActiveWindow) { it.text?.toString() == text || it.contentDescription?.toString() == text }?.let { return@withTimeout it }
+            find(automation.rootInActiveWindow) { it.text?.toString() == text || it.contentDescription?.toString() == text }?.let { return@awaitUi it }
             delay(50)
         }
         @Suppress("UNREACHABLE_CODE") error(text)
     }
-    private suspend fun click(text: String) = withTimeout(5000) {
+    private suspend fun click(text: String) = awaitUi("click $text") {
         while (true) {
             val root = automation.rootInActiveWindow
             var node = find(root) { it.text?.toString() == text || it.contentDescription?.toString() == text }
@@ -270,7 +304,7 @@ class AndroidVolumeKeyTest {
             delay(100)
         }
     }
-    private suspend fun setEditorText(value: String) = withTimeout(5000) {
+    private suspend fun setEditorText(value: String) = awaitUi("edit text") {
         while (true) {
             val editor = find(automation.rootInActiveWindow) { it.isEditable }
             if (editor?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, android.os.Bundle().apply {
@@ -279,7 +313,7 @@ class AndroidVolumeKeyTest {
             delay(50)
         }
     }
-    private suspend fun scrollToText(text: String) = withTimeout(5000) {
+    private suspend fun scrollToText(text: String) = awaitUi("scroll to $text") {
         while (true) {
             val root = automation.rootInActiveWindow
             if (find(root) { it.text?.toString() == text }?.isVisibleToUser == true) break

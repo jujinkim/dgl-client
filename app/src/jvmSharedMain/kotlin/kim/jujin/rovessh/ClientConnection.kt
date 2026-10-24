@@ -4,6 +4,7 @@ import kim.jujin.rovessh.core.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
 interface ClientConnection {
+    val refreshing: MutableStateFlow<Boolean>
     val host: HostProfile
     val status: MutableStateFlow<ConnectionStatus>
     val remote: MutableStateFlow<RemoteState>
@@ -14,6 +15,7 @@ interface ClientConnection {
     val tmuxProblem: MutableStateFlow<TmuxProblem?>
     fun connect()
     fun trust()
+    fun selectTarget(session: String, window: String? = null, pane: String? = null)
     fun selectSession(id: String)
     fun selectPane(id: String)
     fun createSession(name: String)

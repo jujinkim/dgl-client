@@ -202,3 +202,35 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn directional_focus_encoding_rejects_invalid_targets_and_directions() {
+    for direction in ['L', 'R', 'U', 'D'] {
+        let op: Operation = serde_json::from_value(
+            json!({"op":"focusPane", "target":"%12", "direction":direction.to_string()}),
+        )
+        .unwrap();
+        assert_eq!(
+            Command::new(&op).unwrap().wire,
+            format!("select-pane -t '%12' -{direction}")
+        );
+        assert_eq!(
+            Command::new(&Operation::ResizePane {
+                target: "%12".into(),
+                direction
+            })
+            .unwrap()
+            .wire,
+            format!("resize-pane -t '%12' -{direction} 3")
+        );
+    }
+    for (target, direction) in [("%1; kill-server", 'L'), ("@1", 'R'), ("%1", 'X')] {
+        assert!(
+            Command::new(&Operation::FocusPane {
+                target: target.into(),
+                direction
+            })
+            .is_err()
+        );
+    }
+}

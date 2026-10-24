@@ -47,6 +47,14 @@ class ProtocolTest {
         assertEquals("new-session -d -s 'safe'\\''; kill-server; ##'", TmuxCommand.newSession("safe'; kill-server; #").wire)
         assertFailsWith<IllegalArgumentException> { TmuxCommand.newSession("x\nkill-server") }
         assertFailsWith<IllegalArgumentException> { TmuxCommand.killPane("%1; kill-server") }
+        for (direction in "LRUD") {
+            val command = TmuxCommand.focusPane("%12", direction)
+            assertEquals("select-pane -t '%12' -$direction", command.wire)
+            assertEquals("focusPane", command.nativeOperation!!["op"].toString().trim('"'))
+            assertEquals("resize-pane -t '%12' -$direction 3", TmuxCommand.resizePane("%12", direction).wire)
+        }
+        assertFailsWith<IllegalArgumentException> { TmuxCommand.focusPane("%1", 'X') }
+        assertFailsWith<IllegalArgumentException> { TmuxCommand.focusPane("%1; kill-server", 'L') }
     }
     @Test fun captureEscapingDiffersFromLiveOutput() {
         assertEquals("\\033literal\u001b[31mred", decodeCapture("\\\\033literal\\033[31mred".encodeToByteArray()).decodeToString())

@@ -46,6 +46,10 @@ class TmuxCommand private constructor(val wire: String, val shellWire: String = 
         fun split(pane: String, horizontal: Boolean) = TmuxCommand("split-window ${if (horizontal) "-h" else "-v"} -t ${id(pane, '%')}", nativeOperation = operation("split", target = pane, horizontal = horizontal))
         fun selectPane(pane: String) = TmuxCommand("select-pane -t ${id(pane, '%')}", nativeOperation = operation("selectPane", target = pane))
         fun killPane(pane: String) = TmuxCommand("kill-pane -t ${id(pane, '%')}", nativeOperation = operation("killPane", target = pane))
+        fun focusPane(pane: String, direction: Char): TmuxCommand {
+            require(direction in "LRUD")
+            return TmuxCommand("select-pane -t ${id(pane, '%')} -$direction", nativeOperation = operation("focusPane", target = pane, direction = direction))
+        }
         fun resizePane(pane: String, direction: Char) : TmuxCommand {
             require(direction in "LRUD")
             return TmuxCommand("resize-pane -t ${id(pane, '%')} -$direction 3", nativeOperation = operation("resizePane", target = pane, direction = direction))

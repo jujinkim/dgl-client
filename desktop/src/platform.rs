@@ -18,6 +18,23 @@ pub fn data_dir() -> Result<PathBuf> {
         .ok_or(Error::Storage)
 }
 
+pub fn ssh_directory_placeholder() -> String {
+    #[cfg(target_os = "macos")]
+    let (variable, fallback) = ("HOME", "~/.ssh/");
+    #[cfg(target_os = "windows")]
+    let (variable, fallback) = ("USERPROFILE", "%USERPROFILE%\\.ssh\\");
+    std::env::var_os(variable)
+        .filter(|path| !path.is_empty())
+        .map(|path| {
+            format!(
+                "{}{}",
+                PathBuf::from(path).join(".ssh").display(),
+                std::path::MAIN_SEPARATOR
+            )
+        })
+        .unwrap_or_else(|| fallback.into())
+}
+
 pub const UI_FONT: &str = if cfg!(target_os = "windows") {
     "Segoe UI"
 } else {

@@ -3,10 +3,16 @@
     windows_subsystem = "windows"
 )]
 
+mod modal;
 mod platform;
 mod storage;
 mod terminal;
 mod text_input;
+mod theme;
+#[cfg(test)]
+mod ui_tests;
+mod workspace;
+mod workspace_ui;
 use dgl_core::{
     command::Operation,
     connection::{Action, Connection, Phase},
@@ -14,6 +20,7 @@ use dgl_core::{
     ssh,
 };
 use gpui::{prelude::*, *};
+use std::collections::{HashMap, HashSet};
 use std::{
     io::Read,
     path::PathBuf,
@@ -22,8 +29,11 @@ use std::{
 };
 use terminal::Terminal;
 use text_input::TextInput;
+use workspace::{Axis, GroupId, Layout, TabId, Workspace};
 actions!(dgl, [Quit]);
 struct Tab {
+    id: TabId,
+    refresh: Option<u64>,
     host: HostProfile,
     connection: Arc<Connection>,
     terminal: Entity<Terminal>,
@@ -68,7 +78,14 @@ struct Desktop {
     path: PathBuf,
     local: LocalState,
     tabs: Vec<Tab>,
-    selected: usize,
+    workspace: Workspace,
+    palette: theme::Palette,
+    modal: modal::Modal,
+    expanded: HashSet<String>,
+    menu: Option<String>,
+    group_bounds: HashMap<GroupId, Bounds<Pixels>>,
+    split_bounds: HashMap<Vec<bool>, Bounds<Pixels>>,
+    resizing: Option<Vec<bool>>,
     dialog: Option<Dialog>,
     error: Option<String>,
     focus: FocusHandle,
@@ -93,12 +110,20 @@ impl Desktop {
             }
         })
         .detach();
+        let workspace = Workspace::new(Layout::load(&path.with_file_name("workspace-layout.json")));
         Self {
             runtime,
             path,
             local,
             tabs: vec![],
-            selected: 0,
+            workspace,
+            palette: theme::Palette::new(true),
+            modal: modal::Modal::default(),
+            expanded: HashSet::new(),
+            menu: None,
+            group_bounds: HashMap::new(),
+            split_bounds: HashMap::new(),
+            resizing: None,
             dialog: None,
             error,
             focus: cx.focus_handle(),
@@ -124,6 +149,10 @@ impl Desktop {
                 }
             }
             for result in tab.connection.completions() {
+                if tab.refresh == Some(result.request_id) {
+                    tab.refresh = None;
+                    changed = true;
+                }
                 let input = tab
                     .terminal
                     .update(cx, |t, _| t.complete(result.request_id));
@@ -187,37 +216,63 @@ impl Desktop {
                         cx,
                     )
                 });
+                let id = self.workspace.add_tab();
                 self.tabs.push(Tab {
+                    id,
+                    refresh: None,
                     host,
                     connection,
                     terminal,
                     last_sequence: 0,
                 });
-                self.selected = self.tabs.len() - 1;
             }
             Err(e) => self.error = Some(format!("보호 저장소를 열지 못했습니다: {e}")),
         }
         cx.notify();
     }
-    fn close_tab(&mut self, index: usize) {
-        if index < self.tabs.len() {
+    fn active_tab(&self) -> Option<&Tab> {
+        let id = self.workspace.selected()?;
+        self.tabs.iter().find(|t| t.id == id)
+    }
+    fn close_tab(&mut self, id: TabId) {
+        if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
             let tab = self.tabs.remove(index);
+            self.workspace.close(id);
             tab.connection.close();
-            let connection = tab.connection;
             self.runtime.spawn(async move {
-                connection.join().await;
+                tab.connection.join().await;
             });
-            self.selected = self.selected.min(self.tabs.len().saturating_sub(1));
         }
     }
     fn reconnect(&mut self, cx: &mut Context<Self>) {
-        if let Some(tab) = self.tabs.get(self.selected) {
+        if let Some(tab) = self.active_tab() {
             let mut host = tab.host.clone();
             let state = tab.connection.state();
             host.last_session = state.session.or(host.last_session);
             host.last_pane = state.pane.or(host.last_pane);
-            self.close_tab(self.selected);
+            let id = tab.id;
+            self.close_tab(id);
             self.open(host, cx);
+        }
+    }
+    fn save_layout(&mut self) {
+        if let Err(e) = self
+            .workspace
+            .layout
+            .save(&self.path.with_file_name("workspace-layout.json"))
+        {
+            self.error = Some(format!("배치 저장 실패: {e}"));
+        }
+    }
+    fn refresh(&mut self) {
+        if let Some(id) = self.workspace.selected()
+            && let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id)
+            && tab.refresh.is_none()
+        {
+            match tab.connection.action(Action::Refresh) {
+                Ok(request) => tab.refresh = Some(request),
+                Err(e) => self.error = Some(format!("조회 실패: {e}")),
+            }
         }
     }
     fn edit(&mut self, original: Option<HostProfile>, cx: &mut Context<Self>) {
@@ -245,6 +300,7 @@ impl Desktop {
                     String::new(),
                 ]
             });
+        let ssh_directory = platform::ssh_directory_placeholder();
         let labels = [
             "별칭",
             "호스트 / IP",
@@ -252,7 +308,7 @@ impl Desktop {
             "사용자 이름",
             "비밀번호 (비우면 기존 유지)",
             "키 암호",
-            "개인키 파일 경로",
+            &ssh_directory,
         ];
         let fields = values
             .iter()
@@ -357,7 +413,7 @@ impl Desktop {
         }
     }
     fn prompt(&mut self, title: &str, operation: PromptOp, cx: &mut Context<Self>) {
-        if let Some(tab) = self.tabs.get(self.selected) {
+        if let Some(tab) = self.active_tab() {
             self.dialog = Some(Dialog::Prompt {
                 title: title.into(),
                 connection: tab.connection.clone(),
@@ -402,21 +458,58 @@ impl Desktop {
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
+        let id = id.into();
+        let palette = self.palette;
         div()
-            .id(ElementId::Name(id.into()))
-            .px_3()
-            .py_2()
-            .rounded_md()
+            .id(ElementId::Name(id.clone()))
+            .debug_selector(|| id.to_string())
+            .px_2()
+            .py_1()
+            .flex_shrink_0()
             .cursor_pointer()
+            .hover(move |s| s.bg(rgb(palette.selection)))
+            .when(self.modal.building, |d| {
+                d.track_focus(&self.modal.button(&id, cx))
+            })
+            .focus(move |s| {
+                s.bg(rgb(palette.selection))
+                    .border_color(rgb(palette.accent))
+            })
             .border_1()
-            .border_color(rgb(0x53616a))
-            .hover(|s| s.bg(rgb(0x36575e)))
+            .border_color(gpui::transparent_black())
             .child(label.into())
             .on_click(cx.listener(move |v, _, w, cx| {
                 action(v, w, cx);
+                cx.stop_propagation();
                 cx.notify();
             }))
     }
+    fn accept_name(&mut self, cx: &mut Context<Self>) {
+        let Some(Dialog::Prompt {
+            connection,
+            operation,
+            input,
+            ..
+        }) = self.dialog.clone()
+        else {
+            return;
+        };
+        if input.read(cx).is_composing() {
+            return;
+        }
+        let name = input.read(cx).content.to_string();
+        let operation = match operation {
+            PromptOp::Session => Operation::NewSession { name },
+            PromptOp::Window(target) => Operation::NewWindow { target, name },
+            PromptOp::RenameSession(target) => Operation::RenameSession { target, name },
+            PromptOp::RenameWindow(target) => Operation::RenameWindow { target, name },
+        };
+        match connection.action(Action::Manage { operation }) {
+            Ok(_) => self.dialog = None,
+            Err(e) => self.error = Some(format!("이름을 확인하세요: {e}")),
+        }
+    }
+
     fn theme(&mut self, value: &str, cx: &mut Context<Self>) {
         self.local.preferences.theme = value.into();
         self.save();
@@ -445,483 +538,55 @@ impl Render for Desktop {
                 WindowAppearance::Dark | WindowAppearance::VibrantDark
             ),
         };
-        let bg = if dark { 0x191e25 } else { 0xf4f6f7 };
-        let fg = if dark { 0xd8dee9 } else { 0x18272d };
-        let mut sidebar = div()
-            .w(px(272.))
-            .flex_shrink_0()
-            .h_full()
-            .flex()
-            .flex_col()
-            .p_3()
-            .gap_3()
-            .border_r_1()
-            .border_color(rgb(0x53616a))
-            .child(div().text_xl().child("dgl"))
-            .child(div().text_sm().child("SSH · tmux / Rust 후보"))
-            .child(self.button("add", "+ 호스트", cx, |s, _, cx| s.edit(None, cx)));
-        let mut hosts = self.local.hosts.clone();
-        hosts.sort_by_key(|h| (!h.favorite, std::cmp::Reverse(h.last_connected)));
-        let mut host_list = div()
-            .id("hosts")
-            .overflow_y_scroll()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .gap_2();
-        if hosts.is_empty() {
-            host_list = host_list.child(div().p_3().child("SSH 호스트를 추가하여 시작하세요."));
-        }
-        for host in hosts {
-            let connect = host.clone();
-            let edit = host.clone();
-            let delete = host.clone();
-            let label = format!("{}{}", if host.favorite { "★ " } else { "" }, host.alias);
-            let id = host.id.clone();
-            host_list = host_list.child(
-                div()
-                    .p_2()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(rgb(0x53616a))
-                    .child(div().truncate().child(label))
-                    .child(
-                        div()
-                            .text_xs()
-                            .truncate()
-                            .child(format!("{}@{}:{}", host.username, host.hostname, host.port)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .gap_1()
-                            .text_xs()
-                            .child(self.button(
-                                format!("open-{id}"),
-                                "연결",
-                                cx,
-                                move |s, _, cx| s.open(connect.clone(), cx),
-                            ))
-                            .child(self.button(
-                                format!("edit-{id}"),
-                                "편집",
-                                cx,
-                                move |s, _, cx| s.edit(Some(edit.clone()), cx),
-                            ))
-                            .child(self.button(
-                                format!("del-{id}"),
-                                "삭제",
-                                cx,
-                                move |s, _, _| {
-                                    s.dialog = Some(Dialog::Delete {
-                                        title: format!("호스트 {} 삭제", delete.alias),
-                                        operation: DeleteOp::Host(delete.clone()),
-                                    })
-                                },
-                            )),
-                    ),
-            );
-        }
-        sidebar = sidebar
-            .child(host_list)
-            .child(self.button("settings", "설정", cx, |s, _, _| {
-                s.dialog = Some(Dialog::Settings)
-            }))
-            .child(div().text_xs().child(platform::STORAGE_LABEL));
-        let mut tabs = div()
-            .id("tabs")
-            .overflow_x_scroll()
-            .flex()
-            .gap_2()
-            .p_2()
-            .border_b_1()
-            .border_color(rgb(0x53616a));
-        for (i, tab) in self.tabs.iter().enumerate() {
-            tabs = tabs.child(
-                div()
-                    .flex()
-                    .gap_1()
-                    .when(i == self.selected, |d| {
-                        d.bg(rgb(0x36575e)).text_color(rgb(0xffffff))
-                    })
-                    .child(self.button(
-                        format!("tab-{i}"),
-                        tab.host.alias.clone(),
-                        cx,
-                        move |s, w, cx| {
-                            s.selected = i;
-                            if let Some(t) = s.tabs.get(i) {
-                                w.focus(&t.terminal.focus_handle(cx));
-                            }
-                        },
-                    ))
-                    .child(self.button(format!("close-{i}"), "×", cx, move |s, _, _| {
-                        s.close_tab(i)
-                    })),
-            );
-        }
-        let mut main = div()
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .flex()
-            .flex_col()
-            .child(tabs);
-        if let Some(tab) = self.tabs.get(self.selected) {
-            let connection = tab.connection.clone();
-            let state = connection.state();
-            let terminal = tab.terminal.clone();
-            let phase = state.phase.clone();
-            let status = state
-                .error
-                .map(|e| e.to_string())
-                .unwrap_or_else(|| format!("{:?}", state.phase));
-            let mut statusbar = div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .p_2()
-                .child(div().flex_1().child(status))
-                .child(self.button("reconnect", "재접속", cx, |s, _, cx| s.reconnect(cx)))
-                .child(self.button("disconnect", "연결 종료", cx, |s, _, _| {
-                    s.close_tab(s.selected)
-                }));
-            if phase == Phase::TrustRequired {
-                let fingerprint = state.fingerprint.clone().unwrap_or_default();
-                let trust_host = tab.host.clone();
-                statusbar = statusbar.child(self.button(
-                    "trust",
-                    "지문 확인 후 신뢰",
-                    cx,
-                    move |s, _, cx| {
-                        let endpoint = trust_host.endpoint();
-                        let c = Credential {
-                            password: fingerprint.clone(),
-                            private_key: String::new(),
-                            passphrase: String::new(),
-                        };
-                        if let Err(e) = storage::write(&storage::trust_ref(&endpoint), &c) {
-                            s.error = Some(format!("호스트키 저장 실패: {e}"));
-                            return;
-                        }
-                        s.local.trust.insert(endpoint, fingerprint.clone());
-                        if s.save() {
-                            s.reconnect(cx);
-                        }
-                    },
-                ));
-                main=main.child(div().p_4().child(format!("처음 연결하는 서버 — {}\n{}\n관리자에게 받은 SHA-256 지문과 일치하는지 확인하세요.",tab.host.endpoint(),state.fingerprint.clone().unwrap_or_default())));
+        self.palette = theme::Palette::new(dark);
+        let bg = self.palette.bg;
+        if self.dialog.is_none() {
+            self.modal.restore(window);
+            if window.focused(cx).is_none() {
+                window.focus(&self.focus);
             }
-            main = main.child(statusbar);
-            let mut nav = div()
-                .w(px(236.))
-                .flex_shrink_0()
-                .id("tmux-tree")
-                .overflow_y_scroll()
-                .p_2()
-                .flex()
-                .flex_col()
-                .gap_2();
-            if !matches!(
-                phase,
-                Phase::Shell | Phase::Closed | Phase::Failed | Phase::TrustRequired
-            ) {
-                nav = nav.child(self.button("new-session", "+ 세션", cx, |s, _, cx| {
-                    s.prompt("세션 만들기", PromptOp::Session, cx)
-                }));
-                let c = connection.clone();
-                nav = nav.child(self.button("refresh", "새로고침", cx, move |s, _, _| {
-                    s.submit(&c, Action::Refresh)
-                }));
-                for session in &state.remote.sessions {
-                    let id = session.id.clone();
-                    let c = connection.clone();
-                    nav = nav.child(self.button(
-                        format!("session-{id}"),
-                        format!(
-                            "{} {}",
-                            if state.session.as_ref() == Some(&id) {
-                                "▾"
-                            } else {
-                                "▸"
-                            },
-                            session.name
-                        ),
-                        cx,
-                        move |s, _, _| s.submit(&c, Action::SelectSession { id: id.clone() }),
-                    ));
-                    if state.session.as_ref() == Some(&session.id) {
-                        let sid = session.id.clone();
-                        nav = nav.child(self.button("new-window", "+ 창", cx, move |s, _, cx| {
-                            s.prompt("창 만들기", PromptOp::Window(sid.clone()), cx)
-                        }));
-                        let sid = session.id.clone();
-                        nav = nav.child(self.button(
-                            "rename-session",
-                            "세션 이름",
-                            cx,
-                            move |s, _, cx| {
-                                s.prompt("세션 이름 변경", PromptOp::RenameSession(sid.clone()), cx)
-                            },
-                        ));
-                        let id = session.id.clone();
-                        let name = session.name.clone();
-                        let c = connection.clone();
-                        nav = nav.child(self.button(
-                            "kill-session",
-                            "세션 삭제…",
-                            cx,
-                            move |s, _, _| {
-                                s.dialog = Some(Dialog::Delete {
-                                    title: format!("세션 {name} ({id}) 삭제"),
-                                    operation: DeleteOp::Remote(
-                                        c.clone(),
-                                        Operation::KillSession { target: id.clone() },
-                                    ),
-                                })
-                            },
-                        ));
-                        for win in state
-                            .remote
-                            .windows
-                            .iter()
-                            .filter(|w| w.session == session.id)
-                        {
-                            nav = nav.child(
-                                div()
-                                    .mt_2()
-                                    .text_sm()
-                                    .truncate()
-                                    .child(format!("{} · {}", win.id, win.name)),
-                            );
-                            let id = win.id.clone();
-                            nav = nav.child(self.button(
-                                format!("rename-{id}"),
-                                "이름 변경",
-                                cx,
-                                move |s, _, cx| {
-                                    s.prompt("창 이름 변경", PromptOp::RenameWindow(id.clone()), cx)
-                                },
-                            ));
-                            let id = win.id.clone();
-                            let name = win.name.clone();
-                            let c = connection.clone();
-                            nav = nav.child(self.button(
-                                format!("kill-{id}"),
-                                "창 삭제…",
-                                cx,
-                                move |s, _, _| {
-                                    s.dialog = Some(Dialog::Delete {
-                                        title: format!("창 {name} ({id}) 삭제"),
-                                        operation: DeleteOp::Remote(
-                                            c.clone(),
-                                            Operation::KillWindow { target: id.clone() },
-                                        ),
-                                    })
-                                },
-                            ));
-                            for pane in state.remote.panes.iter().filter(|p| p.window == win.id) {
-                                let id = pane.id.clone();
-                                let c = connection.clone();
-                                nav = nav.child(self.button(
-                                    format!("pane-{id}"),
-                                    format!(
-                                        "{} {} · {}×{}",
-                                        if state.pane.as_ref() == Some(&id) {
-                                            "●"
-                                        } else {
-                                            "○"
-                                        },
-                                        pane.command,
-                                        pane.width,
-                                        pane.height
-                                    ),
-                                    cx,
-                                    move |s, _, _| {
-                                        s.submit(&c, Action::SelectPane { id: id.clone() })
-                                    },
-                                ));
-                            }
-                        }
-                    }
-                }
-            } else if phase == Phase::Shell {
-                nav = nav.child("일반 SSH\n연결 종료 시 원격 작업이 끝날 수 있습니다.");
-                for d in &state.diagnostics {
-                    nav = nav.child(format!("{}: {} ({:?})", d.stage, d.outcome, d.exit_status));
-                }
-            }
-            let mut area = div().flex_1().min_w_0().flex().flex_col();
-            if let Some(pane) = state.pane.as_ref().filter(|p| p.as_str() != "shell") {
-                area = area.child(div().text_xs().p_2().child(format!(
-                    "세션 {} / 패널 {pane}",
-                    state.session.as_deref().unwrap_or("—")
-                )));
-                let mut controls = div()
-                    .id("pane-controls")
-                    .overflow_x_scroll()
-                    .flex()
-                    .gap_2()
-                    .p_2()
-                    .text_xs();
-                for (horizontal, label) in [(true, "좌우 분할"), (false, "상하 분할")] {
-                    let c = connection.clone();
-                    let id = pane.clone();
-                    controls = controls.child(self.button(label, label, cx, move |s, _, _| {
-                        s.submit(
-                            &c,
-                            Action::Manage {
-                                operation: Operation::Split {
-                                    target: id.clone(),
-                                    horizontal,
-                                },
-                            },
-                        )
-                    }));
-                }
-                for direction in ['L', 'R', 'U', 'D'] {
-                    let c = connection.clone();
-                    let id = pane.clone();
-                    controls = controls.child(self.button(
-                        format!("resize-{direction}"),
-                        format!("크기 {direction}"),
-                        cx,
-                        move |s, _, _| {
-                            s.submit(
-                                &c,
-                                Action::Manage {
-                                    operation: Operation::ResizePane {
-                                        target: id.clone(),
-                                        direction,
-                                    },
-                                },
-                            )
-                        },
-                    ));
-                }
-                let c = connection.clone();
-                let id = pane.clone();
-                controls = controls.child(self.button(
-                    "kill-pane",
-                    "패널 삭제…",
-                    cx,
-                    move |s, _, _| {
-                        s.dialog = Some(Dialog::Delete {
-                            title: format!("패널 {id} 삭제"),
-                            operation: DeleteOp::Remote(
-                                c.clone(),
-                                Operation::KillPane { target: id.clone() },
-                            ),
-                        })
-                    },
-                ));
-                area = area.child(controls);
-            }
-            area = area.child(div().flex_1().min_h_0().child(terminal.clone()));
-            let mut shortcuts = div()
-                .id("shortcut-bar")
-                .overflow_x_scroll()
-                .flex()
-                .gap_2()
-                .p_2()
-                .text_xs();
-            for (key, label) in [
-                (dgl_core::input::TerminalKey::Escape, "Esc"),
-                (dgl_core::input::TerminalKey::Tab, "Tab"),
-                (dgl_core::input::TerminalKey::CtrlC, "Ctrl+C"),
-                (dgl_core::input::TerminalKey::CtrlD, "Ctrl+D"),
-                (dgl_core::input::TerminalKey::CtrlL, "Ctrl+L"),
-                (dgl_core::input::TerminalKey::Up, "↑"),
-                (dgl_core::input::TerminalKey::Down, "↓"),
-                (dgl_core::input::TerminalKey::Left, "←"),
-                (dgl_core::input::TerminalKey::Right, "→"),
-                (dgl_core::input::TerminalKey::Home, "Home"),
-                (dgl_core::input::TerminalKey::End, "End"),
-            ] {
-                let t = terminal.clone();
-                shortcuts = shortcuts.child(self.button(
-                    format!("key-{label}"),
-                    label,
-                    cx,
-                    move |_, w, cx| {
-                        t.update(cx, |t, _| t.send(key.bytes().to_vec()));
-                        w.focus(&t.focus_handle(cx));
-                    },
-                ));
-            }
-            area = area.child(shortcuts);
-            main = main.child(div().flex_1().min_h_0().flex().child(nav).child(area));
-        } else {
-            main = main.child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .justify_center()
-                    .items_center()
-                    .gap_3()
-                    .child(div().text_3xl().child("Keep the CLI."))
-                    .child("세션은 서버에, 작업은 그대로.")
-                    .child("호스트를 추가하고 tmux 세션에 연결하세요."),
-            );
         }
-        let mut root = div()
-            .size_full()
-            .relative()
-            .font_family(platform::UI_FONT)
-            .text_size(px(14.))
-            .bg(rgb(bg))
-            .text_color(rgb(fg))
-            .track_focus(&self.focus)
-            .on_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
-                if !platform::app_shortcut(&e.keystroke.modifiers) || s.dialog.is_some() {
-                    return;
-                }
-                match e.keystroke.key.as_str() {
-                    "n" if cfg!(target_os = "macos") && e.keystroke.modifiers.shift => {
-                        s.prompt("세션 만들기", PromptOp::Session, cx)
-                    }
-                    "s" if cfg!(target_os = "windows") => {
-                        s.prompt("세션 만들기", PromptOp::Session, cx)
-                    }
-                    "n" => s.edit(None, cx),
-                    "w" => s.close_tab(s.selected),
-                    "," => s.dialog = Some(Dialog::Settings),
-                    "p" if cfg!(target_os = "windows") => s.dialog = Some(Dialog::Settings),
-                    "r" => {
-                        if let Some(t) = s.tabs.get(s.selected) {
-                            let c = t.connection.clone();
-                            s.submit(&c, Action::Refresh);
-                        }
-                    }
-                    key => {
-                        // GPUI normalizes Shift+digits to symbols on Windows.
-                        // Function keys retain Shift and provide stable tab shortcuts.
-                        let key = if cfg!(target_os = "windows") {
-                            key.strip_prefix('f').unwrap_or("")
-                        } else {
-                            key
-                        };
-                        if let Ok(n) = key.parse::<usize>() {
-                            if n > 0 && n <= s.tabs.len() {
-                                s.selected = n - 1;
-                                w.focus(&s.tabs[s.selected].terminal.focus_handle(cx));
-                            }
-                        } else {
-                            return;
-                        }
-                    }
-                }
-                cx.stop_propagation();
-                cx.notify();
-            }))
-            .child(div().size_full().flex().child(sidebar).child(main));
+        for tab in &self.tabs {
+            tab.terminal
+                .update(cx, |t, _| t.enabled = self.dialog.is_none());
+        }
+        let mut root = self.render_workspace(window, cx);
         if let Some(dialog) = self.dialog.clone() {
+            let (kind, inputs) = match &dialog {
+                Dialog::Host {
+                    fields, key_auth, ..
+                } => (
+                    if *key_auth {
+                        "host-key"
+                    } else {
+                        "host-password"
+                    },
+                    fields
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| !(*i == 4 && *key_auth || *i >= 5 && !*key_auth))
+                        .map(|(_, f)| f.clone())
+                        .collect::<Vec<_>>(),
+                ),
+                Dialog::Prompt { input, .. } => ("prompt", vec![input.clone()]),
+                Dialog::Delete { .. } => ("delete", vec![]),
+                Dialog::Settings => ("settings", vec![]),
+            };
+            for input in &inputs {
+                input.update(cx, |i, _| i.palette = self.palette);
+            }
+            self.modal.begin(
+                kind,
+                inputs.iter().map(|i| i.focus_handle(cx)).collect(),
+                window,
+                cx,
+            );
             let mut body = div()
                 .id("dialog-body")
                 .overflow_y_scroll()
-                .max_h(px(620.))
+                .max_h(px(
+                    (f32::from(window.viewport_size().height) - 180.).clamp(100., 620.)
+                ))
                 .flex()
                 .flex_col()
                 .gap_3();
@@ -960,6 +625,22 @@ impl Render for Desktop {
                         body = body
                             .child(div().text_sm().child(labels[i]))
                             .child(f.clone());
+                        if i == 4 || i == 5 {
+                            let input = f.clone();
+                            body = body.child(self.button(
+                                format!("show-secret-{i}"),
+                                if f.read(cx).secret_visible() {
+                                    "☑ 비밀번호 표시"
+                                } else {
+                                    "☐ 비밀번호 표시"
+                                },
+                                cx,
+                                move |_, _, cx| {
+                                    input
+                                        .update(cx, |input, cx| input.toggle_secret_visibility(cx));
+                                },
+                            ));
+                        }
                     }
                     body = body
                         .child(self.button(
@@ -1095,30 +776,12 @@ impl Render for Desktop {
                     body = body
                         .child(div().text_xl().child(title))
                         .child(input.clone());
-                    footer =
-                        footer.child(self.button("accept-name", "확인", cx, move |s, _, cx| {
-                            let name = input.read(cx).content.to_string();
-                            let op = match &operation {
-                                PromptOp::Session => Operation::NewSession { name },
-                                PromptOp::Window(id) => Operation::NewWindow {
-                                    target: id.clone(),
-                                    name,
-                                },
-                                PromptOp::RenameSession(id) => Operation::RenameSession {
-                                    target: id.clone(),
-                                    name,
-                                },
-                                PromptOp::RenameWindow(id) => Operation::RenameWindow {
-                                    target: id.clone(),
-                                    name,
-                                },
-                            };
-                            match connection.action(Action::Manage { operation: op }) {
-                                Ok(_) => s.dialog = None,
-                                Err(e) => s.error = Some(format!("이름을 확인하세요: {e}")),
-                            }
-                        }));
+                    let _ = (connection, operation);
+                    footer = footer.child(
+                        self.button("accept-name", "확인", cx, |s, _, cx| s.accept_name(cx)),
+                    );
                 }
+
                 Dialog::Delete { title, .. } => {
                     body=body.child(div().text_xl().child(title)).child("원격 대상 삭제는 해당 프로세스를 종료합니다. 로컬 호스트 삭제는 저장된 연결 정보만 삭제합니다.");
                     footer =
@@ -1153,7 +816,10 @@ impl Render for Desktop {
                             s.save();
                         }));
                     }
-                    body = body.child(platform::SHORTCUT_HELP).child("신뢰한 서버");
+                    body = body
+                        .child(platform::STORAGE_LABEL)
+                        .child(platform::SHORTCUT_HELP)
+                        .child("신뢰한 서버");
                     for (endpoint, fingerprint) in &self.local.trust {
                         let e = endpoint.clone();
                         body = body
@@ -1174,6 +840,11 @@ impl Render for Desktop {
             }
             root = root.child(
                 div()
+                    .id("modal-overlay")
+                    .occlude()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                    .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
                     .absolute()
                     .inset_0()
                     .bg(rgba(0x00000099))
@@ -1186,7 +857,8 @@ impl Render for Desktop {
                             .w(px(520.))
                             .max_w_full()
                             .p_4()
-                            .rounded_lg()
+                            .border_1()
+                            .border_color(rgb(self.palette.line))
                             .bg(rgb(bg))
                             .flex()
                             .flex_col()
@@ -1206,12 +878,14 @@ impl Render for Desktop {
                     .p_4()
                     .bg(rgb(0x682f38))
                     .text_color(rgb(0xffffff))
-                    .rounded_md()
                     .flex()
                     .gap_3()
                     .child(div().flex_1().child(error))
                     .child(self.button("dismiss-error", "닫기", cx, |s, _, _| s.error = None)),
             );
+        }
+        if self.dialog.is_some() {
+            self.modal.finish(window);
         }
         root
     }

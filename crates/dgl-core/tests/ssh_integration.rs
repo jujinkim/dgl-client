@@ -339,3 +339,270 @@ async fn isolated_auth_management_input_reconnect() {
     c.join().await;
     inspector.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires scripts/integration.py disposable OpenSSH/tmux"]
+async fn workspace_focus_tree_and_independent_connections() {
+    use dgl_core::{command::Command, flow::OutputKind};
+    let (host, credential, fingerprint) = fixture("DGL_TEST_KEY_FILE");
+    let mut inspector = ssh::connect(
+        &host,
+        &credential,
+        Some(fingerprint.clone()),
+        Arc::new(Mutex::new(None)),
+    )
+    .await
+    .unwrap();
+    assert!(inspector.discover().await.unwrap());
+    let c = Connection::start(host.clone(), credential.clone(), Some(fingerprint.clone()));
+    phase(&c, Phase::Selecting).await;
+    for name in ["ux-first", "ux-other"] {
+        completion(
+            &c,
+            c.action(Action::Manage {
+                operation: Operation::NewSession { name: name.into() },
+            })
+            .unwrap(),
+        )
+        .await;
+    }
+    // Initial navigation already contains windows/panes for every session.
+    let remote = c.state().remote;
+    let first = remote
+        .sessions
+        .iter()
+        .find(|s| s.name == "ux-first")
+        .unwrap()
+        .id
+        .clone();
+    let other = remote
+        .sessions
+        .iter()
+        .find(|s| s.name == "ux-other")
+        .unwrap()
+        .id
+        .clone();
+    let first_window = remote
+        .windows
+        .iter()
+        .find(|w| w.session == first)
+        .unwrap()
+        .id
+        .clone();
+    let left = remote
+        .panes
+        .iter()
+        .find(|p| p.window == first_window)
+        .unwrap()
+        .id
+        .clone();
+    let other_window = remote
+        .windows
+        .iter()
+        .find(|w| w.session == other)
+        .unwrap()
+        .id
+        .clone();
+    let other_pane = remote
+        .panes
+        .iter()
+        .find(|p| p.window == other_window)
+        .unwrap()
+        .id
+        .clone();
+    let sub = c.output().subscribe().unwrap();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let recorded = events.clone();
+    let output = c.output();
+    let drain = tokio::spawn(async move {
+        loop {
+            while let Ok(Some(e)) = output.poll(sub) {
+                output.ack(sub, e.sequence).unwrap();
+                recorded.lock().unwrap().push(e);
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    });
+    completion(
+        &c,
+        c.action(Action::SelectTarget {
+            session: first.clone(),
+            window: Some(first_window.clone()),
+            pane: Some(left.clone()),
+        })
+        .unwrap(),
+    )
+    .await;
+    let mut second_host = host;
+    second_host.last_session = Some(first.clone());
+    second_host.last_pane = Some(left.clone());
+    let second = Connection::start(second_host, credential, Some(fingerprint));
+    phase(&second, Phase::Ready).await;
+    assert_ne!(c.state().handle, second.state().handle);
+    completion(
+        &c,
+        c.action(Action::Manage {
+            operation: Operation::Split {
+                target: left.clone(),
+                horizontal: true,
+            },
+        })
+        .unwrap(),
+    )
+    .await;
+    let right = c.state().pane.unwrap();
+    assert_ne!(right, left);
+    for (direction, expected) in [('L', left.clone()), ('R', right.clone())] {
+        let previous = c.target().unwrap();
+        completion(
+            &c,
+            c.action(Action::Manage {
+                operation: Operation::FocusPane {
+                    target: previous.pane_id.clone(),
+                    direction,
+                },
+            })
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(c.target().unwrap().pane_id, expected);
+        assert_eq!(
+            c.input(previous, b"stale".to_vec()),
+            Err(Error::StaleGeneration)
+        );
+    }
+    completion(
+        &c,
+        c.action(Action::Manage {
+            operation: Operation::Split {
+                target: right.clone(),
+                horizontal: false,
+            },
+        })
+        .unwrap(),
+    )
+    .await;
+    let bottom = c.state().pane.unwrap();
+    assert_ne!(bottom, right);
+    for (direction, expected) in [
+        ('U', right.clone()),
+        ('D', bottom.clone()),
+        ('L', left.clone()),
+        ('R', bottom.clone()),
+    ] {
+        let source = c.target().unwrap().pane_id;
+        completion(
+            &c,
+            c.action(Action::Manage {
+                operation: Operation::FocusPane {
+                    target: source,
+                    direction,
+                },
+            })
+            .unwrap(),
+        )
+        .await;
+        // Right from a tall pane may choose either right-hand neighbor; ask tmux for its authoritative active pane.
+        let state = c.state();
+        let actual = state
+            .remote
+            .panes
+            .iter()
+            .find(|p| p.window == first_window && p.active)
+            .unwrap()
+            .id
+            .clone();
+        if direction != 'R' {
+            assert_eq!(actual, expected);
+        }
+        assert_eq!(c.target().unwrap().pane_id, actual);
+        let marker = format!("UX_FOCUS_{direction}");
+        completion(
+            &c,
+            c.input(
+                c.target().unwrap(),
+                format!("printf '{marker}\\n'\r").into_bytes(),
+            )
+            .unwrap(),
+        )
+        .await;
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let (_, bytes) = inspector
+                    .execute_tmux(
+                        &Command::new(&Operation::Capture {
+                            target: actual.clone(),
+                        })
+                        .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                if String::from_utf8_lossy(&bytes).contains(&marker) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            second.state().pane.as_ref(),
+            Some(&left),
+            "another connection keeps its displayed target"
+        );
+    }
+    completion(
+        &c,
+        c.action(Action::SelectTarget {
+            session: other.clone(),
+            window: Some(other_window),
+            pane: Some(other_pane.clone()),
+        })
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(c.state().session.as_ref(), Some(&other));
+    assert_eq!(c.target().unwrap().pane_id, other_pane);
+    completion(
+        &c,
+        c.action(Action::Resize {
+            columns: 101,
+            rows: 37,
+        })
+        .unwrap(),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let target = c.target().unwrap();
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.kind == OutputKind::ResetEnd && e.target == target)
+    );
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.kind == OutputKind::Resize
+                && e.target.pane_id == other_pane
+                && e.size.columns == 101
+                && e.size.rows == 37)
+    );
+    assert_eq!(second.state().session.as_ref(), Some(&first));
+    assert_eq!(second.state().pane.as_ref(), Some(&left));
+    c.close();
+    c.join().await;
+    second.close();
+    second.join().await;
+    drain.abort();
+    for target in [first, other] {
+        inspector
+            .execute_tmux(&Command::new(&Operation::KillSession { target }).unwrap())
+            .await
+            .unwrap();
+    }
+    inspector.close().await;
+}

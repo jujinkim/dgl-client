@@ -138,3 +138,11 @@ Android ID `kim.jujin.rovessh`, Keystore alias
 
 120 fixture·출력 큐/종료·인증·복구 검증 결과와 아직 인수하지 않은 항목은
 [후보 기록](CANDIDATE.md)을 따른다. 자동 검사는 실제 IME/모든 VT 상태의 증거가 아니다.
+
+## UX 탐색·포커스 확장 (2026-10-24)
+
+- `Action::SelectTarget { session, window?, pane? }` / JSON `selectTarget`는 세션 ID와 선택적인 창·패널 ID를 받는다. 전체 원격 목록에서 소속 관계를 검증하고 세션 연결 → 창/패널 선택 → snapshot을 하나의 actor 요청으로 순차 실행한다. 생략된 대상은 해당 세션/창의 활성 패널을 우선한다. 기존 `selectSession`·`selectPane`는 유지한다.
+- 연결 전 초기 목록도 세션·창·패널을 모두 제공한다. 빈 세션 목록이면 하위 조회를 생략한다.
+- `Operation::FocusPane { target, direction }` / JSON `focusPane`는 `%N`과 `L/R/U/D`만 허용한다. `select-pane -t '%N' -L/-R/-U/-D` 실행 뒤 창의 실제 활성 패널을 다시 조회하고 PaneTarget·패널 세대·화면을 함께 갱신한다. 현재 표시 패널과 다른 시작 target은 StaleGeneration으로 거부한다.
+- 다른 연결의 표시 대상은 tmux의 전역 활성 패널 변경을 따라가지 않는다. 각 연결의 PaneTarget으로 출력 필터링과 입력을 수행한다.
+- 데스크톱 resize는 터미널별 한 요청만 진행하며 이후 크기는 최신 값으로 병합한다. 요청 완료 후 달라진 최신 크기를 보낸다.

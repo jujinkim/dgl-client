@@ -5,12 +5,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -36,24 +43,25 @@ expect fun copyPublicKey(value: String)
     var explorer by remember { mutableStateOf(false) }
     var deletion by remember { mutableStateOf<HostProfile?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    val colors = if (!mobileLayout) {
-        if (dark) darkColorScheme(primary = Color(0xff8acdd0)) else lightColorScheme(primary = Color(0xff00696e))
-    } else if (dark) darkColorScheme(
-        primary = Color(0xff8acdd0), onPrimary = Color(0xff002022), secondary = Color(0xff8acdd0),
-        primaryContainer = Color(0xff264d50), onPrimaryContainer = Color(0xffb6e7e9),
-        secondaryContainer = Color(0xff264d50), onSecondaryContainer = Color(0xffb6e7e9),
-        background = Color(0xff191e25), surface = Color(0xff191e25), surfaceTint = Color(0xff8acdd0),
-        onBackground = Color(0xffd8dee9), onSurface = Color(0xffd8dee9),
-        surfaceVariant = Color(0xff28313b), onSurfaceVariant = Color(0xffaebbc7), surfaceContainer = Color(0xff20262e),
+    val colors = if (dark) darkColorScheme(
+        primary = Color(0xff75aaff), secondary = Color(0xff75aaff),
+        primaryContainer = Color(0xff2b4264), secondaryContainer = Color(0xff2b4264),
+        background = Color(0xff1e1f22), surface = Color(0xff1e1f22), surfaceTint = Color.Transparent,
+        onBackground = Color(0xffdadce0), onSurface = Color(0xffdadce0),
+        surfaceVariant = Color(0xff25262a), onSurfaceVariant = Color(0xff9ca1aa), surfaceContainer = Color(0xff25262a), surfaceContainerLow = Color(0xff25262a), surfaceContainerHigh = Color(0xff25262a), surfaceContainerHighest = Color(0xff25262a), surfaceContainerLowest = Color(0xff1e1f22),
+        outlineVariant = Color(0xff3b3d42),
     ) else lightColorScheme(
-        primary = Color(0xff00696e), onPrimary = Color.White, secondary = Color(0xff00696e),
-        primaryContainer = Color(0xffc9ecee), onPrimaryContainer = Color(0xff002022),
-        secondaryContainer = Color(0xffc9ecee), onSecondaryContainer = Color(0xff002022),
-        background = Color(0xfff4f6f7), surface = Color(0xfff4f6f7), surfaceTint = Color(0xff00696e),
-        onBackground = Color(0xff18272d), onSurface = Color(0xff18272d),
-        surfaceVariant = Color(0xffe0e6e8), onSurfaceVariant = Color(0xff46555c), surfaceContainer = Color(0xffe6ebed),
+        primary = Color(0xff2468c9), secondary = Color(0xff2468c9),
+        primaryContainer = Color(0xffdbe9ff), secondaryContainer = Color(0xffdbe9ff),
+        background = Color(0xfff7f7f8), surface = Color(0xfff7f7f8), surfaceTint = Color.Transparent,
+        onBackground = Color(0xff24262b), onSurface = Color(0xff24262b),
+        surfaceVariant = Color(0xffeeeef0), onSurfaceVariant = Color(0xff626670), surfaceContainer = Color(0xffeeeef0), surfaceContainerLow = Color(0xffeeeef0), surfaceContainerHigh = Color(0xffeeeef0), surfaceContainerHighest = Color(0xffeeeef0), surfaceContainerLowest = Color.White,
+        outlineVariant = Color(0xffd7d9df),
     )
-    MaterialTheme(colorScheme = colors) {
+    MaterialTheme(colorScheme = colors, shapes = Shapes(
+        extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), small = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        medium = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), large = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(0.dp))) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -86,20 +94,21 @@ expect fun copyPublicKey(value: String)
                                     Text("연결", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                     TextButton({ adding = true }) { Text("+ 호스트") }
                                 }
-                                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                                     if (local.hosts.isEmpty()) item { Text("SSH 호스트를 추가하여 시작하세요.\n원격 서버에는 SSH와 tmux만 필요합니다.", Modifier.padding(12.dp)) }
                                     items(local.hosts.sortedWith(compareByDescending<HostProfile> { it.favorite }.thenByDescending { it.lastConnected }), key = { it.id }) { host ->
-                                        OutlinedCard(Modifier.fillMaxWidth()) {
+                                        Column(Modifier.fillMaxWidth()) {
                                             Column(Modifier.padding(12.dp)) {
                                                 Text((if (host.favorite) "★ " else "") + host.alias, style = MaterialTheme.typography.titleMedium)
                                                 Text("${host.username}@${host.hostname}:${host.port}", style = MaterialTheme.typography.bodySmall)
                                                 if (host.lastConnected != 0L) Text("최근 연결: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
-                                                Row {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
                                                     TextButton({ model.open(host); explorer = false }) { Text("연결") }
-                                                    TextButton({ edit = host }) { Text("편집") }
-                                                    TextButton({ deletion = host }) { Text("삭제") }
+                                                    Spacer(Modifier.weight(1f))
+                                                    TreeMenu("${host.alias} 메뉴", listOf("편집" to { edit = host }, "삭제…" to { deletion = host }))
                                                 }
                                             }
+                                            HorizontalDivider()
                                         }
                                     }
                                 }
@@ -144,6 +153,8 @@ expect fun copyPublicKey(value: String)
 @Composable private fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, inputAllowed: () -> Boolean) {
     val status by client.status.collectAsState()
     val remote by client.remote.collectAsState()
+    val refreshing by client.refreshing.collectAsState()
+    val expanded = remember(client) { mutableStateMapOf<String, Boolean>() }
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
     val trust by client.trustRequest.collectAsState()
@@ -170,50 +181,56 @@ expect fun copyPublicKey(value: String)
         Phase.MissingSession -> "이전 세션 없음"
         else -> currentSession?.let { "${it.name} (${it.id})" } ?: "선택 안 함"
     }
-    val navigationContent: @Composable () -> Unit = {
-            Column(Modifier.heightIn(max = if (mobileLayout) 480.dp else 220.dp).verticalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
-                if (status.phase == Phase.Shell) Text("일반 SSH 작업은 연결 종료 시 끝날 수 있습니다.", style = MaterialTheme.typography.labelSmall)
-                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    Text("세션", Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
-                    if (remote.sessions.isEmpty() || status.phase == Phase.Shell) Text(
-                        if (status.phase == Phase.Shell) "목록 확인 불가" else if (canBrowse) "세션 없음" else "목록 대기 중",
-                        Modifier.padding(end = 8.dp), style = MaterialTheme.typography.bodySmall)
-                    if (status.phase != Phase.Shell) remote.sessions.forEach { s -> FilterChip(session == s.id, { client.selectSession(s.id) }, enabled = canBrowse, label = { Text("${s.name} · ${s.attached}") }) }
-                    TextButton({ namePrompt = "세션 만들기" to client::createSession }, enabled = canBrowse) { Text("+ 세션") }
-                    TextButton({ client.refresh() }, enabled = canBrowse) { Text("새로고침") }
+    val navigationContent: @Composable (Modifier) -> Unit = { modifier ->
+        Column(modifier.heightIn(max = if (mobileLayout) 480.dp else 280.dp).verticalScroll(rememberScrollState())) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("세션", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                TextButton({ namePrompt = "세션 만들기" to client::createSession }, enabled = canBrowse) { Text("+") }
+                TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), tooltip = { PlainTooltip { Text("세션 새로고침") } }, state = rememberTooltipState()) {
+                    IconButton({ client.refresh() }, enabled = canBrowse && !refreshing, modifier = Modifier.semantics { contentDescription = "세션 새로고침" }) { Text("↻") }
                 }
-                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    Text("창", Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
-                    if (session == null || status.phase == Phase.Shell) Text("세션을 선택하세요.", Modifier.padding(end = 8.dp), style = MaterialTheme.typography.bodySmall)
-                    if (status.phase != Phase.Shell) remote.windows.filter { it.session == session }.forEach { window ->
-                        FilterChip(currentWindow?.id == window.id, {
-                            remote.panes.firstOrNull { it.window == window.id && it.active }?.let { client.selectPane(it.id) }
-                        }, enabled = canBrowse, label = { Text(window.name) })
+            }
+            if (status.phase == Phase.Shell) Text("일반 SSH · tmux 목록 확인 불가", Modifier.padding(16.dp))
+            else if (remote.sessions.isEmpty()) Text(if (canBrowse) "세션 없음 · + 버튼으로 생성" else "목록 대기 중", Modifier.padding(16.dp))
+            remote.sessions.forEach { s ->
+                TreeRow(s.name, 0, session == s.id, expanded[s.id] == true, { expanded[s.id] = expanded[s.id] != true },
+                    { client.selectTarget(s.id) }, canBrowse, listOf(
+                        "+ 창" to { namePrompt = "창 만들기" to { client.manage(TmuxCommand.newWindow(s.id, it)) } },
+                        "이름 변경" to { namePrompt = "세션 이름 변경" to { client.manage(TmuxCommand.renameSession(s.id, it)) } },
+                        "삭제…" to { deletion = "세션 ${s.name}" to { client.manage(TmuxCommand.killSession(s.id)) } },
+                    ))
+                if (expanded[s.id] == true) remote.windows.filter { it.session == s.id }.forEach { w ->
+                    val key = "${s.id}/${w.id}"
+                    TreeRow(w.name, 1, session == s.id && currentWindow?.id == w.id, expanded[key] == true, { expanded[key] = expanded[key] != true },
+                        { client.selectTarget(s.id, w.id) }, canBrowse, listOf(
+                            "이름 변경" to { namePrompt = "창 이름 변경" to { client.manage(TmuxCommand.renameWindow(w.id, it)) } },
+                            "삭제…" to { deletion = "창 ${w.name}" to { client.manage(TmuxCommand.killWindow(w.id)) } },
+                        ))
+                    if (expanded[key] == true) remote.panes.filter { it.window == w.id }.forEach { p ->
+                        TreeRow("${p.id} ${p.command} ${p.width}×${p.height}", 2, session == s.id && pane == p.id, null, {},
+                            { client.selectTarget(s.id, w.id, p.id) }, canBrowse, listOf(
+                                "삭제…" to { deletion = "패널 ${p.id}" to { client.manage(TmuxCommand.killPane(p.id)) } },
+                            ))
                     }
-                    TextButton({ session?.let { target -> namePrompt = "창 만들기" to { client.manage(TmuxCommand.newWindow(target, it)) } } }, enabled = canManage && session != null) { Text("+ 창") }
                 }
-                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    Text("패널", Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
-                    if (currentWindow == null || status.phase == Phase.Shell) Text("창을 선택하세요.", Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall)
-                    if (status.phase != Phase.Shell) remote.panes.filter { it.window == currentWindow?.id }.forEach { p ->
-                        FilterChip(pane == p.id, { client.selectPane(p.id) }, enabled = canBrowse, label = { Text("${p.id} ${p.command} ${p.width}×${p.height}" + if (p.mode.isNotEmpty()) " · ${p.mode}" else "") })
-                    }
+            }
+            HorizontalDivider()
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                TextButton({ pane?.let { client.manage(TmuxCommand.split(it, true)) } }, enabled = canManage && pane != null) { Text("tmux 패널 분할 ↔") }
+                TextButton({ pane?.let { client.manage(TmuxCommand.split(it, false)) } }, enabled = canManage && pane != null) { Text("tmux 패널 분할 ↕") }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (label, direction) ->
+                    TextButton({ pane?.let { client.manage(TmuxCommand.focusPane(it, direction)) } }, enabled = canManage && pane != null) { Text("포커스 $label") }
                 }
-                // Keep controls discoverable in every connection mode and preserve their
-                // height during snapshot restoration so resize cannot trigger a loop.
-                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    Text("조작", Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
-                    TextButton({ pane?.let { client.manage(TmuxCommand.split(it, true)) } }, enabled = canManage && pane != null) { Text("좌우 분할") }
-                    TextButton({ pane?.let { client.manage(TmuxCommand.split(it, false)) } }, enabled = canManage && pane != null) { Text("상하 분할") }
-                    listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (label, direction) -> TextButton({ pane?.let { client.manage(TmuxCommand.resizePane(it, direction)) } }, enabled = canManage && pane != null) { Text("크기 $label") } }
-                    TextButton({ session?.let { target -> namePrompt = "세션 이름 변경" to { client.manage(TmuxCommand.renameSession(target, it)) } } }, enabled = canManage && session != null) { Text("세션 이름") }
-                    TextButton({ currentWindow?.let { target -> namePrompt = "창 이름 변경" to { client.manage(TmuxCommand.renameWindow(target.id, it)) } } }, enabled = canManage && currentWindow != null) { Text("창 이름") }
-                    TextButton({ pane?.let { target -> deletion = "패널 $target (${currentPane?.command})" to { client.manage(TmuxCommand.killPane(target)) } } }, enabled = canManage && pane != null) { Text("패널 삭제") }
-                    TextButton({ currentWindow?.let { target -> deletion = "창 ${target.name}" to { client.manage(TmuxCommand.killWindow(target.id)) } } }, enabled = canManage && currentWindow != null) { Text("창 삭제") }
-                    TextButton({ session?.let { target -> deletion = "세션 ${currentSession?.name}" to { client.manage(TmuxCommand.killSession(target)) } } }, enabled = canManage && session != null) { Text("세션 삭제") }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (label, direction) ->
+                    TextButton({ pane?.let { client.manage(TmuxCommand.resizePane(it, direction)) } }, enabled = canManage && pane != null) { Text("경계$label") }
                 }
             }
         }
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
@@ -232,7 +249,7 @@ expect fun copyPublicKey(value: String)
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             TextButton({ navigation = !navigation }) { Text(if (navigation) "tmux 접기" else "tmux 관리") }
         }
-        if (navigation && !mobileLayout) navigationContent()
+        if (navigation && !mobileLayout) navigationContent(Modifier)
         if (currentPane?.mode?.isNotBlank() == true) Text("tmux ${currentPane.mode} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
             PlatformTerminal(client, preferences, Modifier.fillMaxSize())
@@ -243,9 +260,9 @@ expect fun copyPublicKey(value: String)
             }
         }
     }
-    if (mobileLayout && navigation) ModalBottomSheet(onDismissRequest = { navigation = false }) {
+    if (mobileLayout && navigation) ModalBottomSheet(onDismissRequest = { navigation = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Text("tmux 세션 · 창 · 패널", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
-        navigationContent()
+        navigationContent(Modifier.weight(1f, fill = false))
         TextButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text("터미널로 돌아가기") }
     }
     trust?.let { request ->
@@ -261,6 +278,28 @@ expect fun copyPublicKey(value: String)
     notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { TextButton({ client.notice.value = null }) { Text("닫기") } }) }
 }
 
+@Composable private fun TreeMenu(label: String, actions: List<Pair<String, () -> Unit>>, enabled: Boolean = true) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        IconButton({ menu = true }, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { Text("…") }
+        DropdownMenu(menu, { menu = false }) {
+            actions.forEach { (text, action) -> DropdownMenuItem(text = { Text(text) }, onClick = { menu = false; action() }) }
+        }
+    }
+}
+@Composable private fun TreeRow(label: String, depth: Int, active: Boolean, expanded: Boolean?, toggle: () -> Unit,
+    select: () -> Unit, enabled: Boolean, actions: List<Pair<String, () -> Unit>>) {
+    Row(Modifier.fillMaxWidth().background(if (active) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+        .padding(start = (depth * 18).dp).semantics { selected = active }, verticalAlignment = Alignment.CenterVertically) {
+        if (expanded != null) IconButton(toggle, modifier = Modifier.semantics { contentDescription = "$label ${if (expanded) "접기" else "펼치기"}" }) { Text(if (expanded) "▾" else "▸") }
+        else Spacer(Modifier.width(48.dp))
+        TextButton(select, enabled = enabled, shape = RectangleShape, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+            Text(label, Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        TreeMenu("$label 메뉴", actions, enabled)
+    }
+}
+
 @Composable private fun HostEditor(model: AppModel, original: HostProfile?, mobileLayout: Boolean, dismiss: () -> Unit) {
     var alias by remember { mutableStateOf(original?.alias ?: "") }
     var hostname by remember { mutableStateOf(original?.hostname ?: "") }
@@ -270,11 +309,12 @@ expect fun copyPublicKey(value: String)
     var password by remember { mutableStateOf("") }
     var privateKey by remember { mutableStateOf("") }
     var passphrase by remember { mutableStateOf("") }
+    var showPassword by remember(auth) { mutableStateOf(false) }
     var favorite by remember { mutableStateOf(original?.favorite ?: false) }
     var generatedPublic by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text(if (original == null) "SSH 호스트 추가" else "호스트 편집") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(0.dp)) {
             OutlinedTextField(alias, { alias = it }, label = { Text("별칭") }, singleLine = true)
             OutlinedTextField(hostname, { hostname = it }, label = { Text("호스트 / IP") }, singleLine = true)
             Row {
@@ -284,11 +324,22 @@ expect fun copyPublicKey(value: String)
             }
             Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(favorite, { favorite = it }); Text("즐겨찾기") }
             Row { FilterChip(auth == AuthKind.Password, { auth = AuthKind.Password }, label = { Text("비밀번호") }); Spacer(Modifier.width(8.dp)); FilterChip(auth == AuthKind.PrivateKey, { auth = AuthKind.PrivateKey }, label = { Text("개인키") }) }
-            if (auth == AuthKind.Password) OutlinedTextField(password, { password = it }, label = { Text(if (original == null) "비밀번호" else "새 비밀번호 (비우면 기존 유지)") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+            val passwordTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation()
+            val showPasswordControl: @Composable () -> Unit = {
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(showPassword, role = Role.Checkbox, onValueChange = { showPassword = it }), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(showPassword, onCheckedChange = null, modifier = Modifier.padding(12.dp))
+                    Text("비밀번호 표시")
+                }
+            }
+            if (auth == AuthKind.Password) {
+                OutlinedTextField(password, { password = it }, label = { Text(if (original == null) "비밀번호" else "새 비밀번호 (비우면 기존 유지)") }, visualTransformation = passwordTransformation, singleLine = true)
+                showPasswordControl()
+            }
             else {
                 ImportKeyButton({ privateKey = it; generatedPublic = null }, { error = it })
                 Text(if (privateKey.isEmpty()) "Ed25519 / RSA · 암호화 키 지원" else "개인키를 가져왔습니다.", style = MaterialTheme.typography.labelSmall)
-                OutlinedTextField(passphrase, { passphrase = it }, label = { Text("키 암호") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                OutlinedTextField(passphrase, { passphrase = it }, label = { Text("키 암호") }, visualTransformation = passwordTransformation, singleLine = true)
+                showPasswordControl()
                 TextButton({ try { val generated = model.keys.ed25519(); privateKey = generated.credential.privateKey; passphrase = ""; generatedPublic = generated.publicKey } catch (_: Exception) { error = "키 생성 실패" } }) { Text("Ed25519 키 생성") }
                 if (privateKey.isNotEmpty() || original?.auth == AuthKind.PrivateKey) {
                     Text("공개키를 서버의 authorized_keys에 등록하세요.")

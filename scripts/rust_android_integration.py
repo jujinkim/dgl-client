@@ -26,7 +26,7 @@ def main():
                "key": Path(os.environ["DGL_TEST_KEY_FILE"]).read_text(), "rsa": Path(os.environ["DGL_TEST_RSA_FILE"]).read_text(),
                "encrypted": Path(os.environ["DGL_TEST_ENCRYPTED_FILE"]).read_text(), "passphrase": os.environ["DGL_TEST_PASSPHRASE"]}
     try:
-        for name in ["rust-light", "rust-dark", "rust-editor", "ui-failure"]:
+        for name in ["rust-light", "rust-dark", "rust-editor", "rust-tree", "ui-failure", "volume-ui-failure"]:
             (out / f"{name}.png").unlink(missing_ok=True)
             run(["shell", "run-as", "kim.jujin.rovessh", "rm", "-f", f"cache/{name}.png"])
         run(["shell", "settings", "put", "system", "font_scale", "1.3"])
@@ -38,7 +38,7 @@ def main():
         output = result.stdout.decode()
         (out / "api36-instrumentation.txt").write_text(output)
         print(output)
-        for name in ["rust-light", "rust-dark", "rust-editor", "ui-failure"]:
+        for name in ["rust-light", "rust-dark", "rust-editor", "rust-tree", "ui-failure", "volume-ui-failure"]:
             image = subprocess.run(base + ["exec-out", "run-as", "kim.jujin.rovessh", "cat", f"cache/{name}.png"], capture_output=True)
             if image.returncode == 0 and image.stdout.startswith(b"\x89PNG"):
                 (out / f"{name}.png").write_bytes(image.stdout)

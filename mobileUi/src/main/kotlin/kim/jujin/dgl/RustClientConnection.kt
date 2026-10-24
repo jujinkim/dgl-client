@@ -15,6 +15,8 @@ class RustClientConnection(
     private val local: StateFlow<LocalState>,
     private val updateLocal: ((LocalState) -> LocalState) -> Unit,
 ) : ClientConnection {
+    override val refreshing = MutableStateFlow(false)
+    @Volatile private var refreshRequest: ULong? = null
     override val status = MutableStateFlow(ConnectionStatus())
     override val remote = MutableStateFlow(RemoteState())
     override val session = MutableStateFlow<String?>(null)
@@ -67,6 +69,11 @@ class RustClientConnection(
                     }
                     json.parseToJsonElement(connection.completionsJson()).jsonArray.forEach { result ->
                         val record = result.jsonObject
+                        synchronized(this@RustClientConnection) {
+                            if (current == epoch && record["request_id"]?.jsonPrimitive?.content?.toULongOrNull() == refreshRequest) {
+                                refreshRequest = null; refreshing.value = false
+                            }
+                        }
                         val input = record["request_id"]?.jsonPrimitive?.content?.toULongOrNull()?.let { inputRequests.remove(it) } == true
                         record["error"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content?.let { code ->
                             if (input || code !in setOf("Cancelled", "StaleGeneration")) notice.value = message(code)
@@ -158,15 +165,26 @@ class RustClientConnection(
         } catch (_: Exception) { notice.value = "호스트키를 보호 저장소에 저장하지 못했습니다. 연결을 중단했습니다."; disconnect() }
     }
     private fun action(value: JsonObject) { try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = "요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요." } }
+    override fun selectTarget(session: String, window: String?, pane: String?) = action(buildJsonObject {
+        put("action", "selectTarget"); put("session", session)
+        window?.let { put("window", it) }; pane?.let { put("pane", it) }
+    })
     override fun selectSession(id: String) = action(buildJsonObject { put("action", "selectSession"); put("id", id) })
     override fun selectPane(id: String) = action(buildJsonObject { put("action", "selectPane"); put("id", id) })
     override fun createSession(name: String) = manage(TmuxCommand.newSession(name))
     override fun manage(command: TmuxCommand) { val op = command.nativeOperation ?: return; action(buildJsonObject { put("action", "manage"); put("operation", op) }) }
-    override fun refresh() = action(buildJsonObject { put("action", "refresh") })
+    @Synchronized override fun refresh() {
+        if (refreshing.value) return
+        val c = native ?: return
+        refreshing.value = true
+        try { refreshRequest = c.submitAction(buildJsonObject { put("action", "refresh") }.toString()) }
+        catch (_: Exception) { refreshing.value = false; notice.value = "세션 목록을 조회하지 못했습니다." }
+    }
     override fun restore() = action(buildJsonObject { put("action", "snapshot") })
     override fun resize(value: Size) { if (value == size) return; size = value; action(buildJsonObject { put("action", "resize"); put("columns", value.columns); put("rows", value.rows) }) }
     override fun input(bytes: ByteArray) { val c = native ?: return; if (!status.value.acceptsInput) return; try { c.targetJson()?.let { inputRequests.add(c.submitInput(it, bytes)) } } catch (_: Exception) { notice.value = "입력을 전송하지 않았습니다. 대기열 또는 연결 상태를 확인하세요." } }
     @Synchronized private fun detach() {
+        refreshRequest = null; refreshing.value = false
         cleanup.removeAll { it.isCompleted }
         val old = native; native = null; val state = stateJob; stateJob = null; val output = outputJob; outputJob = null
         val id = subscription; subscription = null
