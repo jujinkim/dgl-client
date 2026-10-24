@@ -13,6 +13,8 @@
   // Remote escape sequences cannot access the clipboard.
   term.parser.registerOscHandler(52, () => true);
   term.onData(data => { if (new TextEncoder().encode(data).length <= 65536) post({ type: 'input', data }); });
+  // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
+  term.onBinary(data => { if (data.length <= 65536) post({ type: 'input-binary', data }); });
   let resizingRemote = false;
   term.onResize(({ cols, rows }) => { if (!resizingRemote) post({ type: 'resize', columns: cols, rows }); });
   window.resizePane = (columns, rows) => {

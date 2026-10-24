@@ -14,7 +14,11 @@ use dgl_core::{
 };
 use gpui::{prelude::*, *};
 use std::{collections::HashSet, ops::Range, sync::Arc};
+mod input;
+#[cfg(test)]
+mod input_tests;
 mod paint;
+use input::{ScrollAccumulator, button_code, key_sequence, mouse_modifiers, mouse_sequence};
 use paint::{CellLayer, paint_grid};
 #[derive(Clone)]
 struct Listener(Arc<Connection>);
@@ -50,6 +54,9 @@ pub struct Terminal {
     marked: String,
     selection: Range<usize>,
     dragging: bool,
+    mouse_button: Option<MouseButton>,
+    last_mouse: Option<(CellPoint, u8)>,
+    scroll: ScrollAccumulator,
     requested: Size,
     sent_size: Size,
     resize_request: Option<u64>,
@@ -85,6 +92,9 @@ impl Terminal {
             marked: String::new(),
             selection: 0..0,
             dragging: false,
+            mouse_button: None,
+            last_mouse: None,
+            scroll: ScrollAccumulator::default(),
             requested: Size::default(),
             sent_size: Size::default(),
             resize_request: None,
@@ -128,6 +138,10 @@ impl Terminal {
         }
     }
     fn begin_snapshot(&mut self, pane: &str, reset: &[u8]) {
+        self.dragging = false;
+        self.mouse_button = None;
+        self.last_mouse = None;
+        self.scroll = ScrollAccumulator::default();
         // A resize or moving a tab must not discard local history/scroll position.
         // Reset terminal modes, then restore the primary grid's history and clear only its viewport.
         let same_pane = self.displayed_pane.as_deref() == Some(pane);
@@ -221,72 +235,165 @@ impl Terminal {
             cx.stop_propagation();
             return;
         }
-        if crate::platform::app_shortcut(&k.modifiers) {
+        if crate::platform::terminal_app_shortcut(k) {
             // Let the containing app handle its shortcuts without sending a
             // control byte to the remote shell first.
             return;
         }
-        let application = self.term.mode().contains(TermMode::APP_CURSOR);
-        let sequence = match k.key.as_str() {
-            "enter" => Some("\r"),
-            "backspace" => Some("\x7f"),
-            "tab" => Some(if k.modifiers.shift { "\x1b[Z" } else { "\t" }),
-            "escape" => Some("\x1b"),
-            "up" => Some(if application { "\x1bOA" } else { "\x1b[A" }),
-            "down" => Some(if application { "\x1bOB" } else { "\x1b[B" }),
-            "right" => Some(if application { "\x1bOC" } else { "\x1b[C" }),
-            "left" => Some(if application { "\x1bOD" } else { "\x1b[D" }),
-            "home" => Some("\x1b[H"),
-            "end" => Some("\x1b[F"),
-            "delete" => Some("\x1b[3~"),
-            "f1" => Some("\x1bOP"),
-            "f2" => Some("\x1bOQ"),
-            "f3" => Some("\x1bOR"),
-            "f4" => Some("\x1bOS"),
-            "f5" => Some("\x1b[15~"),
-            "f6" => Some("\x1b[17~"),
-            "f7" => Some("\x1b[18~"),
-            "f8" => Some("\x1b[19~"),
-            "f9" => Some("\x1b[20~"),
-            "f10" => Some("\x1b[21~"),
-            "f11" => Some("\x1b[23~"),
-            "f12" => Some("\x1b[24~"),
-            "pageup" => Some("\x1b[5~"),
-            "pagedown" => Some("\x1b[6~"),
-            _ => None,
-        };
-        if let Some(seq) = sequence {
-            self.send(seq.as_bytes().to_vec());
-            cx.stop_propagation();
-        } else if k.modifiers.control && k.key.len() == 1 {
-            let b = k.key.as_bytes()[0].to_ascii_uppercase();
-            if (b'@'..=b'_').contains(&b) {
-                self.send(vec![b & 31]);
-                cx.stop_propagation();
-            }
-        } else if k.modifiers.alt && k.key.len() == 1 {
-            self.send(format!("\x1b{}", k.key).into_bytes());
+        if let Some(bytes) = key_sequence(k, *self.term.mode()) {
+            self.send(bytes);
             cx.stop_propagation();
         }
     }
-    fn mouse_report(&mut self, p: Point<Pixels>, code: u8, release: bool) -> bool {
-        if self.term.mode().intersects(TermMode::MOUSE_MODE)
-            && self.term.mode().contains(TermMode::SGR_MOUSE)
-        {
-            let cell = self.point(p);
-            self.send(
-                format!(
-                    "\x1b[<{code};{};{}{}",
-                    cell.column.0 + 1,
-                    (cell.line.0 + self.term.grid().display_offset() as i32 + 1).max(1),
-                    if release { 'm' } else { 'M' }
-                )
-                .into_bytes(),
-            );
-            true
-        } else {
-            false
+    fn mouse_active(&self, modifiers: Modifiers) -> bool {
+        self.enabled && !modifiers.shift && self.term.mode().intersects(TermMode::MOUSE_MODE)
+    }
+    fn mouse_report(&mut self, p: Point<Pixels>, code: u8, release: bool, modifiers: Modifiers) {
+        if !self.enabled {
+            return;
         }
+        let mut cell = self.point(p);
+        cell.line.0 += self.term.grid().display_offset() as i32;
+        let state = (cell, (code & !32) + mouse_modifiers(modifiers));
+        if code & 32 != 0 && self.last_mouse == Some(state) {
+            return;
+        }
+        if let Some(bytes) = mouse_sequence(
+            *self.term.mode(),
+            cell.column.0,
+            cell.line.0 as usize,
+            code,
+            release,
+            modifiers,
+        ) {
+            self.send(bytes);
+            self.last_mouse = if release { None } else { Some(state) };
+        }
+    }
+    fn mouse_down(&mut self, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.enabled {
+            return;
+        }
+        let Some(code) = button_code(e.button) else {
+            return;
+        };
+        window.focus(&self.focus);
+        if self.mouse_active(e.modifiers) {
+            self.dragging = false;
+            self.term.selection = None;
+            self.mouse_button = Some(e.button);
+            self.mouse_report(e.position, code, false, e.modifiers);
+        } else if e.button == MouseButton::Left {
+            self.dragging = true;
+            self.term.selection = Some(Selection::new(
+                SelectionType::Simple,
+                self.point(e.position),
+                Side::Left,
+            ));
+        }
+        cx.notify();
+    }
+    fn mouse_move(&mut self, e: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.enabled {
+            return;
+        }
+        if self.dragging && e.pressed_button == Some(MouseButton::Left) {
+            let p = self.point(e.position);
+            if let Some(s) = self.term.selection.as_mut() {
+                s.update(p, Side::Right);
+            }
+            cx.notify();
+            return;
+        }
+        if !self.bounds.contains(&e.position) {
+            self.last_mouse = None;
+            return;
+        }
+        if !self.mouse_active(e.modifiers) {
+            self.last_mouse = None;
+            return;
+        }
+        let mode = self.term.mode();
+        let button = e.pressed_button.filter(|b| self.mouse_button == Some(*b));
+        if e.pressed_button.is_some() && button.is_none() {
+            return;
+        }
+        if mode.contains(TermMode::MOUSE_MOTION)
+            || (mode.contains(TermMode::MOUSE_DRAG) && button.is_some())
+        {
+            self.mouse_report(
+                e.position,
+                32 + button.and_then(button_code).unwrap_or(3),
+                false,
+                e.modifiers,
+            );
+        }
+    }
+    fn mouse_up(&mut self, e: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
+        if e.button == MouseButton::Left {
+            self.dragging = false;
+        }
+        if self.mouse_button == Some(e.button) {
+            self.mouse_button = None;
+            // Finish a remote press even if Shift was pressed or the pointer left the grid.
+            if let Some(code) = button_code(e.button) {
+                self.mouse_report(e.position, code, true, e.modifiers);
+            }
+        }
+    }
+    fn scroll_wheel(&mut self, e: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.enabled {
+            return;
+        }
+        let mode = *self.term.mode();
+        let [horizontal, vertical] =
+            self.scroll
+                .steps(e.delta, e.touch_phase, self.cell_size(), mode, e.modifiers);
+        if self.mouse_active(e.modifiers) {
+            for (steps, positive, negative) in [(vertical, 64, 65), (horizontal, 66, 67)] {
+                // One write per wheel event avoids flooding the connection request queue.
+                let mut cell = self.point(e.position);
+                cell.line.0 += self.term.grid().display_offset() as i32;
+                if steps != 0
+                    && let Some(bytes) = mouse_sequence(
+                        mode,
+                        cell.column.0,
+                        cell.line.0 as usize,
+                        if steps > 0 { positive } else { negative },
+                        false,
+                        e.modifiers,
+                    )
+                {
+                    self.send(
+                        bytes.repeat(
+                            (steps.unsigned_abs() as usize)
+                                .min(dgl_core::input::MAX_INPUT / bytes.len()),
+                        ),
+                    );
+                }
+            }
+        } else if !e.modifiers.shift
+            && mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL)
+        {
+            if vertical != 0 {
+                let key = Keystroke {
+                    key: if vertical > 0 { "up" } else { "down" }.into(),
+                    modifiers: Modifiers::default(),
+                    key_char: None,
+                };
+                let bytes = key_sequence(&key, mode).unwrap();
+                self.send(
+                    bytes.repeat(
+                        (vertical.unsigned_abs() as usize)
+                            .min(dgl_core::input::MAX_INPUT / bytes.len()),
+                    ),
+                );
+            }
+        } else {
+            self.term.scroll_display(Scroll::Delta(vertical));
+        }
+        cx.stop_propagation();
+        cx.notify();
     }
 }
 impl Drop for Terminal {
@@ -437,59 +544,15 @@ impl Render for Terminal {
             .bg(rgb(0x11151b))
             .overflow_hidden()
             .on_key_down(cx.listener(Self::key))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, e: &MouseDownEvent, window, cx| {
-                    if !this.enabled {
-                        return;
-                    }
-                    window.focus(&this.focus);
-                    this.dragging = true;
-                    if e.modifiers.shift || !this.mouse_report(e.position, 0, false) {
-                        this.term.selection = Some(Selection::new(
-                            SelectionType::Simple,
-                            this.point(e.position),
-                            Side::Left,
-                        ));
-                    }
-                    cx.notify();
-                }),
-            )
-            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| {
-                if this.dragging {
-                    let p = this.point(e.position);
-                    if let Some(s) = this.term.selection.as_mut() {
-                        s.update(p, Side::Right);
-                    } else {
-                        this.mouse_report(e.position, 32, false);
-                    }
-                    cx.notify();
-                }
-            }))
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|this, e: &MouseUpEvent, _, _| {
-                    this.dragging = false;
-                    if this.term.selection.is_none() {
-                        this.mouse_report(e.position, 0, true);
-                    }
-                }),
-            )
-            .on_mouse_up_out(
-                MouseButton::Left,
-                cx.listener(|this, _, _, _| this.dragging = false),
-            )
-            .on_scroll_wheel(cx.listener(|this, e: &ScrollWheelEvent, _, cx| {
-                if !this.enabled {
-                    return;
-                }
-                let delta = e.delta.pixel_delta(px(this.font_size));
-                let lines = (f32::from(delta.y) / this.font_size).round() as i32;
-                if !this.mouse_report(e.position, if lines > 0 { 64 } else { 65 }, false) {
-                    this.term.scroll_display(Scroll::Delta(lines));
-                }
-                cx.notify();
-            }))
+            .on_any_mouse_down(cx.listener(Self::mouse_down))
+            .on_mouse_move(cx.listener(Self::mouse_move))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
+            .on_mouse_up(MouseButton::Middle, cx.listener(Self::mouse_up))
+            .on_mouse_up(MouseButton::Right, cx.listener(Self::mouse_up))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
+            .on_mouse_up_out(MouseButton::Middle, cx.listener(Self::mouse_up))
+            .on_mouse_up_out(MouseButton::Right, cx.listener(Self::mouse_up))
+            .on_scroll_wheel(cx.listener(Self::scroll_wheel))
             .child(
                 canvas(
                     move |bounds, _, cx| {

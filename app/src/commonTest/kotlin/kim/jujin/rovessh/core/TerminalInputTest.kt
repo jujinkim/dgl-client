@@ -4,6 +4,16 @@ import kotlinx.serialization.json.Json
 import kotlin.test.*
 
 class TerminalInputTest {
+    @Test fun binaryMouseReportsPreserveEveryByteAndRejectInvalidInput() {
+        val data = (0..255).map { it.toChar() }.joinToString("")
+        assertContentEquals(ByteArray(256) { it.toByte() }, TerminalInput.decodeBinary(data))
+        assertContentEquals(byteArrayOf(27, 91, 77, 32, 133.toByte(), 53), TerminalInput.decodeBinary("\u001b[M \u00855"))
+        assertEquals(65536, TerminalInput.decodeBinary("\u00ff".repeat(65536)).size)
+        assertFailsWith<IllegalArgumentException> { TerminalInput.decodeBinary("a".repeat(65537)) }
+        assertFailsWith<IllegalArgumentException> { TerminalInput.decodeBinary("한") }
+        assertFailsWith<IllegalArgumentException> { TerminalInput.decodeBinary("😀") }
+    }
+
     @Test fun everySupportedKeyAndToolbarOrder() {
         val sequences = mapOf(
             TerminalKey.Escape to "\u001b", TerminalKey.Tab to "\t", TerminalKey.Up to "\u001b[A",

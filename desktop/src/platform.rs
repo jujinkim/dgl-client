@@ -74,3 +74,32 @@ pub fn app_shortcut(modifiers: &gpui::Modifiers) -> bool {
         modifiers.platform
     }
 }
+
+pub fn terminal_app_shortcut(key: &gpui::Keystroke) -> bool {
+    if !app_shortcut(&key.modifiers) {
+        return false;
+    }
+    // On Windows only actual app bindings reserve Ctrl+Shift. Other chords,
+    // including Ctrl+Shift+arrows and F10-F12, belong to the remote application.
+    !cfg!(target_os = "windows")
+        || matches!(
+            key.key.as_str(),
+            "c" | "v"
+                | "n"
+                | "s"
+                | "w"
+                | "p"
+                | "r"
+                | "q"
+                | ","
+                | "f1"
+                | "f2"
+                | "f3"
+                | "f4"
+                | "f5"
+                | "f6"
+                | "f7"
+                | "f8"
+                | "f9"
+        )
+}

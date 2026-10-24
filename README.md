@@ -99,6 +99,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 
 데스크톱 대화상자는 첫 입력 항목으로 포커스를 이동하고 `Tab`·`Shift+Tab`으로 입력과 버튼을 순환합니다. 버튼은 Enter/Space, 이름 입력은 Enter로 실행하며 IME 조합 중에는 제출하지 않습니다. `Esc`로 닫으면 이전 포커스로 돌아갑니다. 일반 터미널의 Tab 전송은 유지됩니다. [UX 검증 결과와 범위](docs/UX_WORKSPACE.md)를 참고하세요.
 
+데스크톱 터미널은 휠·트랙패드 이동량, 원격 앱이 요청한 마우스 클릭·드래그·호버, Shift/Ctrl/Alt와 방향키·기능키의 조합을 처리합니다. Shift+마우스는 로컬 선택·스크롤에 사용합니다. Android는 xterm.js의 텍스트·바이너리 입력을 전달합니다. [입력 지원 범위와 검증 결과](docs/TERMINAL_INPUT.md)를 참고하세요.
+
 서버에서 `tmux new-session`, `tmux attach`, `tmux list-sessions`를 그대로 사용할 수 있습니다. 앱은 tmux 서버의 전역 설정·사용자 셸·키 바인딩을 변경하지 않습니다.
 
 tmux는 SSH 기본 PATH, 로그인 셸 PATH, 대표 설치 경로 순서로 탐지합니다. 대표 경로에는 Homebrew·Linuxbrew·MacPorts, `/usr/bin`·`/bin`·`/usr/local/bin`, 사용자 `~/.local/bin`·`~/bin`, Nix·Snap 위치가 포함됩니다. 찾은 절대 경로를 버전 확인·세션 조회·생성·Control Mode 연결에 함께 사용합니다.

@@ -2,6 +2,6 @@
   "name": "dgl-terminal-assets",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "bundle": "node bundle.mjs" },
+  "scripts": { "bundle": "node bundle.mjs", "test": "node --test terminal.test.mjs" },
   "dependencies": { "@xterm/xterm": "6.0.0", "@xterm/addon-fit": "0.11.0" }
 }

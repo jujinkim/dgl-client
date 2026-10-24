@@ -96,6 +96,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                         val bytes = json.getString("data").toByteArray(Charsets.UTF_8)
                         if (bytes.size <= 65536) input(bytes)
                     }
+                    "input-binary" -> input(kim.jujin.rovessh.core.TerminalInput.decodeBinary(json.getString("data")))
                     "resize" -> {
                         val columns = json.getInt("columns"); val rows = json.getInt("rows")
                         if (columns in 2..500 && rows in 2..250) resize(Size(columns, rows))

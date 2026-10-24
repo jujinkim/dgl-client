@@ -50,6 +50,12 @@ import kotlinx.serialization.Serializable
 object TerminalInput {
     const val MAX_BYTES = 64 * 1024
 
+    /** xterm onBinary strings store one raw byte per character, not UTF-8 text. */
+    fun decodeBinary(data: String): ByteArray {
+        require(data.length <= MAX_BYTES && data.all { it.code <= 255 }) { "Invalid terminal binary input" }
+        return ByteArray(data.length) { data[it].code.toByte() }
+    }
+
     /** Text newlines mean Enter; typed backslash sequences remain literal. No implicit Enter. */
     fun encode(steps: List<MacroStep>): ByteArray {
         var size = 0
