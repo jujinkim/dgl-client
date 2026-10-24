@@ -176,7 +176,6 @@ expect fun copyPublicKey(value: String)
     val currentWindow = remote.windows.firstOrNull { it.id == currentPane?.window && it.session == session }
     val currentSession = remote.sessions.firstOrNull { it.id == session }
     val canBrowse = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
-    val canManage = status.phase == Phase.Ready
     val sessionLabel = when (status.phase) {
         Phase.Shell -> "없음 · 일반 SSH"
         Phase.Disconnected, Phase.Failed -> "연결 안 됨"
@@ -218,21 +217,6 @@ expect fun copyPublicKey(value: String)
                     }
                 }
             }
-            HorizontalDivider()
-            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                TextButton({ pane?.let { client.manage(TmuxCommand.split(it, true)) } }, enabled = canManage && pane != null) { Text("tmux 패널 분할 ↔") }
-                TextButton({ pane?.let { client.manage(TmuxCommand.split(it, false)) } }, enabled = canManage && pane != null) { Text("tmux 패널 분할 ↕") }
-            }
-            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (label, direction) ->
-                    TextButton({ pane?.let { client.manage(TmuxCommand.focusPane(it, direction)) } }, enabled = canManage && pane != null) { Text("포커스 $label") }
-                }
-            }
-            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (label, direction) ->
-                    TextButton({ pane?.let { client.manage(TmuxCommand.resizePane(it, direction)) } }, enabled = canManage && pane != null) { Text("경계$label") }
-                }
-            }
         }
     }
     Column(Modifier.fillMaxSize()) {
@@ -261,6 +245,9 @@ expect fun copyPublicKey(value: String)
         }
         if (navigation && !mobileLayout) navigationContent(Modifier)
         if (currentPane?.mode?.isNotBlank() == true) Text("tmux ${currentPane.mode} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
+        TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
+            deletion = "패널 $target" to { client.manage(TmuxCommand.killPane(target)) }
+        }
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
             CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
                 PlatformTerminal(client, preferences, Modifier.fillMaxSize())

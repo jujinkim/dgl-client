@@ -37,7 +37,12 @@ impl Desktop {
             self.expanded.insert(id);
         }
     }
-    fn group_focus(&mut self, group: GroupId, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn group_focus(
+        &mut self,
+        group: GroupId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.workspace.active = group;
         if let Some(t) = self.active_tab() {
             window.focus(&t.terminal.focus_handle(cx));
@@ -769,6 +774,7 @@ impl Desktop {
         if let Some(tab) = selected.and_then(|tid| self.tabs.iter().find(|t| t.id == tid)) {
             let terminal = tab.terminal.clone();
             let state = tab.connection.state();
+            body = body.child(self.render_pane_toolbar(tab, cx));
             if state.can_retry_now() {
                 let retry_connection = tab.connection.clone();
                 let stop_connection = tab.connection.clone();
@@ -1230,71 +1236,19 @@ impl Desktop {
                 }
             }
         }
-        let mut controls = div()
-            .flex()
-            .flex_wrap()
-            .text_xs()
-            .p_2()
-            .border_t_1()
-            .border_color(rgb(p.line));
-        for (horizontal, label) in [(true, "tmux 패널 분할 ↔"), (false, "tmux 패널 분할 ↕")]
-        {
-            let c = connection.clone();
-            let pane = state.pane.clone();
-            let ready = state.phase == Phase::Ready;
-            controls = controls.child(
-                self.button(label, label, cx, move |s, _, _| {
-                    if ready && let Some(target) = pane.clone() {
-                        s.submit(
-                            &c,
-                            Action::Manage {
-                                operation: Operation::Split { target, horizontal },
-                            },
-                        );
-                    }
+        tree.child(
+            div()
+                .flex()
+                .text_xs()
+                .when(!state.can_retry_now(), |d| {
+                    d.child(self.button("reconnect", "재접속", cx, |s, _, cx| s.reconnect(cx)))
                 })
-                .when(!ready, |d| d.opacity(0.35)),
-            );
-        }
-        for (direction, arrow) in [('L', "←"), ('R', "→"), ('U', "↑"), ('D', "↓")] {
-            for focus in [true, false] {
-                let c = connection.clone();
-                let pane = state.pane.clone();
-                let ready = state.phase == Phase::Ready;
-                let label = format!("{}{arrow}", if focus { "포커스 " } else { "경계" });
-                controls = controls.child(
-                    self.button(label.clone(), label, cx, move |s, _, _| {
-                        if ready && let Some(target) = pane.clone() {
-                            s.submit(
-                                &c,
-                                Action::Manage {
-                                    operation: if focus {
-                                        Operation::FocusPane { target, direction }
-                                    } else {
-                                        Operation::ResizePane { target, direction }
-                                    },
-                                },
-                            );
-                        }
-                    })
-                    .when(!ready, |d| d.opacity(0.35)),
-                );
-            }
-        }
-        tree.child(controls)
-            .child(
-                div()
-                    .flex()
-                    .text_xs()
-                    .when(!state.can_retry_now(), |d| {
-                        d.child(self.button("reconnect", "재접속", cx, |s, _, cx| s.reconnect(cx)))
-                    })
-                    .child(self.button("disconnect", "연결 종료", cx, |s, _, _| {
-                        if let Some(id) = s.workspace.selected() {
-                            s.close_tab(id);
-                        }
-                    })),
-            )
-            .into_any_element()
+                .child(self.button("disconnect", "연결 종료", cx, |s, _, _| {
+                    if let Some(id) = s.workspace.selected() {
+                        s.close_tab(id);
+                    }
+                })),
+        )
+        .into_any_element()
     }
 }

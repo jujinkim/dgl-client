@@ -5,6 +5,7 @@
 
 mod launcher;
 mod modal;
+mod pane_toolbar;
 mod platform;
 mod storage;
 mod terminal;

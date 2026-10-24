@@ -114,9 +114,8 @@ class AndroidVolumeKeyTest {
                 withTimeout(10000) { first.status.first { it.phase == Phase.Shell }; second.status.first { it.phase == Phase.Shell } }
                 waitForText("Esc"); delay(200)
                 waitForText("현재 세션: 없음 · 일반 SSH")
-                click("tmux 관리")
-                waitForText("일반 SSH · tmux 목록 확인 불가")
-                listOf("+", "tmux 패널 분할 ↔", "tmux 패널 분할 ↕", "포커스 ←").forEach { label ->
+                waitForText("tmux 패널 도구")
+                listOf("tmux 패널 분할 ↔", "tmux 패널 분할 ↕", "포커스 ←", "현재 tmux 패널 닫기").forEach { label ->
                     val text = waitForText(label)
                     assertTrue("Tmux actions must remain visible: $label", text.isVisibleToUser)
                     // Compose exposes the label separately from the disabled action node.
@@ -125,6 +124,10 @@ class AndroidVolumeKeyTest {
                         ancestors.joinToString { "${it.className}(enabled=${it.isEnabled}, clickable=${it.isClickable})" },
                         ancestors.any { !it.isEnabled })
                 }
+                click("tmux 관리")
+                waitForText("일반 SSH · tmux 목록 확인 불가")
+                val newSession = waitForText("+")
+                assertTrue(generateSequence(newSession) { it.parent }.any { !it.isEnabled })
                 press(scenario, false)
                 click("터미널로 돌아가기")
                 waitForText("현재 세션: 없음 · 일반 SSH")
@@ -138,7 +141,7 @@ class AndroidVolumeKeyTest {
                 assertEquals(Phase.Shell, first.status.value.phase)
                 assertNull(withTimeoutOrNull(200) { firstWire.writes.receive() })
                 click("tmux 관리")
-                waitForText("tmux 패널 분할 ↔")
+                waitForText("일반 SSH · tmux 목록 확인 불가")
                 press(scenario, false)
                 click("터미널로 돌아가기"); delay(200)
                 press(scenario, true)

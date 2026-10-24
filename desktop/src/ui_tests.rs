@@ -320,6 +320,64 @@ fn group_split_drag_move_merge_and_terminal_identity(cx: &mut TestAppContext) {
     assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 2);
 }
 
+#[gpui::test]
+fn pane_toolbars_stay_above_each_terminal_and_disable_unavailable_actions(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx);
+    let first = add_terminal(&view, cx);
+    view.update(cx, |s, cx| {
+        assert!(
+            s.workspace
+                .split(1, super::workspace::Axis::Horizontal, 1200., 800.)
+        );
+        cx.notify();
+    });
+    let second = add_terminal(&view, cx);
+    cx.simulate_resize(gpui::size(px(850.), px(600.)));
+    redraw(cx);
+    let toolbar1 = cx.debug_bounds("tmux-toolbar-1").unwrap();
+    let toolbar2 = cx.debug_bounds("tmux-toolbar-2").unwrap();
+    let header1 = cx.debug_bounds("group-header-1").unwrap();
+    let header2 = cx.debug_bounds("group-header-2").unwrap();
+    assert!(toolbar1.top() >= header1.bottom());
+    assert!(toolbar2.top() >= header2.bottom());
+    assert!(toolbar1.right() <= header1.right());
+    assert!(toolbar2.right() <= header2.right());
+    assert!(cx.debug_bounds("terminal").unwrap().top() >= toolbar2.bottom());
+    for (toolbar, category) in [
+        (toolbar1, "tmux-category-1-split"),
+        (toolbar1, "tmux-category-1-focus"),
+        (toolbar1, "tmux-category-1-resize"),
+        (toolbar1, "tmux-category-1-close"),
+        (toolbar2, "tmux-category-2-split"),
+        (toolbar2, "tmux-category-2-focus"),
+        (toolbar2, "tmux-category-2-resize"),
+        (toolbar2, "tmux-category-2-close"),
+    ] {
+        let bounds = cx.debug_bounds(category).unwrap();
+        assert!(toolbar.contains(&bounds.center()));
+        assert!(bounds.left() >= toolbar.left() && bounds.right() <= toolbar.right());
+    }
+    assert!(cx.debug_bounds("tmux 패널 분할 ↔").is_none());
+    for button in [
+        "tmux-1-split-0",
+        "tmux-1-focus-0",
+        "tmux-1-resize-0",
+        "tmux-1-close-0",
+        "tmux-2-split-1",
+        "tmux-2-focus-3",
+        "tmux-2-resize-3",
+        "tmux-2-close-0",
+    ] {
+        let bounds = cx.debug_bounds(button).unwrap();
+        cx.simulate_click(bounds.center(), Modifiers::default());
+        redraw(cx);
+        assert!(view.read_with(cx, |s, _| s.dialog.is_none() && s.error.is_none()));
+    }
+    assert_eq!(view.read_with(cx, |s, _| s.tabs.len()), 2);
+    assert!(first.read_with(cx, |t, _| t.sent.is_empty()));
+    assert!(second.read_with(cx, |t, _| t.sent.is_empty()));
+}
+
 fn begin_tab_drag(cx: &mut VisualTestContext) {
     let from = cx.debug_bounds("tab-1").unwrap().center();
     cx.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());

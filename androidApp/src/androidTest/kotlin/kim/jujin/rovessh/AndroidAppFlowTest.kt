@@ -138,12 +138,12 @@ class AndroidAppFlowTest {
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 stage = "GUI pane split"
                 val originalPaneIds = connection.remote.value.panes.map { it.id }.toSet()
-                clickText("tmux 관리")
                 clickText("tmux 패널 분할 ↔")
                 stage = "GUI split remote update"
                 val splitPane = withTimeout(10000) { connection.remote.first { state -> state.panes.any { it.id !in originalPaneIds } } }.panes.single { it.id !in originalPaneIds }
                 // Expansion must not change the selected target; selecting a row is separate.
                 val beforeExpand = connection.pane.value
+                clickText("tmux 관리")
                 clickText("$name 펼치기")
                 val window = connection.remote.value.windows.first { it.id == splitPane.window && it.session == session }
                 clickText("${window.name} 펼치기")
@@ -151,12 +151,14 @@ class AndroidAppFlowTest {
                 clickMatching { it.text?.toString()?.startsWith(splitPane.id + " ") == true }
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                clickText("터미널로 돌아가기")
                 clickText("포커스 ←")
                 withTimeout(10000) { connection.pane.first { it == pane } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 clickText("포커스 →")
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                clickText("tmux 관리")
                 clickText("세션 새로고침")
                 withTimeout(10000) { connection.refreshing.first { !it } }
                 instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
@@ -166,6 +168,11 @@ class AndroidAppFlowTest {
                     bitmap.recycle()
                 }
                 clickText("터미널로 돌아가기")
+                stage = "GUI pane close cancellation"
+                clickText("현재 tmux 패널 닫기")
+                clickText("취소")
+                assertTrue(connection.remote.value.panes.any { it.id == splitPane.id })
+                assertEquals(splitPane.id, connection.pane.value)
                 stage = "GUI window creation"
                 runVolumeMacro(scenario, admin, splitPane.id)
                 assertEquals("1", admin.execute("tmux show-options -pv -t '$pane' @dgl-volume-count").decodeToString().trim())
