@@ -3,6 +3,25 @@
 > 2026-10-24 현재 실행 대상은 Rust 기반 Android와 Mac GPUI다. 이전 JVM 앱의 실행·Windows
 > 설치물 경로는 제거했으며, 아래 결과는 당시 검증 기록으로 보존한다. 최신 명령·산출물은
 > [후보 기록](migration/CANDIDATE.md)을 따른다. 이전 엔진 코드는 테스트 APK/JVM 검사에만 사용한다.
+> 후속 지시에 따라 Windows Rust 빌드·ZIP·수동 CI 경로를 추가했다. Windows 실기 검증 제외는
+> 빌드 환경 제외를 뜻하지 않는다. [현재 Windows 절차](WINDOWS.md)를 우선하며 아래 JVM 기록과 구분한다.
+
+## Windows 빌드 환경 추가 (2026-10-24)
+
+Windows x64 MSVC 준비 스크립트, GPUI Release EXE·ZIP 생성, 수동 빌드 workflow,
+플랫폼별 저장 경로·폰트·단축키와 Rust DPAPI 저장소를 추가했다.
+
+- Mac 호스트 Rust 검사: 8개 통과(120 fixture 포함), 실제 SSH와 Keychain 각 1개 ignored.
+- core/UniFFI/desktop `clippy --all-targets -- -D warnings`, `cargo fmt --check` 통과.
+- Windows 저장소 소스와 테스트는 별도 Mac 호스트 타입 검사로 Win32 FFI 사용을 확인했다.
+  Windows 타깃 링크·DPAPI 실행 검사로 간주하지 않는다.
+- Python 90개 통과: ZIP 내용·해시, 잘못된 PE/아키텍처 거부, 수집 실패 시 이전 ZIP 보존 포함.
+  패키징 테스트의 PE는 합성 fixture이며 Windows 실행 파일을 빌드한 결과가 아니다.
+- PowerShell 7.6.8 파서와 actionlint 1.7.12 검사 통과.
+- Windows 의존 그래프에서 macOS security-framework 제외 확인, 대시보드 검증 통과.
+
+Windows 네이티브 빌드, 새 Windows 테스트 실행, GUI/IME 인수 및 원격 CI는 수행하지 않았다.
+현재 단계는 Windows 빌드 환경 제공이며 Windows 산출물·검증 통과를 선언하지 않는다.
 
 
 ## 아키텍처 전환 R1 (2026-10-24)

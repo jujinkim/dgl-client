@@ -4,6 +4,10 @@
 **후보 구현과 개발용 산출물은 준비됐으나 전체 완료 판정은 대기다.** Mac 실제 GUI·Keychain과
 아래 남은 기능 화면 인수는 통과 처리하지 않는다. 후속 지시 “legacy는 불필요”에 따라 Android는 Rust 단일 엔진이다.
 
+2026-10-24 추가 지시: Windows 실기 검증은 제외하되 빌드 환경은 제공한다.
+Rust 데스크톱에 Windows 플랫폼 분기·DPAPI와 MSVC x64 빌드·Release ZIP·수동 CI를 추가했다.
+Windows 네이티브 빌드/실행 결과를 Mac 검증으로 대신하지 않는다. [재현 절차](../WINDOWS.md).
+
 ## 구현과 모듈
 
 | 위치 | 역할 |

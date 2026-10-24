@@ -24,6 +24,15 @@ Mac 빌드는 명령별 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Develope
 상태와 실행 증거는 [후보 구현 기록](docs/migration/CANDIDATE.md),
 [기능 대조표](docs/migration/FEATURE_MATRIX.md), [전환 계획](docs/ARCHITECTURE_MIGRATION.md)에 기록한다.
 
+## Windows 빌드 환경 유지 — 2026-10-24 후속 지시
+
+Windows는 이번 실기 검증 대상에서 제외할 뿐, 빌드 환경은 제공한다.
+Rust GPUI 앱의 OS 의존성·경로·폰트·단축키와 DPAPI 저장소를 분리하고,
+`scripts/build_windows.ps1` 및 수동 `Build Windows Rust candidate` workflow로
+MSVC x64 Release 실행 파일·미서명 ZIP을 생성하도록 구성했다.
+Windows 네이티브 빌드·DPAPI·GUI 검증 결과는 아직 없으며 자동 통과로 처리하지 않는다.
+사용자 재현 명령과 검증 항목은 [Windows 안내](docs/WINDOWS.md)를 따른다.
+
 ## 이번 첫 표시 프레임 진단 결과
 
 - 수집기와 오프라인 분석기에 `--mode upper-bound|first-presentation`을 추가했다. 기본값은

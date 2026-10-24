@@ -1,5 +1,10 @@
 # 보안 모델과 공개 전 확인
 
+> 2026-10-24 현재 Rust 데스크톱은 Mac Keychain과 Windows 현재 사용자 DPAPI를 사용한다.
+> Windows Rust 저장소는 참조별 entropy·해시 파일명·암호문 임시 파일과 교체 저장을 사용하며
+> 실행 검증은 대기다. [Windows 빌드·검증 절차](WINDOWS.md)를 따른다.
+> 아래 JVM/Temurin/MSI/EXE 및 `verify_windows` 내용은 이전 구현 기록이며 Rust 빌드 절차가 아니다.
+
 ## 앱 경계
 
 - 호스트키는 `SHA256:` 지문으로 확인한다. 처음 보는 키는 인증 전에 연결을 중단하고 사용자 확인을 받는다. 기존 지문 불일치는 자동 재시도하지 않는다.

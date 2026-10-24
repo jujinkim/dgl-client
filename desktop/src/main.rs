@@ -1,3 +1,9 @@
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
+
+mod platform;
 mod storage;
 mod terminal;
 mod text_input;
@@ -522,7 +528,7 @@ impl Render for Desktop {
             .child(self.button("settings", "설정", cx, |s, _, _| {
                 s.dialog = Some(Dialog::Settings)
             }))
-            .child(div().text_xs().child("macOS Keychain · 후보 전용 저장소"));
+            .child(div().text_xs().child(platform::STORAGE_LABEL));
         let mut tabs = div()
             .id("tabs")
             .overflow_x_scroll()
@@ -863,22 +869,26 @@ impl Render for Desktop {
         let mut root = div()
             .size_full()
             .relative()
-            .font_family(".AppleSystemUIFont")
+            .font_family(platform::UI_FONT)
             .text_size(px(14.))
             .bg(rgb(bg))
             .text_color(rgb(fg))
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
-                if !e.keystroke.modifiers.platform || s.dialog.is_some() {
+                if !platform::app_shortcut(&e.keystroke.modifiers) || s.dialog.is_some() {
                     return;
                 }
                 match e.keystroke.key.as_str() {
-                    "n" if e.keystroke.modifiers.shift => {
+                    "n" if cfg!(target_os = "macos") && e.keystroke.modifiers.shift => {
+                        s.prompt("세션 만들기", PromptOp::Session, cx)
+                    }
+                    "s" if cfg!(target_os = "windows") => {
                         s.prompt("세션 만들기", PromptOp::Session, cx)
                     }
                     "n" => s.edit(None, cx),
                     "w" => s.close_tab(s.selected),
                     "," => s.dialog = Some(Dialog::Settings),
+                    "p" if cfg!(target_os = "windows") => s.dialog = Some(Dialog::Settings),
                     "r" => {
                         if let Some(t) = s.tabs.get(s.selected) {
                             let c = t.connection.clone();
@@ -886,6 +896,13 @@ impl Render for Desktop {
                         }
                     }
                     key => {
+                        // GPUI normalizes Shift+digits to symbols on Windows.
+                        // Function keys retain Shift and provide stable tab shortcuts.
+                        let key = if cfg!(target_os = "windows") {
+                            key.strip_prefix('f').unwrap_or("")
+                        } else {
+                            key
+                        };
                         if let Ok(n) = key.parse::<usize>() {
                             if n > 0 && n <= s.tabs.len() {
                                 s.selected = n - 1;
@@ -1136,9 +1153,7 @@ impl Render for Desktop {
                             s.save();
                         }));
                     }
-                    body = body
-                        .child("⌘N 호스트 · ⇧⌘N 세션 · ⌘W 연결 종료 · ⌘1–9 연결 전환 · ⌘R 새로고침")
-                        .child("신뢰한 서버");
+                    body = body.child(platform::SHORTCUT_HELP).child("신뢰한 서버");
                     for (endpoint, fingerprint) in &self.local.trust {
                         let e = endpoint.clone();
                         body = body
@@ -1209,16 +1224,13 @@ fn main() {
             .build()
             .unwrap(),
     );
-    let path = PathBuf::from(std::env::var_os("DGL_CANDIDATE_DIR").unwrap_or_else(|| {
-        PathBuf::from(std::env::var_os("HOME").expect("HOME"))
-            .join("Library/Application Support/dgl-rust-candidate-v1")
-            .into_os_string()
-    }))
-    .join("settings.json");
+    let path = platform::data_dir()
+        .expect("application data directory unavailable")
+        .join("settings.json");
     Application::new().run(move |cx: &mut App| {
         text_input::bind_keys(cx);
         cx.on_action(|_: &Quit, cx| cx.quit());
-        cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
+        cx.bind_keys([KeyBinding::new(platform::QUIT_KEY, Quit, None)]);
         let bounds = Bounds::centered(None, size(px(1240.), px(800.)), cx);
         cx.open_window(
             WindowOptions {

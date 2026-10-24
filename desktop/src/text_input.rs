@@ -628,10 +628,26 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("right", Right, Some("TextInput")),
         KeyBinding::new("shift-left", SelectLeft, Some("TextInput")),
         KeyBinding::new("shift-right", SelectRight, Some("TextInput")),
-        KeyBinding::new("cmd-a", SelectAll, Some("TextInput")),
-        KeyBinding::new("cmd-v", Paste, Some("TextInput")),
-        KeyBinding::new("cmd-c", Copy, Some("TextInput")),
-        KeyBinding::new("cmd-x", Cut, Some("TextInput")),
+        KeyBinding::new(
+            &format!("{}-a", crate::platform::EDIT_MODIFIER),
+            SelectAll,
+            Some("TextInput"),
+        ),
+        KeyBinding::new(
+            &format!("{}-v", crate::platform::EDIT_MODIFIER),
+            Paste,
+            Some("TextInput"),
+        ),
+        KeyBinding::new(
+            &format!("{}-c", crate::platform::EDIT_MODIFIER),
+            Copy,
+            Some("TextInput"),
+        ),
+        KeyBinding::new(
+            &format!("{}-x", crate::platform::EDIT_MODIFIER),
+            Cut,
+            Some("TextInput"),
+        ),
         KeyBinding::new("home", Home, Some("TextInput")),
         KeyBinding::new("end", End, Some("TextInput")),
     ]);

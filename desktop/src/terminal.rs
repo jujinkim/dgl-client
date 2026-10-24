@@ -139,14 +139,14 @@ impl Terminal {
         if !self.marked.is_empty() {
             return;
         }
-        if k.modifiers.platform && k.key == "c" {
+        if crate::platform::app_shortcut(&k.modifiers) && k.key == "c" {
             if let Some(text) = self.term.selection_to_string() {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
             }
             cx.stop_propagation();
             return;
         }
-        if k.modifiers.platform && k.key == "v" {
+        if crate::platform::app_shortcut(&k.modifiers) && k.key == "v" {
             if let Some(text) = cx.read_from_clipboard().and_then(|i| i.text()) {
                 let text = text.replace("\r\n", "\n").replace('\n', "\r");
                 let bytes = if self.term.mode().contains(TermMode::BRACKETED_PASTE) {
@@ -157,6 +157,11 @@ impl Terminal {
                 self.send(bytes);
             }
             cx.stop_propagation();
+            return;
+        }
+        if crate::platform::app_shortcut(&k.modifiers) {
+            // Let the containing app handle its shortcuts without sending a
+            // control byte to the remote shell first.
             return;
         }
         let application = self.term.mode().contains(TermMode::APP_CURSOR);
@@ -482,7 +487,7 @@ impl Render for Terminal {
                                     if let Some(z) = cell.zerowidth() {
                                         text.extend(z);
                                     }
-                                    let mut font = font("Menlo");
+                                    let mut font = font(crate::platform::TERMINAL_FONT);
                                     if cell.flags.contains(Flags::BOLD) {
                                         font.weight = FontWeight::BOLD;
                                     }
@@ -519,7 +524,7 @@ impl Render for Terminal {
                                     px(this.font_size),
                                     &[TextRun {
                                         len: this.marked.len(),
-                                        font: font("Menlo"),
+                                        font: font(crate::platform::TERMINAL_FONT),
                                         color: rgb(0xffffff).into(),
                                         background_color: None,
                                         underline: Some(UnderlineStyle {

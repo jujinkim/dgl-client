@@ -9,8 +9,11 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def collect(package, output):
-    metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--locked", "--format-version", "1"], cwd=ROOT))
+def collect(package, output, target=None):
+    command = ["cargo", "metadata", "--locked", "--format-version", "1"]
+    if target:
+        command += ["--filter-platform", target]
+    metadata = json.loads(subprocess.check_output(command, cwd=ROOT))
     packages = {p["id"]: p for p in metadata["packages"]}
     nodes = {n["id"]: n for n in metadata["resolve"]["nodes"]}
     start = next(p["id"] for p in metadata["packages"] if p["name"] == package)

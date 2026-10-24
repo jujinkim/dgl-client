@@ -1,0 +1,111 @@
+# Windows Rust 데스크톱 빌드·테스트
+
+Windows **빌드 환경은 유지하며 실제 Windows 실행·실기 검증은 별도로 수행**한다.
+현재 대상은 네이티브 Windows 10/11 x64, Rust GPUI 앱이다. 이전 JVM/MSI/EXE
+설치물 작업은 사용하지 않는다. 아래 스크립트와 수동 CI를 추가했으며, 이 Mac 작업에서
+Windows 네이티브 빌드·DPAPI 실행·GUI 인수를 통과했다고 표시하지 않는다.
+
+## 1. 빌드 환경 준비
+
+1. Git for Windows, Python 3.9 이상(`python.exe`가 PATH에 있어야 함),
+   [Rustup](https://www.rust-lang.org/tools/install)을 설치한다. Rust는 MSVC 호스트를 선택한다.
+2. Visual Studio 2022 Build Tools에서 **Desktop development with C++**를 설치한다.
+   Visual Studio Installer에서 [`desktop/windows.vsconfig`](../desktop/windows.vsconfig)를
+   가져오면 x64 MSVC, CMake, Windows 11 SDK 10.0.26100 및 Spectre 라이브러리를 선택할 수 있다.
+   Windows SDK의 `rc.exe`와 **`fxc.exe`**가 필요하다.
+3. 저장소를 `C:\src\dgl`처럼 짧은 경로에 clone하고 `main`을 사용한다.
+   Windows 데스크톱만 빌드할 때 JDK, Android SDK/NDK, Node.js는 필요하지 않다.
+
+스크립트는 Visual Studio 개발 환경을 x64로 초기화하고 Rust **1.98.1**과
+`x86_64-pc-windows-msvc` target을 설치한다. Rust의 전역 기본 버전은 변경하지 않는다.
+VS·Python·Rustup 자체는 자동 설치하지 않으며 누락된 도구를 명시하고 중단한다.
+WSL은 Linux 호스트이므로 이 Windows 패키지 빌드에는 사용하지 않는다.
+
+빌드 전 도구만 확인하려면 Rust 1.98.1을 설치한 뒤:
+
+```powershell
+rustup toolchain install 1.98.1-x86_64-pc-windows-msvc --profile minimal --target x86_64-pc-windows-msvc
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -CheckOnly
+```
+
+`ExecutionPolicy Bypass`는 해당 PowerShell 프로세스에만 적용된다.
+도구 구성은 [Zed의 Windows 개발 환경 안내](https://zed.dev/docs/development/windows)를 참고했고,
+셰이더 경로는 이 저장소에 고정된 **GPUI 0.2.2의 build.rs**를 기준으로 한다.
+현재 Zed의 다른 버전·그래픽 백엔드 요구사항을 그대로 적용하지 않는다.
+
+## 2. 빌드와 산출물
+
+저장소 루트에서:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
+```
+
+기본 동작은 Release 빌드와 ZIP 생성이다. 앱 실행·설치·테스트를 자동 수행하지 않는다.
+GPUI 0.2.2는 Release 빌드에서 `fxc.exe`로 HLSL 셰이더를 컴파일해 포함한다.
+Debug 실행은 Cargo registry의 셰이더 소스를 참조하므로 전달용 ZIP은 Release만 제공한다.
+MSVC CRT 정적 링크 플래그는 이 실행 파일 빌드에만 적용한다.
+
+| 산출물 | 경로 |
+|---|---|
+| 실행 파일 | `target/x86_64-pc-windows-msvc/release/dgl-desktop.exe` |
+| 전달용 ZIP | `artifacts/rust-candidate/windows/dgl-rust-windows-x64.zip` |
+| 빌드 정보 | `artifacts/rust-candidate/windows/build.json` |
+| ZIP SHA-256 | `artifacts/rust-candidate/windows/SHA256SUMS` |
+
+`CARGO_TARGET_DIR`를 지정하면 실행 파일 경로는 Cargo metadata에서 가져온다.
+ZIP에는 실행 파일, GPUI 고지, Rust 의존성 라이선스 원문·목록, 내부 파일 해시와
+실행 안내가 들어간다. x64 PE 헤더를 검사한 뒤 패키지를 만든다.
+**미서명 개발용 후보**이며 MSI 설치 프로그램이나 정식 서명 배포가 아니다.
+빌드 성공과 GUI·그래픽 드라이버·보안 저장 검증 성공은 구분한다.
+
+ZIP을 모두 풀고 `dgl-rust-windows-x64\dgl-desktop.exe`를 실행한다.
+GPU 경로는 GPUI 0.2.2의 Direct3D 11이다. 설치·실행 성공 여부는 Windows에서 확인한다.
+
+## 3. 수동 CI 빌드
+
+변경이 원격 `main`에 반영된 후 GitHub Actions에서
+**Build Windows Rust candidate → Run workflow**를 실행한다.
+`windows-2022` runner가 같은 PowerShell 스크립트로 빌드하고
+`windows-rust-candidate` artifact에 ZIP·빌드 정보·해시를 올린다.
+수동 실행 전용이며 일반 push/PR의 기존 Linux 기본 검증은 그대로다.
+이 workflow는 앱 실행·DPAPI 테스트·GUI 검증을 하지 않는다.
+
+## 4. 사용자가 Windows에서 실행할 검사
+
+빌드 후 Rust 코어·UniFFI·데스크톱 단위 테스트까지 실행하려면:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -Test
+```
+
+`-Test`는 선택 옵션이다. Windows DPAPI의 저장/읽기/덮어쓰기/삭제,
+평문 미저장, 암호문 변조·다른 항목으로 바꿔치기 거부, 저장 실패 처리를 포함한다.
+실제 SSH/tmux 통합 테스트는 기본 Cargo 검사에서 ignored이며 성공으로 계산하지 않는다.
+격리 서버 통합 테스트는 [후보 기록](migration/CANDIDATE.md)의 별도 명령을 따른다.
+기존 JVM `WindowsSecurityTest` 결과는 새 Rust 저장소 검증을 대신하지 않는다.
+
+실기 확인 항목:
+
+- 앱 창 열기·닫기, 배율/폰트, 한글·일본어 IME, 복사·붙여넣기.
+- 최초 호스트키 확인, 비밀번호/키 인증, 저장 후 앱 재시작, 키 변경 시 차단.
+- tmux 세션·창·패널 관리, 연결 종료 후 같은 원격 작업으로 복귀, 연결 복구.
+- 다른 Windows 사용자에서 암호문 복호화 거부, 실제 프로필/DPAPI 키 손실 처리.
+
+## 5. 저장 영역과 키보드
+
+설정은 `%LOCALAPPDATA%\dgl-rust-candidate-v1\settings.json`, 자격 증명은 같은 폴더의
+`credentials\<SHA-256>.sealed`에 저장한다. `DGL_CANDIDATE_DIR`로 둘 다 옮길 수 있다.
+기존 JVM 앱 데이터를 자동 이전하거나 덮어쓰지 않는다.
+
+보호는 [현재 사용자 범위 DPAPI](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)를
+사용하며 MACHINE scope와 평문 fallback은 없다. 참조별 entropy로 항목 바꿔치기를 거부한다.
+
+| 동작 | Windows 키 |
+|---|---|
+| 입력 필드 전체 선택·복사·붙여넣기·잘라내기 | `Ctrl+A/C/V/X` |
+| 터미널 복사·붙여넣기 | `Ctrl+Shift+C/V` |
+| 원격 인터럽트 | `Ctrl+C` |
+| 호스트 추가 / 세션 생성 | `Ctrl+Shift+N` / `Ctrl+Shift+S` |
+| 연결 종료 / 연결 전환 | `Ctrl+Shift+W` / `Ctrl+Shift+F1–F9` |
+| 새로고침 / 설정 / 앱 종료 | `Ctrl+Shift+R` / `Ctrl+Shift+P` / `Ctrl+Shift+Q` |

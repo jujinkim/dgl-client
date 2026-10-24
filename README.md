@@ -2,14 +2,14 @@
 
 **Keep the CLI. Simplify the workflow.**
 
-SSH와 표준 tmux를 사용하는 Mac·Android 터미널 클라이언트입니다. 원격 데몬 없이 기존 세션을 탐색하고, 연결을 닫은 뒤 같은 프로세스로 돌아갑니다. Rust 코어를 사용하는 **개발용 후보**입니다. Mac 실제 GUI·Keychain, 전체 기능 화면 인수와 실제 Codex/Claude 검증은 아직 완료되지 않았습니다.
+SSH와 표준 tmux를 사용하는 Windows·Mac·Android 터미널 클라이언트입니다. 원격 데몬 없이 기존 세션을 탐색하고, 연결을 닫은 뒤 같은 프로세스로 돌아갑니다. Rust 코어를 사용하는 **개발용 후보**입니다. Windows 빌드 환경은 마련했으며 네이티브 빌드·실기 검증은 대기입니다. Mac 실제 GUI·Keychain, 전체 기능 화면 인수와 실제 Codex/Claude 검증도 아직 완료되지 않았습니다.
 
 ## 현재 구현
 
 - 호스트 추가·편집·삭제, 별칭·즐겨찾기·최근 접속, 독립된 여러 연결
 - 비밀번호, RSA/Ed25519 및 암호화 개인키 가져오기, Ed25519 생성·공개키 복사
 - 최초 호스트키 지문 확인, 저장된 키 변경 시 차단, 신뢰 키 삭제
-- Android Keystore / Mac Keychain 보호 저장. 실패 시 저장 중단
+- Android Keystore / Mac Keychain / Windows DPAPI 보호 저장. 실패 시 저장 중단 (Windows 실행 검증 대기)
 - tmux Control Mode 세션·창·패널 조회·선택, 생성·이름 변경·분할·크기 변경·삭제 확인
 - 외부 tmux 변경 이벤트 반영, 연결 복구 중 입력 차단, 입력 재전송 금지
 - 화면 캡처·실시간 출력 순서화, 연결·패널·크기 세대 검사, bounded output / scrollback
@@ -22,7 +22,8 @@ SSH와 표준 tmux를 사용하는 Mac·Android 터미널 클라이언트입니�
 | 대상 | 설정 | 실제 확인 |
 |---|---|---|
 | Android 14 / 15 / 16 | `minSdk=34`, `compileSdk=36`, `targetSdk=36` | ARM64 에뮬레이터에서 APK·Keystore·SSH·합성 IME·키보드·단축키 바·회전·복귀 검증 |
-| Windows / Linux | 후속 Rust 데스크톱 대상 | 현재 배포 없음; 이전 JVM 실행·패키징은 제거 |
+| Windows x64 | GPUI + alacritty_terminal, DPAPI, MSVC 빌드·Release ZIP·수동 CI 구성 | 네이티브 빌드·실기 검증 대기; [Windows 안내](docs/WINDOWS.md) |
+| Linux | 후속 Rust 데스크톱 대상 | 현재 실행·배포 경로 없음 |
 | macOS ARM64 | GPUI + alacritty_terminal, macOS Keychain | 빌드·코어 SSH/tmux 통과; 실제 GUI·Keychain 저장 인수 **대기** |
 | tmux | 3.3–3.7 범위만 Control Mode 사용 | **3.3a, 3.7c** 실제 서버 검증 |
 
@@ -57,6 +58,17 @@ Android 앱 ID `kim.jujin.rovessh`는 유지합니다. 기존 앱에 설치하�
 `crates/dgl-core`는 Rust 연결·tmux 코어, `crates/dgl-uniffi`/`:coreBindings`는 바인딩,
 `:mobileUi`는 Rust 어댑터, `:app`은 공통 모델·Compose/xterm 컴포넌트,
 `:androidApp`은 Android 진입점, `desktop`은 GPUI 앱입니다.
+
+Windows는 VS 2022 Build Tools(C++·Windows SDK·CMake), Rustup, Python 3.9 이상을 준비하고
+저장소 루트의 PowerShell에서 실행합니다. JDK·Android SDK는 Windows 앱 빌드에 필요하지 않습니다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
+```
+
+미서명 Release ZIP: `artifacts/rust-candidate/windows/dgl-rust-windows-x64.zip`.
+기본은 빌드만 수행하며 `-Test`로 단위 검사를 선택할 수 있습니다.
+설치할 도구·수동 CI·실기 검사 방법은 [Windows 빌드·테스트 안내](docs/WINDOWS.md)를 따릅니다.
 
 ## 연결 방법
 
@@ -118,7 +130,9 @@ GitHub Actions의 **Build and verify → Run workflow**에서 아래 검사를 �
 | `verify_ssh` | 실제 SSH와 tmux 3.3a/3.7c 통합 테스트 |
 | `verify_android` | Android API 34/35/36 에뮬레이터 테스트 |
 
-Windows의 이전 JVM 설치물 CI는 제거했습니다. 이번 작업에서 원격 CI나 전체 에뮬레이터 matrix를 실행하지 않았습니다.
+Windows의 이전 JVM 설치물 CI는 제거했습니다. Rust 앱은 별도 수동 workflow인
+**Build Windows Rust candidate**에서 실행·실기 검증 없이 빌드하고 ZIP을 수집합니다.
+이번 작업에서 원격 CI나 전체 에뮬레이터 matrix를 실행하지 않았습니다.
 `collect_artifacts.py`는 APK ID·SDK·번들·네 ABI와 Rust 엔진을 검사합니다.
 기존 연결 엔진·SSHJ·Bouncy Castle이 앱 DEX에 있으면 실패합니다. 이 의존성들은 테스트 APK에만 허용합니다.
 
@@ -136,7 +150,7 @@ Windows의 이전 JVM 설치물 CI는 제거했습니다. 이번 작업에서 �
 - 스냅샷은 화면·alternate screen·커서·주요 모드를 복원합니다. tmux가 제공하지 않는 현재 SGR pen, 모든 VT 상태와 이전 로컬 scrollback의 완전 복원은 보장하지 않습니다. 필요하면 터미널에서 다시 그리기(Ctrl+L)를 사용합니다.
 - 패널 전환·재접속 시 로컬 scrollback은 초기화됩니다. tmux Copy Mode는 별도 상태로 표시하며 해당 화면을 일반 pane 출력으로 오인하지 않습니다.
 - 자동 재접속은 최대 8회 시도합니다. 네트워크 오류만 재시도하며 인증·호스트키·프로토콜 오류는 멈춥니다. Android의 지속적인 백그라운드 연결은 보장하지 않습니다.
-- 원격 pane 크기는 최대 500×250셀입니다. Windows/Linux 새 데스크톱의 실행·패키징은 후속입니다.
+- 원격 pane 크기는 최대 500×250셀입니다. Windows는 빌드·ZIP 생성 경로를 마련했으며 실제 실행 검증은 대기입니다. Linux 실행·패키징은 후속입니다.
 - 2026-10-23 선택 의존성 371개 버전의 OSV 런타임·빌드·테스트 경고는 모두 0건입니다. 공개 릴리스 전 [보안 검토](docs/SECURITY.md)를 완료해야 합니다.
 
 원문 요구사항은 [KICKOFF_PROMPT.md](KICKOFF_PROMPT.md)와 SHA-256으로 보존합니다. 기술 결정: [ADR 001](docs/decisions/001-architecture.md), [ADR 002](docs/decisions/002-terminal-restoration.md). 라이선스: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

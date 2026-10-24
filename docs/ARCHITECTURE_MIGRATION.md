@@ -8,6 +8,8 @@
 사용자 후속 지시에 따라 **현재 Mac과 Android API 36 전용 AVD만 검증**한다.
 시스템 조회상 현재 Mac은 macOS **26.6.2 (25G83), Apple M1**이다. macOS 14 검증으로
 표시하지 않는다. Windows/Linux/macOS 14/Android 34·35 검증은 이번 실행에서 제외한다.
+2026-10-24 후속 지시에 따라 **Windows 검증 제외와 빌드 환경 제공은 분리**한다.
+Windows Rust 앱의 MSVC 빌드·ZIP 패키징·수동 CI는 유지하며 [Windows 안내](WINDOWS.md)를 따른다.
 아래 원래 제품 범위와 Android 네 ABI 보존 요구는 유지하지만 이 환경들의 지원 완료를
 주장하지 않는다. 이번 R2 이후 인수 게이트의 환경 범위도 현재 Mac/API36으로 좁힌다.
 

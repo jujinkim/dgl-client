@@ -1,0 +1,31 @@
+name: Build Windows Rust candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: '1'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build unsigned x64 release ZIP (no runtime tests)
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-rust-candidate
+          path: |
+            artifacts/rust-candidate/windows/dgl-rust-windows-x64.zip
+            artifacts/rust-candidate/windows/build.json
+            artifacts/rust-candidate/windows/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
