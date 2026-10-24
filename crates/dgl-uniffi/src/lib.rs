@@ -150,6 +150,88 @@ pub fn validate_settings(json: String) -> Result<String, CoreError> {
     serde_json::to_string(&state).map_err(|_| invalid())
 }
 
+#[uniffi::export]
+pub fn new_sync_document() -> Result<String, CoreError> {
+    Ok(dgl_core::sync::Document::default().encode()?)
+}
+
+/// Shared with the desktop. JSON keeps the provider adapter independent of the
+/// versioned journal schema; only the Rust allowlist can produce cloud content.
+#[uniffi::export]
+pub fn exchange_sync(
+    cache: Option<String>,
+    local: String,
+    remote: String,
+    resolutions: String,
+) -> Result<String, CoreError> {
+    let cache = cache
+        .map(|v| dgl_core::sync::Cache::decode(v.as_bytes()))
+        .transpose()?;
+    let local = dgl_core::model::LocalState::decode(local.as_bytes())?;
+    let resolutions: Vec<dgl_core::sync::Resolution> =
+        serde_json::from_str(&resolutions).map_err(|_| invalid())?;
+    let out = dgl_core::sync::exchange(cache, &local, remote.as_bytes(), &resolutions)?;
+    Ok(
+        serde_json::json!({"cache":out.cache.encode()?, "local":out.local,
+        "document":out.document, "conflicts":out.conflicts})
+        .to_string(),
+    )
+}
+
+/// Mark only the settings successfully saved on this device as observed.
+#[uniffi::export]
+pub fn acknowledge_sync(cache: String, local: String) -> Result<String, CoreError> {
+    let mut cache = dgl_core::sync::Cache::decode(cache.as_bytes())?;
+    let local = dgl_core::model::LocalState::decode(local.as_bytes())?;
+    cache.acknowledge(&local);
+    Ok(cache.encode()?)
+}
+
+/// One per application, shared by all connection adapters (including hidden tabs).
+#[derive(uniffi::Object, Default)]
+pub struct NativeAgentInbox {
+    inner: std::sync::Mutex<dgl_core::agent::Inbox>,
+}
+#[uniffi::export]
+impl NativeAgentInbox {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+    pub fn tick(
+        &self,
+        sources_json: String,
+        visible_json: String,
+        settings_json: String,
+    ) -> Result<String, CoreError> {
+        let sources: Vec<(String, dgl_core::agent::Snapshot)> =
+            serde_json::from_str(&sources_json).map_err(|_| invalid())?;
+        let visible: std::collections::HashSet<String> =
+            serde_json::from_str(&visible_json).map_err(|_| invalid())?;
+        let settings = serde_json::from_str(&settings_json).map_err(|_| invalid())?;
+        let now = dgl_core::agent::now_ms();
+        let mut inbox = self.inner.lock().unwrap();
+        let mut live = std::collections::HashSet::new();
+        for (endpoint, snapshot) in sources {
+            if snapshot.current(now) {
+                live.extend(
+                    snapshot
+                        .observations
+                        .iter()
+                        .map(|o| format!("{}:{}:{}", endpoint, snapshot.server, o.run)),
+                );
+            }
+            inbox.ingest(&endpoint, &snapshot, &settings, now);
+        }
+        inbox.read_visible(&visible);
+        let deliver = inbox.ready(now, &visible, &live, &settings);
+        Ok(serde_json::json!({"recent": inbox.recent, "deliver": deliver}).to_string())
+    }
+    pub fn mark_read(&self, id: String) {
+        self.inner.lock().unwrap().mark_read(&id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -31,6 +31,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val theme: String = "system", val fontSize: Int = 14, val scrollback: Int = 5000,
     val terminalShortcuts: List<TerminalKey> = TerminalKey.defaultShortcuts,
     val volumeKeysEnabled: Boolean = false,
+    val agentNotifications: AgentNotificationSettings = AgentNotificationSettings(),
     val volumeUp: VolumeBinding = VolumeBinding(),
     val volumeDown: VolumeBinding = VolumeBinding(),
 )

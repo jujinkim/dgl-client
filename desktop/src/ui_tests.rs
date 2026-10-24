@@ -89,6 +89,42 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
     runtime.block_on(connection.join());
 }
 
+#[gpui::test]
+fn agent_notice_missing_target_is_read_without_reconnect_or_input(cx: &mut TestAppContext) {
+    use dgl_core::agent::{Agent, AgentEvent, Kind, Notice};
+    let (view, cx) = setup(cx);
+    let terminal = add_terminal(&view, cx);
+    view.update(cx, |s, cx| {
+        s.inbox.recent.push_back(Notice {
+            endpoint: "fixture@127.0.0.1:1".into(),
+            read: false,
+            event: AgentEvent {
+                id: "test".into(),
+                seq: 1,
+                server: "old-server".into(),
+                run: "old-run".into(),
+                actor: "parent".into(),
+                session: "$0".into(),
+                window: "@0".into(),
+                pane: "%0".into(),
+                agent: Agent::Codex,
+                kind: Kind::Approval,
+                event: "PermissionRequest".into(),
+                at: dgl_core::agent::now_ms(),
+            },
+        });
+        s.dialog = Some(Dialog::Notifications);
+        cx.notify();
+    });
+    redraw(cx);
+    let button = cx.debug_bounds("notice-fixture@127.0.0.1:1:test").unwrap();
+    cx.simulate_click(button.center(), Modifiers::default());
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| s.inbox.recent[0].read));
+    assert!(view.read_with(cx, |s, _| s.error.as_ref().unwrap().contains("종료")));
+    assert_eq!(view.read_with(cx, |s, _| s.tabs.len()), 1);
+    assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+}
 fn input(view: &Entity<Desktop>, cx: &mut VisualTestContext) -> Entity<TextInput> {
     view.read_with(cx, |s, _| match s.dialog.as_ref().unwrap() {
         Dialog::Host { fields, .. } => fields[0].clone(),

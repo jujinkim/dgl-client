@@ -3,8 +3,11 @@
     windows_subsystem = "windows"
 )]
 
+mod agent_ui;
+mod cloud_sync;
 mod launcher;
 mod modal;
+mod notifications;
 mod pane_toolbar;
 mod platform;
 mod storage;
@@ -76,6 +79,8 @@ enum Dialog {
         operation: DeleteOp,
     },
     Settings,
+    Agents(Arc<Connection>, String),
+    Notifications,
 }
 struct Desktop {
     runtime: Arc<tokio::runtime::Runtime>,
@@ -95,6 +100,12 @@ struct Desktop {
     dialog: Option<Dialog>,
     error: Option<String>,
     focus: FocusHandle,
+    inbox: dgl_core::agent::Inbox,
+    agent_tick: u64,
+    notification_status: String,
+    cloud_sync: cloud_sync::CloudSync,
+    #[cfg(debug_assertions)]
+    notification_probe_at: Option<u64>,
 }
 impl Desktop {
     fn new(runtime: Arc<tokio::runtime::Runtime>, path: PathBuf, cx: &mut Context<Self>) -> Self {
@@ -116,7 +127,21 @@ impl Desktop {
             }
         })
         .detach();
+        notifications::initialize();
+        if local.preferences.agent_notifications.os {
+            notifications::authorize();
+        }
+        #[cfg(debug_assertions)]
+        let notification_probe_at = (std::env::var("DGL_NOTIFICATION_PROBE").as_deref() == Ok("1"))
+            .then(|| {
+                notifications::authorize();
+                dgl_core::agent::now_ms() + 20_000
+            });
         let workspace = Workspace::new(Layout::load(&path.with_file_name("workspace-layout.json")));
+        let mut cloud_sync = cloud_sync::CloudSync::load(&path.with_file_name("cloud-sync.json"));
+        if error.is_some() {
+            cloud_sync.block_invalid_local();
+        }
         Self {
             runtime,
             path,
@@ -135,10 +160,50 @@ impl Desktop {
             dialog: None,
             error,
             focus: cx.focus_handle(),
+            inbox: Default::default(),
+            agent_tick: 0,
+            notification_status: String::new(),
+            cloud_sync,
+            #[cfg(debug_assertions)]
+            notification_probe_at,
         }
     }
     fn tick(&mut self, cx: &mut Context<Self>) {
+        #[cfg(debug_assertions)]
+        if self
+            .notification_probe_at
+            .is_some_and(|at| dgl_core::agent::now_ms() >= at)
+        {
+            self.notification_probe_at = None;
+            let notice = dgl_core::agent::Notice {
+                endpoint: "native-probe".into(),
+                read: false,
+                event: dgl_core::agent::AgentEvent {
+                    id: "native-probe".into(),
+                    seq: 1,
+                    server: "probe".into(),
+                    run: "probe".into(),
+                    actor: "parent".into(),
+                    session: "$0".into(),
+                    window: "@0".into(),
+                    pane: "%0".into(),
+                    agent: dgl_core::agent::Agent::Codex,
+                    kind: dgl_core::agent::Kind::Response,
+                    event: "Stop (native notification probe)".into(),
+                    at: dgl_core::agent::now_ms(),
+                },
+            };
+            self.inbox.recent.push_front(notice.clone());
+            eprintln!(
+                "DGL_NOTIFICATION_PROBE_REQUESTED={}",
+                notifications::show(&notice)
+            );
+            cx.notify();
+        }
+        self.tick_agents(cx);
+        self.tick_cloud_sync(cx);
         let mut changed = false;
+        let mut save_hosts = false;
         for tab in &mut self.tabs {
             tab.terminal.update(cx, |t, cx| t.tick(cx));
             let state = tab.connection.state();
@@ -148,6 +213,9 @@ impl Desktop {
                 if state.phase == Phase::Ready
                     && let Some(host) = self.local.hosts.iter_mut().find(|h| h.id == tab.host.id)
                 {
+                    if host.last_session != state.session || host.last_pane != state.pane {
+                        save_hosts = true;
+                    }
                     host.last_session = state.session.clone();
                     host.last_pane = state.pane.clone();
                     host.last_connected = SystemTime::now()
@@ -183,7 +251,7 @@ impl Desktop {
             }
         }
         if changed {
-            if let Err(e) = self.local.save(&self.path) {
+            if save_hosts && let Err(e) = self.local.save(&self.path) {
                 self.error = Some(format!("설정 저장 실패: {e}"));
             }
             cx.notify();
@@ -199,6 +267,12 @@ impl Desktop {
         }
     }
     fn open(&mut self, host: HostProfile, cx: &mut Context<Self>) {
+        if matches!(storage::read_optional(&host.credential_ref), Ok(None)) {
+            self.edit(Some(host), cx);
+            self.error = Some("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요.".into());
+            cx.notify();
+            return;
+        }
         let result = (|| {
             let credential = storage::read(&host.credential_ref)?;
             let trusted = if let Some(expected) = self.local.trust.get(&host.endpoint()) {
@@ -580,6 +654,8 @@ impl Render for Desktop {
                 Dialog::Prompt { input, .. } => ("prompt", vec![input.clone()]),
                 Dialog::Delete { .. } => ("delete", vec![]),
                 Dialog::Settings => ("settings", vec![]),
+                Dialog::Agents(..) => ("agents", vec![]),
+                Dialog::Notifications => ("notifications", vec![]),
             };
             for input in &inputs {
                 input.update(cx, |i, _| i.palette = self.palette);
@@ -798,10 +874,18 @@ impl Render for Desktop {
                             self.button("confirm-delete", "삭제", cx, |s, _, _| s.confirm()),
                         );
                 }
+                Dialog::Agents(connection, alias) => {
+                    body = body.child(self.agent_details(connection, alias, cx));
+                }
+                Dialog::Notifications => {
+                    body = body.child(self.recent_agents(cx));
+                }
                 Dialog::Settings => {
                     body = body
                         .child(div().text_xl().child("설정"))
-                        .child(self.shortcut_settings(cx));
+                        .child(self.shortcut_settings(cx))
+                        .child(self.cloud_sync_settings(cx))
+                        .child(self.agent_settings(cx));
                     for (value, label) in
                         [("system", "시스템"), ("light", "밝게"), ("dark", "어둡게")]
                     {

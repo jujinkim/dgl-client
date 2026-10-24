@@ -85,6 +85,7 @@ pub struct Preferences {
     pub scrollback: i32,
     pub terminal_shortcuts: Vec<crate::input::TerminalKey>,
     pub volume_keys_enabled: bool,
+    pub agent_notifications: crate::agent::NotificationSettings,
     pub volume_up: crate::input::VolumeBinding,
     pub volume_down: crate::input::VolumeBinding,
 }
@@ -96,6 +97,7 @@ impl Default for Preferences {
             scrollback: 5000,
             terminal_shortcuts: crate::input::TerminalKey::DEFAULT_SHORTCUTS.to_vec(),
             volume_keys_enabled: false,
+            agent_notifications: Default::default(),
             volume_up: Default::default(),
             volume_down: Default::default(),
         }

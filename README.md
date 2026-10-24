@@ -2,11 +2,12 @@
 
 **Keep the CLI. Simplify the workflow.**
 
-SSH와 표준 tmux를 사용하는 Windows·Mac·Android 터미널 클라이언트입니다. 원격 데몬 없이 기존 세션을 탐색하고, 연결을 닫은 뒤 같은 프로세스로 돌아갑니다. Rust 코어를 사용하는 **개발용 후보**입니다. Windows 빌드 환경은 마련했으며 네이티브 빌드·실기 검증은 대기입니다. Mac 실제 GUI·Keychain, 전체 기능 화면 인수와 실제 Codex/Claude 검증도 아직 완료되지 않았습니다.
+SSH와 표준 tmux를 사용하는 Windows·Mac·Android 터미널 클라이언트입니다. 원격 데몬 없이 기존 세션을 탐색하고, 연결을 닫은 뒤 같은 프로세스로 돌아갑니다. Rust 코어를 사용하는 **개발용 후보**입니다. Windows 네이티브 빌드·실기, Mac 실제 GUI·Keychain과 전체 기능 화면 인수는 대기입니다. Codex·Claude의 일부 공식 훅은 실제 CLI에서 확인했으며 [검증 범위](docs/AGENT_STATUS.md)를 구분해 기록합니다.
 
 ## 현재 구현
 
 - 호스트 추가·편집·삭제, 별칭·즐겨찾기·최근 접속, 독립된 여러 연결
+- Google Drive·iCloud Drive 파일 기반 설정·호스트 동기화, 민감정보 제외·동시 수정 충돌 선택 ([지원 플랫폼·사용 방법](docs/CLOUD_SYNC.md))
 - 비밀번호, RSA/Ed25519 및 암호화 개인키 가져오기, Ed25519 생성·공개키 복사
 - 최초 호스트키 지문 확인, 저장된 키 변경 시 차단, 신뢰 키 삭제
 - Android Keystore / Mac Keychain / Windows DPAPI 보호 저장. 실패 시 저장 중단 (Windows 실행 검증 대기)
@@ -19,6 +20,7 @@ SSH와 표준 tmux를 사용하는 Windows·Mac·Android 터미널 클라이언�
 - 화면 캡처·실시간 출력 순서화, 연결·패널·크기 세대 검사, bounded output / scrollback
 - Android xterm.js/WebView, Mac GPUI/alacritty_terminal, 단축키 바, 앱 테마·폰트 크기
 - 하단 `…` 메뉴에서 Claude Code·Codex 일반 실행 또는 Bypass 실행
+- 모든 tmux 창·패널의 Codex·Claude 프로세스 아이콘, 선택적 공식 훅 연동, 읽지 않은 사건 배지·앱 내 알림·OS 알림·대상 패널 이동
 - Android 볼륨 위·아래 키별 단축키·텍스트/키 매크로 설정 (기본 꺼짐)
 - tmux 미설치/버전 미지원 시 일반 SSH 셸. **일반 셸의 작업은 연결 종료 후 보존되지 않을 수 있습니다.**
 
@@ -135,6 +137,13 @@ Bypass의 의미는 [Claude Code CLI 문서](https://code.claude.com/docs/en/cli
 서비스·번개 아이콘은 앱에 번들되며 네트워크 다운로드 없이 테마 색상으로 표시됩니다.
 데스크톱 패키지는 아이콘의 `simple-icons-LICENSE.md`도 포함합니다.
 
+호스트 메뉴의 `에이전트 상태 연동`에서 변경 내용을 검사한 뒤 선택적으로 도우미와 사용자 훅을 설치합니다.
+Python 3.9 이상, Codex 0.163.0·Claude Code 2.1.310이 현재 설치 검사 대상입니다. 기존 훅은 보존하며
+Codex의 `/hooks` 신뢰 검토는 사용자가 수행합니다. 별도 설치 없이도 확인된 프로세스 아이콘을 표시합니다.
+질문·승인 요청·응답 종료·오류는 **발생 사실**이며 현재 대기나 작업 성공을 뜻하지 않습니다.
+OS 알림은 설정에서 켜며 Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신합니다.
+설치·해제·저장 범위와 플랫폼별 검증은 [에이전트 상태·알림 안내](docs/AGENT_STATUS.md)를 따릅니다.
+
 ## 검증
 
 ```sh
@@ -187,7 +196,7 @@ Windows의 이전 JVM 설치물 CI는 제거했습니다. Rust 앱은 별도 수
 ## 남은 한계
 
 - Windows/Linux 새 앱과 물리 Android 기기·실제 한글/일본어 키보드, 실제 Wi-Fi↔셀룰러 전환은 별도 검증이 필요합니다.
-- 실제 Codex·Claude의 로그인·권한 요청·장시간 실행 중 재접속은 미검증입니다. 이 단계 전에는 에이전트 호환성을 확정하지 않습니다.
+- 실제 Codex·Claude의 요청·도구·Stop·서브에이전트 훅과 Claude 질문·승인·도구 오류를 확인했습니다. 전체 로그인 흐름·장시간 재접속, Codex 승인 훅, macOS 알림 배너·클릭, Windows 네이티브 토스트는 미검증입니다.
 - 스냅샷은 화면·alternate screen·커서·주요 모드를 복원합니다. tmux가 제공하지 않는 현재 SGR pen, 모든 VT 상태와 이전 로컬 scrollback의 완전 복원은 보장하지 않습니다. 필요하면 터미널에서 다시 그리기(Ctrl+L)를 사용합니다.
 - 패널 전환·재접속 시 로컬 scrollback은 초기화됩니다. tmux Copy Mode는 별도 상태로 표시하며 해당 화면을 일반 pane 출력으로 오인하지 않습니다.
 - 자동 재접속은 최대 8회 시도합니다. 네트워크 오류만 재시도하며 인증·호스트키·프로토콜 오류는 멈춥니다. Android의 지속적인 백그라운드 연결은 보장하지 않습니다.

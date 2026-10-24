@@ -8,6 +8,10 @@ Windows 네이티브 빌드·DPAPI 실행·GUI 인수를 통과했다고 표시�
 하단 `…`의 Claude Code·Codex 실행 메뉴도 공통 GPUI 구현에 포함된다.
 아이콘은 실행 파일에 내장되며 ZIP에는 `simple-icons-LICENSE.md`가 함께 포함된다.
 
+설정의 Google Drive·iCloud Drive 동기화는 설치된 Drive 앱의 로컬 폴더를 선택해
+`dgl-sync.json`을 읽고 쓰는 공통 파일 구현이다. OAuth·클라우드 SDK·추가 빌드 도구는
+필요하지 않다. Windows 실제 Drive 폴더 연동은 미검증이며 [사용 방법](CLOUD_SYNC.md)을 따른다.
+
 ## 1. 빌드 환경 준비
 
 1. Git for Windows, Python 3.9 이상(`python.exe`가 PATH에 있어야 함),
@@ -112,3 +116,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 
 | 호스트 추가 / 세션 생성 | `Ctrl+Shift+N` / `Ctrl+Shift+S` |
 | 연결 종료 / 연결 전환 | `Ctrl+Shift+W` / `Ctrl+Shift+F1–F9` |
 | 새로고침 / 설정 / 앱 종료 | `Ctrl+Shift+R` / `Ctrl+Shift+P` / `Ctrl+Shift+Q` |
+
+## 6. 에이전트 알림
+
+탭·패널의 프로세스 식별과 선택적 공식 훅 연동은 [공통 안내](AGENT_STATUS.md)를 따른다.
+Windows 알림은 WinRT 네이티브 토스트이며 PowerShell이나 다른 앱의 알림 ID를 사용하지 않는다.
+ZIP 배포와 기존 빌드 진입점은 유지한다. 추가 빌드 도구는 없으며 `windows` crate의
+알림·COM·레지스트리 API를 사용한다.
+
+설정에서 **OS 알림**을 켜면 현재 사용자에게 아래 항목을 등록한다. 관리자 권한은 필요하지 않다.
+이후 OS 알림이 켜진 앱 시작에도 등록 경로를 갱신하므로 ZIP 폴더를 옮긴 뒤에는 앱을 직접 실행한다.
+
+- AUMID: `kim.jujin.dgl.rust-candidate`
+- 바로가기: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\dgl Rust Candidate.lnk`
+- `HKCU\Software\Classes\AppUserModelId\kim.jujin.dgl.rust-candidate`
+- COM 활성화 CLSID: `{5FD514F1-B83F-4F6D-A85B-156AD0E79E33}`
+- `HKCU\Software\Classes\CLSID\{5FD514F1-B83F-4F6D-A85B-156AD0E79E33}\LocalServer32`
+  값은 현재 실행 파일과 `--agent-toast` 인자이다.
+
+클릭은 사건 ID로 앱의 기존 연결·패널을 찾는다. 앱이 종료되어 최근 사건이 없거나 패널이 사라졌으면
+연결 종료 안내를 표시하며 자동 재접속·원격 입력·승인을 하지 않는다. OS 알림을 꺼도 기존 사용자
+등록은 남는다. 앱을 완전히 제거할 때 위 **dgl 전용** 바로가기와 두 레지스트리 하위 트리만 제거할 수 있다.
+사용자 설정·자격 증명과 다른 앱의 등록은 별개다.
+
+이번 Mac 작업에서는 Windows GNU 대상 토스트 어댑터의 독립 타입 검사와 패키저 단위 검사를 수행했다.
+MSVC 전체 빌드와 Windows에서의 COM 활성화·알림 표시 검증을 대체하지 않는다. 사용자 실기 항목:
+
+1. ZIP을 풀어 실행하고 OS 알림을 켠 뒤 Windows 알림 설정에 dgl 자체 이름이 나타나는지 확인한다.
+2. 다른 탭·패널 또는 다른 앱을 보는 동안 공식 훅 사건을 발생시켜 알림·클릭 이동을 확인한다.
+3. 현재 보이는 패널의 알림 생략, 집중 모드/권한 거부 시 앱 내 사건 보존을 확인한다.
+4. 패널 종료·앱 종료 뒤 기존 토스트 클릭 시 종료 안내와 재접속/입력 미전송을 확인한다.

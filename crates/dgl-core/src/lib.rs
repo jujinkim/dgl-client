@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod command;
 pub mod connection;
 pub mod flow;
@@ -5,6 +6,7 @@ pub mod input;
 pub mod model;
 pub mod protocol;
 pub mod ssh;
+pub mod sync;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, thiserror::Error,

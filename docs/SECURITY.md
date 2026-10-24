@@ -18,6 +18,12 @@
 
 ## 저장소·CI
 
+Google Drive·iCloud Drive 동기화는 공통 코어의 별도 필드 허용 목록만 내보낸다.
+비밀번호·개인키·키 암호·credentialRef·신뢰한 호스트키·매크로·터미널 기록은 공유하지 않는다.
+가져온 호스트 및 다른 기기에서 주소·포트·사용자명·인증 방식이 바뀐 호스트는 로컬 인증을
+다시 등록한다. 주소·사용자명은 공유 파일에 평문으로 저장되며 별도 종단간 암호화는 없다.
+공유 저장소의 계정·접근 제어를 신뢰하는 모델이다. [파일 동기화 범위와 한계](CLOUD_SYNC.md)를 따른다.
+
 `scripts/scan_secrets.py`는 Git이 관리할 작업 파일, staged diff, 전체 refs 이력을 Gitleaks 8.30.1로 검사한다. 결과에는 규칙과 위치만 출력하며 탐지 값은 출력하지 않는다. 테스트 SSH 키는 임시 디렉터리에서 생성·폐기한다. xterm 6.0.0의 두 exported class 이름(`FourKeyMap`, `SequencerByKey`)만 파일 경로와 함께 좁게 예외 처리했다. npm integrity와 번들 비교를 별도로 수행한다.
 
 CI는 contents:read, Action SHA 고정, persist-credentials:false, PR에 비밀정보·쓰기 권한 없음, APK/MSI/EXE 경로만 업로드를 사용한다. `pull_request_target`과 release 자동 게시를 사용하지 않는다. Wrapper 배포 checksum과 wrapper JAR 공식 SHA-256을 확인했다. Gradle artifact SHA-256 verification, dependency lock, npm lock을 커밋 대상으로 둔다. 검증 메타데이터 재생성은 자동 업데이트로 승인하지 말고 변경 원인을 검토한다.

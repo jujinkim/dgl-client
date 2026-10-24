@@ -42,9 +42,23 @@ expect fun copyPublicKey(value: String)
     var edit by remember { mutableStateOf<HostProfile?>(null) }
     var adding by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
+    var agentDetails by remember { mutableStateOf<ClientConnection?>(null) }
+    var notifications by remember { mutableStateOf(false) }
+    var switching by remember { mutableStateOf(false) }
+    val agentNav by model.agentNavigation.collectAsState()
+    val agentError by model.agentNavigationError.collectAsState()
+    val agentNotices by model.agentNotifications.collectAsState()
     var explorer by remember { mutableStateOf(false) }
     var deletion by remember { mutableStateOf<HostProfile?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    SideEffect { model.hostEditing = adding || edit != null || deletion != null }
+    LaunchedEffect(agentNav) {
+        if (agentNav > 0) {
+            explorer = false; switching = false; notifications = false; agentDetails = null
+            settings = false; adding = false; edit = null; deletion = null; error = null
+        }
+    }
+    DisposableEffect(model) { onDispose { model.visibleConnection = null; model.hostEditing = false } }
     val colors = if (dark) darkColorScheme(
         primary = Color(0xff75aaff), secondary = Color(0xff75aaff),
         primaryContainer = Color(0xff2b4264), secondaryContainer = Color(0xff2b4264),
@@ -71,19 +85,19 @@ expect fun copyPublicKey(value: String)
                     Spacer(Modifier.width(8.dp))
                     Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                     TextButton({ explorer = !explorer }) { Text(if (explorer) "터미널" else "호스트") }
+                    TextButton({ notifications = true }) { Text("알림 ${agentNotices.count { !it.read }}") }
                     TextButton({ settings = true }) { Text("설정") }
                 }
                 if (mobileLayout && connections.isNotEmpty()) {
-                    var switching by remember { mutableStateOf(false) }
                     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                        TextButton({ switching = true }) { Text((selected?.host?.alias ?: "연결 선택") + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        TextButton({ switching = true }) { Column { Text((selected?.host?.alias ?: "연결 선택") + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis); selected?.let { c -> AgentBadge(c, notices = agentNotices) { agentDetails = c } } } }
                         DropdownMenu(switching, { switching = false }) {
-                            connections.forEach { connection -> DropdownMenuItem(text = { Text(connection.host.alias, maxLines = 2, overflow = TextOverflow.Ellipsis) }, onClick = { model.selected.value = connection; explorer = false; switching = false }) }
+                            connections.forEach { connection -> DropdownMenuItem(text = { Column { Text(connection.host.alias, maxLines = 2, overflow = TextOverflow.Ellipsis); AgentBadge(connection, notices = agentNotices) { switching = false; agentDetails = connection } } }, onClick = { model.selected.value = connection; explorer = false; switching = false }) }
                         }
                     }
                 } else if (connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                     connections.forEach { connection ->
-                        FilterChip(selected == connection, { model.selected.value = connection; explorer = false }, label = { Text(connection.host.alias) })
+                        FilterChip(selected == connection, { model.selected.value = connection; explorer = false }, label = { Column { Text(connection.host.alias); AgentBadge(connection, notices = agentNotices) { agentDetails = connection } } })
                         TextButton({ model.removeConnection(connection) }) { Text("×") }
                     }
                 }
@@ -94,7 +108,7 @@ expect fun copyPublicKey(value: String)
                             Column(if (wide) Modifier.width(272.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text("연결", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                                    TextButton({ adding = true }) { Text("+ 호스트") }
+                                    TextButton({ model.hostEditing = true; adding = true }) { Text("+ 호스트") }
                                 }
                                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                                     if (local.hosts.isEmpty()) item { Text("SSH 호스트를 추가하여 시작하세요.\n원격 서버에는 SSH와 tmux만 필요합니다.", Modifier.padding(12.dp)) }
@@ -105,9 +119,17 @@ expect fun copyPublicKey(value: String)
                                                 Text("${host.username}@${host.hostname}:${host.port}", style = MaterialTheme.typography.bodySmall)
                                                 if (host.lastConnected != 0L) Text("최근 연결: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    TextButton({ model.open(host); explorer = false }) { Text("연결") }
+                                                    TextButton({
+                                                        try {
+                                                            if (model.credentials.read(host.credentialRef) == null) {
+                                                                model.hostEditing = true
+                                                                edit = host
+                                                                error = "이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요."
+                                                            } else { model.open(host); explorer = false }
+                                                        } catch (_: Exception) { error = "보호 저장소를 열지 못했습니다." }
+                                                    }) { Text("연결") }
                                                     Spacer(Modifier.weight(1f))
-                                                    TreeMenu("${host.alias} 메뉴", listOf("편집" to { edit = host }, "삭제…" to { deletion = host }))
+                                                    TreeMenu("${host.alias} 메뉴", listOf("편집" to { model.hostEditing = true; edit = host }, "에이전트 상태 연동" to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it } ?: run { error = "호스트에 먼저 연결하세요." } }, "삭제…" to { model.hostEditing = true; deletion = host }))
                                                 }
                                             }
                                             HorizontalDivider()
@@ -121,9 +143,9 @@ expect fun copyPublicKey(value: String)
                             Box(Modifier.weight(1f).fillMaxHeight()) {
                                 if (selected != null) key(selected) {
                                     val client = selected!!
-                                    ConnectionScreen(client, local.preferences, mobileLayout) {
+                                    ConnectionScreen(client, local.preferences, mobileLayout, model, { agentDetails = client }) {
                                         model.selected.value === client && (wide || !explorer) &&
-                                            !settings && !adding && edit == null && deletion == null && error == null
+                                            !notifications && !switching && agentError == null && agentDetails == null && !settings && !adding && edit == null && deletion == null && error == null
                                     }
                                 }
                                 else Column(Modifier.align(Alignment.Center).padding(24.dp)) {
@@ -138,6 +160,10 @@ expect fun copyPublicKey(value: String)
                 }
             }
         }
+        if (selected == null || explorer || settings || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
+        agentDetails?.let { AgentDetails(it, model) { agentDetails = null } }
+        if (notifications) AgentNotifications(model) { notifications = false }
+        agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { TextButton({ model.agentNavigationError.value = null }) { Text("닫기") } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
         if (settings) SettingsDialog(model, mobileLayout) { settings = false }
         deletion?.let { host -> ConfirmDialog("호스트 삭제", "${host.alias}의 로컬 설정과 저장된 자격 증명을 삭제합니다.", {
@@ -152,7 +178,7 @@ expect fun copyPublicKey(value: String)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, inputAllowed: () -> Boolean) {
+@Composable private fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, model: AppModel, showAgents: () -> Unit, inputAllowed: () -> Boolean) {
     val status by client.status.collectAsState()
     val remote by client.remote.collectAsState()
     val refreshing by client.refreshing.collectAsState()
@@ -166,11 +192,19 @@ expect fun copyPublicKey(value: String)
     var navigation by remember { mutableStateOf(!mobileLayout) }
     var namePrompt by remember { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }
     var deletion by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    val agentNav by model.agentNavigation.collectAsState()
+    LaunchedEffect(agentNav) {
+        if (agentNav > 0) {
+            navigation = false; tmuxDetails = false; namePrompt = null; deletion = null
+        }
+    }
     val terminalFocus = remember(client) { TerminalFocus() }
     val terminalInputAllowed = {
         inputAllowed() && !(mobileLayout && navigation) && !tmuxDetails && namePrompt == null && deletion == null &&
             client.trustRequest.value == null && client.notice.value == null
     }
+    SideEffect { model.visibleConnection = client.takeIf { terminalInputAllowed() } }
+    DisposableEffect(client) { onDispose { if (model.visibleConnection === client) model.visibleConnection = null } }
     PlatformInputRegistration(client, preferences, terminalInputAllowed)
     val currentPane = remote.panes.firstOrNull { it.id == pane }
     val currentWindow = remote.windows.firstOrNull { it.id == currentPane?.window && it.session == session }
@@ -214,6 +248,7 @@ expect fun copyPublicKey(value: String)
                             { client.selectTarget(s.id, w.id, p.id) }, canBrowse, listOf(
                                 "삭제…" to { deletion = "패널 ${p.id}" to { client.manage(TmuxCommand.killPane(p.id)) } },
                             ))
+                        Row(Modifier.padding(start = 66.dp)) { AgentBadge(client, p.id, onDetails = showAgents) }
                     }
                 }
             }
@@ -395,6 +430,8 @@ expect fun copyPublicKey(value: String)
             TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
                 model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
             }
+            AgentNotificationSettingsUi(model)
+            CloudSyncSettings(model)
             PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
             Text("신뢰한 서버", style = MaterialTheme.typography.titleSmall)
             local.trust.forEach { (endpoint, fingerprint) ->

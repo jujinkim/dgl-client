@@ -632,6 +632,12 @@
             "action": "Default",
             "steps": []
           },
+          "agentNotifications": {
+            "questions": true,
+            "responses": true,
+            "errors": true,
+            "os": false
+          },
           "terminalShortcuts": [
             "Escape",
             "Tab",
@@ -674,6 +680,12 @@
           "volumeDown": {
             "action": "Default",
             "steps": []
+          },
+          "agentNotifications": {
+            "questions": true,
+            "responses": true,
+            "errors": true,
+            "os": false
           },
           "terminalShortcuts": [
             "Escape",
@@ -784,6 +796,12 @@
               }
             ]
           },
+          "agentNotifications": {
+            "questions": true,
+            "responses": true,
+            "errors": true,
+            "os": false
+          },
           "terminalShortcuts": [
             "Escape",
             "Tab",
@@ -850,6 +868,12 @@
           "volumeDown": {
             "action": "Default",
             "steps": []
+          },
+          "agentNotifications": {
+            "questions": true,
+            "responses": true,
+            "errors": true,
+            "os": false
           },
           "terminalShortcuts": [
             "Escape",
@@ -955,6 +979,12 @@
             "action": "Default",
             "steps": []
           },
+          "agentNotifications": {
+            "questions": true,
+            "responses": true,
+            "errors": true,
+            "os": false
+          },
           "terminalShortcuts": [
             "Enter",
             "ShiftLeft",
@@ -986,6 +1016,12 @@
           "volumeDown": {
             "action": "Default",
             "steps": []
+          },
+          "agentNotifications": {
+            "questions": true,
+            "responses": true,
+            "errors": true,
+            "os": false
           },
           "terminalShortcuts": []
         }

@@ -1,4 +1,4 @@
-plugins { id("com.android.library"); kotlin("plugin.compose") }
+plugins { id("com.android.library"); kotlin("plugin.compose"); kotlin("plugin.serialization") }
 android {
     namespace = "kim.jujin.dgl.mobile"
     compileSdk = 36

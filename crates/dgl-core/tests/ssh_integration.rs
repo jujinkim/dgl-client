@@ -67,6 +67,207 @@ async fn completion(c: &Connection, id: u64) {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+#[ignore = "requires scripts/integration.py --agent-home; simulated hook producer, real SSH/tmux"]
+async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
+    use dgl_core::agent::{self, Kind};
+    let root = std::path::PathBuf::from(std::env::var("DGL_TEST_ROOT").unwrap());
+    // Refuse to write an observer database into the real home in ordinary SSH tests.
+    if !root.join("home").exists() {
+        return;
+    }
+    let helper = root.join("observer.py");
+    std::fs::write(&helper, agent::HELPER).unwrap();
+    let trigger = root.join("emit-stop");
+    let wrapper = std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap();
+    let command = format!(
+        "printf '%s' '{{\"hook_event_name\":\"Stop\",\"session_id\":\"fixture\"}}' | python3 {} record --agent Codex --tmux {}",
+        dgl_core::command::quote(helper.to_str().unwrap()).unwrap(),
+        dgl_core::command::quote(&wrapper).unwrap()
+    );
+    let source = format!(
+        "#include <unistd.h>\n#include <stdlib.h>\nint main(void){{ for(;;){{ if(access({},F_OK)==0){{system({});unlink({});}} usleep(100000); }} }}",
+        serde_json::to_string(trigger.to_str().unwrap()).unwrap(),
+        serde_json::to_string(&command).unwrap(),
+        serde_json::to_string(trigger.to_str().unwrap()).unwrap()
+    );
+    std::fs::write(root.join("producer.c"), source).unwrap();
+    assert!(
+        std::process::Command::new("cc")
+            .args([
+                root.join("producer.c").to_str().unwrap(),
+                "-o",
+                root.join("codex").to_str().unwrap()
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let (mut host, credential, fingerprint) = fixture("DGL_TEST_KEY_FILE");
+    let mut inspector = ssh::connect(
+        &host,
+        &credential,
+        Some(fingerprint.clone()),
+        Arc::new(Mutex::new(None)),
+    )
+    .await
+    .unwrap();
+    inspector.discover().await.unwrap();
+    inspector
+        .execute_tmux(
+            &dgl_core::command::Command::new(&Operation::NewSession {
+                name: "agents".into(),
+            })
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (code, rows) = inspector
+        .execute(&format!(
+            "{} list-panes -t agents -F '#{{session_id}}|#{{window_id}}|#{{pane_id}}'",
+            dgl_core::command::quote(&wrapper).unwrap()
+        ))
+        .await
+        .unwrap();
+    assert_eq!(code, 0);
+    let row = String::from_utf8(rows).unwrap();
+    let ids: Vec<_> = row.trim().split('|').collect();
+    host.last_session = Some(ids[0].into());
+    host.last_pane = Some(ids[2].into());
+    let (code, hidden) = inspector
+        .execute(&format!(
+            "{} new-window -t {} -P -F '#{{pane_id}}' {}",
+            dgl_core::command::quote(&wrapper).unwrap(),
+            dgl_core::command::target(ids[0], '$').unwrap(),
+            dgl_core::command::quote(root.join("codex").to_str().unwrap()).unwrap()
+        ))
+        .await
+        .unwrap();
+    assert_eq!(code, 0);
+    let hidden = String::from_utf8(hidden).unwrap().trim().to_string();
+    let c = Connection::start(host.clone(), credential.clone(), Some(fingerprint.clone()));
+    phase(&c, Phase::Ready).await;
+    // No output subscription at all: the separate observer must still collect hidden windows.
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            if c.state()
+                .agents
+                .observations
+                .iter()
+                .any(|o| o.pane == hidden)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(c.state().agents.events.is_empty());
+    // Exercise the same fallback used when Python is absent. This path only
+    // executes tmux and ps and cannot claim a detailed hook observation.
+    let basic = agent::basic_snapshot(&inspector, ids[0]).await.unwrap();
+    assert!(
+        basic
+            .observations
+            .iter()
+            .any(|o| o.pane == hidden && o.agent == agent::Agent::Codex)
+    );
+    assert!(
+        basic
+            .observations
+            .iter()
+            .all(|o| o.last.is_none() && o.supported.is_empty())
+    );
+    assert!(basic.events.is_empty());
+    // Create the DB and synchronize its epoch without producing a replay notification.
+    std::fs::write(&trigger, b"1").unwrap();
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            if c.state()
+                .agents
+                .observations
+                .iter()
+                .any(|o| o.last.is_some())
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(c.state().agents.events.is_empty());
+    std::fs::write(&trigger, b"2").unwrap();
+    let event = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            if let Some(e) = c.state().agents.events.first() {
+                break e.clone();
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(event.kind, Kind::Response);
+    assert_eq!(event.pane, hidden);
+    assert_ne!(c.state().pane.as_ref(), Some(&hidden));
+    completion(
+        &c,
+        c.action(Action::SelectTarget {
+            session: event.session.clone(),
+            window: Some(event.window.clone()),
+            pane: Some(event.pane.clone()),
+        })
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(c.state().pane.as_ref(), Some(&hidden));
+    let restored = Connection::start(host, credential, Some(fingerprint));
+    phase(&restored, Phase::Ready).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(restored.state().agents.events.is_empty());
+    inspector
+        .execute_tmux(
+            &dgl_core::command::Command::new(&Operation::KillPane {
+                target: hidden.clone(),
+            })
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            if !c
+                .state()
+                .agents
+                .observations
+                .iter()
+                .any(|o| o.pane == hidden)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .unwrap();
+    c.close();
+    restored.close();
+    c.join().await;
+    restored.join().await;
+    inspector
+        .execute_tmux(
+            &dgl_core::command::Command::new(&Operation::KillSession {
+                target: ids[0].into(),
+            })
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    inspector.close().await;
+}
 #[tokio::test]
 #[ignore = "requires scripts/integration.py disposable OpenSSH/tmux"]
 async fn isolated_auth_management_input_reconnect() {

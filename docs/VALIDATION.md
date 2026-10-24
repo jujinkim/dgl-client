@@ -504,6 +504,83 @@ Windows/실기/실제 에이전트 미완료 상태를 변경하지 않는다.
 Mac GUI 창 조회와 Keychain 쓰기(-25308)는 현재 세션에서 검증을 진행할 수 없어 대기다.
 개발용 번들 생성이나 합성 IME를 실제 GUI/물리 입력 인수로 대체하지 않는다.
 
+## 2026-10-25 Codex·Claude 관측 아이콘·알림
+
+`main`에 Python 도우미·선택 설치/해제, Rust 관측·공통 알림 큐, GPUI/Android 배지와
+최근 알림·패널 이동, macOS UserNotifications·Windows COM/WinRT·Android 알림 채널을 구현했다.
+관측은 사건 발생 사실이며 성공·지속 대기를 의미하지 않는다. 읽음 처리와 관측은 분리한다.
+[사용 방법과 지원/미확인 구분](AGENT_STATUS.md), [Windows 사용자 등록·검증](WINDOWS.md#6-에이전트-알림)을 따른다.
+
+수행 결과:
+
+- Rust 코어 10개(120 fixture 포함), UniFFI 1개, GPUI 11개 통과. 기본 Cargo 실행의 SSH 검사 3개와
+  대화형 Keychain 1개는 ignored이며 성공 건수에 포함하지 않았다.
+- 격리 OpenSSH + tmux **3.3a/3.7c**에서 SSH 통합 3개씩 통과. 출력 미구독 상태의 숨겨진 창,
+  최초 기준선·DB 세대 동기화, 새 사건, 대상 이동, 재접속 재알림 방지, 프로세스 종료를 확인했다.
+  최종 3.7c 추가 검사에서 Python을 사용하지 않는 `tmux`/`ps` 기본 식별 경로도 실행했다.
+- Python 도우미 5개, Windows ZIP 패키저 3개 통과. 훅 보존·반복 설치/해제·설정 충돌·백업·지원 버전,
+  Python 버전 거부, 내용 미저장, 실행/서버 재시작, 제한 저장·누락, 해제 후 이전 관측 비활성화를 검사했다.
+- 실제 Codex **0.163.0**: SessionStart, UserPromptSubmit, Pre/PostToolUse, Stop, SubagentStart/Stop.
+  실제 Claude Code **2.1.310**: 위 사건과 AskUserQuestion, PermissionRequest, PostToolUseFailure, SessionEnd.
+  임시 HOME·독립 tmux에서 실행했고 Codex 훅은 `/hooks`에서 정상 검토·신뢰했다.
+  실험용 인증 파일은 임시 디렉터리 정리 시 삭제했다. 실제 CLI 검사는 합성 SSH 생산자와 별개다.
+- JVM 39개 중 **30개 통과·9개 예상 skip**. Android 네 ABI Debug APK·lint와 API36 알림 계측 **2개 통과**.
+  권한 거부/허용, 알림 채널·중복, 실제 PendingIntent와 onNewIntent, 종료 대상 안내·재접속 미수행을 확인했다.
+  ActivityScenario가 알림 Intent 교체 뒤 종료 콜백을 찾지 못한 첫 시도는 실패했다. 테스트 정리에서 원래
+  실행 Intent를 복원해 재실행한 결과 통과했다. 제품의 클릭 처리를 우회하지 않았다.
+- macOS ARM64 GPUI 패키지 생성·ad-hoc 서명 검증, Windows GNU 대상 토스트 어댑터 독립 타입 검사 통과.
+  Windows MSVC 전체 빌드·DPAPI·GUI·COM/토스트 실기는 수행하지 않았다.
+- lint의 기존 검토 진단 13개, 비밀정보 검사, `git diff --check`, 대시보드 스키마 검사 통과.
+  `.dashboard-props.json`은 Git 제외 상태이며 Windows AUMID와 기능 설명을 갱신했다.
+
+macOS Debug 시험 앱은 알림 요청을 보냈지만 화면 접근이 `cgWindowNotFound`로 실패해 배너 표시·클릭
+전달을 검증하지 못했다. 시험 앱은 종료했다. Codex PermissionRequest 시험은 자동 승인 검토가
+“sandbox approval requests disabled”로 승인 요청을 거부해 실수신 확인을 완료하지 못했다.
+Claude StopFailure, Codex Interrupt/SessionEnd 등 모든 설정 훅의 실제 발생을 재현한 것은 아니다.
+지원하지 않는 Codex 질문·일반 오류를 화면/대화 기록으로 추정하지 않는다.
+
+증거는 Git 제외된 `artifacts/agent-status/`의 `codex-cli.json`, `claude-cli.json`,
+`*-live-observations.json`, `validation.json`, `rust.log`, `android.log`, `ssh.log`,
+`mac-package.log`, `windows-adapter-typecheck.log`에 보관한다. `replyObserved`는 마지막 터미널 화면에
+시험 문구가 남았는지만 나타내며, 공식 훅 수신 결과는 `events`와 `observedKinds`를 기준으로 한다.
+Java 검증 환경은 Android Studio JBR 25이며 JVM 출력 대상 17은 유지했다.
+최종 APK는 `artifacts/rust-candidate/android/dgl-rust-debug.apk`, Mac 번들은
+`artifacts/rust-candidate/mac/dgl Rust Candidate.app`이다. 공개 릴리스 서명·공증·원격 CI는 수행하지 않았다.
+
+## 2026-10-25 Google Drive·iCloud Drive 파일 동기화
+
+Drive API·OAuth 없이 선택한 파일을 직접 읽고 쓰는 동기화를 추가했다.
+Mac·Windows는 두 Drive의 로컬 폴더, Android는 시스템 문서 선택기의 Google Drive 파일을
+사용한다. Android iCloud Drive는 지원하지 않으며 설정 화면에 이를 표시한다.
+설정 범위·연결·충돌·클라우드 전송 한계는 [CLOUD_SYNC.md](CLOUD_SYNC.md)를 따른다.
+
+- Rust 코어 **16개**(공통 120 fixture 포함), UniFFI **1개**, GPUI·PC 파일 어댑터 **12개** 통과.
+  SSH 통합 3개·대화형 Keychain 1개는 ignored로 유지했으며 이번 성공 건수에 포함하지 않았다.
+- 신규 코어 검사 6개는 민감정보/매크로 제외, 자격 증명·신뢰의 기기별 유지,
+  오프라인·지연 파일 병합, 수정/삭제 충돌과 선택, 실패 재시도·대상 변경 시 인증 분리,
+  형식/버전/데이터셋 검증, 파일 I/O 또는 적용 실패 중 편집의 인과 관계를 다룬다.
+  로컬에 실제 적용한 변경만 확인 처리해 읽기 중 발생한 편집을 원격 변경으로 덮어쓰지 않는다.
+- JVM **39개 중 30개 통과·9개 예상 skip**. 네 ABI Debug APK·테스트 APK·lint 빌드 통과.
+  lint는 기존 검토 진단 **13개**, 신규 미검토 진단 없음.
+- Android API36 ARM64의 실제 ContentResolver/영속 URI 계측 **1개 통과**.
+  격리된 두 모델을 통해 연결·민감정보 제외·편집 중 보류·병합·충돌 선택·쓰기 실패·
+  어댑터 재시작 후 재시도·삭제 전파·손상 파일 보존·연결 해제를 확인했다.
+  테스트 제공자는 테스트 APK에만 포함되며 Google 계정·실제 Drive 데이터에 접근하지 않았다.
+- macOS ARM64 개발용 앱 패키징·로컬 ad-hoc 서명 검증, Android 네 ABI·ID·SDK·서명 검사 및
+  전달용 APK 갱신을 완료했다. Windows MSVC 빌드 경로·패키징·CI는 유지했다.
+- 비밀정보 검사, `git diff --check`, 대시보드 스키마 검사를 통과했다.
+  `.dashboard-props.json`의 기능 설명을 갱신했으며 Git 제외 상태다.
+
+첫 Android 계측은 테스트 APK 별도 프로세스의 Kotlin 런타임 부재로 중단됐다.
+테스트 문서 제공자를 Java로 작성해 제품 코드를 우회하지 않고 재실행하여 통과했다.
+Rust 전체 병렬 검사 중 기존 CLI 실행 메뉴 UI 검사가 한 번 실패했다. 해당 검사 단독 실행과
+최종 전체 `--test-threads=1` 실행은 통과했으며 관련 메뉴 제품 코드는 변경하지 않았다.
+
+증거는 Git 제외된 `artifacts/cloud-sync/`의 `rust-tests.log`(병렬 실패 포함),
+`rust-tests-serial.log`(최종), `android-build.log`, `android-file-test.log`, `mac-package.log`다.
+실제 Google Drive·iCloud 업로드 및 물리 기기 간 전송, 실제 파일 선택기 UX,
+Windows 네이티브 빌드·GUI·DPAPI는 이번 작업에서 검증하지 않았다.
+
 ## 2026-10-25 네트워크 재시도 정지·수동 재시도
 
 자동 재시도는 네트워크 오류에 한해 2·4·8·16·30·30·30초 간격으로 최대 7회 수행한다.

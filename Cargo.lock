@@ -1777,6 +1777,7 @@ name = "dgl-desktop"
 version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
+ "cc",
  "dgl-core",
  "gpui",
  "raw-window-handle",
@@ -1787,6 +1788,8 @@ dependencies = [
  "tempfile",
  "tokio",
  "unicode-segmentation",
+ "windows 0.61.3",
+ "windows-core 0.61.2",
  "windows-sys 0.61.2",
  "zeroize",
 ]

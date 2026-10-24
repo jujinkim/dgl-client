@@ -225,6 +225,7 @@ impl Desktop {
             let open = host.clone();
             let edit = host.clone();
             let delete = host.clone();
+            let setup_host = host.clone();
             let menu_id = format!("host-menu-{id}");
             let toggle = menu_id.clone();
             explorer = explorer.child(
@@ -264,6 +265,24 @@ impl Desktop {
                             }),
                         )
                         .child(self.button(
+                            format!("agent-setup-{id}"),
+                            "에이전트 상태 연동",
+                            cx,
+                            move |s, _, _| {
+                                s.menu = None;
+                                if let Some(tab) =
+                                    s.tabs.iter().rev().find(|t| t.host.id == setup_host.id)
+                                {
+                                    s.dialog = Some(Dialog::Agents(
+                                        tab.connection.clone(),
+                                        setup_host.alias.clone(),
+                                    ));
+                                } else {
+                                    s.error = Some("호스트에 먼저 연결하세요.".into());
+                                }
+                            },
+                        ))
+                        .child(self.button(
                             format!("delete-{id}"),
                             "삭제…",
                             cx,
@@ -279,12 +298,22 @@ impl Desktop {
             }
         }
         explorer = explorer.child(self.render_tree(cx));
-        sidebar =
-            sidebar
-                .child(explorer)
-                .child(self.button("settings", "설정", cx, |s, _, _| {
-                    s.dialog = Some(Dialog::Settings)
-                }));
+        sidebar = sidebar
+            .child(explorer)
+            .child(self.button(
+                "agent-notifications",
+                format!(
+                    "알림 {}",
+                    self.inbox.recent.iter().filter(|n| !n.read).count()
+                ),
+                cx,
+                |s, _, _| {
+                    s.dialog = Some(Dialog::Notifications);
+                },
+            ))
+            .child(self.button("settings", "설정", cx, |s, _, _| {
+                s.dialog = Some(Dialog::Settings)
+            }));
         let layout = self.workspace.layout.clone();
         let workspace = self.render_layout(layout, vec![], preview, cx);
         let status = self
@@ -689,6 +718,7 @@ impl Desktop {
                             },
                         )),
                     )
+                    .child(self.agent_badge(tab.connection.clone(), &tab.host, None, cx))
                     .child(self.button(menu.clone(), "…", cx, move |s, _, _| {
                         s.toggle_menu(toggle.clone())
                     }))
@@ -1269,6 +1299,14 @@ impl Desktop {
                                 s.toggle_menu(menu.clone())
                             })),
                     );
+                    if let Some(tab) = self.active_tab() {
+                        tree = tree.child(self.agent_badge(
+                            connection.clone(),
+                            &tab.host,
+                            Some(&pid),
+                            cx,
+                        ));
+                    }
                     if self.menu.as_ref() == Some(&menu_id) {
                         let c = connection.clone();
                         let kill = pid.clone();

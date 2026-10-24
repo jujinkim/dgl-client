@@ -4,6 +4,9 @@ import kim.jujin.rovessh.core.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
 interface ClientConnection {
+    val agents: MutableStateFlow<AgentSnapshot> get() = MutableStateFlow(AgentSnapshot())
+    val agentSetup: MutableStateFlow<String?> get() = MutableStateFlow(null)
+    fun configureAgents(operation: String, token: String? = null) {}
     val refreshing: MutableStateFlow<Boolean>
     val host: HostProfile
     val status: MutableStateFlow<ConnectionStatus>

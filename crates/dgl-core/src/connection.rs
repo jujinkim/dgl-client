@@ -54,6 +54,8 @@ pub struct State {
     #[serde(default)]
     pub retry: RetryState,
     pub diagnostics: Vec<ssh::Probe>,
+    pub agents: crate::agent::Snapshot,
+    pub agent_setup: Option<serde_json::Value>,
 }
 impl State {
     pub fn can_stop_retrying(&self) -> bool {
@@ -120,6 +122,10 @@ pub enum Action {
     },
     Manage {
         operation: Operation,
+    },
+    AgentSetup {
+        operation: String,
+        token: Option<String>,
     },
     Refresh,
     Snapshot,
@@ -230,6 +236,8 @@ impl Connection {
                 error: None,
                 retry: RetryState::default(),
                 diagnostics: vec![],
+                agents: Default::default(),
+                agent_setup: None,
             }),
             output: Arc::new(OutputQueue::default()),
             cancel: AtomicBool::new(false),
@@ -283,6 +291,7 @@ impl Connection {
                 s.retry.wait_seconds = None;
                 s.retry.stopped = false;
                 s.retry.connecting = false;
+                s.agents.invalidate();
                 s.pane = None;
                 s.generation.connection = s.generation.connection.saturating_add(1);
             });
@@ -372,10 +381,25 @@ impl Connection {
             Action::Manage { operation } => {
                 Command::new(operation)?;
             }
+            Action::AgentSetup { operation, token } => {
+                if !["inspect", "install", "remove"].contains(&operation.as_str()) {
+                    return Err(Error::InvalidArgument);
+                }
+                if operation != "inspect"
+                    && !token
+                        .as_ref()
+                        .is_some_and(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+                {
+                    return Err(Error::InvalidArgument);
+                }
+            }
             Action::Resize { columns, rows } => {
                 Size::new(*columns, *rows)?;
             }
             _ => {}
+        }
+        if matches!(action, Action::AgentSetup { .. }) {
+            self.shared.update(|s| s.agent_setup = None);
         }
         self.submit(RequestKind::Action(action))
     }
@@ -974,15 +998,12 @@ async fn run(
                 s.error = None;
                 s.diagnostics = ssh.diagnostics.clone();
             });
-            let result = connected(
-                &ssh,
-                shared.clone(),
-                &mut rx,
-                tmux,
-                &mut size,
-                &mut remembered,
-            )
-            .await;
+            // The observer uses a separate exec channel and runs even if output delivery
+            // is backpressured or no terminal is subscribed. Dropping this future cancels it.
+            let result = tokio::select! {
+                result = connected(&ssh, shared.clone(), &mut rx, tmux, &mut size, &mut remembered) => result,
+                _ = observe_agents(&ssh, shared.clone(), tmux) => unreachable!(),
+            };
             ssh.close().await;
             result
         };
@@ -995,6 +1016,7 @@ async fn run(
             shared.complete(r, Some(Error::Cancelled));
         }
         shared.update(|s| {
+            s.agents.invalidate();
             if let Some(fingerprint) = observed.lock().unwrap().clone() {
                 s.fingerprint = Some(fingerprint);
             }
@@ -1023,6 +1045,97 @@ async fn run(
         wait_for_retry(&shared, &mut retry_rx, delay).await;
     }
 }
+async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
+    let mut cursor = 0u64;
+    let mut epoch = String::new();
+    let mut scope = (String::new(), String::new());
+    let mut observation_floor = 0;
+    loop {
+        let state = shared.state.lock().unwrap().clone();
+        if tmux
+            && matches!(
+                state.phase,
+                Phase::Ready | Phase::Restoring | Phase::Selecting
+            )
+            && state.session.is_some()
+        {
+            let session = state.session.unwrap();
+            if scope.0 != session {
+                cursor = 0;
+                epoch.clear();
+            }
+            let after = cursor.to_string();
+            let result = tokio::time::timeout(
+                Duration::from_secs(8),
+                crate::agent::execute(
+                    ssh,
+                    &[
+                        "poll",
+                        "--session",
+                        &session,
+                        "--after",
+                        &after,
+                        "--epoch",
+                        &epoch,
+                    ],
+                ),
+            )
+            .await;
+            let mut snapshot = result
+                .ok()
+                .and_then(|r| r.ok())
+                .filter(|v| v.get("server").is_some())
+                .and_then(|v| serde_json::from_value::<crate::agent::Snapshot>(v).ok())
+                .filter(|s| s.validate().is_ok());
+            if snapshot.is_none() {
+                snapshot = tokio::time::timeout(
+                    Duration::from_secs(2),
+                    crate::agent::basic_snapshot(ssh, &session),
+                )
+                .await
+                .ok()
+                .and_then(|r| r.ok());
+            }
+            match snapshot {
+                Some(mut snapshot) => {
+                    if epoch != snapshot.epoch
+                        || scope != (session.clone(), snapshot.server.clone())
+                    {
+                        observation_floor = 0;
+                        snapshot.events.clear();
+                    }
+                    if snapshot.gap {
+                        observation_floor = snapshot.cursor;
+                        snapshot.events.clear();
+                    }
+                    snapshot.discard_observations_through(observation_floor);
+                    cursor = snapshot.cursor;
+                    epoch = snapshot.epoch.clone();
+                    scope = (session.clone(), snapshot.server.clone());
+                    snapshot.valid = true;
+                    snapshot.observed_at = crate::agent::now_ms();
+                    shared.update(|s| {
+                        if s.session.as_ref() == Some(&session) {
+                            s.agents = snapshot;
+                        }
+                    });
+                }
+                None => {
+                    shared.update(|s| s.agents.invalidate());
+                    cursor = 0;
+                    epoch.clear();
+                }
+            }
+        } else {
+            shared.update(|s| s.agents.invalidate());
+            cursor = 0;
+            epoch.clear();
+        }
+        // One sequential poll per connection, independent of the terminal actor.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
 async fn missing_session(ssh: &Ssh, shared: &Shared, control: &mut Option<Control>) -> Result<()> {
     if let Some(c) = control.take() {
         let _ = c.stream.close().await;
@@ -1286,6 +1399,12 @@ async fn connected(
                                 } else {
                                     return Err(Error::NotReady);
                                 }
+                            }
+                            Action::AgentSetup { operation, token } => {
+                                let mut args = vec![operation.as_str()];
+                                if let Some(token) = token { args.extend(["--token", token]); }
+                                let result = crate::agent::execute(ssh, &args).await.unwrap_or_else(|_| serde_json::json!({"error": "연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요."}));
+                                shared.update(|s| s.agent_setup = Some(result));
                             }
                             Action::Refresh => {
                                 if let Some(c) = control.as_mut() {

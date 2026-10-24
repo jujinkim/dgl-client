@@ -15,6 +15,12 @@ class RustClientConnection(
     private val local: StateFlow<LocalState>,
     private val updateLocal: ((LocalState) -> LocalState) -> Unit,
 ) : ClientConnection {
+    override val agents = MutableStateFlow(AgentSnapshot())
+    override val agentSetup = MutableStateFlow<String?>(null)
+    override fun configureAgents(operation: String, token: String?) {
+        agentSetup.value = null
+        action(buildJsonObject { put("action", "agentSetup"); put("operation", operation); token?.let { put("token", it) } })
+    }
     override val refreshing = MutableStateFlow(false)
     @Volatile private var refreshRequest: ULong? = null
     override val status = MutableStateFlow(ConnectionStatus())
@@ -82,11 +88,13 @@ class RustClientConnection(
                     delay(16)
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { if (current == epoch) { status.value = ConnectionStatus(Phase.Failed, "보호 저장소 또는 네이티브 연결을 열지 못했습니다."); native?.stop() } }
+            catch (_: Exception) { if (current == epoch) { agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, "보호 저장소 또는 네이티브 연결을 열지 못했습니다."); native?.stop() } }
         }
     }
     private fun applyState(s: JsonObject) {
         fun text(name: String) = s[name]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+        agents.value = s["agents"]?.let { json.decodeFromJsonElement(AgentSnapshot.serializer(), it) } ?: AgentSnapshot()
+        agentSetup.value = s["agent_setup"]?.takeUnless { it is JsonNull }?.toString()
         val phase = when (text("phase")) { "Closed" -> Phase.Disconnected; else -> runCatching { Phase.valueOf(text("phase") ?: "Failed") }.getOrDefault(Phase.Failed) }
         val error = text("error")
         val retry = s["retry"]?.jsonObject
@@ -206,7 +214,7 @@ class RustClientConnection(
         val id = subscription; subscription = null
         state?.cancel(); output?.cancel(); if (old != null) { id?.let(old::unsubscribe); old.stop(); cleanup += scope.launch(NonCancellable) { state?.join(); output?.join(); try { old.shutdown() } finally { old.close() } } }
     }
-    @Synchronized override fun disconnect() { ++epoch; detach(); status.value = ConnectionStatus() }
+    @Synchronized override fun disconnect() { agents.value = AgentSnapshot(); ++epoch; detach(); status.value = ConnectionStatus() }
     @Synchronized override fun close() { if (closed) return; closed = true; disconnect(); surface = null; val pending = cleanup.toList(); scope.launch { pending.forEach { it.join() }; scope.cancel() } }
 
     private fun message(code: String) = when (code) {

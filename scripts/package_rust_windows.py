@@ -54,6 +54,10 @@ def package(binary, output, version):
             "Credentials: current-user DPAPI, in the credentials subdirectory.\n"
             "DGL_CANDIDATE_DIR overrides both locations. No legacy data migration.\n"
             "Terminal copy/paste: Ctrl+Shift+C / Ctrl+Shift+V. Ctrl+C goes to SSH.\n"
+            "Optional OS notifications register a per-user Start Menu shortcut and COM activator.\n"
+            "App notification ID: kim.jujin.dgl.rust-candidate. No administrator privileges required.\n"
+            "After moving this folder, launch the app directly to refresh notification registration.\n"
+            "Native Windows toast display/click validation is pending; see docs/WINDOWS.md section 6.\n"
             "See docs/WINDOWS.md in the source repository for build/test steps.\n",
             encoding="utf-8",
         )

@@ -73,6 +73,7 @@ def cleanup_tmux(root, tmux):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tmux', default=shutil.which('tmux'))
+    parser.add_argument('--agent-home', action='store_true', help='Use a private HOME for agent observer integration tests')
     parser.add_argument('--tmux-login-path', action='store_true', help='Expose tmux only through an isolated login shell PATH')
     parser.add_argument('--command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -99,6 +100,10 @@ def main():
         wrapper.write_text('#!/bin/sh\nexport PATH=' + shlex.quote(normal_path) + '\nexec ' + shlex.quote(tmux) + ' -S ' + shlex.quote(str(root / 'tmux.socket')) + ' -f ' + shlex.quote(str(root / 'tmux.conf')) + ' "$@"\n', encoding="utf-8")
         wrapper.chmod(0o700)
         environment = 'export PATH=' + shlex.quote(normal_path) + '\n'
+        if args.agent_home:
+            agent_home = root / 'home'
+            agent_home.mkdir(mode=0o700)
+            environment += 'export HOME=' + shlex.quote(str(agent_home)) + '\nexport CODEX_HOME=' + shlex.quote(str(agent_home / '.codex')) + '\nexport CLAUDE_CONFIG_DIR=' + shlex.quote(str(agent_home / '.claude')) + '\n'
         if args.tmux_login_path:
             login_shell = root / 'login-shell'
             login_shell.write_text('#!/bin/sh\n[ "$1" = "-lc" ] || exit 2\nprintf "Login profile banner\\n"\n' + environment + 'exec /bin/sh -c "$2"\n', encoding="utf-8")
