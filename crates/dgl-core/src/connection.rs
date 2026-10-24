@@ -18,6 +18,14 @@ use std::{
 };
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc};
 static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
+pub const MAX_RETRIES: u8 = 7;
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct RetryState {
+    pub attempt: u8,
+    pub wait_seconds: Option<u64>,
+    pub stopped: bool,
+    pub connecting: bool,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Phase {
     Connecting,
@@ -43,7 +51,41 @@ pub struct State {
     pub remote: RemoteState,
     pub fingerprint: Option<String>,
     pub error: Option<Error>,
+    #[serde(default)]
+    pub retry: RetryState,
     pub diagnostics: Vec<ssh::Probe>,
+}
+impl State {
+    pub fn can_stop_retrying(&self) -> bool {
+        matches!(
+            self.phase,
+            Phase::Connecting | Phase::Authenticating | Phase::Reconnecting
+        ) || (self.phase == Phase::Restoring && self.retry.connecting)
+    }
+    pub fn can_retry_now(&self) -> bool {
+        self.can_stop_retrying()
+            || (self.phase == Phase::Failed
+                && (self.error == Some(Error::Network) || self.retry.stopped))
+    }
+    pub fn retry_message(&self) -> Option<String> {
+        if self.retry.stopped {
+            Some("재시도 정지 · 접속 정보 유지 중".into())
+        } else if self.phase == Phase::Failed && self.error == Some(Error::Network) {
+            Some("자동 재시도 7회 종료 · 접속 정보 유지 중".into())
+        } else if let Some(seconds) = self.retry.wait_seconds {
+            Some(format!(
+                "자동 재시도 대기 · {}/7회 완료 · 대기 간격 {seconds}초",
+                self.retry.attempt
+            ))
+        } else if self.phase == Phase::Reconnecting {
+            Some(format!(
+                "연결 재시도 중 · 자동 재시도 {}/7회",
+                self.retry.attempt
+            ))
+        } else {
+            None
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Completion {
@@ -63,6 +105,8 @@ pub enum CompletionOutcome {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "camelCase")]
 pub enum Action {
+    RetryNow,
+    StopRetrying,
     SelectSession {
         id: String,
     },
@@ -107,6 +151,7 @@ struct Shared {
 pub struct Connection {
     shared: Arc<Shared>,
     tx: mpsc::Sender<Request>,
+    retry_tx: mpsc::Sender<Request>,
     slots: Arc<Semaphore>,
     next: AtomicU64,
 }
@@ -117,7 +162,12 @@ impl Shared {
         s.sequence = s.sequence.checked_add(1).expect("state sequence exhausted");
     }
     fn phase(&self, p: Phase) {
-        self.update(|s| s.phase = p);
+        self.update(|s| {
+            if matches!(p, Phase::Ready | Phase::Selecting) {
+                s.retry = RetryState::default();
+            }
+            s.phase = p;
+        });
     }
     fn target(&self) -> Option<PaneTarget> {
         let s = self.state.lock().unwrap();
@@ -176,8 +226,9 @@ impl Connection {
                 session: host.last_session.clone(),
                 pane: None,
                 remote: Default::default(),
-                fingerprint: None,
+                fingerprint: trusted.clone(),
                 error: None,
+                retry: RetryState::default(),
                 diagnostics: vec![],
             }),
             output: Arc::new(OutputQueue::default()),
@@ -190,9 +241,11 @@ impl Connection {
             requests: Mutex::new(HashSet::new()),
         });
         let (tx, rx) = mpsc::channel(32);
+        let (retry_tx, retry_rx) = mpsc::channel(32);
         let result = Arc::new(Self {
             shared: shared.clone(),
             tx,
+            retry_tx,
             slots: Arc::new(Semaphore::new(33)),
             next: AtomicU64::new(1),
         });
@@ -201,7 +254,7 @@ impl Connection {
             tokio::pin!(stopped);
             stopped.as_mut().enable();
             if !shared.cancel.load(Ordering::SeqCst) {
-                tokio::select! {biased;_=stopped=>{},_=run(shared.clone(),host,credential,trusted,rx)=>{}}
+                tokio::select! {biased;_=stopped=>{},_=run(shared.clone(),host,credential,trusted,rx,retry_rx)=>{}}
             }
             shared.output.close();
             // Close cancels outstanding work without losing its completion record.
@@ -227,6 +280,9 @@ impl Connection {
             shared.cancelled.lock().unwrap().clear();
             shared.update(|s| {
                 s.phase = Phase::Closed;
+                s.retry.wait_seconds = None;
+                s.retry.stopped = false;
+                s.retry.connecting = false;
                 s.pane = None;
                 s.generation.connection = s.generation.connection.saturating_add(1);
             });
@@ -258,7 +314,15 @@ impl Connection {
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| x.checked_add(1))
             .map_err(|_| Error::Closed)?;
         self.shared.requests.lock().unwrap().insert(id);
-        if self.tx.try_send(Request { id, kind, permit }).is_err() {
+        let tx = if matches!(
+            &kind,
+            RequestKind::Action(Action::RetryNow | Action::StopRetrying)
+        ) {
+            &self.retry_tx
+        } else {
+            &self.tx
+        };
+        if tx.try_send(Request { id, kind, permit }).is_err() {
             self.shared.requests.lock().unwrap().remove(&id);
             return Err(Error::QueueFull);
         }
@@ -282,6 +346,10 @@ impl Connection {
     }
     pub fn action(&self, action: Action) -> Result<u64> {
         match &action {
+            Action::RetryNow if !self.state().can_retry_now() => return Err(Error::NotReady),
+            Action::StopRetrying if !self.state().can_stop_retrying() => {
+                return Err(Error::NotReady);
+            }
             Action::SelectSession { id } => {
                 crate::command::target(id, '$')?;
             }
@@ -782,24 +850,122 @@ async fn attach(
     }
     Ok(c)
 }
+// Retry controls have a separate queue so a backoff or an in-flight SSH handshake
+// never blocks Stop/Retry behind ordinary terminal requests.
+async fn next_retry_control(shared: &Shared, rx: &mut mpsc::Receiver<Request>) -> Request {
+    loop {
+        let Some(request) = rx.recv().await else {
+            return std::future::pending().await;
+        };
+        let state = shared.state.lock().unwrap().clone();
+        let allowed = match request.kind {
+            RequestKind::Action(Action::RetryNow) => state.can_retry_now(),
+            RequestKind::Action(Action::StopRetrying) => state.can_stop_retrying(),
+            _ => false,
+        };
+        let error = if shared.cancelled.lock().unwrap().contains(&request.id) {
+            Some(Error::Cancelled)
+        } else if !allowed {
+            Some(Error::NotReady)
+        } else {
+            None
+        };
+        if let Some(error) = error {
+            shared.complete(request, Some(error));
+        } else {
+            return request;
+        }
+    }
+}
+fn apply_retry_control(shared: &Shared, request: Request) -> bool {
+    let retry = matches!(request.kind, RequestKind::Action(Action::RetryNow));
+    shared.update(|s| {
+        if retry {
+            s.retry = RetryState::default();
+            s.phase = Phase::Reconnecting;
+            s.error = None;
+        } else {
+            s.retry.stopped = true;
+            s.retry.wait_seconds = None;
+            s.retry.connecting = false;
+            s.phase = Phase::Failed;
+        }
+    });
+    shared.complete(request, None);
+    retry
+}
+fn schedule_retry(shared: &Shared, error: Error) -> Option<Duration> {
+    let mut delay = None;
+    shared.update(|s| {
+        s.retry.wait_seconds = None;
+        s.retry.connecting = false;
+        if error == Error::Network && s.retry.attempt < MAX_RETRIES {
+            let seconds = (1u64 << (s.retry.attempt + 1).min(5)).min(30);
+            s.phase = Phase::Reconnecting;
+            s.retry.wait_seconds = Some(seconds);
+            delay = Some(Duration::from_secs(seconds));
+        } else {
+            s.phase = match error {
+                Error::HostKeyUnknown => Phase::TrustRequired,
+                Error::MissingSession => Phase::MissingSession,
+                _ => Phase::Failed,
+            };
+        }
+    });
+    delay
+}
+async fn wait_for_retry(
+    shared: &Shared,
+    rx: &mut mpsc::Receiver<Request>,
+    mut delay: Option<Duration>,
+) {
+    loop {
+        let timer = async {
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        };
+        tokio::select! {
+            biased;
+            request = next_retry_control(shared, rx) => {
+                if apply_retry_control(shared, request) { return; }
+                delay = None;
+            }
+            _ = timer => {
+                shared.update(|s| {
+                    s.retry.attempt += 1;
+                    s.retry.wait_seconds = None;
+                });
+                return;
+            }
+        }
+    }
+}
 async fn run(
     shared: Arc<Shared>,
     host: HostProfile,
     credential: Credential,
     trusted: Option<String>,
     mut rx: mpsc::Receiver<Request>,
+    mut retry_rx: mpsc::Receiver<Request>,
 ) {
-    let mut attempt = 0;
+    let mut first = true;
     let mut size = Size::default();
     let mut remembered = host.last_pane.clone();
     loop {
         let observed = Arc::new(Mutex::new(None));
-        shared.phase(if attempt == 0 {
-            Phase::Connecting
-        } else {
-            Phase::Reconnecting
+        shared.update(|s| {
+            s.phase = if first {
+                Phase::Connecting
+            } else {
+                Phase::Reconnecting
+            };
+            s.retry.connecting = true;
         });
-        let result = async {
+        first = false;
+        let connection = async {
             let mut ssh =
                 ssh::connect(&host, &credential, trusted.clone(), observed.clone()).await?;
             shared.phase(Phase::Authenticating);
@@ -819,15 +985,19 @@ async fn run(
             .await;
             ssh.close().await;
             result
-        }
-        .await;
-        let error = result.err().unwrap_or(Error::Closed);
+        };
+        let result = tokio::select! {
+            biased;
+            request = next_retry_control(&shared, &mut retry_rx) => Err(request),
+            result = connection => Ok(result),
+        };
         while let Ok(r) = rx.try_recv() {
             shared.complete(r, Some(Error::Cancelled));
         }
         shared.update(|s| {
-            s.error = Some(error);
-            s.fingerprint = observed.lock().unwrap().clone();
+            if let Some(fingerprint) = observed.lock().unwrap().clone() {
+                s.fingerprint = Some(fingerprint);
+            }
             s.generation.connection = s
                 .generation
                 .connection
@@ -835,20 +1005,22 @@ async fn run(
                 .expect("connection generation exhausted");
             s.pane = None;
         });
-        if error == Error::Network && attempt < 7 {
-            attempt += 1;
-            shared.phase(Phase::Reconnecting);
-            tokio::time::sleep(Duration::from_secs((1u64 << attempt.min(5)).min(30))).await;
-            continue;
-        }
-        shared.phase(match error {
-            Error::HostKeyUnknown => Phase::TrustRequired,
-            Error::MissingSession => Phase::MissingSession,
-            _ => Phase::Failed,
-        });
-        // Keep failure/trust visible until the UI explicitly closes this opaque handle.
-        shared.stop.notified().await;
-        return;
+        let delay = match result {
+            Err(request) => {
+                if apply_retry_control(&shared, request) {
+                    continue;
+                }
+                None
+            }
+            Ok(result) => {
+                let error = result.err().unwrap_or(Error::Closed);
+                shared.update(|s| s.error = Some(error));
+                schedule_retry(&shared, error)
+            }
+        };
+        // The actor retains host, credentials, trust, session, pane and size while
+        // stopped/exhausted. Only an explicit RetryNow can restart an exhausted cycle.
+        wait_for_retry(&shared, &mut retry_rx, delay).await;
     }
 }
 async fn missing_session(ssh: &Ssh, shared: &Shared, control: &mut Option<Control>) -> Result<()> {
@@ -892,6 +1064,7 @@ async fn connected(
         shell = Some(ssh.shell(*size).await?);
         shared.update(|s| {
             s.phase = Phase::Shell;
+            s.retry = RetryState::default();
             s.pane = Some("shell".into());
             s.generation.pane += 1;
         });
@@ -899,6 +1072,8 @@ async fn connected(
         shared.emit(OutputKind::ResetBegin, *size, b"\x1bc").await?;
         shared.emit(OutputKind::ResetEnd, *size, &[]).await?;
     }
+    // A successfully restored connection gets a fresh budget for the next outage.
+    shared.update(|s| s.retry = RetryState::default());
     loop {
         enum Incoming {
             Request(Option<Request>),
@@ -983,6 +1158,7 @@ async fn connected(
                             }
                         }
                         RequestKind::Action(a) => match a {
+                            Action::RetryNow | Action::StopRetrying => return Err(Error::NotReady),
                             Action::SelectSession { id } => {
                                 if !tmux {
                                     return Err(Error::NotReady);
@@ -1162,6 +1338,136 @@ async fn connected(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn host(port: u16) -> HostProfile {
+        HostProfile {
+            id: "retry-fixture".into(),
+            alias: "retry-fixture".into(),
+            hostname: "127.0.0.1".into(),
+            port,
+            username: "fixture".into(),
+            auth: model::AuthKind::Password,
+            credential_ref: "fixture".into(),
+            favorite: false,
+            last_connected: 0,
+            last_session: Some("$12".into()),
+            last_pane: Some("%34".into()),
+        }
+    }
+    // Yield to real loopback I/O without advancing the paused retry clock.
+    async fn until(mut predicate: impl FnMut() -> bool) {
+        for _ in 0..100_000 {
+            if predicate() {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+        panic!("connection did not reach the expected state");
+    }
+    #[tokio::test(start_paused = true)]
+    async fn seven_retries_then_manual_restart_and_stop_preserve_connection() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let accepted = Arc::new(AtomicU64::new(0));
+        let count = accepted.clone();
+        let server = tokio::spawn(async move {
+            loop {
+                let (socket, _) = listener.accept().await.unwrap();
+                count.fetch_add(1, Ordering::SeqCst);
+                drop(socket);
+            }
+        });
+        let c = Connection::start(
+            host(port),
+            Credential::default(),
+            Some("saved-fingerprint".into()),
+        );
+        let handle = c.state().handle;
+        until(|| c.state().retry.wait_seconds == Some(2)).await;
+        for (attempt, seconds) in [2, 4, 8, 16, 30, 30, 30].into_iter().enumerate() {
+            assert_eq!(c.state().retry.attempt as usize, attempt);
+            assert_eq!(c.state().retry.wait_seconds, Some(seconds));
+            tokio::time::advance(Duration::from_secs(seconds)).await;
+            until(|| {
+                let s = c.state();
+                s.retry.attempt as usize == attempt + 1
+                    && (s.retry.wait_seconds.is_some() || s.phase == Phase::Failed)
+            })
+            .await;
+        }
+        assert_eq!(accepted.load(Ordering::SeqCst), 8); // first attempt + seven retries
+        assert_eq!(c.state().phase, Phase::Failed);
+        assert!(c.state().can_retry_now());
+        assert!(!c.state().can_stop_retrying());
+        tokio::time::advance(Duration::from_secs(3600)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(accepted.load(Ordering::SeqCst), 8);
+
+        let retry = c.action(Action::RetryNow).unwrap();
+        until(|| accepted.load(Ordering::SeqCst) == 9 && c.state().retry.wait_seconds == Some(2))
+            .await;
+        assert_eq!(c.state().retry.attempt, 0);
+        assert!(
+            c.completions()
+                .iter()
+                .any(|r| r.request_id == retry && r.error.is_none())
+        );
+        // Manual retry also skips an existing delay, without advancing the clock.
+        c.action(Action::RetryNow).unwrap();
+        until(|| accepted.load(Ordering::SeqCst) == 10 && c.state().retry.wait_seconds == Some(2))
+            .await;
+        let stop = c.action(Action::StopRetrying).unwrap();
+        until(|| c.state().retry.stopped).await;
+        assert!(
+            c.completions()
+                .iter()
+                .any(|r| r.request_id == stop && r.error.is_none())
+        );
+        assert_eq!(c.state().phase, Phase::Failed);
+        tokio::time::advance(Duration::from_secs(3600)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(accepted.load(Ordering::SeqCst), 10);
+        assert_eq!(c.state().handle, handle);
+        assert_eq!(c.state().session.as_deref(), Some("$12"));
+        assert_eq!(c.state().fingerprint.as_deref(), Some("saved-fingerprint"));
+        assert!(c.state().can_retry_now());
+        c.action(Action::RetryNow).unwrap();
+        until(|| accepted.load(Ordering::SeqCst) == 11 && c.state().retry.wait_seconds == Some(2))
+            .await;
+        assert!(!c.state().retry.stopped);
+        c.close();
+        c.join().await;
+        server.abort();
+    }
+    #[tokio::test(start_paused = true)]
+    async fn stop_cancels_in_flight_handshake_without_waiting_for_timeout() {
+        use tokio::io::AsyncReadExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let c = Connection::start(
+            host(listener.local_addr().unwrap().port()),
+            Credential::default(),
+            None,
+        );
+        let closed = Arc::new(AtomicBool::new(false));
+        let observed = closed.clone();
+        let accepted = Arc::new(AtomicBool::new(false));
+        let ready = accepted.clone();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            ready.store(true, Ordering::SeqCst);
+            let _ = socket.read_to_end(&mut Vec::new()).await;
+            observed.store(true, Ordering::SeqCst);
+        });
+        until(|| accepted.load(Ordering::SeqCst)).await;
+        let before = tokio::time::Instant::now();
+        c.action(Action::StopRetrying).unwrap();
+        until(|| c.state().retry.stopped && closed.load(Ordering::SeqCst)).await;
+        assert_eq!(tokio::time::Instant::now(), before);
+        assert!(c.state().can_retry_now());
+        assert_eq!(c.state().session.as_deref(), Some("$12"));
+        c.close();
+        c.join().await;
+        server.await.unwrap();
+    }
     #[tokio::test]
     async fn bounded_requests_cancel_and_close_before_connect() {
         let host = HostProfile {

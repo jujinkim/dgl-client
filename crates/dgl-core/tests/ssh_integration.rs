@@ -232,9 +232,29 @@ async fn isolated_auth_management_input_reconnect() {
         c.input(target.clone(), b"never replay this".to_vec()),
         Err(Error::NotReady)
     );
+    let handle = c.state().handle;
+    completion(&c, c.action(Action::StopRetrying).unwrap()).await;
+    assert!(c.state().retry.stopped);
+    assert_eq!(c.state().phase, Phase::Failed);
+    assert_eq!(c.state().session.as_deref(), Some(session.as_str()));
+    completion(&c, c.action(Action::RetryNow).unwrap()).await;
     phase(&c, Phase::Ready).await;
+    assert_eq!(c.state().handle, handle);
+    assert_eq!(c.state().retry.attempt, 0);
+    assert!(!c.state().retry.stopped);
+    assert_eq!(c.action(Action::StopRetrying), Err(Error::NotReady));
     assert!(c.state().generation.connection > generation);
     assert_eq!(c.state().session.as_deref(), Some(session.as_str()));
+    assert_eq!(inspector.execute(&pid_command).await.unwrap().1, pid);
+    // A subsequent outage still gets automatic recovery, with a fresh budget.
+    for bridge in bridges.lock().unwrap().drain(..) {
+        bridge.abort();
+    }
+    phase(&c, Phase::Reconnecting).await;
+    assert_eq!(c.state().retry.attempt, 0);
+    phase(&c, Phase::Ready).await;
+    assert_eq!(c.state().retry.attempt, 0);
+    assert_eq!(c.state().handle, handle);
     assert_eq!(inspector.execute(&pid_command).await.unwrap().1, pid);
     assert_eq!(
         c.input(target, b"old target".to_vec()),

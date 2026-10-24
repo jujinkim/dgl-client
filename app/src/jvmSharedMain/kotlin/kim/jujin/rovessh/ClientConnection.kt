@@ -14,6 +14,8 @@ interface ClientConnection {
     val notice: MutableStateFlow<String?>
     val tmuxProblem: MutableStateFlow<TmuxProblem?>
     fun connect()
+    fun retryNow() = connect()
+    fun stopRetrying() = disconnect()
     fun trust()
     fun selectTarget(session: String, window: String? = null, pane: String? = null)
     fun selectSession(id: String)

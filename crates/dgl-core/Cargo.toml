@@ -12,3 +12,6 @@ russh.workspace = true
 zeroize = { version = "=1.9.1", features = ["derive"] }
 
 rand = "=0.10.3"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

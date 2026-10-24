@@ -89,12 +89,26 @@ class RustClientConnection(
         fun text(name: String) = s[name]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
         val phase = when (text("phase")) { "Closed" -> Phase.Disconnected; else -> runCatching { Phase.valueOf(text("phase") ?: "Failed") }.getOrDefault(Phase.Failed) }
         val error = text("error")
-        val nextStatus = ConnectionStatus(phase, error?.let(::message) ?: when (phase) {
+        val retry = s["retry"]?.jsonObject
+        val attempt = retry?.get("attempt")?.jsonPrimitive?.int ?: 0
+        val wait = retry?.get("wait_seconds")?.takeUnless { it is JsonNull }?.jsonPrimitive?.int
+        val stopped = retry?.get("stopped")?.jsonPrimitive?.boolean == true
+        val canStopRetrying = phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting) ||
+            (phase == Phase.Restoring && retry?.get("connecting")?.jsonPrimitive?.boolean == true)
+        val canRetryNow = canStopRetrying || (phase == Phase.Failed && (error == "Network" || stopped))
+        val retryMessage = when {
+            stopped -> "재시도 정지 · 접속 정보 유지 중"
+            phase == Phase.Failed && error == "Network" -> "자동 재시도 7회 종료 · 접속 정보 유지 중"
+            wait != null -> "자동 재시도 대기 · $attempt/7회 완료 · 대기 간격 ${wait}초"
+            phase == Phase.Reconnecting -> "연결 재시도 중 · 자동 재시도 $attempt/7회"
+            else -> null
+        }
+        val nextStatus = ConnectionStatus(phase, retryMessage ?: error?.let(::message) ?: when (phase) {
             Phase.Connecting -> "SSH 연결 중…"; Phase.Authenticating -> "서버 확인 중…"; Phase.TrustRequired -> "호스트키 지문을 확인하세요."
             Phase.Selecting -> "tmux 세션을 선택하거나 만드세요."; Phase.Restoring -> "터미널 복원 중…"; Phase.Ready -> "연결됨 · tmux"
             Phase.Shell -> "일반 SSH · tmux 탐지 실패"; Phase.Reconnecting -> "연결 복구 중…"; Phase.MissingSession -> "이전 세션이 삭제되었습니다. 직접 선택하세요."
             else -> "연결 종료"
-        })
+        }, attempt, canRetryNow, canStopRetrying)
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         val r = s.getValue("remote").jsonObject
         fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
@@ -165,6 +179,8 @@ class RustClientConnection(
         } catch (_: Exception) { notice.value = "호스트키를 보호 저장소에 저장하지 못했습니다. 연결을 중단했습니다."; disconnect() }
     }
     private fun action(value: JsonObject) { try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = "요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요." } }
+    override fun retryNow() = action(buildJsonObject { put("action", "retryNow") })
+    override fun stopRetrying() = action(buildJsonObject { put("action", "stopRetrying") })
     override fun selectTarget(session: String, window: String?, pane: String?) = action(buildJsonObject {
         put("action", "selectTarget"); put("session", session)
         window?.let { put("window", it) }; pane?.let { put("pane", it) }

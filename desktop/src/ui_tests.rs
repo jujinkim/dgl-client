@@ -30,6 +30,65 @@ fn redraw(cx: &mut VisualTestContext) {
     cx.update(|w, _| w.refresh());
     cx.run_until_parked();
 }
+
+#[gpui::test]
+fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
+    use dgl_core::connection::State;
+    use std::time::Duration;
+    let (view, cx) = setup(cx);
+    let terminal = add_terminal(&view, cx);
+    let (runtime, connection, group, tab) = view.read_with(cx, |s, _| {
+        (
+            s.runtime.clone(),
+            s.tabs[0].connection.clone(),
+            s.workspace.active,
+            s.tabs[0].id,
+        )
+    });
+    let wait = |predicate: fn(&State) -> bool| {
+        runtime.block_on(async {
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while !predicate(&connection.state()) {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+        });
+    };
+    wait(|s| s.retry.wait_seconds.is_some());
+    let handle = connection.state().handle;
+    redraw(cx);
+    assert_eq!(group, 1);
+    let stop = cx.debug_bounds("stop-retry-1").unwrap();
+    cx.simulate_click(stop.center(), Modifiers::default());
+    wait(|s| s.retry.stopped);
+    view.update(cx, |_, cx| cx.notify());
+    redraw(cx);
+    // GPUI keeps old debug bounds after removing an element. Its old location
+    // must no longer invoke StopRetrying (which would now report NotReady).
+    cx.simulate_click(stop.center(), Modifiers::default());
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| s.error.is_none()));
+    assert!(!connection.state().can_stop_retrying());
+    let retry = cx.debug_bounds("retry-now-1").unwrap();
+    cx.simulate_click(retry.center(), Modifiers::default());
+    wait(|s| !s.retry.stopped && s.retry.wait_seconds.is_some());
+    view.update(cx, |_, cx| cx.notify());
+    redraw(cx);
+    assert!(cx.debug_bounds("stop-retry-1").is_some());
+    assert_eq!(connection.state().handle, handle);
+    assert_eq!(connection.state().retry.attempt, 0);
+    assert!(view.read_with(cx, |s, _| {
+        s.tabs.len() == 1
+            && s.tabs[0].id == tab
+            && s.tabs[0].terminal.entity_id() == terminal.entity_id()
+    }));
+    assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+    connection.close();
+    runtime.block_on(connection.join());
+}
+
 fn input(view: &Entity<Desktop>, cx: &mut VisualTestContext) -> Entity<TextInput> {
     view.read_with(cx, |s, _| match s.dialog.as_ref().unwrap() {
         Dialog::Host { fields, .. } => fields[0].clone(),

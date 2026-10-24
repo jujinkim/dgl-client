@@ -240,8 +240,14 @@ expect fun copyPublicKey(value: String)
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
             }
-            if (status.phase == Phase.Disconnected || status.phase == Phase.Failed || status.phase == Phase.MissingSession) TextButton({ client.connect() }) { Text("재연결") }
+            if (!status.canRetryNow && (status.phase == Phase.Disconnected || status.phase == Phase.Failed || status.phase == Phase.MissingSession)) TextButton({ client.connect() }) { Text("재연결") }
             else TextButton({ client.disconnect() }) { Text("연결 종료") }
+        }
+        if (status.canRetryNow || status.canStopRetrying) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
+                if (status.canRetryNow) TextButton({ client.retryNow() }) { Text("새로고침 재시도") }
+                if (status.canStopRetrying) TextButton({ client.stopRetrying() }) { Text("재시도 정지") }
+            }
         }
         Box(Modifier.fillMaxWidth().height(4.dp)) {
             if (status.phase == Phase.Connecting || status.phase == Phase.Restoring || status.phase == Phase.Reconnecting) LinearProgressIndicator(Modifier.fillMaxWidth())

@@ -635,6 +635,39 @@ impl Desktop {
         if let Some(tab) = selected.and_then(|tid| self.tabs.iter().find(|t| t.id == tid)) {
             let terminal = tab.terminal.clone();
             let state = tab.connection.state();
+            if state.can_retry_now() {
+                let retry_connection = tab.connection.clone();
+                let stop_connection = tab.connection.clone();
+                let mut retry_controls = div().flex().flex_wrap().text_xs().child(self.button(
+                    format!("retry-now-{id}"),
+                    "새로고침 재시도",
+                    cx,
+                    move |s, _, _| {
+                        s.submit(&retry_connection, Action::RetryNow);
+                    },
+                ));
+                if state.can_stop_retrying() {
+                    retry_controls = retry_controls.child(self.button(
+                        format!("stop-retry-{id}"),
+                        "재시도 정지",
+                        cx,
+                        move |s, _, _| {
+                            s.submit(&stop_connection, Action::StopRetrying);
+                        },
+                    ));
+                }
+                body = body.child(
+                    div()
+                        .p_2()
+                        .text_xs()
+                        .child(
+                            state
+                                .retry_message()
+                                .unwrap_or_else(|| "SSH 연결 중…".into()),
+                        )
+                        .child(retry_controls),
+                );
+            }
             if state.phase == Phase::TrustRequired {
                 let host = tab.host.clone();
                 let fingerprint = state.fingerprint.unwrap_or_default();
@@ -1071,7 +1104,9 @@ impl Desktop {
                 div()
                     .flex()
                     .text_xs()
-                    .child(self.button("reconnect", "재접속", cx, |s, _, cx| s.reconnect(cx)))
+                    .when(!state.can_retry_now(), |d| {
+                        d.child(self.button("reconnect", "재접속", cx, |s, _, cx| s.reconnect(cx)))
+                    })
                     .child(self.button("disconnect", "연결 종료", cx, |s, _, _| {
                         if let Some(id) = s.workspace.selected() {
                             s.close_tab(id);

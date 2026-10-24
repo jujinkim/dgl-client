@@ -45,7 +45,13 @@ data class Size(val columns: Int = 80, val rows: Int = 24) {
 data class Generation(val connection: Long, val pane: Long, val size: Long)
 enum class Phase { Disconnected, Connecting, TrustRequired, Authenticating, Selecting, Restoring, Ready, Reconnecting, MissingSession, Failed, Shell }
 enum class Failure { Network, Authentication, HostKey, Protocol, MissingSession, Storage }
-data class ConnectionStatus(val phase: Phase = Phase.Disconnected, val message: String = "연결 안 됨", val attempt: Int = 0) {
+data class ConnectionStatus(
+    val phase: Phase = Phase.Disconnected,
+    val message: String = "연결 안 됨",
+    val attempt: Int = 0,
+    val canRetryNow: Boolean = false,
+    val canStopRetrying: Boolean = false,
+) {
     val acceptsInput get() = phase == Phase.Ready || phase == Phase.Shell
 }
 object RetryPolicy {
