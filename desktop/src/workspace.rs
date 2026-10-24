@@ -16,6 +16,24 @@ pub enum Axis {
     Horizontal,
     Vertical,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DockEdge {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+impl DockEdge {
+    pub fn axis(self) -> Axis {
+        match self {
+            Self::Left | Self::Right => Axis::Horizontal,
+            Self::Top | Self::Bottom => Axis::Vertical,
+        }
+    }
+    pub fn leading(self) -> bool {
+        matches!(self, Self::Left | Self::Top)
+    }
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum Layout {
@@ -228,22 +246,66 @@ impl Workspace {
         self.active = destination;
     }
     pub fn split(&mut self, group: GroupId, axis: Axis, width: f32, height: f32) -> bool {
+        let edge = match axis {
+            Axis::Horizontal => DockEdge::Right,
+            Axis::Vertical => DockEdge::Bottom,
+        };
+        self.split_at(group, edge, width, height)
+    }
+    fn split_at(&mut self, group: GroupId, edge: DockEdge, width: f32, height: f32) -> bool {
+        let axis = edge.axis();
         if !self.can_split(group, axis, width, height) {
             return false;
         }
         let id = self.next_group;
-        self.next_group += 1;
+        let (first, second) = if edge.leading() {
+            (id, group)
+        } else {
+            (group, id)
+        };
         let new = Layout::Split {
             axis,
             ratio: 0.5,
-            first: Box::new(Layout::Group { id: group }),
-            second: Box::new(Layout::Group { id }),
+            first: Box::new(Layout::Group { id: first }),
+            second: Box::new(Layout::Group { id: second }),
         };
         if !self.layout.replace_group(group, new) {
             return false;
         }
+        self.next_group += 1;
         self.groups.insert(id, Group::default());
         self.active = id;
+        true
+    }
+    pub fn can_split_tab(
+        &self,
+        tab: TabId,
+        group: GroupId,
+        edge: DockEdge,
+        width: f32,
+        height: f32,
+    ) -> bool {
+        self.can_split(group, edge.axis(), width, height)
+            && self.groups.values().any(|g| g.tabs.contains(&tab))
+            && self
+                .groups
+                .get(&group)
+                .is_some_and(|g| !g.tabs.is_empty() && (!g.tabs.contains(&tab) || g.tabs.len() > 1))
+    }
+    pub fn split_tab(
+        &mut self,
+        tab: TabId,
+        group: GroupId,
+        edge: DockEdge,
+        width: f32,
+        height: f32,
+    ) -> bool {
+        if !self.can_split_tab(tab, group, edge, width, height)
+            || !self.split_at(group, edge, width, height)
+        {
+            return false;
+        }
+        self.move_tab(tab, self.active, None);
         true
     }
     pub fn can_split(&self, group: GroupId, axis: Axis, width: f32, height: f32) -> bool {
@@ -302,6 +364,69 @@ mod tests {
         w.close(a);
         assert!(w.groups[&right].tabs.is_empty());
         assert!(!w.split(right, Axis::Horizontal, 500., 500.));
+    }
+    #[test]
+    fn docking_in_all_directions_preserves_tabs_and_places_the_new_group() {
+        for edge in [
+            DockEdge::Left,
+            DockEdge::Right,
+            DockEdge::Top,
+            DockEdge::Bottom,
+        ] {
+            let mut w = Workspace::new(Layout::default());
+            let a = w.add_tab();
+            let b = w.add_tab();
+            assert!(w.split_tab(a, 1, edge, 1200., 800.));
+            let new = w.active;
+            assert_eq!(w.groups[&1].tabs, vec![b]);
+            assert_eq!(w.groups[&1].selected, Some(b));
+            assert_eq!(w.groups[&new].tabs, vec![a]);
+            assert_eq!(w.selected(), Some(a));
+            let Layout::Split {
+                axis,
+                first,
+                second,
+                ..
+            } = &w.layout
+            else {
+                panic!()
+            };
+            assert_eq!(*axis, edge.axis());
+            assert_eq!(first.groups(), vec![if edge.leading() { new } else { 1 }]);
+            assert_eq!(second.groups(), vec![if edge.leading() { 1 } else { new }]);
+            // A tab from another group may split an occupied target without being recreated.
+            assert!(w.split_tab(b, new, DockEdge::Bottom, 600., 800.));
+            assert!(w.groups[&1].tabs.is_empty());
+            assert_eq!(w.groups[&new].tabs, vec![a]);
+            assert_eq!(w.groups[&w.active].tabs, vec![b]);
+        }
+    }
+    #[test]
+    fn invalid_docking_is_atomic_and_obeys_space_and_group_limits() {
+        let mut w = Workspace::new(Layout::default());
+        let a = w.add_tab();
+        assert!(!w.split_tab(a, 1, DockEdge::Right, 1200., 800.));
+        w.add_tab();
+        let original = w.layout.clone();
+        for (tab, group, edge, width, height) in [
+            (999, 1, DockEdge::Right, 1200., 800.),
+            (a, 999, DockEdge::Right, 1200., 800.),
+            (a, 1, DockEdge::Right, 564., 800.),
+            (a, 1, DockEdge::Bottom, 1200., 364.),
+        ] {
+            assert!(!w.split_tab(tab, group, edge, width, height));
+            assert_eq!(w.layout, original);
+            assert_eq!(w.groups[&1].tabs.len(), 2);
+            assert_eq!(w.active, 1);
+        }
+        assert!(w.split(1, Axis::Horizontal, 1200., 800.));
+        assert!(!w.split_tab(a, w.active, DockEdge::Right, 1200., 800.));
+        while w.groups.len() < 16 {
+            assert!(w.split(1, Axis::Horizontal, 1200., 800.));
+        }
+        let full = w.layout.clone();
+        assert!(!w.split_tab(a, 1, DockEdge::Bottom, 1200., 800.));
+        assert_eq!(w.layout, full);
     }
     #[test]
     fn persistence_restores_only_empty_groups_and_rejects_invalid_files() {

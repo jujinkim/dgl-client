@@ -320,6 +320,180 @@ fn group_split_drag_move_merge_and_terminal_identity(cx: &mut TestAppContext) {
     assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 2);
 }
 
+fn begin_tab_drag(cx: &mut VisualTestContext) {
+    let from = cx.debug_bounds("tab-1").unwrap().center();
+    cx.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_move(
+        point(from.x + px(20.), from.y),
+        gpui::MouseButton::Left,
+        Modifiers::default(),
+    );
+    redraw(cx);
+    assert!(cx.update(|_, cx| cx.has_active_drag()));
+}
+
+#[gpui::test]
+fn tab_drag_splits_at_each_edge_and_preview_matches_result(cx: &mut TestAppContext) {
+    use super::workspace::{DockEdge, Layout};
+    for edge in [
+        DockEdge::Left,
+        DockEdge::Right,
+        DockEdge::Top,
+        DockEdge::Bottom,
+    ] {
+        let (view, cx) = setup(cx);
+        let terminal = add_terminal(&view, cx);
+        add_terminal(&view, cx);
+        redraw(cx);
+        let before = view.read_with(cx, |s, _| s.group_bounds[&1]);
+        let to = match edge {
+            DockEdge::Left => point(before.left() + px(8.), before.center().y),
+            DockEdge::Right => point(before.right() - px(8.), before.center().y),
+            DockEdge::Top => point(before.center().x, before.top() + px(40.)),
+            DockEdge::Bottom => point(before.center().x, before.bottom() - px(8.)),
+        };
+        begin_tab_drag(cx);
+        cx.simulate_mouse_move(to, gpui::MouseButton::Left, Modifiers::default());
+        redraw(cx);
+        let preview = cx.debug_bounds("tab-drop-preview-1").unwrap();
+        assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 1);
+        assert!(preview.size.width > px(0.) && preview.size.height > px(0.));
+        cx.simulate_mouse_up(to, gpui::MouseButton::Left, Modifiers::default());
+        redraw(cx);
+        view.read_with(cx, |s, _| {
+            assert_eq!(s.workspace.groups.len(), 2);
+            let active = s.workspace.active;
+            assert_eq!(s.workspace.groups[&active].tabs, vec![1]);
+            assert_eq!(s.workspace.groups[&1].tabs, vec![2]);
+            assert_eq!(
+                s.active_tab().unwrap().terminal.entity_id(),
+                terminal.entity_id()
+            );
+            assert_eq!(
+                Layout::load(&s.path.with_file_name("workspace-layout.json")),
+                s.workspace.layout
+            );
+            let actual = s.group_bounds[&active];
+            assert!((f32::from(actual.origin.x - preview.origin.x)).abs() <= 3.);
+            assert!((f32::from(actual.origin.y - preview.origin.y)).abs() <= 3.);
+            assert!((f32::from(actual.size.width - preview.size.width)).abs() <= 3.);
+            assert!((f32::from(actual.size.height - preview.size.height)).abs() <= 3.);
+            assert!(s.dragging_tab.is_none());
+        });
+        assert!(!cx.update(|_, cx| cx.has_active_drag()));
+        assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+    }
+}
+
+#[gpui::test]
+fn tab_drag_moves_into_occupied_group_and_reorders_in_header(cx: &mut TestAppContext) {
+    use super::workspace::Axis;
+    let (view, cx) = setup(cx);
+    let first = add_terminal(&view, cx);
+    add_terminal(&view, cx);
+    redraw(cx);
+    view.update(cx, |s, cx| {
+        assert!(s.workspace.split(1, Axis::Horizontal, 1200., 800.));
+        cx.notify();
+    });
+    let right = view.read_with(cx, |s, _| s.workspace.active);
+    add_terminal(&view, cx);
+    redraw(cx);
+    let to = view.read_with(cx, |s, _| s.group_bounds[&right].center());
+    begin_tab_drag(cx);
+    cx.simulate_mouse_move(to, gpui::MouseButton::Left, Modifiers::default());
+    redraw(cx);
+    let preview = cx.debug_bounds("tab-drop-preview-2").unwrap();
+    assert!(preview.contains(&to));
+    cx.simulate_mouse_up(to, gpui::MouseButton::Left, Modifiers::default());
+    redraw(cx);
+    assert_eq!(
+        view.read_with(cx, |s, _| s.workspace.groups[&right].tabs.clone()),
+        vec![3, 1]
+    );
+    assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 2);
+    let before = cx.debug_bounds("tab-3").unwrap().center();
+    begin_tab_drag(cx);
+    cx.simulate_mouse_move(before, gpui::MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(before, gpui::MouseButton::Left, Modifiers::default());
+    redraw(cx);
+    assert_eq!(
+        view.read_with(cx, |s, _| s.workspace.groups[&right].tabs.clone()),
+        vec![1, 3]
+    );
+    assert_eq!(
+        view.read_with(cx, |s, _| s.active_tab().unwrap().terminal.entity_id()),
+        first.entity_id()
+    );
+    assert!(first.read_with(cx, |t, _| t.sent.is_empty()));
+}
+
+#[gpui::test]
+fn tab_drag_cancel_outside_and_small_groups_do_not_split(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx);
+    let terminal = add_terminal(&view, cx);
+    add_terminal(&view, cx);
+    redraw(cx);
+    let bounds = view.read_with(cx, |s, _| s.group_bounds[&1]);
+    let edge = point(bounds.right() - px(8.), bounds.center().y);
+    begin_tab_drag(cx);
+    cx.simulate_mouse_move(edge, gpui::MouseButton::Left, Modifiers::default());
+    redraw(cx);
+    assert!(cx.debug_bounds("tab-drop-preview-1").is_some());
+    cx.simulate_keystrokes("escape");
+    cx.simulate_mouse_up(edge, gpui::MouseButton::Left, Modifiers::default());
+    redraw(cx);
+    assert!(!cx.update(|_, cx| cx.has_active_drag()));
+    assert!(view.read_with(cx, |s, _| s.dragging_tab.is_none()));
+    assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 1);
+    let outside = point(px(20.), px(150.));
+    begin_tab_drag(cx);
+    cx.simulate_mouse_move(outside, gpui::MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(outside, gpui::MouseButton::Left, Modifiers::default());
+    redraw(cx);
+    assert_eq!(
+        view.read_with(cx, |s, _| s.workspace.groups[&1].tabs.clone()),
+        vec![1, 2]
+    );
+    cx.simulate_resize(gpui::size(px(640.), px(360.)));
+    redraw(cx);
+    let bounds = view.read_with(cx, |s, _| s.group_bounds[&1]);
+    let edge = point(bounds.right() - px(8.), bounds.center().y);
+    begin_tab_drag(cx);
+    cx.simulate_mouse_move(edge, gpui::MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(edge, gpui::MouseButton::Left, Modifiers::default());
+    redraw(cx);
+    assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 1);
+    assert_eq!(
+        view.read_with(cx, |s, _| s.workspace.groups[&1].tabs.clone()),
+        vec![1, 2]
+    );
+    assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+}
+
+#[gpui::test]
+fn split_emoji_buttons_stay_at_right_of_overflowing_tab_bar(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx);
+    for _ in 0..8 {
+        add_terminal(&view, cx);
+    }
+    cx.simulate_resize(gpui::size(px(640.), px(480.)));
+    redraw(cx);
+    let header = cx.debug_bounds("group-header-1").unwrap();
+    let tools = cx.debug_bounds("group-tools-1").unwrap();
+    let horizontal = cx.debug_bounds("split-1-Horizontal").unwrap();
+    let vertical = cx.debug_bounds("split-1-Vertical").unwrap();
+    assert!((f32::from(header.right() - tools.right())).abs() <= 1.);
+    assert!(header.contains(&horizontal.center()));
+    assert!(header.contains(&vertical.center()));
+    assert!(vertical.left() >= horizontal.right());
+    assert!(tools.size.width < px(100.));
+    // The narrow group cannot be split horizontally even though the button is visible.
+    cx.simulate_click(horizontal.center(), Modifiers::default());
+    redraw(cx);
+    assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 1);
+}
+
 #[gpui::test]
 fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext) {
     let (view, cx) = setup(cx);

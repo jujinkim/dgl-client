@@ -1,5 +1,13 @@
 use super::*;
-use workspace::DIVIDER;
+use workspace::{DIVIDER, DockEdge};
+
+const TAB_BAR_HEIGHT: f32 = 32.;
+
+#[derive(Clone, Copy)]
+struct TabDropTarget {
+    group: GroupId,
+    edge: Option<DockEdge>,
+}
 
 #[derive(Clone)]
 struct DragTab {
@@ -38,7 +46,84 @@ impl Desktop {
         }
         cx.notify();
     }
-    pub fn render_workspace(&mut self, _: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn tab_drop_target(&self, tab: TabId, position: Point<Pixels>) -> Option<TabDropTarget> {
+        if self.dialog.is_some() || self.error.is_some() {
+            return None;
+        }
+        for group in self.workspace.layout.groups() {
+            let Some(bounds) = self.group_bounds.get(&group) else {
+                continue;
+            };
+            let content_top = bounds.top() + px(TAB_BAR_HEIGHT + 1.);
+            if !bounds.contains(&position) || position.y < content_top {
+                continue;
+            }
+            let width = f32::from(bounds.size.width);
+            let height = f32::from(bounds.size.height);
+            let x = f32::from(position.x - bounds.left()) / width;
+            let y = f32::from(position.y - content_top) / f32::from(bounds.bottom() - content_top);
+            let edge = [
+                (DockEdge::Left, x),
+                (DockEdge::Right, 1. - x),
+                (DockEdge::Top, y),
+                (DockEdge::Bottom, 1. - y),
+            ]
+            .into_iter()
+            .filter(|(edge, distance)| {
+                *distance <= 0.22
+                    && self
+                        .workspace
+                        .can_split_tab(tab, group, *edge, width, height)
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(edge, _)| edge);
+            return Some(TabDropTarget { group, edge });
+        }
+        None
+    }
+    fn drop_tab(
+        &mut self,
+        tab: TabId,
+        target: TabDropTarget,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(edge) = target.edge {
+            let Some(bounds) = self.group_bounds.get(&target.group) else {
+                return;
+            };
+            if !self.workspace.split_tab(
+                tab,
+                target.group,
+                edge,
+                f32::from(bounds.size.width),
+                f32::from(bounds.size.height),
+            ) {
+                return;
+            }
+            self.save_layout();
+        } else if self.workspace.groups[&target.group].tabs.contains(&tab) {
+            self.workspace.select(target.group, tab);
+        } else {
+            self.workspace.move_tab(tab, target.group, None);
+        }
+        self.group_focus(self.workspace.active, w, cx);
+    }
+    pub fn render_workspace(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        if !cx.has_active_drag() {
+            self.dragging_tab = None;
+        }
+        let preview = self.dragging_tab.and_then(|tab| {
+            self.tab_drop_target(tab, window.mouse_position())
+                .filter(|target| {
+                    target.edge.is_some()
+                        || !self.workspace.groups[&target.group].tabs.contains(&tab)
+                })
+        });
         let p = self.palette;
         let mut sidebar = div()
             .w(px(272.))
@@ -143,7 +228,7 @@ impl Desktop {
                     s.dialog = Some(Dialog::Settings)
                 }));
         let layout = self.workspace.layout.clone();
-        let workspace = self.render_layout(layout, vec![], cx);
+        let workspace = self.render_layout(layout, vec![], preview, cx);
         let status = self
             .active_tab()
             .map(|tab| {
@@ -202,6 +287,14 @@ impl Desktop {
             .text_color(rgb(p.fg))
             .track_focus(&self.focus)
             .capture_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
+                if e.keystroke.key == "escape" && s.dragging_tab.is_some() && cx.has_active_drag() {
+                    s.dragging_tab = None;
+                    cx.stop_active_drag(w);
+                    cx.stop_propagation();
+                    w.prevent_default();
+                    cx.notify();
+                    return;
+                }
                 if s.launcher.opened.is_some() && e.keystroke.key == "escape" {
                     s.launcher_escape(w, cx);
                     return;
@@ -275,6 +368,10 @@ impl Desktop {
                 cx.stop_propagation();
                 cx.notify();
             }))
+            .on_drag_move::<DragTab>(cx.listener(|_, _, _, cx| {
+                cx.notify();
+                cx.stop_propagation();
+            }))
             .on_mouse_move(cx.listener(|s, e: &MouseMoveEvent, _, cx| {
                 if s.dialog.is_some() {
                     return;
@@ -309,7 +406,18 @@ impl Desktop {
                     }
                 }
             }))
-            .capture_any_mouse_up(cx.listener(|s, _, _, cx| {
+            .capture_any_mouse_up(cx.listener(|s, e: &MouseUpEvent, w, cx| {
+                if let Some(tab) = s.dragging_tab.take() {
+                    if cx.has_active_drag()
+                        && e.button == MouseButton::Left
+                        && let Some(target) = s.tab_drop_target(tab, e.position)
+                    {
+                        cx.stop_active_drag(w);
+                        s.drop_tab(tab, target, w, cx);
+                        cx.stop_propagation();
+                    }
+                    cx.notify();
+                }
                 if s.resizing.take().is_some() {
                     s.save_layout();
                     cx.notify();
@@ -357,10 +465,13 @@ impl Desktop {
         &mut self,
         layout: Layout,
         path: Vec<bool>,
+        preview: Option<TabDropTarget>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         match layout {
-            Layout::Group { id } => self.render_group(id, cx).into_any_element(),
+            Layout::Group { id } => self
+                .render_group(id, preview.filter(|p| p.group == id), cx)
+                .into_any_element(),
             Layout::Split {
                 axis,
                 ratio,
@@ -373,8 +484,8 @@ impl Desktop {
                 left.push(false);
                 let mut right = path.clone();
                 right.push(true);
-                let first = self.render_layout(*first, left, cx);
-                let second = self.render_layout(*second, right, cx);
+                let first = self.render_layout(*first, left, preview, cx);
+                let second = self.render_layout(*second, right, preview, cx);
                 let entity = cx.entity();
                 let measure = path.clone();
                 let drag = path.clone();
@@ -447,7 +558,12 @@ impl Desktop {
             }
         }
     }
-    fn render_group(&mut self, id: GroupId, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn render_group(
+        &mut self,
+        id: GroupId,
+        preview: Option<TabDropTarget>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let p = self.palette;
         let group = &self.workspace.groups[&id];
         let selected = group.selected;
@@ -457,8 +573,10 @@ impl Desktop {
             .id(SharedString::from(format!("group-tabs-{id}")))
             .flex_1()
             .min_w_0()
+            .h_full()
             .overflow_x_scroll()
             .flex()
+            .items_center()
             .on_drop(cx.listener(move |s, tab: &DragTab, w, cx| {
                 s.workspace.move_tab(tab.id, id, None);
                 s.group_focus(id, w, cx);
@@ -470,6 +588,7 @@ impl Desktop {
             let label = tab.host.alias.clone();
             let menu = format!("tab-menu-{tab_id}");
             let toggle = menu.clone();
+            let drag_view = cx.entity();
             header = header.child(
                 div()
                     .flex()
@@ -491,7 +610,13 @@ impl Desktop {
                                 s.group_focus(id, w, cx);
                             },
                         )
-                        .on_drag(DragTab { id: tab_id, label }, |tab, _, _, cx| {
+                        .cursor_move()
+                        .on_drag(DragTab { id: tab_id, label }, move |tab, _, _, cx| {
+                            drag_view.update(cx, |s, cx| {
+                                s.dragging_tab = Some(tab.id);
+                                s.menu = None;
+                                cx.notify();
+                            });
                             cx.new(|_| Tip(tab.label.clone()))
                         })
                         .on_drop(cx.listener(
@@ -515,10 +640,26 @@ impl Desktop {
         let bounds = self.group_bounds.get(&id).copied().unwrap_or_default();
         let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
-        let mut tools = div().flex().flex_shrink_0().text_xs();
-        for (axis, label) in [
-            (Axis::Horizontal, "화면 분할 ↔"),
-            (Axis::Vertical, "화면 분할 ↕"),
+        let mut tools = div()
+            .id(SharedString::from(format!("group-tools-{id}")))
+            .debug_selector(move || format!("group-tools-{id}"))
+            .flex()
+            .items_center()
+            .flex_shrink_0()
+            .h_full();
+        if self.workspace.groups.len() > 1 {
+            tools = tools.child(
+                self.button(format!("merge-{id}"), "🔗", cx, move |s, w, cx| {
+                    s.workspace.merge(id);
+                    s.save_layout();
+                    s.group_focus(s.workspace.active, w, cx);
+                })
+                .tooltip(|_, cx| cx.new(|_| Tip("그룹 합치기".into())).into()),
+            );
+        }
+        for (axis, label, description) in [
+            (Axis::Horizontal, "↔️", "화면 좌우 분할"),
+            (Axis::Vertical, "↕️", "화면 상하 분할"),
         ] {
             let enabled = self.workspace.can_split(id, axis, width, height);
             tools = tools.child(
@@ -533,20 +674,9 @@ impl Desktop {
                         }
                     },
                 )
+                .tooltip(move |_, cx| cx.new(|_| Tip(description.into())).into())
                 .when(!enabled, |d| d.opacity(0.35).cursor_default()),
             );
-        }
-        if self.workspace.groups.len() > 1 {
-            tools = tools.child(self.button(
-                format!("merge-{id}"),
-                "그룹 합치기",
-                cx,
-                move |s, w, cx| {
-                    s.workspace.merge(id);
-                    s.save_layout();
-                    s.group_focus(s.workspace.active, w, cx);
-                },
-            ));
         }
         let mut body = div()
             .id(SharedString::from(format!("group-{id}")))
@@ -583,11 +713,15 @@ impl Desktop {
                 .absolute()
                 .size_full(),
             )
-            .child(div().flex().bg(rgb(p.panel)).child(header))
             .child(
                 div()
-                    .id(SharedString::from(format!("group-tools-{id}")))
-                    .overflow_x_scroll()
+                    .debug_selector(move || format!("group-header-{id}"))
+                    .flex()
+                    .items_center()
+                    .h(px(TAB_BAR_HEIGHT))
+                    .flex_shrink_0()
+                    .bg(rgb(p.panel))
+                    .child(header)
                     .child(tools),
             );
         for tab_id in ids {
@@ -720,6 +854,52 @@ impl Desktop {
                         s.workspace.move_tab(tab.id, id, None);
                         s.group_focus(id, w, cx);
                     })),
+            );
+        }
+        if let Some(target) = preview {
+            let mut left = 0.;
+            let mut top = 0.;
+            let mut preview_width = width - 2.;
+            let mut preview_height = height - 2.;
+            let label = match target.edge {
+                Some(DockEdge::Left) => "왼쪽으로 분할",
+                Some(DockEdge::Right) => "오른쪽으로 분할",
+                Some(DockEdge::Top) => "위로 분할",
+                Some(DockEdge::Bottom) => "아래로 분할",
+                None => "이 그룹으로 이동",
+            };
+            if let Some(edge) = target.edge {
+                match edge.axis() {
+                    Axis::Horizontal => {
+                        preview_width = (preview_width - DIVIDER) / 2.;
+                        if !edge.leading() {
+                            left = preview_width + DIVIDER;
+                        }
+                    }
+                    Axis::Vertical => {
+                        preview_height = (preview_height - DIVIDER) / 2.;
+                        if !edge.leading() {
+                            top = preview_height + DIVIDER;
+                        }
+                    }
+                }
+            }
+            body = body.child(
+                div()
+                    .id(SharedString::from(format!("tab-drop-preview-{id}")))
+                    .debug_selector(move || format!("tab-drop-preview-{id}"))
+                    .absolute()
+                    .left(px(left))
+                    .top(px(top))
+                    .w(px(preview_width))
+                    .h(px(preview_height))
+                    .bg(Hsla::from(rgb(p.accent)).opacity(0.22))
+                    .border_2()
+                    .border_color(rgb(p.accent))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(div().px_3().py_2().bg(rgb(p.panel)).child(label)),
             );
         }
         body
