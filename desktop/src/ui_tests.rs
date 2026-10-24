@@ -378,6 +378,116 @@ fn pane_toolbars_stay_above_each_terminal_and_disable_unavailable_actions(cx: &m
     assert!(second.read_with(cx, |t, _| t.sent.is_empty()));
 }
 
+#[gpui::test]
+fn shortcut_buttons_are_spaced_and_send_modified_keys_to_selected_terminal(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = setup(cx);
+    let first = add_terminal(&view, cx);
+    let second = add_terminal(&view, cx);
+    redraw(cx);
+    let mut expected = Vec::new();
+    for theme in ["light", "dark"] {
+        view.update(cx, |s, cx| {
+            s.local.preferences.theme = theme.into();
+            cx.notify();
+        });
+        redraw(cx);
+        let mut previous_right = None;
+        for (selector, bytes) in [
+            ("key-Esc", b"\x1b".as_slice()),
+            ("key-Tab", b"\t".as_slice()),
+            ("key-Enter", b"\r".as_slice()),
+            ("key-Shift+Tab", b"\x1b[Z".as_slice()),
+            ("key-Shift+←", b"\x1b[1;2D".as_slice()),
+        ] {
+            let bounds = cx.debug_bounds(selector).unwrap();
+            assert_eq!(bounds.size.height, px(32.));
+            if let Some(right) = previous_right {
+                assert!(bounds.left() > right);
+            }
+            previous_right = Some(bounds.right());
+            cx.simulate_click(bounds.center(), Modifiers::default());
+            redraw(cx);
+            expected.push(bytes.to_vec());
+            assert_eq!(second.read_with(cx, |t, _| t.sent.clone()), expected);
+            assert!(first.read_with(cx, |t, _| t.sent.is_empty()));
+            assert!(cx.update(|w, cx| second.focus_handle(cx).is_focused(w)));
+        }
+    }
+    // On-screen modifiers encode the same events as the physical keyboard.
+    cx.simulate_keystrokes("shift-tab shift-left");
+    expected.extend([b"\x1b[Z".to_vec(), b"\x1b[1;2D".to_vec()]);
+    assert_eq!(second.read_with(cx, |t, _| t.sent.clone()), expected);
+    assert!(first.read_with(cx, |t, _| t.sent.is_empty()));
+}
+
+#[gpui::test]
+fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) {
+    use dgl_core::{input::TerminalKey, model::LocalState};
+    let (view, cx) = setup(cx);
+    let terminal = add_terminal(&view, cx);
+    view.update(cx, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(cx);
+    for selector in [
+        "shortcut-setting-Esc",
+        "shortcut-setting-Tab",
+        "shortcut-setting-Enter",
+        "shortcut-setting-Shift+Tab",
+        "shortcut-setting-Shift+←",
+    ] {
+        let bounds = cx.debug_bounds(selector).unwrap();
+        cx.simulate_click(bounds.center(), Modifiers::default());
+        redraw(cx);
+    }
+    view.read_with(cx, |s, _| {
+        let saved = LocalState::read(&s.path).unwrap();
+        assert_eq!(
+            saved.preferences.terminal_shortcuts,
+            s.local.preferences.terminal_shortcuts
+        );
+        assert!(
+            !saved
+                .preferences
+                .terminal_shortcuts
+                .contains(&TerminalKey::Enter)
+        );
+    });
+    let close = cx.debug_bounds("cancel-dialog").unwrap();
+    cx.simulate_click(close.center(), Modifiers::default());
+    redraw(cx);
+    // Removed keys no longer occupy the front of the bar.
+    let bar = cx.debug_bounds("shortcut-bar").unwrap();
+    let first = cx.debug_bounds("key-Ctrl+C").unwrap();
+    assert_eq!(first.left(), bar.left());
+    cx.simulate_click(first.center(), Modifiers::default());
+    assert_eq!(
+        terminal.read_with(cx, |t, _| t.sent.clone()),
+        vec![b"\x03".to_vec()]
+    );
+    view.update(cx, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(cx);
+    let reset = cx.debug_bounds("reset-shortcuts").unwrap();
+    cx.simulate_click(reset.center(), Modifiers::default());
+    redraw(cx);
+    view.read_with(cx, |s, _| {
+        assert_eq!(
+            LocalState::read(&s.path)
+                .unwrap()
+                .preferences
+                .terminal_shortcuts,
+            TerminalKey::DEFAULT_SHORTCUTS
+        );
+    });
+    assert_eq!(terminal.read_with(cx, |t, _| t.sent.len()), 1);
+}
+
 fn begin_tab_drag(cx: &mut VisualTestContext) {
     let from = cx.debug_bounds("tab-1").unwrap().center();
     cx.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());

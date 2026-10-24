@@ -1,10 +1,12 @@
 package kim.jujin.rovessh.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,7 +56,7 @@ private object AboveLauncher : PopupPositionProvider {
             (anchorBounds.top - popupContentSize.height).coerceAtLeast(0))
 }
 
-@Composable internal fun TerminalShortcutBar(client: ClientConnection, allowed: () -> Boolean, terminalFocus: TerminalFocus) {
+@Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalKey>, allowed: () -> Boolean, terminalFocus: TerminalFocus) {
     val status by client.status.collectAsState()
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
@@ -62,16 +64,27 @@ private object AboveLauncher : PopupPositionProvider {
     // A target/phase/dialog change discards the request before painting or handling another click.
     var request by remember(client, status.phase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
     val dismiss = { request = null; terminalFocus.request() }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-            TerminalKey.toolbar.forEach { shortcut ->
-                TextButton({ if (allowed() && client.status.value.acceptsInput) client.input(shortcut.bytes()) },
-                    enabled = available && status.acceptsInput, contentPadding = PaddingValues(horizontal = 10.dp)) { Text(shortcut.label) }
+    val buttonShape = RoundedCornerShape(6.dp)
+    val buttonBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    val buttonColors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            shortcuts.distinct().forEach { shortcut ->
+                OutlinedButton({
+                    if (allowed() && client.status.value.acceptsInput) {
+                        client.input(shortcut.bytes())
+                        terminalFocus.request()
+                    }
+                }, enabled = available && status.acceptsInput, shape = buttonShape, border = buttonBorder, colors = buttonColors,
+                    modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 10.dp)) { Text(shortcut.label, maxLines = 1) }
             }
         }
         Box {
-            IconButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
-                modifier = Modifier.semantics { contentDescription = "CLI 실행 메뉴" }) { Text("…", style = MaterialTheme.typography.titleLarge) }
+            OutlinedButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
+                shape = buttonShape, border = buttonBorder, colors = buttonColors, contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.size(48.dp).semantics { contentDescription = "CLI 실행 메뉴" }) { Text("…", style = MaterialTheme.typography.titleLarge) }
             val opened = request
             if (opened != null) Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
                 properties = PopupProperties(focusable = true)) {

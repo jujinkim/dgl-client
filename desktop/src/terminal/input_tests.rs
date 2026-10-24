@@ -8,6 +8,7 @@ use gpui::{
 fn modified_keys_keep_xterm_modifiers_and_application_cursor_mode() {
     for (key, expected) in [
         ("shift-up", "\x1b[1;2A"),
+        ("shift-left", "\x1b[1;2D"),
         ("ctrl-left", "\x1b[1;5D"),
         ("alt-right", "\x1b[1;3C"),
         ("ctrl-shift-down", "\x1b[1;6B"),

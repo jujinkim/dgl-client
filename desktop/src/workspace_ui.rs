@@ -25,6 +25,59 @@ impl Render for Tip {
     }
 }
 impl Desktop {
+    pub(super) fn shortcut_settings(&self, cx: &mut Context<Self>) -> Div {
+        use dgl_core::input::TerminalKey;
+        let p = self.palette;
+        let mut choices = div().flex().flex_wrap().gap_1();
+        let mut shown = Vec::new();
+        for &key in TerminalKey::DEFAULT_SHORTCUTS
+            .iter()
+            .chain(TerminalKey::ALL)
+        {
+            if shown.contains(&key) {
+                continue;
+            }
+            shown.push(key);
+            let selected = self.local.preferences.terminal_shortcuts.contains(&key);
+            choices = choices.child(
+                self.button(
+                    format!("shortcut-setting-{}", key.label()),
+                    format!("{} {}", if selected { "☑" } else { "☐" }, key.label()),
+                    cx,
+                    move |s, _, _| {
+                        let keys = &mut s.local.preferences.terminal_shortcuts;
+                        if keys.contains(&key) {
+                            keys.retain(|k| *k != key);
+                        } else {
+                            keys.push(key);
+                        }
+                        s.save();
+                    },
+                )
+                .rounded_md()
+                .border_color(rgb(if selected { p.accent } else { p.line }))
+                .bg(rgb(if selected { p.selection } else { p.bg })),
+            );
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child("하단 단축키")
+            .child("표시할 키를 선택하세요. 새로 켠 키는 맨 뒤에 추가됩니다.")
+            .child(choices)
+            .child(self.button(
+                "reset-shortcuts",
+                "단축키 기본값 복원",
+                cx,
+                |s, _, _| {
+                    s.local.preferences.terminal_shortcuts =
+                        TerminalKey::DEFAULT_SHORTCUTS.to_vec();
+                    s.save();
+                },
+            ))
+    }
+
     fn toggle_menu(&mut self, id: String) {
         self.menu = if self.menu.as_ref() == Some(&id) {
             None
@@ -249,37 +302,39 @@ impl Desktop {
             .unwrap_or_else(|| "빈 그룹 · 왼쪽 호스트를 선택하여 연결".into());
         let mut shortcuts = div()
             .id("shortcut-bar")
+            .debug_selector(|| "shortcut-bar".into())
             .flex_1()
             .min_w_0()
             .flex()
+            .items_center()
+            .gap_1()
+            .h_full()
             .overflow_x_scroll()
             .text_xs()
             .bg(rgb(p.panel));
         if let Some(tab) = self.active_tab() {
             let terminal = tab.terminal.clone();
-            for (key, label) in [
-                (dgl_core::input::TerminalKey::Escape, "Esc"),
-                (dgl_core::input::TerminalKey::Tab, "Tab"),
-                (dgl_core::input::TerminalKey::CtrlC, "Ctrl+C"),
-                (dgl_core::input::TerminalKey::CtrlD, "Ctrl+D"),
-                (dgl_core::input::TerminalKey::CtrlL, "Ctrl+L"),
-                (dgl_core::input::TerminalKey::Up, "↑"),
-                (dgl_core::input::TerminalKey::Down, "↓"),
-                (dgl_core::input::TerminalKey::Left, "←"),
-                (dgl_core::input::TerminalKey::Right, "→"),
-                (dgl_core::input::TerminalKey::Home, "Home"),
-                (dgl_core::input::TerminalKey::End, "End"),
-            ] {
+            let mut shown = Vec::new();
+            for &key in &self.local.preferences.terminal_shortcuts {
+                if shown.contains(&key) {
+                    continue;
+                }
+                shown.push(key);
+                let label = key.label();
                 let t = terminal.clone();
-                shortcuts = shortcuts.child(self.button(
-                    format!("key-{label}"),
-                    label,
-                    cx,
-                    move |_, w, cx| {
+                shortcuts = shortcuts.child(
+                    self.button(format!("key-{label}"), label, cx, move |_, w, cx| {
                         t.update(cx, |t, _| t.send(key.bytes().to_vec()));
                         w.focus(&t.focus_handle(cx));
-                    },
-                ));
+                    })
+                    .h(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_md()
+                    .border_color(rgb(p.line))
+                    .bg(rgb(p.bg)),
+                );
             }
         }
         div()
@@ -446,6 +501,8 @@ impl Desktop {
                             .flex()
                             .items_center()
                             .h(px(40.))
+                            .px_1()
+                            .gap_1()
                             .flex_shrink_0()
                             .bg(rgb(p.panel))
                             .child(shortcuts)

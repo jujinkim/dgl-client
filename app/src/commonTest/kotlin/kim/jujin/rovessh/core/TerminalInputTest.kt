@@ -17,6 +17,7 @@ class TerminalInputTest {
     @Test fun everySupportedKeyAndToolbarOrder() {
         val sequences = mapOf(
             TerminalKey.Escape to "\u001b", TerminalKey.Tab to "\t", TerminalKey.Up to "\u001b[A",
+            TerminalKey.ShiftTab to "\u001b[Z", TerminalKey.ShiftLeft to "\u001b[1;2D",
             TerminalKey.Down to "\u001b[B", TerminalKey.Left to "\u001b[D", TerminalKey.Right to "\u001b[C",
             TerminalKey.Home to "\u001b[H", TerminalKey.End to "\u001b[F", TerminalKey.Enter to "\r",
             TerminalKey.Backspace to "\u007f", TerminalKey.Delete to "\u001b[3~",
@@ -27,7 +28,7 @@ class TerminalInputTest {
             assertContentEquals(wire.encodeToByteArray(), key.bytes())
             assertContentEquals(wire.encodeToByteArray(), VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(key))).bytes())
         }
-        assertEquals(listOf("Esc", "Tab", "Ctrl+C", "Ctrl+D", "Ctrl+L", "↑", "↓", "←", "→", "Home", "End"), TerminalKey.toolbar.map { it.label })
+        assertEquals(listOf("Esc", "Tab", "Enter", "Shift+Tab", "Shift+←", "Ctrl+C", "Ctrl+D", "Ctrl+L", "↑", "↓", "←", "→", "Home", "End"), TerminalKey.defaultShortcuts.map { it.label })
     }
 
     @Test fun mixedStepsUnicodeNewlinesAndNoImplicitEnter() {

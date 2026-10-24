@@ -156,7 +156,10 @@ impl Desktop {
             }
         })
         .w(px(44.))
-        .h_full()
+        .h(px(32.))
+        .rounded_md()
+        .border_color(rgb(self.palette.line))
+        .bg(rgb(self.palette.bg))
         .flex()
         .items_center()
         .justify_center()

@@ -447,6 +447,8 @@
   "keys": {
     "Escape": "1b",
     "Tab": "09",
+    "ShiftTab": "1b5b5a",
+    "ShiftLeft": "1b5b313b3244",
     "CtrlA": "01",
     "CtrlB": "02",
     "CtrlC": "03",
@@ -629,7 +631,23 @@
           "volumeDown": {
             "action": "Default",
             "steps": []
-          }
+          },
+          "terminalShortcuts": [
+            "Escape",
+            "Tab",
+            "Enter",
+            "ShiftTab",
+            "ShiftLeft",
+            "CtrlC",
+            "CtrlD",
+            "CtrlL",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Home",
+            "End"
+          ]
         }
       }
     },
@@ -656,7 +674,23 @@
           "volumeDown": {
             "action": "Default",
             "steps": []
-          }
+          },
+          "terminalShortcuts": [
+            "Escape",
+            "Tab",
+            "Enter",
+            "ShiftTab",
+            "ShiftLeft",
+            "CtrlC",
+            "CtrlD",
+            "CtrlL",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Home",
+            "End"
+          ]
         }
       }
     },
@@ -749,7 +783,23 @@
                 "key": "Enter"
               }
             ]
-          }
+          },
+          "terminalShortcuts": [
+            "Escape",
+            "Tab",
+            "Enter",
+            "ShiftTab",
+            "ShiftLeft",
+            "CtrlC",
+            "CtrlD",
+            "CtrlL",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Home",
+            "End"
+          ]
         }
       }
     },
@@ -800,7 +850,23 @@
           "volumeDown": {
             "action": "Default",
             "steps": []
-          }
+          },
+          "terminalShortcuts": [
+            "Escape",
+            "Tab",
+            "Enter",
+            "ShiftTab",
+            "ShiftLeft",
+            "CtrlC",
+            "CtrlD",
+            "CtrlL",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Home",
+            "End"
+          ]
         }
       }
     },
@@ -860,6 +926,70 @@
         ]
       },
       "error": true
+    },
+    {
+      "id": "custom-terminal-shortcuts",
+      "source": {
+        "preferences": {
+          "terminalShortcuts": [
+            "Enter",
+            "ShiftLeft",
+            "ShiftTab",
+            "CtrlB"
+          ]
+        }
+      },
+      "expected": {
+        "hosts": [],
+        "trust": {},
+        "preferences": {
+          "theme": "system",
+          "fontSize": 14,
+          "scrollback": 5000,
+          "volumeKeysEnabled": false,
+          "volumeUp": {
+            "action": "Default",
+            "steps": []
+          },
+          "volumeDown": {
+            "action": "Default",
+            "steps": []
+          },
+          "terminalShortcuts": [
+            "Enter",
+            "ShiftLeft",
+            "ShiftTab",
+            "CtrlB"
+          ]
+        }
+      }
+    },
+    {
+      "id": "empty-terminal-shortcuts",
+      "source": {
+        "preferences": {
+          "terminalShortcuts": []
+        }
+      },
+      "expected": {
+        "hosts": [],
+        "trust": {},
+        "preferences": {
+          "theme": "system",
+          "fontSize": 14,
+          "scrollback": 5000,
+          "volumeKeysEnabled": false,
+          "volumeUp": {
+            "action": "Default",
+            "steps": []
+          },
+          "volumeDown": {
+            "action": "Default",
+            "steps": []
+          },
+          "terminalShortcuts": []
+        }
+      }
     }
   ],
   "state": [

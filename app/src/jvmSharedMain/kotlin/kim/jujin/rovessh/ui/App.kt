@@ -253,7 +253,7 @@ expect fun copyPublicKey(value: String)
                 PlatformTerminal(client, preferences, Modifier.fillMaxSize())
             }
         }
-        TerminalShortcutBar(client, terminalInputAllowed, terminalFocus)
+        TerminalShortcutBar(client, preferences.terminalShortcuts, terminalInputAllowed, terminalFocus)
     }
     if (mobileLayout && navigation) ModalBottomSheet(onDismissRequest = { navigation = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Text("tmux 세션 · 창 · 패널", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
@@ -392,6 +392,9 @@ expect fun copyPublicKey(value: String)
                 TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize + 1).coerceAtMost(28)))) }) { Text("크게") }
             }
             Text("스크롤백: ${local.preferences.scrollback}줄 · 터미널에서 스크롤·선택·복사")
+            TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
+                model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
+            }
             PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
             Text("신뢰한 서버", style = MaterialTheme.typography.titleSmall)
             local.trust.forEach { (endpoint, fingerprint) ->

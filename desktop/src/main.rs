@@ -799,7 +799,9 @@ impl Render for Desktop {
                         );
                 }
                 Dialog::Settings => {
-                    body = body.child(div().text_xl().child("설정"));
+                    body = body
+                        .child(div().text_xl().child("설정"))
+                        .child(self.shortcut_settings(cx));
                     for (value, label) in
                         [("system", "시스템"), ("light", "밝게"), ("dark", "어둡게")]
                     {

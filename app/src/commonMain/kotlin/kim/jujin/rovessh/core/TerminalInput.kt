@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 /** Stable serialized key names; labels and terminal sequences are shared by both UIs. */
 @Serializable enum class TerminalKey(val label: String, private val sequence: String) {
     Escape("Esc", "\u001b"), Tab("Tab", "\t"),
+    ShiftTab("Shift+Tab", "\u001b[Z"), ShiftLeft("Shift+←", "\u001b[1;2D"),
     CtrlA("Ctrl+A", "\u0001"), CtrlB("Ctrl+B", "\u0002"), CtrlC("Ctrl+C", "\u0003"),
     CtrlD("Ctrl+D", "\u0004"), CtrlE("Ctrl+E", "\u0005"), CtrlF("Ctrl+F", "\u0006"),
     CtrlG("Ctrl+G", "\u0007"), CtrlH("Ctrl+H", "\u0008"), CtrlI("Ctrl+I", "\t"),
@@ -23,7 +24,7 @@ import kotlinx.serialization.Serializable
     fun bytes(): ByteArray = sequence.encodeToByteArray()
 
     companion object {
-        val toolbar = listOf(Escape, Tab, CtrlC, CtrlD, CtrlL, Up, Down, Left, Right, Home, End)
+        val defaultShortcuts = listOf(Escape, Tab, Enter, ShiftTab, ShiftLeft, CtrlC, CtrlD, CtrlL, Up, Down, Left, Right, Home, End)
     }
 }
 

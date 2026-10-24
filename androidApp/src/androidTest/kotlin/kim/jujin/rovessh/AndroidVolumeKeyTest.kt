@@ -245,6 +245,14 @@ class AndroidVolumeKeyTest {
             try {
                 withTimeout(10000) { first.status.first { it.phase == Phase.Shell }; second.status.first { it.phase == Phase.Shell } }
                 waitForText("CLI 실행 메뉴")
+                for ((label, wire) in listOf("Esc" to "\u001b", "Tab" to "\t", "Enter" to "\r",
+                    "Shift+Tab" to "\u001b[Z", "Shift+←" to "\u001b[1;2D")) {
+                    waitForText(label).performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+                    click(label)
+                    assertArrayEquals(wire.encodeToByteArray(), withTimeout(3000) { firstWire.writes.receive() })
+                    assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
+                    assertNull(withTimeoutOrNull(150) { secondWire.writes.receive() })
+                }
                 val actions = listOf("Claude Code 실행" to "claude\r", "Claude Code Bypass 실행" to "claude --dangerously-skip-permissions\r",
                     "Codex 실행" to "codex\r", "Codex Bypass 실행" to "codex --yolo\r")
                 for (theme in listOf("light", "dark")) {
