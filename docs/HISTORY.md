@@ -76,6 +76,15 @@ JVM 54개·Android 15개 이름 목록과 선택 계측 결과 파서의 누락�
 JVM 45 통과/예상 skip 9, Android Debug·lint와 결과 검증기를 통과했습니다.
 실제 macOS GUI·Windows 네이티브·Android 계측은 수행하지 않았습니다.
 
+## 2026-10-26: 강조 색상·동기화 v2
+
+시스템·DGL 기본·사용자 HEX 강조 색상, 플랫폼 창 스타일과 설정 화면을 추가했습니다.
+v1 동기화 데이터·캐시를 v2로 전환하고 데이터셋·이력과 강조 선택의 병합을 유지했습니다.
+당시 Rust 코어·UniFFI 27 통과/5 ignore, 데스크톱 51 통과/1 ignore,
+JVM 46 통과/예상 skip 9, Python 98·웹 8 통과, Android Debug·lint와 Mac ad-hoc 패키징을 확인했습니다.
+Mac computer-use는 앱 식별자 연결 실패로 창을 관찰하지 못했으며 GUI·Keychain·OS 변경 인수는 남겼습니다.
+Windows 네이티브·전체 Android 계측은 실행하지 않았습니다. 자세한 과거 검사 내용은 Git 이력에서 찾습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

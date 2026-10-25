@@ -6,29 +6,33 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-시스템·DGL 기본·사용자 지정 강조 색상과 플랫폼 창 스타일, 동기화 v2 변경의 검사입니다.
+앱 아이콘 제작과 Android·macOS·Windows 리소스 연결의 검사입니다.
+이전 강조 색상·동기화 검사 요약은 [HISTORY.md](HISTORY.md)에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust workspace (macOS ARM64) | 코어·UniFFI 27 통과/SSH 환경 필요 5 ignore, 데스크톱 51 통과/Keychain 환경 필요 1 ignore |
-| 색상·설정 | 이전 설정 기본값, 잘못된 값의 국소 복구, HEX 정규화·저장 복원, 두 밝기 테마·8개 프리셋·검정/흰색의 대비, 중립 배경 유지, 조회 실패 대체색 |
-| 동기화 | v1 공유 파일·캐시와 직접 serde 역직렬화 경로 전환, 데이터셋 ID·이력 유지, 지연 v1/v2 병합, 강조 선택의 원자적 전달·동시 충돌 선택, OS 실제 색상 필드 제외 |
-| 데스크톱 UI | 프리셋 즉시 저장, HEX Enter 적용·오류 시 기존 값 유지, 모드 전환·재실행 복원, 입력 컴포넌트·포커스 유지, 모달 Tab 순환·터미널 입력 차단. OS 변경·복귀 갱신 조건 단위 검사 |
-| Kotlin/JVM | `:app:desktopTest` 및 명시적 이름 검증기: 46 통과·예상 skip 9 |
-| Android | `:androidApp:assembleDebug :androidApp:lintDebug` 성공. lint 오류 0·기존 검토 경고 12, 진단 검증기 통과. 전체 API 계측·실제 동적 색상 변경은 실행하지 않음 |
-| macOS 패키징 | `scripts/package_rust_mac.py`로 개발 .app 생성·로컬 ad-hoc 서명·검증. Developer ID·공증은 수행하지 않음 |
-| 기본 회귀·무결성 | Python 98·웹 8 통과, 원문 요구사항 SHA-256·Gradle Wrapper·rustfmt·Markdown 로컬 링크·`git diff --check`·대시보드 메타데이터 검증 |
+| 원본·축소 미리보기 | built-in imagegen 투명 원본·최종 프롬프트 보존, 1024·128·48·32·16px 정적 확인. 32px에서 Return 화살표와 라임 결과물 구분 |
+| Android 마스크·단색 | 원형·둥근 사각형 정적 확인. 전경의 의미 있는 픽셀은 모든 밀도에서 중심 반경 33dp 이내, 별도 단색 벡터의 화살표·슬라임·반짝이 확인 |
+| Android 빌드 | `:androidApp:assembleDebug :androidApp:lintDebug` 성공. lint 오류 0·기존 검토 경고 12, `verify_lint.py` 통과. Debug 전달용 복사본 갱신 |
+| macOS | `cargo check --offline -p dgl-desktop`와 `package_rust_mac.py` 성공. ICNS 해상도별 추출, 번들 ICNS 일치·`CFBundleIconFile`·앱 ID 확인, 로컬 ad-hoc 서명·strict 검증 |
+| Python | 기존 Windows 패키징 3개를 포함해 98개 단위 검사 통과, 변경 스크립트 구문 검사 통과 |
+| 재생성·메타데이터 | `generate_app_icons.py --check` 일치, PNG 원본 alpha 보존·ICO 7개 크기 확인, 로컬 대시보드 PNG 등록·스키마 검증·Git 제외 확인 |
+| 변경 파일 무결성 | 변경 Rust build.rs 서식·Markdown 로컬 링크·`git diff --check`·원문 요구사항 SHA-256 확인 |
 
-macOS 네이티브 GUI 확인은 시도했으나 computer-use의 앱 식별자 연결 실패
-(`Running application not found` / `Invalid app`)로 창을 관찰하지 못했습니다.
-제목 표시줄 색·기본 버튼·드래그·resize·전체 화면 전환과 OS 설정 변경의 실제 반영은 **미검증**입니다.
-격리 설정·검증용 복사본을 사용했으며 검증 프로세스는 종료했습니다. GPUI 이벤트 주입은 실제 OS 키보드·IME 인수 결과가 아닙니다.
-Windows MSVC 네이티브 빌드·고대비·DPAPI·GUI 검사는 사용자 담당이며 이번에 실행하지 않았습니다.
-Windows 조건부 의존성·IME 메시지 처리·빌드·패키징 진입점은 유지합니다.
+처음 Android 빌드에서는 런처와 알림이 공유하던 `ic_terminal`을 삭제해 알림 참조가 실패했습니다.
+알림용 리소스를 복원한 뒤 위 Debug·lint 명령을 다시 실행해 성공했습니다.
+전체 `cargo fmt --all -- --check`는 이번에 수정하지 않은
+`crates/dgl-core/tests/password_shell.rs`의 기존 서식 차이로 실패했습니다.
+변경한 `desktop/build.rs`의 `rustfmt --check`는 통과했습니다.
+
+Windows MSVC 네이티브 빌드·창/작업 표시줄 아이콘·DPAPI·GUI 검사는 이번에 실행하지 않았습니다.
+macOS Dock·Finder와 Android 실제 런처 표시를 GUI로 확인하지 않았으며,
+Android API별 계측·전체 Rust/JVM·SSH 통합 검사도 이번 리소스 변경에서는 재실행하지 않았습니다.
+Developer ID·공증은 수행하지 않았습니다. 기본 Windows 빌드·ZIP·수동 CI 경로는 유지합니다.
 
 Gradle 10 대비 deprecated 기능과 Rust 의존성 `block`/`proc-macro-error2`의 향후 호환성 경고는 남아 있습니다.
-로컬 실행 로그는 `/tmp/dgl-accent-*.log`, JVM 이름별 결과는 Git 제외 `artifacts/accent-jvm-tests.json`입니다.
-과거 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에서 확인합니다.
+실행 로그는 Git 제외 로컬 `/tmp/dgl-icon-*.log`입니다. 재생성·미리보기 안내는
+[앱 아이콘 README](../assets/app-icon/README.md)를 따릅니다.
 
 ## 남은 한계
 

@@ -7,6 +7,11 @@ Windows 네이티브 빌드·DPAPI 실행·GUI 인수를 통과했다고 표시�
 
 하단 `…`의 Claude Code·Codex 실행 메뉴도 공통 GPUI 구현에 포함된다.
 아이콘은 실행 파일에 내장되며 ZIP에는 `simple-icons-LICENSE.md`가 함께 포함된다.
+앱 아이콘은 `desktop/resources/windows/dgl.ico`의 여러 크기를 Windows 리소스 ID `1`에
+포함한다. Windows target에서만 `embed-resource`가 기존 SDK `rc.exe`로 컴파일하고
+GPUI의 기존 창·작업 표시줄 아이콘 로더가 사용한다.
+원본·변환 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있으며 일반 Windows 빌드에는
+Pillow나 이미지 생성·변환 도구가 필요하지 않다. 네이티브 표시 검증은 사용자 확인 범위다.
 
 설정의 Google Drive·iCloud Drive 동기화는 설치된 Drive 앱의 로컬 폴더를 선택해
 `dgl-sync.json`을 읽고 쓰는 공통 파일 구현이다. OAuth·클라우드 SDK·추가 빌드 도구는

@@ -1779,6 +1779,7 @@ dependencies = [
  "alacritty_terminal",
  "cc",
  "dgl-core",
+ "embed-resource",
  "gpui",
  "rand 0.10.3",
  "raw-window-handle",

@@ -24,9 +24,10 @@ def main():
     (app / "Resources").mkdir(exist_ok=True)
     binary = app / "MacOS/dgl-desktop"
     shutil.copy2(ROOT / "target" / ("release" if args.release else "debug") / "dgl-desktop", binary)
+    shutil.copy2(ROOT / "desktop/resources/dgl.icns", app / "Resources/dgl.icns")
     (app / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "kim.jujin.dglc", "CFBundleName": "dgl Rust Candidate",
         "CFBundleExecutable": "dgl-desktop", "CFBundlePackageType": "APPL", "CFBundleVersion": "1", "CFBundleShortVersionString": "0.1.0",
-        "NSHighResolutionCapable": True}))
+        "NSHighResolutionCapable": True, "CFBundleIconFile": "dgl.icns"}))
     for name in ["NOTICE", "LICENSE-APACHE-GPUI"]:
         shutil.copy2(ROOT / "desktop" / name, app / "Resources" / name)
     shutil.copy2(ROOT / "licenses/simple-icons-LICENSE.md", app / "Resources/simple-icons-LICENSE.md")

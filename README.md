@@ -76,6 +76,9 @@ Windows는 `scripts/run_windows.cmd`를 더블클릭하거나 PowerShell에서 �
 | macOS | `artifacts/rust-candidate/mac/dgl Rust Candidate.app` |
 | Windows ZIP | `artifacts/rust-candidate/windows/dgl-rust-windows-x64.zip` |
 
+앱 아이콘은 Android adaptive·단색, macOS ICNS, Windows 실행 파일 리소스로 포함됩니다.
+원본과 재생성 절차는 [앱 아이콘 안내](assets/app-icon/README.md)에 있습니다. 일반 빌드는 변환 도구를 요구하지 않습니다.
+
 ## 문서
 
 - [문서 목록](docs/README.md) · [사용 안내](docs/USAGE.md) · [개발 안내](docs/DEVELOPMENT.md)

@@ -26,6 +26,7 @@ zeroize = "=1.9.1"
 
 [build-dependencies]
 cc = "=1.10.0"
+embed-resource = "=3.0.12"
 
 [dev-dependencies]
 gpui = { version = "=0.2.2", features = ["test-support"] }

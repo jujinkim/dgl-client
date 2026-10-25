@@ -1,0 +1,3 @@
+// Paths are relative to the desktop crate (the resource compiler's cwd).
+// GPUI 0.2.2 LoadImageW requests icon resource ID 1.
+1 ICON "resources/windows/dgl.ico"
