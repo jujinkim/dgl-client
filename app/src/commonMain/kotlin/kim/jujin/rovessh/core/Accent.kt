@@ -40,8 +40,8 @@ object AccentSettingsSerializer : KSerializer<AccentSettings> {
         })
     }
 }
-val accentPresets = listOf("파랑" to "#2468C9", "보라" to "#8056D9", "분홍" to "#D84F99", "빨강" to "#D63D45",
-    "주황" to "#E57B25", "노랑" to "#E6BB24", "초록" to "#329654", "청록" to "#21999D")
+val accentPresets get() = listOf(t("파랑") to "#2468C9", t("보라") to "#8056D9", t("분홍") to "#D84F99", t("빨강") to "#D63D45",
+    t("주황") to "#E57B25", t("노랑") to "#E6BB24", t("초록") to "#329654", t("청록") to "#21999D")
 fun blendAccent(color: Int, background: Int, amount: Double): Int = listOf(16, 8, 0).fold(0) { out, shift ->
     out or ((((color shr shift and 255) * amount + (background shr shift and 255) * (1 - amount)).roundToInt()) shl shift)
 }

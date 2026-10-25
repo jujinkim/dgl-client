@@ -13,7 +13,7 @@ dependencies {
 val buildRustBindings by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
     commandLine("python3", "scripts/build_rust_android.py")
-    inputs.files(rootProject.file("scripts/build_rust_android.py"), rootProject.fileTree("crates"), rootProject.file("Cargo.toml"), rootProject.file("Cargo.lock"))
+    inputs.files(rootProject.file("scripts/build_rust_android.py"), rootProject.fileTree("crates"), rootProject.fileTree("locales"), rootProject.file("Cargo.toml"), rootProject.file("Cargo.lock"))
     outputs.dir("src/main/jniLibs")
     outputs.dir("src/main/kotlin/uniffi")
 }

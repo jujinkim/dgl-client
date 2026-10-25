@@ -1,5 +1,7 @@
 package kim.jujin.dgl
 
+import kim.jujin.rovessh.core.t
+import kim.jujin.rovessh.core.tr
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -39,8 +41,8 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 require(checkpoint.length() <= MAX_BYTES * 2)
                 config = json.decodeFromString<Config?>(checkpoint.readText())
             }
-            status.value = CloudSyncStatus(connected = config != null, location = config?.name.orEmpty(), message = if (config == null) "연결 안 됨" else "연결한 파일 확인 대기")
-        } catch (_: Exception) { status.value = CloudSyncStatus(message = "연결 정보를 읽지 못했습니다. 파일을 다시 선택하세요.") }
+            status.value = CloudSyncStatus(connected = config != null, location = config?.name.orEmpty(), message = if (config == null) t("연결 안 됨") else t("연결한 파일 확인 대기"))
+        } catch (_: Exception) { status.value = CloudSyncStatus(message = t("연결 정보를 읽지 못했습니다. 파일을 다시 선택하세요.")) }
         scope.launch {
             while (isActive) {
                 delay(15_000)
@@ -73,7 +75,7 @@ class RustFileSync(context: Context, private val directory: File, private val mo
 
     fun connect(uri: Uri, flags: Int, create: Boolean) {
         if (status.value.busy) return
-        status.value = status.value.copy(busy = true, message = "파일 연결 중…")
+        status.value = status.value.copy(busy = true, message = t("파일 연결 중…"))
         scope.launch { mutex.withLock {
             var granted = false
             try {
@@ -96,16 +98,16 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 synchronize(null)
             } catch (_: Exception) {
                 if (granted && config?.uri != uri.toString()) release(uri)
-                status.value = status.value.copy(connected = config != null, location = config?.name.orEmpty(), message = "파일 연결 실패. Google Drive에서 읽기·쓰기가 가능한 dgl-sync.json을 선택하세요.")
+                status.value = status.value.copy(connected = config != null, location = config?.name.orEmpty(), message = t("파일 연결 실패. Google Drive에서 읽기·쓰기가 가능한 dgl-sync.json을 선택하세요."))
             } finally { status.value = status.value.copy(busy = false) }
         } }
     }
     override fun sync(resolution: SyncResolution?) {
         if (status.value.busy || config == null || model.hostEditing) return
-        status.value = status.value.copy(busy = true, message = "파일 확인 중…")
+        status.value = status.value.copy(busy = true, message = t("파일 확인 중…"))
         scope.launch { mutex.withLock {
             try { synchronize(resolution) }
-            catch (_: Exception) { status.value = status.value.copy(message = "파일 동기화 실패. Drive 연결·파일 권한·파일 형식을 확인하세요. 변경 기록은 기기에 보존됩니다.") }
+            catch (_: Exception) { status.value = status.value.copy(message = t("파일 동기화 실패. Drive 연결·파일 권한·파일 형식을 확인하세요. 변경 기록은 기기에 보존됩니다.")) }
             finally { status.value = status.value.copy(busy = false) }
         } }
     }
@@ -121,7 +123,7 @@ class RustFileSync(context: Context, private val directory: File, private val mo
             if (read(uri) != before) return@repeat
             if (out.document != before) write(uri, out.document)
             if (model.hostEditing) {
-                status.value = status.value.copy(message = "호스트 편집이 끝나면 받은 변경을 적용합니다.")
+                status.value = status.value.copy(message = t("호스트 편집이 끝나면 받은 변경을 적용합니다."))
                 return
             }
             // Include local edits made during provider I/O and preserve local-only
@@ -131,7 +133,7 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 val final = exchange(requireNotNull(config), current, out.document, null)
                 save(requireNotNull(config).copy(cache = final.cache))
                 status.value = status.value.copy(conflicts = final.conflicts,
-                    message = if (final.conflicts.isEmpty()) "파일 반영 완료 · 클라우드 전송은 Drive 앱에서 확인하세요." else "동시 수정된 항목을 아래에서 선택하세요.")
+                    message = if (final.conflicts.isEmpty()) t("파일 반영 완료 · 클라우드 전송은 Drive 앱에서 확인하세요.") else t("동시 수정된 항목을 아래에서 선택하세요."))
                 applied = final.local
                 final.local
             }
@@ -150,8 +152,8 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 val previous = config
                 save(null)
                 previous?.let { release(Uri.parse(it.uri)) }
-                status.value = CloudSyncStatus(message = "연결 해제됨 · 공유 파일은 유지됩니다.")
-            } catch (_: Exception) { status.value = status.value.copy(busy = false, message = "연결 해제 정보를 저장하지 못했습니다.") }
+                status.value = CloudSyncStatus(message = t("연결 해제됨 · 공유 파일은 유지됩니다."))
+            } catch (_: Exception) { status.value = status.value.copy(busy = false, message = t("연결 해제 정보를 저장하지 못했습니다.")) }
         } }
     }
     override fun close() { scope.cancel() }

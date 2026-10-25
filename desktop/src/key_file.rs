@@ -1,3 +1,4 @@
+use dgl_core::i18n::t;
 use std::{
     io::{self, Read},
     path::{Path, PathBuf},
@@ -34,28 +35,28 @@ pub fn target(input: &str, home: Option<PathBuf>) -> ImportTarget {
 
 fn read_error(error: io::Error) -> &'static str {
     match error.kind() {
-        io::ErrorKind::NotFound => "개인키 파일을 찾을 수 없습니다. 경로를 확인하세요.",
-        io::ErrorKind::PermissionDenied => "개인키 파일을 읽을 권한이 없습니다.",
-        _ => "개인키 파일을 읽지 못했습니다. 파일 상태를 확인하세요.",
+        io::ErrorKind::NotFound => t("개인키 파일을 찾을 수 없습니다. 경로를 확인하세요."),
+        io::ErrorKind::PermissionDenied => t("개인키 파일을 읽을 권한이 없습니다."),
+        _ => t("개인키 파일을 읽지 못했습니다. 파일 상태를 확인하세요."),
     }
 }
 
 pub fn read(path: &Path) -> Result<String, &'static str> {
     let file = std::fs::File::open(path).map_err(read_error)?;
     if !file.metadata().map_err(read_error)?.is_file() {
-        return Err("일반 개인키 파일을 선택하세요.");
+        return Err(t("일반 개인키 파일을 선택하세요."));
     }
     let mut bytes = Vec::new();
     file.take((MAX_KEY_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(read_error)?;
     if bytes.len() > MAX_KEY_BYTES {
-        return Err("개인키 파일은 최대 128 KiB까지 가져올 수 있습니다.");
+        return Err(t("개인키 파일은 최대 128 KiB까지 가져올 수 있습니다."));
     }
     if bytes.is_empty() {
-        return Err("개인키 파일이 비어 있습니다.");
+        return Err(t("개인키 파일이 비어 있습니다."));
     }
-    String::from_utf8(bytes).map_err(|_| "개인키 파일은 UTF-8 텍스트여야 합니다.")
+    String::from_utf8(bytes).map_err(|_| t("개인키 파일은 UTF-8 텍스트여야 합니다."))
 }
 
 #[cfg(test)]

@@ -80,6 +80,7 @@ impl std::fmt::Debug for Credential {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
+    pub language: String,
     pub theme: String,
     pub accent: crate::accent::AccentSettings,
     pub mobile_pane_toolbar_visible: bool,
@@ -96,6 +97,7 @@ pub struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            language: "system".into(),
             theme: "system".into(),
             accent: Default::default(),
             mobile_pane_toolbar_visible: true,

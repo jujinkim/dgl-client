@@ -100,6 +100,12 @@ Windows 네이티브 빌드·GUI와 macOS Dock/Finder·Android 실제 런처·�
 당시 Rust 데스크톱 54·코어/UniFFI 27 통과, Keychain 1·SSH 5 ignore와 Python 98 통과를 기록했습니다.
 Android 계측 APK는 빌드했으나 계측 실행과 Windows·macOS GUI 실기 인수는 남겼습니다.
 
+## 2026-10-26: 호스트 순서·세션 탭 재사용
+
+최초 연결 순서·기기별 드래그 정렬과 호스트/세션 ID별 탭 재사용을 추가했습니다.
+당시 데스크톱 59 통과·대화형 Keychain 1 ignore, 대시보드 등록·문서 링크·원문 무결성 검사를 확인했습니다.
+Android 빌드·실제 SSH/tmux·Windows/macOS 실기 인수는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

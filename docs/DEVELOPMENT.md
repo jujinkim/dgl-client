@@ -24,6 +24,7 @@ Windows 앱만 빌드할 때 JDK·Android SDK는 필요하지 않습니다.
 ```sh
 python3 scripts/check_prompt.py
 python3 scripts/verify_wrapper.py
+python3 scripts/generate_locales.py --check
 python3 -m unittest discover -s scripts/tests -v
 cargo test --locked -p dgl-core -p dgl-uniffi
 ./gradlew :app:desktopTest
@@ -46,6 +47,15 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo test --locked --w
 
 기본은 위 기능·단위 검사이며 전체 Android API 계측과 장시간 자원 측정은 별도 선택입니다.
 검사 결과·남은 한계는 [VALIDATION.md](VALIDATION.md)에 기록합니다.
+
+### UI 번역
+
+`locales/en.json`은 한국어 원문 키와 영어 번역의 공통 목록입니다. 문구와 번호 자리표시자(`{0}` 등)를
+추가·수정한 뒤 `python3 scripts/generate_locales.py`로 Kotlin 목록을 갱신합니다.
+Rust는 같은 JSON을 바이너리에 포함합니다. `--check`는 누락된 키·번역·자리표시자와 생성 파일 일치를 검사합니다.
+표시 문구는 `t`, 인수가 있는 문구는 `tr!`(Rust)/`tr`(Kotlin)를 사용하며 완성된 사용자 문자열에 번역을 적용하지 않습니다.
+언어 선택은 `preferences.language`의 `system|ko|en`이며 예전 설정은 `system`, 알 수 없는 언어 선택도 시스템으로 해석합니다.
+tmux 명령·에러 코드·원격 터미널 바이트는 언어와 무관하게 유지합니다.
 
 ## Android 빌드
 

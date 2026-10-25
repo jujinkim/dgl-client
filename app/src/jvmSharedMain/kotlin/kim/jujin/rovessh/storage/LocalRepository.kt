@@ -18,7 +18,7 @@ class LocalRepository(private val directory: File) {
         directory.mkdirs()
         val temporary = File(directory, "settings.tmp")
         val bytes = json.encodeToString(LocalState.serializer(), value).encodeToByteArray()
-        require(bytes.size <= MAX_FILE_BYTES) { "설정 파일이 너무 큽니다." }
+        require(bytes.size <= MAX_FILE_BYTES) { t("설정 파일이 너무 큽니다.") }
         temporary.writeBytes(bytes)
         try { Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING) }
         catch (_: java.nio.file.AtomicMoveNotSupportedException) { Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING) }

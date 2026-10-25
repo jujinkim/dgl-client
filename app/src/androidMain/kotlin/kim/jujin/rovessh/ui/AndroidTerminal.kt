@@ -77,7 +77,7 @@ internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.D
             terminal.view.setOnApplyWindowInsetsListener(null)
             terminal.view.setWindowInsetsAnimationCallback(null)
             focus.request = {}; focus.keyboard = {}; focus.imeVisible = false
-            focus.preparePaste = { _, _ -> error("터미널이 닫혔습니다.") }
+            focus.preparePaste = { _, _ -> error(t("터미널이 닫혔습니다.")) }
         }
     }
     DisposableEffect(terminal) {
@@ -205,11 +205,11 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     suspend fun preparePaste(text: String, enter: Boolean): ByteArray = withTimeout(15_000) {
         ready.await()
         withContext(Dispatchers.Main.immediate) {
-            check(!closed) { "터미널이 닫혔습니다." }
+            check(!closed) { t("터미널이 닫혔습니다.") }
             val result = CompletableDeferred<ByteArray>()
             view.evaluateJavascript("window.preparePaste(${JSONObject.quote(text)},$enter)") { raw ->
                 runCatching {
-                    check(raw != null && raw != "null") { "입력은 붙여넣기 제어 문자와 Enter를 포함하여 UTF-8 64 KiB 이하여야 합니다." }
+                    check(raw != null && raw != "null") { t("입력은 붙여넣기 제어 문자와 Enter를 포함하여 UTF-8 64 KiB 이하여야 합니다.") }
                     org.json.JSONTokener(raw).nextValue().let { it as String }.toByteArray(Charsets.UTF_8)
                 }.fold({ result.complete(it) }, { result.completeExceptionally(it) })
             }
@@ -281,10 +281,10 @@ private var clipboardContext: WeakReference<Context>? = null
                 val bytes = it.readNBytes(131073)
                 require(bytes.size in 32..131072)
                 onKey(bytes.toString(Charsets.UTF_8))
-            } ?: onError("파일을 열 수 없습니다.")
-        } catch (_: Exception) { onError("개인키를 읽지 못했습니다. 최대 크기는 128 KiB입니다.") }
+            } ?: onError(t("파일을 열 수 없습니다."))
+        } catch (_: Exception) { onError(t("개인키를 읽지 못했습니다. 최대 크기는 128 KiB입니다.")) }
     }
-    TextButton({ launcher.launch(arrayOf("*/*")) }) { Text("개인키 파일 가져오기") }
+    TextButton({ launcher.launch(arrayOf("*/*")) }) { Text(t("개인키 파일 가져오기")) }
 }
 actual fun copyPublicKey(value: String) {
     val context = clipboardContext?.get() ?: return

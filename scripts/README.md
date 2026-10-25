@@ -68,6 +68,7 @@ JVM·Android 테스트를 추가/삭제하면 `verify_test_results.py` / `verify
 
 | 도구 | 역할 |
 |---|---|
+| `generate_locales.py` | 한국어·영어 공통 UI 목록 검증과 Kotlin 생성; `--check`로 누락·자리표시자·생성 파일 일치 검사 |
 | `migration_performance.py` | CPU/RSS·패키지 크기 수집, 성능 계약 판정 |
 | `migration_android_baseline.py` | Android 비교 기준선 수집 |
 | `migration_android_presentation.py` | API36 Perfetto 표시 trace 수집·상한/첫 표시 분석 |

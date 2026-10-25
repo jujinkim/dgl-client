@@ -6,6 +6,19 @@ import java.nio.file.Files
 import kotlin.test.*
 
 class PreferencesTest {
+    @Test fun languageChoiceSurvivesRestartAndLegacySettingsUseSystem() {
+        val directory = Files.createTempDirectory("dgl-language-").toFile()
+        try {
+            directory.resolve("settings.json").writeText("""{"preferences":{"fontSize":19}}""")
+            val repository = LocalRepository(directory)
+            assertEquals("system", repository.read().preferences.language)
+            for (choice in listOf("ko", "en", "system", "future-language")) {
+                val state = repository.read().let { it.copy(preferences = it.preferences.copy(language = choice)) }
+                repository.save(state)
+                assertEquals(state, LocalRepository(directory).read())
+            }
+        } finally { directory.deleteRecursively() }
+    }
     @Test fun accentValidationFallbackContrastAndStoredChoice() {
         val directory = Files.createTempDirectory("dgl-accent-").toFile()
         try {

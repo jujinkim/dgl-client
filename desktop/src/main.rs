@@ -12,6 +12,7 @@ mod file_picker;
 mod hierarchy;
 mod host_dialog;
 mod host_order;
+mod i18n;
 mod key_file;
 mod launcher;
 mod modal;
@@ -35,6 +36,7 @@ use dgl_core::{
     model::{AuthKind, Credential, HostProfile, LocalState},
     ssh,
 };
+use dgl_core::{i18n::t, tr};
 use gpui::{prelude::*, *};
 use std::collections::{HashMap, HashSet};
 use std::{
@@ -135,8 +137,9 @@ impl Desktop {
             Ok(s) => (s, None),
             Err(e) => (
                 LocalState::default(),
-                Some(format!(
-                    "설정을 읽지 못했습니다: {e}. 원본 파일을 보존했습니다."
+                Some(tr!(
+                    "설정을 읽지 못했습니다: {0}. 원본 파일을 보존했습니다.",
+                    e
                 )),
             ),
         };
@@ -264,10 +267,10 @@ impl Desktop {
                                     && let Err(e) =
                                         tab.connection.action(Action::Manage { operation })
                                 {
-                                    self.error = Some(format!("요청 실패: {e}"));
+                                    self.error = Some(tr!("요청 실패: {0}", e));
                                 }
                             }
-                            Err(e) => self.error = Some(format!("대상 선택 실패: {e}")),
+                            Err(e) => self.error = Some(tr!("대상 선택 실패: {0}", e)),
                         }
                     } else if matches!(
                         state.phase,
@@ -316,7 +319,7 @@ impl Desktop {
                             dgl_core::Error::Cancelled | dgl_core::Error::StaleGeneration
                         ))
                 {
-                    self.error = Some(format!("요청 실패: {e}"));
+                    self.error = Some(tr!("요청 실패: {0}", e));
                     changed = true;
                 }
             }
@@ -329,7 +332,7 @@ impl Desktop {
         }
         if changed {
             if save_hosts && let Err(e) = self.local.save(&self.path) {
-                self.error = Some(format!("설정 저장 실패: {e}"));
+                self.error = Some(tr!("설정 저장 실패: {0}", e));
             }
             cx.notify();
         }
@@ -339,7 +342,7 @@ impl Desktop {
         match self.local.save(&self.path) {
             Ok(()) => true,
             Err(e) => {
-                self.error = Some(format!("설정을 저장하지 못했습니다: {e}"));
+                self.error = Some(tr!("설정을 저장하지 못했습니다: {0}", e));
                 false
             }
         }
@@ -354,7 +357,7 @@ impl Desktop {
     fn start_tab(&mut self, host: HostProfile, cx: &mut Context<Self>) -> Option<TabId> {
         if matches!(storage::read_optional(&host.credential_ref), Ok(None)) {
             self.edit(Some(host), cx);
-            self.error = Some("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요.".into());
+            self.error = Some(t("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요.").into());
             cx.notify();
             return None;
         }
@@ -374,7 +377,7 @@ impl Desktop {
         let id = match result {
             Ok((credential, trusted)) => Some(self.create_tab(host, credential, trusted, cx)),
             Err(e) => {
-                self.error = Some(format!("보호 저장소를 열지 못했습니다: {e}"));
+                self.error = Some(tr!("보호 저장소를 열지 못했습니다: {0}", e));
                 None
             }
         };
@@ -454,7 +457,7 @@ impl Desktop {
             .layout
             .save(&self.path.with_file_name("workspace-layout.json"))
         {
-            self.error = Some(format!("배치 저장 실패: {e}"));
+            self.error = Some(tr!("배치 저장 실패: {0}", e));
         }
     }
     fn refresh(&mut self) {
@@ -464,7 +467,7 @@ impl Desktop {
         {
             match tab.connection.action(Action::Refresh) {
                 Ok(request) => tab.refresh = Some(request),
-                Err(e) => self.error = Some(format!("조회 실패: {e}")),
+                Err(e) => self.error = Some(tr!("조회 실패: {0}", e)),
             }
         }
     }
@@ -474,13 +477,13 @@ impl Desktop {
                 title: title.into(),
                 connection: tab.connection.clone(),
                 operation,
-                input: cx.new(|cx| TextInput::new("", "이름", false, cx)),
+                input: cx.new(|cx| TextInput::new("", t("이름"), false, cx)),
             });
         }
     }
     fn submit(&mut self, connection: &Arc<Connection>, action: Action) {
         if let Err(e) = connection.action(action) {
-            self.error = Some(format!("요청 실패: {e}"));
+            self.error = Some(tr!("요청 실패: {0}", e));
         }
     }
     fn confirm(&mut self) {
@@ -501,7 +504,7 @@ impl Desktop {
                 }
             };
             if let Err(e) = result {
-                self.error = Some(format!("삭제 실패: {e}"))
+                self.error = Some(tr!("삭제 실패: {0}", e))
             } else {
                 self.dialog = None;
             }
@@ -611,12 +614,18 @@ impl Desktop {
         };
         match connection.action(Action::Manage { operation }) {
             Ok(_) => self.dialog = None,
-            Err(e) => self.error = Some(format!("이름을 확인하세요: {e}")),
+            Err(e) => self.error = Some(tr!("이름을 확인하세요: {0}", e)),
         }
     }
 
     fn theme(&mut self, value: &str, cx: &mut Context<Self>) {
         self.local.preferences.theme = value.into();
+        self.save();
+        cx.notify();
+    }
+    fn language(&mut self, value: &str, cx: &mut Context<Self>) {
+        self.local.preferences.language = value.into();
+        dgl_core::i18n::configure(value, &i18n::system_locale());
         self.save();
         cx.notify();
     }
@@ -707,9 +716,9 @@ impl Render for Desktop {
             let mut footer = div().flex().gap_2().justify_end().child(self.button(
                 "cancel-dialog",
                 if matches!(&dialog, Dialog::Compose(_)) {
-                    "취소"
+                    t("취소")
                 } else {
-                    "취소 / 닫기"
+                    t("취소 / 닫기")
                 },
                 cx,
                 |s, _, cx| s.dismiss_dialog(cx),
@@ -718,7 +727,7 @@ impl Render for Desktop {
                 dialog @ Dialog::Host { .. } => {
                     body = body.child(self.render_host_dialog(dialog, cx));
                     footer = footer
-                        .child(self.button("save-host", "저장", cx, |s, _, cx| s.save_host(cx)));
+                        .child(self.button("save-host", t("저장"), cx, |s, _, cx| s.save_host(cx)));
                 }
                 Dialog::Prompt {
                     title,
@@ -730,16 +739,19 @@ impl Render for Desktop {
                         .child(div().text_xl().child(title))
                         .child(input.clone());
                     let _ = (connection, operation);
-                    footer = footer.child(
-                        self.button("accept-name", "확인", cx, |s, _, cx| s.accept_name(cx)),
-                    );
+                    footer = footer.child(self.button(
+                        "accept-name",
+                        t("확인"),
+                        cx,
+                        |s, _, cx| s.accept_name(cx),
+                    ));
                 }
 
                 Dialog::Delete { title, .. } => {
-                    body=body.child(div().text_xl().child(title)).child("원격 대상 삭제는 해당 프로세스를 종료합니다. 로컬 호스트 삭제는 저장된 연결 정보만 삭제합니다.");
+                    body=body.child(div().text_xl().child(title)).child(t("원격 대상 삭제는 해당 프로세스를 종료합니다. 로컬 호스트 삭제는 저장된 연결 정보만 삭제합니다."));
                     footer =
                         footer.child(
-                            self.button("confirm-delete", "삭제", cx, |s, _, _| s.confirm()),
+                            self.button("confirm-delete", t("삭제"), cx, |s, _, _| s.confirm()),
                         );
                 }
                 Dialog::Agents(connection, alias, pane) => {
@@ -757,9 +769,9 @@ impl Render for Desktop {
                         self.button(
                             "send-composer",
                             if composer.pending.is_some() {
-                                "전송 중…"
+                                t("전송 중…")
                             } else {
-                                "전송"
+                                t("전송")
                             },
                             cx,
                             |s, _, cx| s.send_composer(cx),
@@ -769,15 +781,34 @@ impl Render for Desktop {
                 }
                 Dialog::Settings => {
                     body = body
-                        .child(div().text_xl().child("설정"))
+                        .child(div().text_xl().child(t("설정")))
+                        .child(t("언어"));
+                    let choice = match self.local.preferences.language.as_str() {
+                        "ko" => "ko",
+                        "en" => "en",
+                        _ => "system",
+                    };
+                    let mut languages = div().flex().flex_wrap().gap_2();
+                    for (value, label) in
+                        [("system", t("시스템")), ("ko", "한국어"), ("en", "English")]
+                    {
+                        languages = languages.child(self.button(
+                            format!("language-{value}"),
+                            format!("{} {label}", if choice == value { "●" } else { "○" }),
+                            cx,
+                            move |s, _, cx| s.language(value, cx),
+                        ));
+                    }
+                    body = body
+                        .child(languages)
                         .child(self.accent_settings(cx))
                         .child(self.shortcut_settings(cx))
                         .child(self.cloud_sync_settings(cx))
                         .child(self.agent_settings(cx))
                         .child(self.button(
                             "show-all-hierarchy",
-                            format!(
-                                "{} 단일 창도 표시",
+                            tr!(
+                                "{0} 단일 창도 표시",
                                 if self.local.preferences.show_all_hierarchy {
                                     "☑"
                                 } else {
@@ -791,9 +822,11 @@ impl Render for Desktop {
                                 s.save();
                             },
                         ));
-                    for (value, label) in
-                        [("system", "시스템"), ("light", "밝게"), ("dark", "어둡게")]
-                    {
+                    for (value, label) in [
+                        ("system", t("시스템")),
+                        ("light", t("밝게")),
+                        ("dark", t("어둡게")),
+                    ] {
                         body = body.child(self.button(
                             format!("theme-{value}"),
                             label,
@@ -801,11 +834,11 @@ impl Render for Desktop {
                             move |s, _, cx| s.theme(value, cx),
                         ));
                     }
-                    body = body.child(format!(
-                        "터미널 글자 크기: {}",
+                    body = body.child(tr!(
+                        "터미널 글자 크기: {0}",
                         self.local.preferences.font_size
                     ));
-                    for (delta, label) in [(-1, "작게"), (1, "크게")] {
+                    for (delta, label) in [(-1, t("작게")), (1, t("크게"))] {
                         body = body.child(self.button(label, label, cx, move |s, _, cx| {
                             s.local.preferences.font_size =
                                 (s.local.preferences.font_size + delta).clamp(10, 28);
@@ -818,19 +851,19 @@ impl Render for Desktop {
                     }
                     body = body
                         .child(platform::STORAGE_LABEL)
-                        .child(platform::SHORTCUT_HELP)
-                        .child("신뢰한 서버");
+                        .child(t(platform::SHORTCUT_HELP))
+                        .child(t("신뢰한 서버"));
                     for (endpoint, fingerprint) in &self.local.trust {
                         let e = endpoint.clone();
                         body = body
                             .child(format!("{endpoint}\n{fingerprint}"))
                             .child(self.button(
                                 format!("forget-{endpoint}"),
-                                "신뢰 삭제…",
+                                t("신뢰 삭제…"),
                                 cx,
                                 move |s, _, _| {
                                     s.dialog = Some(Dialog::Delete {
-                                        title: format!("{e} 신뢰 삭제"),
+                                        title: tr!("{0} 신뢰 삭제", e),
                                         operation: DeleteOp::Trust(e.clone()),
                                     })
                                 },
@@ -881,7 +914,7 @@ impl Render for Desktop {
                     .flex()
                     .gap_3()
                     .child(div().flex_1().child(error))
-                    .child(self.button("dismiss-error", "닫기", cx, |s, _, _| s.error = None)),
+                    .child(self.button("dismiss-error", t("닫기"), cx, |s, _, _| s.error = None)),
             );
         }
         if self.dialog.is_some() {
@@ -901,6 +934,11 @@ fn main() {
     let path = platform::data_dir()
         .expect("application data directory unavailable")
         .join("settings.json");
+    let language = LocalState::read(&path)
+        .unwrap_or_default()
+        .preferences
+        .language;
+    dgl_core::i18n::configure(&language, &i18n::system_locale());
     Application::new()
         .with_assets(launcher::Assets)
         .run(move |cx: &mut App| {
@@ -912,7 +950,7 @@ fn main() {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: Some("dgl — Rust 후보".into()),
+                        title: Some("DGL".into()),
                         ..Default::default()
                     }),
                     ..Default::default()

@@ -16,29 +16,29 @@ import androidx.compose.ui.unit.dp
 import kim.jujin.rovessh.core.*
 
 private val VolumeAction.label: String get() = when (this) {
-    VolumeAction.Default -> "기본 음량 조절"
-    VolumeAction.Shortcut -> "단축키"
-    VolumeAction.Macro -> "매크로"
+    VolumeAction.Default -> t("기본 음량 조절")
+    VolumeAction.Shortcut -> t("단축키")
+    VolumeAction.Macro -> t("매크로")
 }
 
 @Composable actual fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit) {
     var editing by remember { mutableStateOf<Boolean?>(null) }
     Row(Modifier.fillMaxWidth().toggleable(preferences.volumeKeysEnabled, role = Role.Switch,
         onValueChange = { update(preferences.copy(volumeKeysEnabled = it)) })
-        .semantics { contentDescription = "볼륨 키로 단축키 실행" }, verticalAlignment = Alignment.CenterVertically) {
-        Text("볼륨 키로 단축키 실행", Modifier.weight(1f))
+        .semantics { contentDescription = t("볼륨 키로 단축키 실행") }, verticalAlignment = Alignment.CenterVertically) {
+        Text(t("볼륨 키로 단축키 실행"), Modifier.weight(1f))
         AccentSwitch(preferences.volumeKeysEnabled, onCheckedChange = null)
     }
-    Text("앱 전면의 입력 가능한 터미널에서만 실행합니다.", style = MaterialTheme.typography.bodySmall)
+    Text(t("앱 전면의 입력 가능한 터미널에서만 실행합니다."), style = MaterialTheme.typography.bodySmall)
     listOf(true to preferences.volumeUp, false to preferences.volumeDown).forEach { (up, binding) ->
         TextButton({ editing = up }) {
             val summary = if (binding.action == VolumeAction.Shortcut) (binding.steps.singleOrNull() as? MacroStep.Key)?.key?.label
-                else if (binding.action == VolumeAction.Macro) "${binding.steps.size}단계" else null
-            Text("볼륨 ${if (up) "위" else "아래"}: ${binding.action.label}" + (summary?.let { " · $it" } ?: ""))
+                else if (binding.action == VolumeAction.Macro) tr("{0}단계", binding.steps.size) else null
+            Text(tr("볼륨 {0}: {1}", if (up) t("위") else t("아래"), binding.action.label) + (summary?.let { " · $it" } ?: ""))
         }
     }
     editing?.let { up ->
-        VolumeBindingEditor(if (up) "볼륨 위 설정" else "볼륨 아래 설정", if (up) preferences.volumeUp else preferences.volumeDown,
+        VolumeBindingEditor(if (up) t("볼륨 위 설정") else t("볼륨 아래 설정"), if (up) preferences.volumeUp else preferences.volumeDown,
             save = { binding ->
                 update(if (up) preferences.copy(volumeUp = binding) else preferences.copy(volumeDown = binding))
                 editing = null
@@ -49,7 +49,7 @@ private val VolumeAction.label: String get() = when (this) {
 @Composable private fun KeyPicker(selected: TerminalKey, change: (TerminalKey) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        OutlinedButton({ expanded = true }) { Text("키: ${selected.label}") }
+        OutlinedButton({ expanded = true }) { Text(tr("키: {0}", selected.label)) }
         DropdownMenu(expanded, { expanded = false }, Modifier.heightIn(max = 280.dp)) {
             TerminalKey.entries.forEach { key ->
                 DropdownMenuItem(text = { Text(key.label) }, onClick = { change(key); expanded = false })
@@ -71,36 +71,36 @@ private val VolumeAction.label: String get() = when (this) {
                 }
             }
             when (action) {
-                VolumeAction.Default -> Text("이 키는 원래 음량 조절 기능을 사용합니다.")
+                VolumeAction.Default -> Text(t("이 키는 원래 음량 조절 기능을 사용합니다."))
                 VolumeAction.Shortcut -> KeyPicker(shortcut) { shortcut = it; error = null }
                 VolumeAction.Macro -> {
-                    Text("위에서 아래 순서로 한 번 전송합니다. 텍스트 끝에 Enter를 자동으로 붙이지 않습니다. 실제 줄바꿈은 Enter로, \\n처럼 입력한 문자는 그대로 전송합니다.", style = MaterialTheme.typography.bodySmall)
+                    Text(t("위에서 아래 순서로 한 번 전송합니다. 텍스트 끝에 Enter를 자동으로 붙이지 않습니다. 실제 줄바꿈은 Enter로, \\n처럼 입력한 문자는 그대로 전송합니다."), style = MaterialTheme.typography.bodySmall)
                     steps.forEachIndexed { index, step ->
                         OutlinedCard {
                             Column(Modifier.padding(8.dp)) {
-                                Text("${index + 1}단계")
+                                Text(tr("{0}단계", index + 1))
                                 when (step) {
                                     is MacroStep.Text -> OutlinedTextField(step.text, { value ->
                                         steps = steps.toMutableList().also { it[index] = MacroStep.Text(value) }; error = null
-                                    }, label = { Text("텍스트 ${index + 1}") }, modifier = Modifier.fillMaxWidth(), maxLines = 4)
+                                    }, label = { Text(tr("텍스트 {0}", index + 1)) }, modifier = Modifier.fillMaxWidth(), maxLines = 4)
                                     is MacroStep.Key -> KeyPicker(step.key) { value ->
                                         steps = steps.toMutableList().also { it[index] = MacroStep.Key(value) }; error = null
                                     }
                                 }
                                 Row(Modifier.horizontalScroll(rememberScrollState())) {
                                     TextButton({ steps = steps.toMutableList().also { it.add(index - 1, it.removeAt(index)) } }, enabled = index > 0,
-                                        modifier = Modifier.semantics { contentDescription = "${index + 1}단계 위로" }) { Text("위로") }
+                                        modifier = Modifier.semantics { contentDescription = tr("{0}단계 위로", index + 1) }) { Text(t("위로")) }
                                     TextButton({ steps = steps.toMutableList().also { it.add(index + 1, it.removeAt(index)) } }, enabled = index < steps.lastIndex,
-                                        modifier = Modifier.semantics { contentDescription = "${index + 1}단계 아래로" }) { Text("아래로") }
+                                        modifier = Modifier.semantics { contentDescription = tr("{0}단계 아래로", index + 1) }) { Text(t("아래로")) }
                                     TextButton({ steps = steps.filterIndexed { i, _ -> i != index }; error = null },
-                                        modifier = Modifier.semantics { contentDescription = "${index + 1}단계 삭제" }) { Text("삭제") }
+                                        modifier = Modifier.semantics { contentDescription = tr("{0}단계 삭제", index + 1) }) { Text(t("삭제")) }
                                 }
                             }
                         }
                     }
                     Row {
-                        TextButton({ steps = steps + MacroStep.Text(""); error = null }) { Text("+ 텍스트") }
-                        TextButton({ steps = steps + MacroStep.Key(TerminalKey.Enter); error = null }) { Text("+ 키") }
+                        TextButton({ steps = steps + MacroStep.Text(""); error = null }) { Text(t("+ 텍스트")) }
+                        TextButton({ steps = steps + MacroStep.Key(TerminalKey.Enter); error = null }) { Text(t("+ 키")) }
                     }
                 }
             }
@@ -117,7 +117,7 @@ private val VolumeAction.label: String get() = when (this) {
                 binding.bytes() // Validate the exact UTF-8 payload before committing any preference.
                 save(binding)
             } catch (e: IllegalArgumentException) { error = e.message }
-            catch (_: Exception) { error = "설정을 저장하지 못했습니다. 다시 시도하세요." }
-        }) { Text("저장") }
-    }, dismissButton = { TextButton(dismiss) { Text("취소") } })
+            catch (_: Exception) { error = t("설정을 저장하지 못했습니다. 다시 시도하세요.") }
+        }) { Text(t("저장")) }
+    }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
 }

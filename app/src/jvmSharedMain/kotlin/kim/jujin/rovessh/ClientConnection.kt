@@ -34,7 +34,7 @@ interface ClientConnection {
     fun captureInputTarget(): InputTarget? = null
     /** Completes only when the existing input queue reports its result. Never retries. */
     suspend fun sendInput(target: InputTarget, bytes: ByteArray): InputCompletion =
-        InputCompletion("이 연결은 텍스트 전송을 지원하지 않습니다.")
+        InputCompletion(t("이 연결은 텍스트 전송을 지원하지 않습니다."))
     fun bindSurface(value: TerminalSurface?)
     fun unbindSurface(expected: TerminalSurface)
     fun resize(value: Size)

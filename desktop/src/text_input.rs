@@ -1,3 +1,4 @@
+use dgl_core::i18n::t;
 // Adapted from GPUI 0.2.2 examples/input.rs (Apache-2.0). See desktop/NOTICE.
 use std::ops::Range;
 
@@ -583,7 +584,10 @@ impl Element for TextElement {
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), rgb(input.palette.muted).into())
+            (
+                t(&input.placeholder).to_string().into(),
+                rgb(input.palette.muted).into(),
+            )
         } else {
             (
                 if input.masked() {

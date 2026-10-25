@@ -38,15 +38,15 @@ impl CloudSync {
         let (config, status) = match std::fs::read(path) {
             Ok(bytes) if bytes.len() <= sync::MAX_BYTES * 2 => {
                 match serde_json::from_slice::<Option<Config>>(&bytes) {
-                    Ok(config) => (config, "연결한 파일 확인 대기".into()),
+                    Ok(config) => (config, t("연결한 파일 확인 대기").into()),
                     Err(_) => (
                         None,
-                        "동기화 연결 정보를 읽지 못했습니다. 파일을 다시 선택하세요.".into(),
+                        t("동기화 연결 정보를 읽지 못했습니다. 파일을 다시 선택하세요.").into(),
                     ),
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (None, "연결 안 됨".into()),
-            _ => (None, "동기화 연결 정보를 읽지 못했습니다.".into()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (None, t("연결 안 됨").into()),
+            _ => (None, t("동기화 연결 정보를 읽지 못했습니다.").into()),
         };
         Self {
             config,
@@ -60,30 +60,31 @@ impl CloudSync {
     }
     pub fn block_invalid_local(&mut self) {
         self.blocked = true;
-        self.status =
-            "로컬 설정을 읽지 못해 동기화를 중지했습니다. 설정 파일 복구 후 앱을 다시 실행하세요."
-                .into();
+        self.status = t(
+            "로컬 설정을 읽지 못해 동기화를 중지했습니다. 설정 파일 복구 후 앱을 다시 실행하세요.",
+        )
+        .into();
     }
 }
 fn read_file(path: &std::path::Path) -> std::result::Result<Vec<u8>, &'static str> {
-    let file = std::fs::File::open(path).map_err(
-        |_| "파일을 열 수 없습니다. Drive 실행·오프라인 사용 설정·선택한 경로를 확인하세요.",
-    )?;
+    let file = std::fs::File::open(path).map_err(|_| {
+        t("파일을 열 수 없습니다. Drive 실행·오프라인 사용 설정·선택한 경로를 확인하세요.")
+    })?;
     let mut bytes = vec![];
     file.take((sync::MAX_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
-        .map_err(|_| "파일을 읽지 못했습니다. 다음 동기화에서 재시도합니다.")?;
-    Document::decode(&bytes).map_err(
-        |_| "공유 파일이 비어 있거나 형식·버전이 올바르지 않습니다. 원본을 보존했습니다.",
-    )?;
+        .map_err(|_| t("파일을 읽지 못했습니다. 다음 동기화에서 재시도합니다."))?;
+    Document::decode(&bytes).map_err(|_| {
+        t("공유 파일이 비어 있거나 형식·버전이 올바르지 않습니다. 원본을 보존했습니다.")
+    })?;
     Ok(bytes)
 }
 fn checkpoint(
     path: &std::path::Path,
     config: &Option<Config>,
 ) -> std::result::Result<(), &'static str> {
-    let bytes = serde_json::to_vec(config).map_err(|_| "동기화 기록 저장 실패")?;
-    sync::save_private(path, &bytes).map_err(|_| "동기화 기록 저장 실패")
+    let bytes = serde_json::to_vec(config).map_err(|_| t("동기화 기록 저장 실패"))?;
+    sync::save_private(path, &bytes).map_err(|_| t("동기화 기록 저장 실패"))
 }
 fn exchange_file(
     mut config: Config,
@@ -103,20 +104,24 @@ fn exchange_file(
             Ok(mut file) => {
                 let json = Document::default()
                     .encode()
-                    .map_err(|_| "새 동기화 파일 생성 실패")?;
+                    .map_err(|_| t("새 동기화 파일 생성 실패"))?;
                 file.write_all(json.as_bytes())
                     .and_then(|_| file.sync_all())
-                    .map_err(|_| "새 동기화 파일 저장 실패")?;
+                    .map_err(|_| t("새 동기화 파일 저장 실패"))?;
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(_) => return Err("선택한 폴더에 쓸 수 없습니다. Drive 폴더 권한을 확인하세요."),
+            Err(_) => {
+                return Err(t(
+                    "선택한 폴더에 쓸 수 없습니다. Drive 폴더 권한을 확인하세요.",
+                ));
+            }
         }
     }
     let mut resolutions = resolutions;
     for _ in 0..3 {
         let before = read_file(&config.file)?;
         let out = sync::exchange(config.cache.clone(), &local, &before, &resolutions).map_err(
-            |_| "동기화 파일을 병합하지 못했습니다. 다른 동기화 파일로 교체했다면 다시 연결하세요.",
+            |_| t("동기화 파일을 병합하지 못했습니다. 다른 동기화 파일로 교체했다면 다시 연결하세요."),
         )?;
         config.cache = Some(out.cache);
         checkpoint(&checkpoint_path, &Some(config.clone()))?;
@@ -131,14 +136,14 @@ fn exchange_file(
                 .write(true)
                 .truncate(true)
                 .open(&config.file)
-                .map_err(|_| "공유 파일 쓰기 실패. 변경 기록은 기기에 보존됩니다.")?;
+                .map_err(|_| t("공유 파일 쓰기 실패. 변경 기록은 기기에 보존됩니다."))?;
             file.write_all(out.document.as_bytes())
                 .and_then(|_| file.sync_all())
-                .map_err(|_| "공유 파일 쓰기 실패. 변경 기록은 기기에 보존됩니다.")?;
+                .map_err(|_| t("공유 파일 쓰기 실패. 변경 기록은 기기에 보존됩니다."))?;
         }
         return Ok((config, out.document));
     }
-    Err("다른 변경이 감지되어 다음 동기화에서 재시도합니다.")
+    Err(t("다른 변경이 감지되어 다음 동기화에서 재시도합니다."))
 }
 
 impl Desktop {
@@ -172,13 +177,13 @@ impl Desktop {
                                     document.as_bytes(),
                                     &[],
                                 )
-                                .map_err(|_| "동기화 병합 실패")?;
+                                .map_err(|_| t("동기화 병합 실패"))?;
                                 config.cache = Some(out.cache);
                                 checkpoint(&self.sync_path(), &Some(config.clone()))?;
                                 if out.local != self.local {
                                     out.local
                                         .save(&self.path)
-                                        .map_err(|_| "받은 설정의 로컬 저장 실패")?;
+                                        .map_err(|_| t("받은 설정의 로컬 저장 실패"))?;
                                     let previous = self
                                         .local
                                         .preferences
@@ -215,10 +220,10 @@ impl Desktop {
                             })();
                             self.cloud_sync.status = match result {
                                 Ok(()) if self.cloud_sync.conflicts.is_empty() => {
-                                    "파일 반영 완료 · 클라우드 전송은 Drive 앱에서 확인하세요."
+                                    t("파일 반영 완료 · 클라우드 전송은 Drive 앱에서 확인하세요.")
                                         .into()
                                 }
-                                Ok(()) => "동시 수정된 항목을 아래에서 선택하세요.".into(),
+                                Ok(()) => t("동시 수정된 항목을 아래에서 선택하세요.").into(),
                                 Err(e) => e.into(),
                             };
                         }
@@ -234,7 +239,7 @@ impl Desktop {
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.cloud_sync.receiver = None;
                     self.cloud_sync.status =
-                        "동기화 작업이 종료되었습니다. 다시 시도하세요.".into();
+                        t("동기화 작업이 종료되었습니다. 다시 시도하세요.").into();
                     cx.notify();
                 }
                 Err(mpsc::TryRecvError::Empty) => {}
@@ -261,7 +266,7 @@ impl Desktop {
         };
         let (sender, receiver) = mpsc::channel();
         self.cloud_sync.receiver = Some(receiver);
-        self.cloud_sync.status = "파일 확인 중…".into();
+        self.cloud_sync.status = t("파일 확인 중…").into();
         self.cloud_sync.next = Instant::now() + Duration::from_secs(15);
         let local = self.local.clone();
         let path = self.sync_path();
@@ -279,7 +284,7 @@ impl Desktop {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some(format!("{} 동기화 폴더 선택", provider.label()).into()),
+            prompt: Some(tr!("{0} 동기화 폴더 선택", provider.label()).into()),
         });
         cx.spawn(async move |view, cx| {
             let result = picker.await;
@@ -322,15 +327,15 @@ impl Desktop {
             return div().child(self.cloud_sync.status.clone());
         }
         let busy = self.cloud_sync.receiver.is_some() || self.cloud_sync.selecting;
-        let mut body=div().flex().flex_col().gap_2().child("설정·호스트 동기화")
-            .child("Google Drive 또는 iCloud Drive 앱의 동기화 폴더를 선택하세요. 모든 기기에서 같은 dgl-sync.json을 사용합니다.")
-            .child("첫 연결에서는 공유 파일의 공통 설정을 적용하고 이 기기의 호스트 목록을 병합합니다.")
-            .child("테마·강조 색상 선택을 공유합니다. OS 실제 색상·비밀번호·개인키·신뢰 키·매크로·OS 알림·기기별 화면 배치는 공유하지 않습니다.");
+        let mut body=div().flex().flex_col().gap_2().child(t("설정·호스트 동기화"))
+            .child(t("Google Drive 또는 iCloud Drive 앱의 동기화 폴더를 선택하세요. 모든 기기에서 같은 dgl-sync.json을 사용합니다."))
+            .child(t("첫 연결에서는 공유 파일의 공통 설정을 적용하고 이 기기의 호스트 목록을 병합합니다."))
+            .child(t("테마·강조 색상 선택을 공유합니다. OS 실제 색상·비밀번호·개인키·신뢰 키·매크로·OS 알림·기기별 화면 배치는 공유하지 않습니다."));
         if !busy {
             for provider in [Provider::GoogleDrive, Provider::ICloudDrive] {
                 body = body.child(self.button(
                     format!("sync-{:?}", provider),
-                    format!("{} 폴더 선택…", provider.label()),
+                    tr!("{0} 폴더 선택…", provider.label()),
                     cx,
                     move |s, _, cx| s.select_cloud_folder(provider, cx),
                 ));
@@ -344,26 +349,30 @@ impl Desktop {
             ));
             if !busy {
                 body = body
-                    .child(self.button("sync-now", "지금 파일 동기화", cx, |s, _, cx| {
-                        s.start_cloud_sync(vec![], false, cx)
-                    }))
-                    .child(self.button("sync-disconnect", "연결 해제", cx, |s, _, _| {
-                        match checkpoint(&s.sync_path(), &None) {
-                            Ok(()) => {
-                                s.cloud_sync.config = None;
-                                s.cloud_sync.conflicts.clear();
-                                s.cloud_sync.status =
-                                    "연결 해제됨 · 공유 파일은 유지됩니다.".into();
+                    .child(
+                        self.button("sync-now", t("지금 파일 동기화"), cx, |s, _, cx| {
+                            s.start_cloud_sync(vec![], false, cx)
+                        }),
+                    )
+                    .child(
+                        self.button("sync-disconnect", t("연결 해제"), cx, |s, _, _| {
+                            match checkpoint(&s.sync_path(), &None) {
+                                Ok(()) => {
+                                    s.cloud_sync.config = None;
+                                    s.cloud_sync.conflicts.clear();
+                                    s.cloud_sync.status =
+                                        t("연결 해제됨 · 공유 파일은 유지됩니다.").into();
+                                }
+                                Err(e) => s.cloud_sync.status = e.into(),
                             }
-                            Err(e) => s.cloud_sync.status = e.into(),
-                        }
-                    }));
+                        }),
+                    );
             }
         }
         body = body.child(self.cloud_sync.status.clone());
         if !busy {
             for conflict in &self.cloud_sync.conflicts {
-                body = body.child("동시 수정 · 유지할 값을 선택하세요");
+                body = body.child(t("동시 수정 · 유지할 값을 선택하세요"));
                 for choice in &conflict.choices {
                     let resolution = Resolution {
                         key: conflict.key.clone(),

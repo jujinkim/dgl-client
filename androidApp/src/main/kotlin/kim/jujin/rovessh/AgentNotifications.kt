@@ -1,5 +1,7 @@
 package kim.jujin.rovessh
 
+import kim.jujin.rovessh.core.t
+import kim.jujin.rovessh.core.tr
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -20,9 +22,10 @@ class AgentNotifications(private val context: Context) {
         const val NOTICE = "dgl.agent.notice"
     }
     private val manager = context.getSystemService(NotificationManager::class.java)
-    init {
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "에이전트 사건", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "질문·승인 요청·응답 종료 신호·명시적 오류"
+    init { refreshLanguage() }
+    fun refreshLanguage() {
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, t("에이전트 사건"), NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = t("질문·승인 요청·응답 종료 신호·명시적 오류")
         })
     }
     fun show(notice: AgentNotice) {
@@ -36,7 +39,7 @@ class AgentNotifications(private val context: Context) {
         val pending = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_terminal)
-            .setContentTitle("${agentName(notice.event.agent)} · ${notice.event.pane}" + if (notice.event.actor != "parent") " · 서브에이전트" else "")
+            .setContentTitle("${agentName(notice.event.agent)} · ${notice.event.pane}" + if (notice.event.actor != "parent") t(" · 서브에이전트") else "")
             .setContentText(agentMessage(notice.event.kind)).setContentIntent(pending).setAutoCancel(true)
             .setOnlyAlertOnce(true).build()
         manager.notify(notice.key, 1, notification)

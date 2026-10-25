@@ -41,7 +41,7 @@ import kotlinx.serialization.Serializable
     fun bytes(): ByteArray? = when (action) {
         VolumeAction.Default -> null
         VolumeAction.Shortcut -> {
-            require(steps.size == 1 && steps.single() is MacroStep.Key) { "단축키를 선택하세요." }
+            require(steps.size == 1 && steps.single() is MacroStep.Key) { t("단축키를 선택하세요.") }
             TerminalInput.encode(steps)
         }
         VolumeAction.Macro -> TerminalInput.encode(steps)
@@ -65,11 +65,11 @@ object TerminalInput {
                 is MacroStep.Text -> step.text.replace("\r\n", "\n").replace('\r', '\n').replace('\n', '\r').encodeToByteArray()
                 is MacroStep.Key -> step.key.bytes()
             }
-            require(bytes.size <= MAX_BYTES - size) { "매크로는 UTF-8 변환 후 64 KiB 이하여야 합니다." }
+            require(bytes.size <= MAX_BYTES - size) { t("매크로는 UTF-8 변환 후 64 KiB 이하여야 합니다.") }
             size += bytes.size
             bytes
         }
-        require(size > 0) { "실행할 텍스트나 키를 추가하세요." }
+        require(size > 0) { t("실행할 텍스트나 키를 추가하세요.") }
         return ByteArray(size).also { result ->
             var offset = 0
             parts.forEach { it.copyInto(result, offset); offset += it.size }

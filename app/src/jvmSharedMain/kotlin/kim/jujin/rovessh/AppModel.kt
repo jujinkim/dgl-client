@@ -27,6 +27,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     fun composer(connection: ClientConnection): TextComposer = composers.getOrPut(connection) { TextComposer(connection, agentScope) }
     var cloudSync: CloudSyncController? = null
     var chooseSyncFile: (Boolean) -> Unit = {}
+    var languageChanged: (String) -> Unit = {}
     init {
         agentScope.launch {
             while (isActive) {
@@ -54,7 +55,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             c.agentEndpoint == n.endpoint && c.status.value.phase == Phase.Ready && c.agents.value.current(System.currentTimeMillis()) &&
                 c.agents.value.server == n.event.server && c.agents.value.observations.any { it.run == n.event.run && it.pane == n.event.pane }
         } }
-        if (notice == null || client == null) { agentNavigationError.value = "대상 연결 또는 패널이 종료되어 이동할 수 없습니다."; return }
+        if (notice == null || client == null) { agentNavigationError.value = t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다."); return }
         selected.value = client
         client.selectTarget(notice.event.session, notice.event.window, notice.event.pane)
         agentNavigation.value += 1
@@ -65,14 +66,18 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             !snapshot.current(System.currentTimeMillis()) || snapshot.observations.none {
                 it.run == observation.run && it.pane == observation.pane && it.session == observation.session && it.window == observation.window
             }) {
-            agentNavigationError.value = "대상 연결 또는 패널이 종료되어 이동할 수 없습니다."
+            agentNavigationError.value = t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.")
             return
         }
         selected.value = client
         client.selectTarget(observation.session, observation.window, observation.pane)
         agentNavigation.value += 1
     }
-    @Synchronized fun update(value: LocalState) { repository.save(value); local.value = value }
+    @Synchronized fun update(value: LocalState) {
+        repository.save(value)
+        languageChanged(value.preferences.language)
+        local.value = value
+    }
     @Synchronized fun modify(transform: (LocalState) -> LocalState) { update(transform(local.value)) }
     fun open(host: HostProfile) {
         val connection = connectionFactory(host, credentials, local, ::modify)

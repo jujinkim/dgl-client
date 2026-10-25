@@ -657,7 +657,8 @@
           ],
           "smoothTerminalTransitions": false,
           "mobilePaneToolbarVisible": true,
-          "showAllHierarchy": false
+          "showAllHierarchy": false,
+          "language": "system"
         }
       }
     },
@@ -710,7 +711,8 @@
           ],
           "smoothTerminalTransitions": false,
           "mobilePaneToolbarVisible": true,
-          "showAllHierarchy": false
+          "showAllHierarchy": false,
+          "language": "system"
         }
       }
     },
@@ -829,7 +831,8 @@
           ],
           "smoothTerminalTransitions": false,
           "mobilePaneToolbarVisible": true,
-          "showAllHierarchy": false
+          "showAllHierarchy": false,
+          "language": "system"
         }
       }
     },
@@ -906,7 +909,8 @@
           ],
           "smoothTerminalTransitions": false,
           "mobilePaneToolbarVisible": true,
-          "showAllHierarchy": false
+          "showAllHierarchy": false,
+          "language": "system"
         }
       }
     },
@@ -1010,7 +1014,8 @@
           ],
           "smoothTerminalTransitions": false,
           "mobilePaneToolbarVisible": true,
-          "showAllHierarchy": false
+          "showAllHierarchy": false,
+          "language": "system"
         }
       }
     },
@@ -1047,7 +1052,8 @@
           "terminalShortcuts": [],
           "smoothTerminalTransitions": false,
           "mobilePaneToolbarVisible": true,
-          "showAllHierarchy": false
+          "showAllHierarchy": false,
+          "language": "system"
         }
       }
     },
@@ -1099,7 +1105,8 @@
           ],
           "smoothTerminalTransitions": false,
           "mobilePaneToolbarVisible": false,
-          "showAllHierarchy": false
+          "showAllHierarchy": false,
+          "language": "system"
         }
       }
     }

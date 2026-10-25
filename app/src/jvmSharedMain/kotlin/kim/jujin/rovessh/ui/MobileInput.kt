@@ -1,5 +1,7 @@
 package kim.jujin.rovessh.ui
 
+import kim.jujin.rovessh.core.t
+import kim.jujin.rovessh.core.tr
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
@@ -28,8 +30,8 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
 
 @Composable internal fun PaneToolbarToggle(visible: Boolean, toggle: () -> Unit) {
     IconToggleButton(checked = visible, onCheckedChange = { toggle() }, modifier = Modifier.semantics {
-        contentDescription = if (visible) "패널 도구 접기" else "패널 도구 펼치기"
-        stateDescription = if (visible) "펼침" else "접힘"
+        contentDescription = if (visible) t("패널 도구 접기") else t("패널 도구 펼치기")
+        stateDescription = if (visible) t("펼침") else t("접힘")
     }) {
         val color = if (visible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
         Canvas(Modifier.size(22.dp)) {
@@ -70,22 +72,22 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
                 Row(modifier.toggleable(enter, enabled = !sending, role = Role.Checkbox,
                     onValueChange = { composer.includeEnter.value = it }), verticalAlignment = Alignment.CenterVertically) {
                     AccentCheckbox(enter, null, enabled = !sending, modifier = if (compact) Modifier.size(32.dp) else Modifier)
-                    Text("Enter 함께 보내기", fontSize = if (compact) 12.sp else 14.sp, maxLines = 1)
+                    Text(t("Enter 함께 보내기"), fontSize = if (compact) 12.sp else 14.sp, maxLines = 1)
                 }
             }
             Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                 Column(Modifier.heightIn(max = minOf(maxHeight, 420.dp)).padding(if (compact) 4.dp else 16.dp),
                     verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 8.dp)) {
-                    if (!compact) Text("텍스트 작성", style = MaterialTheme.typography.titleLarge)
+                    if (!compact) Text(t("텍스트 작성"), style = MaterialTheme.typography.titleLarge)
                     val field = Modifier.weight(1f, fill = false).fillMaxWidth().focusRequester(requester)
-                        .semantics { contentDescription = "전송할 텍스트" }
+                        .semantics { contentDescription = t("전송할 텍스트") }
                     // Keep one editor/input session when rotation or IME insets change the layout.
                     BasicTextField(value, composer::edit, readOnly = sending,
                         modifier = field.border(1.dp, MaterialTheme.colorScheme.primary).padding(if (compact) 4.dp else 12.dp),
                         textStyle = (if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge)
                             .copy(color = MaterialTheme.colorScheme.onSurface),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), minLines = if (compact) 1 else 3, maxLines = 8)
-                    if (!compact) Text("Enter는 줄바꿈 · 전송 버튼으로 보내기", fontSize = 12.sp)
+                    if (!compact) Text(t("Enter는 줄바꿈 · 전송 버튼으로 보내기"), fontSize = 12.sp)
                     if (!compact) option(Modifier.fillMaxWidth())
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
                         maxLines = if (compact) 1 else 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
@@ -94,9 +96,9 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
                             if (compact) option(Modifier.weight(1f))
                             val button = if (compact) Modifier.height(32.dp) else Modifier
                             val padding = if (compact) PaddingValues(horizontal = 8.dp, vertical = 2.dp) else ButtonDefaults.TextButtonContentPadding
-                            TextButton(composer::dismiss, modifier = button, contentPadding = padding) { Text("취소") }
+                            TextButton(composer::dismiss, modifier = button, contentPadding = padding) { Text(t("취소")) }
                             TextButton({ composer.send(current, focus.preparePaste) }, enabled = !sending && value.text.isNotEmpty() && ready,
-                                modifier = button, contentPadding = padding) { Text(if (sending) "전송 중…" else "전송") }
+                                modifier = button, contentPadding = padding) { Text(if (sending) t("전송 중…") else t("전송")) }
                         }
                     }
                 }

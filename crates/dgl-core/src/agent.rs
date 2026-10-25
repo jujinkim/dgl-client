@@ -1,5 +1,6 @@
 //! Observed facts, never inferred task success or persistent approval/input wait.
 use crate::{Error, Result, command, ssh::Ssh};
+use crate::{i18n::t, tr};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -58,12 +59,12 @@ impl Kind {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Question => "? 질문이 발생했습니다",
-            Self::Approval => "◇ 승인 요청이 발생했습니다",
-            Self::Response => "○ 응답 종료 신호를 받았습니다",
-            Self::Error => "! 명시적 오류를 받았습니다",
-            Self::Activity => "↻ 작업 사건을 받았습니다",
-            Self::Ended => "— 실행 종료/중단 신호를 받았습니다",
+            Self::Question => t("? 질문이 발생했습니다"),
+            Self::Approval => t("◇ 승인 요청이 발생했습니다"),
+            Self::Response => t("○ 응답 종료 신호를 받았습니다"),
+            Self::Error => t("! 명시적 오류를 받았습니다"),
+            Self::Activity => t("↻ 작업 사건을 받았습니다"),
+            Self::Ended => t("— 실행 종료/중단 신호를 받았습니다"),
         }
     }
 }
@@ -138,7 +139,7 @@ impl Snapshot {
             .collect::<Vec<_>>()
             .join(" · ");
         if observations.is_empty() {
-            return "터미널 · 상태 미확인".into();
+            return t("터미널 · 상태 미확인").into();
         }
         let last = observations
             .iter()
@@ -146,7 +147,7 @@ impl Snapshot {
             .filter(|e| e.kind != Kind::Ended)
             .min_by_key(|e| e.kind.priority());
         if !self.current(now) || last.is_none() {
-            return format!("{agents} · 상태 미확인");
+            return tr!("{0} · 상태 미확인", agents);
         }
         let last = last.unwrap();
         let count = observations

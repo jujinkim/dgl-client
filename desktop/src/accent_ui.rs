@@ -48,9 +48,9 @@ impl Desktop {
         let mode = self.local.preferences.accent.mode.clone();
         let mut modes = div().flex().gap_2();
         for (value, label) in [
-            ("system", "시스템"),
-            ("default", "DGL 기본"),
-            ("custom", "사용자 지정"),
+            ("system", t("시스템")),
+            ("default", t("DGL 기본")),
+            ("custom", t("사용자 지정")),
         ] {
             let selected = mode == value;
             modes = modes.child(
@@ -71,7 +71,7 @@ impl Desktop {
             presets = presets.child(
                 self.button(
                     format!("accent-preset-{color}"),
-                    label,
+                    t(label),
                     cx,
                     move |s, _, cx| {
                         s.accent_input.update(cx, |i, cx| i.set_content(color, cx));
@@ -89,7 +89,7 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_2()
-            .child("강조 색상")
+            .child(t("강조 색상"))
             .child(modes);
         // The input stays in the modal focus ring in every mode.
         result = result.child(presets).child(
@@ -117,10 +117,14 @@ impl Desktop {
                         .border_color(rgb(p.line))
                         .bg(rgb(raw.unwrap_or(p.bg))),
                 )
-                .child(self.button("apply-accent", "적용", cx, |s, _, cx| s.apply_accent(cx))),
+                .child(self.button("apply-accent", t("적용"), cx, |s, _, cx| {
+                    s.apply_accent(cx)
+                })),
         );
         if invalid || self.accent_error {
-            result = result.child("#RRGGBB 형식의 색상을 입력하세요. 기존 색상은 유지됩니다.");
+            result = result.child(t(
+                "#RRGGBB 형식의 색상을 입력하세요. 기존 색상은 유지됩니다.",
+            ));
         }
         result
     }

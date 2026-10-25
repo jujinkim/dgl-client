@@ -7,6 +7,7 @@ use crate::{
     protocol::{Event, Parser},
     ssh::{self, Ssh, Stream},
 };
+use crate::{i18n::t, tr};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
@@ -76,17 +77,18 @@ impl State {
     }
     pub fn retry_message(&self) -> Option<String> {
         if self.retry.stopped {
-            Some("재시도 정지 · 접속 정보 유지 중".into())
+            Some(t("재시도 정지 · 접속 정보 유지 중").into())
         } else if self.phase == Phase::Failed && self.error == Some(Error::Network) {
-            Some("자동 재시도 7회 종료 · 접속 정보 유지 중".into())
+            Some(t("자동 재시도 7회 종료 · 접속 정보 유지 중").into())
         } else if let Some(seconds) = self.retry.wait_seconds {
-            Some(format!(
-                "자동 재시도 대기 · {}/7회 완료 · 대기 간격 {seconds}초",
-                self.retry.attempt
+            Some(tr!(
+                "자동 재시도 대기 · {0}/7회 완료 · 대기 간격 {1}초",
+                self.retry.attempt,
+                seconds
             ))
         } else if self.phase == Phase::Reconnecting {
-            Some(format!(
-                "연결 재시도 중 · 자동 재시도 {}/7회",
+            Some(tr!(
+                "연결 재시도 중 · 자동 재시도 {0}/7회",
                 self.retry.attempt
             ))
         } else {
@@ -1554,7 +1556,7 @@ async fn connected(
                             Action::AgentSetup { operation, token } => {
                                 let mut args = vec![operation.as_str()];
                                 if let Some(token) = token { args.extend(["--token", token]); }
-                                let result = crate::agent::execute(ssh, &args).await.unwrap_or_else(|_| serde_json::json!({"error": "연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요."}));
+                                let result = crate::agent::execute(ssh, &args).await.unwrap_or_else(|_| serde_json::json!({"error": t("연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요.")}));
                                 shared.update(|s| s.agent_setup = Some(result));
                             }
                             Action::Refresh => {

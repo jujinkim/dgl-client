@@ -14,7 +14,7 @@ use windows::{
             IFileOpenDialog, IShellItem, SHCreateItemFromParsingName, SIGDN_FILESYSPATH,
         },
     },
-    core::{HRESULT, PCWSTR, w},
+    core::{HRESULT, PCWSTR},
 };
 
 pub fn select(
@@ -36,8 +36,16 @@ pub fn select(
         dialog.SetOptions(
             dialog.GetOptions()? | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM,
         )?;
-        dialog.SetTitle(w!("개인키 파일 선택"))?;
-        dialog.SetOkButtonLabel(w!("가져오기"))?;
+        let title: Vec<u16> = dgl_core::i18n::t("개인키 파일 선택")
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        let prompt: Vec<u16> = dgl_core::i18n::t("가져오기")
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        dialog.SetTitle(PCWSTR(title.as_ptr()))?;
+        dialog.SetOkButtonLabel(PCWSTR(prompt.as_ptr()))?;
         // No extension filter: id_ed25519/id_rsa and other extensionless keys
         // remain selectable. SetFolder honors the user's explicit directory.
         if let Some(directory) = directory {

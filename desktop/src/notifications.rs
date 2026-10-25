@@ -1,4 +1,5 @@
 use dgl_core::agent::Notice;
+use dgl_core::i18n::t;
 use std::sync::{Mutex, OnceLock};
 static CLICKED: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 fn clicked(id: String) {
@@ -63,7 +64,7 @@ pub fn show(notice: &Notice) -> bool {
             notice.event.agent.label(),
             notice.event.pane,
             if notice.event.actor != "parent" {
-                " · 서브에이전트"
+                t(" · 서브에이전트")
             } else {
                 ""
             }

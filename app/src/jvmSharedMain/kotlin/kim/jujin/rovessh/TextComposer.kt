@@ -1,5 +1,7 @@
 package kim.jujin.rovessh
 
+import kim.jujin.rovessh.core.t
+import kim.jujin.rovessh.core.tr
 import androidx.compose.ui.text.input.TextFieldValue
 import kim.jujin.rovessh.core.TerminalInput
 import kotlinx.coroutines.*
@@ -35,19 +37,19 @@ class TextComposer(private val client: ClientConnection, parent: CoroutineScope)
     @Synchronized fun send(current: () -> Boolean, preparePaste: suspend (String, Boolean) -> ByteArray) {
         if (sending.value || !opened.value) return
         val text = value.value.text
-        if (text.isEmpty()) { error.value = "입력할 텍스트를 작성하세요."; return }
-        if (text.encodeToByteArray().size > TerminalInput.MAX_BYTES) { error.value = "입력은 UTF-8 64 KiB 이하여야 합니다."; return }
+        if (text.isEmpty()) { error.value = t("입력할 텍스트를 작성하세요."); return }
+        if (text.encodeToByteArray().size > TerminalInput.MAX_BYTES) { error.value = t("입력은 UTF-8 64 KiB 이하여야 합니다."); return }
         val destination = target
         fun matches() = destination != null && current() && destination == client.captureInputTarget()
-        if (!matches()) { error.value = "연결·세션·패널이 변경되어 전송을 취소했습니다. 초안을 확인한 뒤 다시 여세요."; return }
+        if (!matches()) { error.value = t("연결·세션·패널이 변경되어 전송을 취소했습니다. 초안을 확인한 뒤 다시 여세요."); return }
         sending.value = true
         val enter = includeEnter.value
         scope.launch {
             try {
                 val bytes = preparePaste(text, enter)
-                require(bytes.isNotEmpty() && bytes.size <= TerminalInput.MAX_BYTES) { "입력은 붙여넣기 제어 문자와 Enter를 포함하여 UTF-8 64 KiB 이하여야 합니다." }
+                require(bytes.isNotEmpty() && bytes.size <= TerminalInput.MAX_BYTES) { t("입력은 붙여넣기 제어 문자와 Enter를 포함하여 UTF-8 64 KiB 이하여야 합니다.") }
                 if (!matches()) {
-                    error.value = "연결·세션·패널이 변경되어 전송을 취소했습니다. 초안은 유지됩니다."
+                    error.value = t("연결·세션·패널이 변경되어 전송을 취소했습니다. 초안은 유지됩니다.")
                 } else {
                     val result = client.sendInput(destination!!, bytes)
                     error.value = result.error
@@ -55,9 +57,9 @@ class TextComposer(private val client: ClientConnection, parent: CoroutineScope)
                         value.value = TextFieldValue(); includeEnter.value = false; opened.value = false
                     }
                 }
-            } catch (_: TimeoutCancellationException) { error.value = "터미널 입력 준비 시간이 초과되었습니다. 초안은 유지됩니다." }
+            } catch (_: TimeoutCancellationException) { error.value = t("터미널 입력 준비 시간이 초과되었습니다. 초안은 유지됩니다.") }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) { error.value = failure.message ?: "전송 결과를 확인하지 못했습니다. 초안은 유지되며 자동 재전송하지 않습니다." }
+            catch (failure: Exception) { error.value = failure.message ?: t("전송 결과를 확인하지 못했습니다. 초안은 유지되며 자동 재전송하지 않습니다.") }
             finally { sending.value = false }
         }
     }

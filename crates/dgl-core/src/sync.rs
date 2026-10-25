@@ -5,6 +5,7 @@ use crate::{
     Error, Result,
     model::{AuthKind, HostProfile, LocalState},
 };
+use crate::{i18n::t, tr};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -102,20 +103,24 @@ impl Value {
                 h.hostname,
                 h.port,
                 h.auth,
-                if h.favorite { " · 즐겨찾기" } else { "" }
+                if h.favorite {
+                    t(" · 즐겨찾기")
+                } else {
+                    ""
+                }
             ),
-            Self::Host(None) => "호스트 삭제".into(),
-            Self::Theme(v) => format!("테마: {v}"),
-            Self::Accent(v) => format!(
-                "강조 색상: {} {}",
+            Self::Host(None) => t("호스트 삭제").into(),
+            Self::Theme(v) => tr!("테마: {0}", v),
+            Self::Accent(v) => tr!(
+                "강조 색상: {0} {1}",
                 v.mode,
                 v.custom_color.as_deref().unwrap_or("")
             ),
-            Self::FontSize(v) => format!("글자 크기: {v}"),
-            Self::Scrollback(v) => format!("스크롤백: {v}"),
-            Self::Questions(v) => format!("질문 알림: {v}"),
-            Self::Responses(v) => format!("응답 알림: {v}"),
-            Self::Errors(v) => format!("오류 알림: {v}"),
+            Self::FontSize(v) => tr!("글자 크기: {0}", v),
+            Self::Scrollback(v) => tr!("스크롤백: {0}", v),
+            Self::Questions(v) => tr!("질문 알림: {0}", v),
+            Self::Responses(v) => tr!("응답 알림: {0}", v),
+            Self::Errors(v) => tr!("오류 알림: {0}", v),
         }
     }
 }
@@ -570,6 +575,7 @@ mod tests {
             });
         local.preferences.agent_notifications.os = true;
         local.preferences.show_all_hierarchy = true;
+        local.preferences.language = "ko".into();
         let out = exchange(Some(a.cache), &local, doc.as_bytes(), &[]).unwrap();
         for value in [
             "SECRET-REFERENCE",
@@ -579,6 +585,7 @@ mod tests {
             "credentialRef",
             "volumeUp",
             "showAllHierarchy",
+            "language",
             "privateKey",
             "password",
         ] {
@@ -595,6 +602,7 @@ mod tests {
         assert!(other.local.preferences.volume_up.steps.is_empty());
         assert!(!other.local.preferences.agent_notifications.os);
         assert!(!other.local.preferences.show_all_hierarchy);
+        assert_eq!(other.local.preferences.language, "system");
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {

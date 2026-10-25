@@ -65,10 +65,10 @@ impl Composer {
         }
         let result = (|| {
             if text.is_empty() {
-                return Err("입력할 텍스트를 작성하세요.".into());
+                return Err(t("입력할 텍스트를 작성하세요.").into());
             }
             if text.len() > 65536 {
-                return Err("입력은 UTF-8 64 KiB 이하여야 합니다.".into());
+                return Err(t("입력은 UTF-8 64 KiB 이하여야 합니다.").into());
             }
             let destination = self
                 .target
@@ -79,9 +79,9 @@ impl Composer {
                             .as_ref()
                             .is_some_and(|current| destination.matches(current))
                 })
-                .ok_or(
+                .ok_or(t(
                     "연결·세션·패널이 변경되어 전송을 취소했습니다. 초안을 확인한 뒤 다시 여세요.",
-                )?;
+                ))?;
             send(&destination.target, text, self.include_enter)
         })();
         match result {
@@ -108,13 +108,13 @@ impl Composer {
             self.target = None;
             None
         } else {
-            Some(format!(
-                "전송 실패: {}. 초안은 유지되며 자동 재전송하지 않습니다.",
+            Some(tr!(
+                "전송 실패: {0}. 초안은 유지되며 자동 재전송하지 않습니다.",
                 result
                     .error
                     .as_ref()
                     .map(ToString::to_string)
-                    .unwrap_or_else(|| "전송 결과를 확인하지 못했습니다".into())
+                    .unwrap_or_else(|| t("전송 결과를 확인하지 못했습니다").into())
             ))
         };
         true
@@ -181,7 +181,7 @@ impl Desktop {
                     .update(cx, |t, cx| t.prepare_paste(target, text, enter, cx))?;
                 tab.connection
                     .input(target.clone(), bytes)
-                    .map_err(|e| format!("전송 실패: {e}. 초안은 유지됩니다."))
+                    .map_err(|e| tr!("전송 실패: {0}. 초안은 유지됩니다.", e))
             },
         );
         composer.input.update(cx, |input, cx| {
@@ -200,13 +200,13 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_3()
-            .child(div().text_xl().child("텍스트 작성"))
+            .child(div().text_xl().child(t("텍스트 작성")))
             .child(composer.input.clone())
             .child(
                 div()
                     .text_xs()
                     .text_color(rgb(self.palette.muted))
-                    .child("Enter는 줄바꿈 · 전송 버튼으로 보내기"),
+                    .child(t("Enter는 줄바꿈 · 전송 버튼으로 보내기")),
             )
             .child(
                 self.button_base("composer-enter", cx, move |s, _, _| {
@@ -261,7 +261,7 @@ impl Desktop {
                 .child(
                     div()
                         .debug_selector(|| "composer-enter-label".into())
-                        .child("Enter 함께 보내기"),
+                        .child(t("Enter 함께 보내기")),
                 )
                 .when(pending, |d| d.opacity(0.35).cursor_default()),
             )

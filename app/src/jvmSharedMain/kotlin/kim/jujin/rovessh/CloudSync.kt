@@ -1,5 +1,7 @@
 package kim.jujin.rovessh
 
+import kim.jujin.rovessh.core.t
+import kim.jujin.rovessh.core.tr
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 
@@ -8,7 +10,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class SyncResolution(val key: String, val revision: String)
 data class CloudSyncStatus(
     val connected: Boolean = false, val busy: Boolean = false,
-    val location: String = "", val message: String = "연결 안 됨",
+    val location: String = "", val message: String = t("연결 안 됨"),
     val conflicts: List<SyncConflict> = emptyList(),
 )
 interface CloudSyncController {

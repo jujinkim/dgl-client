@@ -3,6 +3,7 @@ use dgl_core::{
     connection::Phase,
     model::{RemotePane, RemoteSession, RemoteState, RemoteWindow},
 };
+use dgl_core::{i18n::t, tr};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Label {
@@ -47,19 +48,19 @@ pub fn session_label(state: &RemoteState, session: &RemoteSession) -> Label {
         .filter(|p| windows.iter().any(|w| w.id == p.window))
         .count();
     Label {
-        title: named(&session.name, "이름 없는 세션"),
-        detail: format!("창 {}개 · 패널 {panes}개", windows.len()),
+        title: named(&session.name, t("이름 없는 세션")),
+        detail: tr!("창 {0}개 · 패널 {1}개", windows.len(), panes),
     }
 }
 pub fn window_label(state: &RemoteState, window: &RemoteWindow) -> Label {
     let count = state.panes.iter().filter(|p| p.window == window.id).count();
     Label {
-        title: named(&window.name, "이름 없는 창"),
-        detail: format!("창 {} · 패널 {count}개", window.index),
+        title: named(&window.name, t("이름 없는 창")),
+        detail: tr!("창 {0} · 패널 {1}개", window.index, count),
     }
 }
 pub fn pane_label(pane: &RemotePane) -> Label {
-    let command = named(&pane.command, "프로세스 미확인");
+    let command = named(&pane.command, t("프로세스 미확인"));
     let mode = display_text(&pane.mode);
     Label {
         title: named(&pane.title, &command),
@@ -147,7 +148,7 @@ pub fn rows(state: &RemoteState, show_all: bool) -> Vec<Row> {
                         .detail
                         .split(" · ")
                         .nth(1)
-                        .unwrap_or("패널 0개")
+                        .unwrap_or(t("패널 0개"))
                 );
                 row.children = window.children;
             }
@@ -157,17 +158,17 @@ pub fn rows(state: &RemoteState, show_all: bool) -> Vec<Row> {
 }
 pub fn phase_label(phase: &Phase) -> &'static str {
     match phase {
-        Phase::Closed => "연결 안 됨",
-        Phase::Connecting => "연결 중",
-        Phase::TrustRequired => "호스트키 확인",
-        Phase::Authenticating => "인증 중",
-        Phase::Selecting => "세션 선택",
-        Phase::Restoring => "터미널 복원 중",
-        Phase::Ready => "연결됨",
-        Phase::Reconnecting => "재접속 중",
-        Phase::MissingSession => "이전 세션 없음",
-        Phase::Failed => "연결 실패",
-        Phase::Shell => "연결됨 · 일반 SSH",
+        Phase::Closed => t("연결 안 됨"),
+        Phase::Connecting => t("연결 중"),
+        Phase::TrustRequired => t("호스트키 확인"),
+        Phase::Authenticating => t("인증 중"),
+        Phase::Selecting => t("세션 선택"),
+        Phase::Restoring => t("터미널 복원 중"),
+        Phase::Ready => t("연결됨"),
+        Phase::Reconnecting => t("재접속 중"),
+        Phase::MissingSession => t("이전 세션 없음"),
+        Phase::Failed => t("연결 실패"),
+        Phase::Shell => t("연결됨 · 일반 SSH"),
     }
 }
 pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&str>) -> String {
@@ -177,7 +178,7 @@ pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&st
         .iter()
         .find(|s| Some(s.id.as_str()) == session)
     {
-        parts.push(named(&s.name, "이름 없는 세션"));
+        parts.push(named(&s.name, t("이름 없는 세션")));
     }
     if let Some(p) = state.panes.iter().find(|p| Some(p.id.as_str()) == pane) {
         if let Some(w) = state
@@ -185,7 +186,7 @@ pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&st
             .iter()
             .find(|w| w.id == p.window && Some(w.session.as_str()) == session)
         {
-            parts.push(named(&w.name, "이름 없는 창"));
+            parts.push(named(&w.name, t("이름 없는 창")));
         }
         parts.push(pane_label(p).title);
     }

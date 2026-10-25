@@ -42,7 +42,7 @@ impl Desktop {
         self.group_focus(group, window, cx);
         if let Operation::KillPane { target } = &operation {
             self.dialog = Some(Dialog::Delete {
-                title: format!("tmux 패널 {target} 닫기"),
+                title: tr!("tmux 패널 {0} 닫기", target),
                 operation: DeleteOp::Remote(connection, operation),
             });
         } else {
@@ -58,36 +58,40 @@ impl Desktop {
         let categories = [
             (
                 "split",
-                "패널 분할",
+                t("패널 분할"),
                 &[
-                    ("↔", "tmux 패널 좌우 분할", PaneAction::Split(true)),
-                    ("↕", "tmux 패널 상하 분할", PaneAction::Split(false)),
+                    ("↔", t("tmux 패널 좌우 분할"), PaneAction::Split(true)),
+                    ("↕", t("tmux 패널 상하 분할"), PaneAction::Split(false)),
                 ][..],
             ),
             (
                 "focus",
-                "이동",
+                t("이동"),
                 &[
-                    ("←", "왼쪽 패널로 이동", PaneAction::Focus('L')),
-                    ("→", "오른쪽 패널로 이동", PaneAction::Focus('R')),
-                    ("↑", "위 패널로 이동", PaneAction::Focus('U')),
-                    ("↓", "아래 패널로 이동", PaneAction::Focus('D')),
+                    ("←", t("왼쪽 패널로 이동"), PaneAction::Focus('L')),
+                    ("→", t("오른쪽 패널로 이동"), PaneAction::Focus('R')),
+                    ("↑", t("위 패널로 이동"), PaneAction::Focus('U')),
+                    ("↓", t("아래 패널로 이동"), PaneAction::Focus('D')),
                 ][..],
             ),
             (
                 "resize",
-                "크기 조절",
+                t("크기 조절"),
                 &[
-                    ("←", "패널 경계를 왼쪽으로 3셀", PaneAction::Resize('L')),
-                    ("→", "패널 경계를 오른쪽으로 3셀", PaneAction::Resize('R')),
-                    ("↑", "패널 경계를 위로 3셀", PaneAction::Resize('U')),
-                    ("↓", "패널 경계를 아래로 3셀", PaneAction::Resize('D')),
+                    ("←", t("패널 경계를 왼쪽으로 3셀"), PaneAction::Resize('L')),
+                    (
+                        "→",
+                        t("패널 경계를 오른쪽으로 3셀"),
+                        PaneAction::Resize('R'),
+                    ),
+                    ("↑", t("패널 경계를 위로 3셀"), PaneAction::Resize('U')),
+                    ("↓", t("패널 경계를 아래로 3셀"), PaneAction::Resize('D')),
                 ][..],
             ),
             (
                 "close",
-                "닫기",
-                &[("×", "현재 tmux 패널 닫기", PaneAction::Close)][..],
+                t("닫기"),
+                &[("×", t("현재 tmux 패널 닫기"), PaneAction::Close)][..],
             ),
         ];
         let mut toolbar = div()

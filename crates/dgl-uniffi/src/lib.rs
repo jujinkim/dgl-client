@@ -6,6 +6,11 @@ use dgl_core::{
 };
 use std::sync::{Arc, OnceLock};
 uniffi::setup_scaffolding!();
+/// Configure UI copy only; action names, error codes and terminal bytes stay stable.
+#[uniffi::export]
+pub fn configure_language(preference: String, system_locale: String) {
+    dgl_core::i18n::configure(&preference, &system_locale);
+}
 fn runtime() -> &'static tokio::runtime::Runtime {
     static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
     RT.get_or_init(|| {

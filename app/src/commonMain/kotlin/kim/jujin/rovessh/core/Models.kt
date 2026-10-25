@@ -28,6 +28,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
 }
 
 @Serializable data class Preferences(
+    val language: String = "system",
     val theme: String = "system", val fontSize: Int = 14, val scrollback: Int = 5000,
     val mobilePaneToolbarVisible: Boolean = true,
     val terminalShortcuts: List<TerminalKey> = TerminalKey.defaultShortcuts,
@@ -53,7 +54,7 @@ enum class Phase { Disconnected, Connecting, TrustRequired, Authenticating, Sele
 enum class Failure { Network, Authentication, HostKey, Protocol, MissingSession, Storage }
 data class ConnectionStatus(
     val phase: Phase = Phase.Disconnected,
-    val message: String = "연결 안 됨",
+    val message: String = t("연결 안 됨"),
     val attempt: Int = 0,
     val canRetryNow: Boolean = false,
     val canStopRetrying: Boolean = false,
@@ -73,8 +74,8 @@ object RetryPolicy {
     }
 }
 class ClientFailure(val kind: Failure, val safeMessage: String, val diagnosticCode: String? = null) : Exception(safeMessage)
-class UnknownHostKey(val endpoint: String, val fingerprint: String) : Exception("호스트키 신뢰 확인 필요")
-class ChangedHostKey : Exception("저장된 호스트키와 다릅니다. 연결을 차단했습니다.")
+class UnknownHostKey(val endpoint: String, val fingerprint: String) : Exception(t("호스트키 신뢰 확인 필요"))
+class ChangedHostKey : Exception(t("저장된 호스트키와 다릅니다. 연결을 차단했습니다."))
 
 interface CredentialStore {
     fun read(reference: String): Credential?

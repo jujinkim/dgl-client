@@ -6,22 +6,23 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-Windows·macOS 공통 데스크톱의 호스트 순서 고정·기기별 드래그 정렬 저장과 세션 탭 재사용 검사입니다.
-Android·코어·UniFFI·클라우드 공유 형식은 변경하지 않았습니다.
-이전 세션 목록·상태줄 검사 요약은 [HISTORY.md](HISTORY.md)에 있습니다.
+데스크톱 타이틀바 `DGL` 정리와 데스크톱·Android 한국어/영어 UI, 시스템 언어 선택과 기기별 저장 검사입니다.
+이전 호스트 순서·세션 탭 재사용 검사는 [HISTORY.md](HISTORY.md)에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 호스트 순서 단위 검사 | 최초 연결 시작 A→B와 반복 시작의 순서 유지, 수동 정렬 우선순위, 메타데이터/저장 배열 변경·재로드·추가/삭제, 누락/잘못된 JSON/중복 ID/잘못된 시작 구간의 fallback 검사 |
-| 세션 경로 단위 검사 | 호스트 ID·세션 ID 구분, 미선택 탭 예약, 반복 선택·복구 중 기존 탭 검색, 신규 생성 차단, 닫힌 탭 재생성 경로 검사 |
-| GPUI 이벤트 검사 | 호스트 드래그 삽입 표시·드롭 전 불변·드롭 확정·Esc/목록 밖 취소·순서 파일 재로드. 세션 A/B 반복 선택·다른 그룹 이동·호스트의 최근 활성 탭 선택·탭/SSH/터미널 Entity 유지·이름 변경/세션 소멸 시 ID 유지·닫은 뒤 새 Entity·복구 중 알림 이동 검사 |
-| Rust 데스크톱 | `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo test --locked -p dgl-desktop`: 59 통과, 대화형 Keychain 1 ignore. ignore는 미실행이며 통과에 포함하지 않음 |
-| 문서·메타데이터 | 사용 안내·작업 공간·동기화/저장 설명 갱신, 기존 로컬 대시보드 등록 검증기 통과·Git 제외 유지 |
-| 무결성 | 변경 Rust 파일 서식·문서 로컬 링크·`git diff --check`·원문 요구사항 SHA-256 검사 통과 |
+| 번역 목록 | 공통 JSON·Kotlin 생성 파일 일치, 호출부 키 누락과 번호 자리표시자 일치 검사 통과 |
+| 언어 동작 | 한국어/영어 강제 선택, 시스템 한국어와 지원하지 않는 언어의 영어 fallback, 예전 설정 기본값·재실행 저장·클라우드 제외, 인수 순서 변경·사용자 입력의 중괄호/Unicode 보존 검사 통과 |
+| Rust workspace | 코어·계약·SSH fixture·UniFFI 30 통과, 데스크톱 59 통과. 실제 SSH/tmux 5 ignore·대화형 Keychain 1 ignore는 미실행이며 통과에 포함하지 않음 |
+| JVM | 50 통과·외부 SSH/Windows 환경의 예상 skip 9개, 명시적 결과 검증기 통과 |
+| Python | 98개 통과. JVM 검사 이름 목록 일치 포함 |
+| Android | 4개 ABI Rust payload와 Kotlin 컴파일·Debug lint 통과. lint 기존 검토 진단 12개 일치 |
+| 문서·메타데이터 | 언어 선택·번역 유지 절차 갱신. 기존 로컬 대시보드 등록 검증기 통과·Git 제외 유지 |
+| 무결성 | `git diff --check`·원문 요구사항 SHA-256·Gradle wrapper checksum 검사 통과 |
 
 GPUI 검사는 합성 상태와 실제 이벤트 디스패치를 사용합니다. 실제 서버의 창·pane 전환이나 네트워크 복구 인수를 대신하지 않습니다.
 Windows MSVC 네이티브 빌드·DPAPI·GUI와 macOS 실제 GUI·Keychain·OS 알림,
-실제 SSH/tmux 통합·Android 빌드/계측은 이번에 실행하지 않았습니다.
+실제 SSH/tmux 통합·Android 계측은 이번에 실행하지 않았습니다. Debug APK는 커밋 후 별도 빌드합니다.
 Windows 기본 빌드·ZIP·수동 CI 경로는 유지합니다.
 기존 Rust 의존성 `block`/`proc-macro-error2`의 향후 호환성 경고는 남아 있습니다.
 

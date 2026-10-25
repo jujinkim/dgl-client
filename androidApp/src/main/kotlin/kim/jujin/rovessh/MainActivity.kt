@@ -21,7 +21,16 @@ import kim.jujin.rovessh.ui.VolumeKeyDispatcher
 import kim.jujin.rovessh.ui.VolumeKeyHost
 
 class ClientViewModel(application: Application) : AndroidViewModel(application) {
-    val app = createEngine(application).also { it.sendAgentNotification = AgentNotifications(application)::show }
+    val app = createEngine(application).also { model ->
+        val notifications = AgentNotifications(application)
+        val configure = model.languageChanged
+        model.languageChanged = { preference ->
+            val previous = kim.jujin.rovessh.core.I18n.language
+            configure(preference)
+            if (previous != kim.jujin.rovessh.core.I18n.language) notifications.refreshLanguage()
+        }
+        model.sendAgentNotification = notifications::show
+    }
     override fun onCleared() { app.close() }
 }
 
@@ -52,6 +61,7 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         holder = ViewModelProvider(this)[ClientViewModel::class.java]
+        holder.app.languageChanged(holder.app.local.value.preferences.language)
         holder.app.chooseSyncFile = { create ->
             val intent = Intent(if (create) Intent.ACTION_CREATE_DOCUMENT else Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
@@ -94,6 +104,7 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
         super.onResume()
         volumeKeys.resumed = true
         if (::holder.isInitialized) holder.app.foreground = hasWindowFocus()
+        if (::holder.isInitialized) holder.app.languageChanged(holder.app.local.value.preferences.language)
         if (::holder.isInitialized) holder.app.cloudSync?.sync()
         if (::holder.isInitialized) holder.app.connections.value.forEach {
             if (it.status.value.phase == kim.jujin.rovessh.core.Phase.Ready) it.restore()

@@ -1,10 +1,10 @@
 #import <AppKit/AppKit.h>
 
-void dgl_select_private_key(const char *directory, void *context,
+void dgl_select_private_key(const char *directory, const char *title, const char *prompt, void *context,
                            void (*complete)(void *, const char *)) {
     NSOpenPanel *panel = [NSOpenPanel openPanel];
-    panel.title = @"개인키 파일 선택";
-    panel.prompt = @"가져오기";
+    panel.title = [NSString stringWithUTF8String:title];
+    panel.prompt = [NSString stringWithUTF8String:prompt];
     panel.canChooseFiles = YES;
     panel.canChooseDirectories = NO;
     panel.allowsMultipleSelection = NO;

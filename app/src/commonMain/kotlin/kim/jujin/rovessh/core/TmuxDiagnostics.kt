@@ -16,15 +16,15 @@ data class TmuxProblem(
     val exitStatus: Int? = null,
 ) {
     val label get() = when (kind) {
-        TmuxProblemKind.NotFound -> "tmux 탐지 실패"
-        TmuxProblemKind.ExecutionFailed -> "tmux 실행 실패"
-        TmuxProblemKind.UnsupportedVersion -> "tmux 버전 미지원"
-        TmuxProblemKind.InvalidVersion -> "tmux 버전 확인 실패"
+        TmuxProblemKind.NotFound -> t("tmux 탐지 실패")
+        TmuxProblemKind.ExecutionFailed -> t("tmux 실행 실패")
+        TmuxProblemKind.UnsupportedVersion -> t("tmux 버전 미지원")
+        TmuxProblemKind.InvalidVersion -> t("tmux 버전 확인 실패")
     }
     val explanation get() = when (kind) {
-        TmuxProblemKind.NotFound -> "이 호스트에서 실행할 수 있는 tmux를 찾지 못했습니다."
-        TmuxProblemKind.ExecutionFailed -> "tmux 실행 파일을 찾았지만 버전 확인 명령을 실행하지 못했습니다."
-        TmuxProblemKind.UnsupportedVersion -> "호스트의 tmux 버전이 앱에서 지원하는 범위(3.3–3.7)에 포함되지 않습니다."
-        TmuxProblemKind.InvalidVersion -> "호스트의 응답에서 tmux 버전을 확인하지 못했습니다."
+        TmuxProblemKind.NotFound -> t("이 호스트에서 실행할 수 있는 tmux를 찾지 못했습니다.")
+        TmuxProblemKind.ExecutionFailed -> t("tmux 실행 파일을 찾았지만 버전 확인 명령을 실행하지 못했습니다.")
+        TmuxProblemKind.UnsupportedVersion -> t("호스트의 tmux 버전이 앱에서 지원하는 범위(3.3–3.7)에 포함되지 않습니다.")
+        TmuxProblemKind.InvalidVersion -> t("호스트의 응답에서 tmux 버전을 확인하지 못했습니다.")
     }
 }

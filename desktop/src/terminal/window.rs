@@ -136,7 +136,7 @@ impl WindowTerminal {
         if let Some(target) = self.connection.target()
             && let Err(e) = self.connection.input(target, bytes)
         {
-            self.notice = Some(format!("입력을 보내지 못했습니다: {e}"));
+            self.notice = Some(dgl_core::tr!("입력을 보내지 못했습니다: {0}", e));
         }
     }
     pub fn prepare_paste(
@@ -146,10 +146,9 @@ impl WindowTerminal {
         enter: bool,
         cx: &App,
     ) -> Result<Vec<u8>, String> {
-        let pane = self
-            .panes
-            .get(&target.pane_id)
-            .ok_or("현재 패널의 입력 모드를 확인하지 못했습니다. 잠시 후 다시 시도하세요.")?;
+        let pane = self.panes.get(&target.pane_id).ok_or(dgl_core::i18n::t(
+            "현재 패널의 입력 모드를 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+        ))?;
         let bracketed = pane
             .read(cx)
             .term

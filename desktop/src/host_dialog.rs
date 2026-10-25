@@ -24,25 +24,25 @@ pub struct Feedback {
 
 fn validate_connection(host: &HostProfile) -> Result<(), &'static str> {
     if host.alias.is_empty() || host.alias.encode_utf16().count() > 128 {
-        return Err("별칭을 1~128자로 입력하세요.");
+        return Err(t("별칭을 1~128자로 입력하세요."));
     }
     if host.hostname.is_empty()
         || host.hostname.len() > 253
         || host.hostname.chars().any(|c| c.is_whitespace() || c < ' ')
     {
-        return Err("호스트 / IP를 공백 없이 올바르게 입력하세요.");
+        return Err(t("호스트 / IP를 공백 없이 올바르게 입력하세요."));
     }
     if host.port == 0 {
-        return Err("포트는 1~65535 사이의 숫자로 입력하세요.");
+        return Err(t("포트는 1~65535 사이의 숫자로 입력하세요."));
     }
     if host.username.is_empty()
         || host.username.encode_utf16().count() > 128
         || host.username.chars().any(|c| c < ' ')
     {
-        return Err("사용자 이름을 제어 문자 없이 1~128자로 입력하세요.");
+        return Err(t("사용자 이름을 제어 문자 없이 1~128자로 입력하세요."));
     }
     host.validate()
-        .map_err(|_| "호스트 연결 정보를 확인하세요.")
+        .map_err(|_| t("호스트 연결 정보를 확인하세요."))
 }
 
 fn credential(
@@ -60,15 +60,15 @@ fn credential(
             saved.passphrase = passphrase.into();
         }
         if saved.private_key.is_empty() {
-            return Err(MISSING_KEY);
+            return Err(t(MISSING_KEY));
         }
-        ssh::public_key(&saved).map_err(|_| INVALID_KEY)?;
+        ssh::public_key(&saved).map_err(|_| t(INVALID_KEY))?;
     } else {
         if !password.is_empty() {
             saved.password = password.into();
         }
         if saved.password.is_empty() {
-            return Err("비밀번호를 입력하세요.");
+            return Err(t("비밀번호를 입력하세요."));
         }
     }
     Ok(saved)
@@ -97,12 +97,12 @@ impl Desktop {
             .unwrap_or_else(|| vec![String::new(), String::new(), "22".into(), String::new()]);
         let ssh_directory = platform::ssh_directory_placeholder();
         let labels = [
-            "별칭",
-            "호스트 / IP",
-            "포트",
-            "사용자 이름",
-            "비밀번호 (편집 시 비우면 기존 유지)",
-            "키 암호 (필요한 경우)",
+            t("별칭"),
+            t("호스트 / IP"),
+            t("포트"),
+            t("사용자 이름"),
+            t("비밀번호 (편집 시 비우면 기존 유지)"),
+            t("키 암호 (필요한 경우)"),
             &ssh_directory,
         ];
         let fields = labels
@@ -197,7 +197,7 @@ impl Desktop {
         };
         let result = (|| {
             validate_connection(&host).map_err(|e| (ErrorArea::Connection, e))?;
-            let saved = read(&host.credential_ref).map_err(|_| (ErrorArea::Storage, "보호 저장소에서 자격 증명을 읽지 못했습니다. 저장소 접근 상태를 확인하세요."))?.unwrap_or_default();
+            let saved = read(&host.credential_ref).map_err(|_| (ErrorArea::Storage, t("보호 저장소에서 자격 증명을 읽지 못했습니다. 저장소 접근 상태를 확인하세요.")))?.unwrap_or_default();
             let credential = credential(
                 saved,
                 key_auth,
@@ -209,7 +209,7 @@ impl Desktop {
             write(&host.credential_ref, &credential).map_err(|_| {
                 (
                     ErrorArea::Storage,
-                    "보호 저장소에 자격 증명을 저장하지 못했습니다. 저장소 접근 상태를 확인하세요.",
+                    t("보호 저장소에 자격 증명을 저장하지 못했습니다. 저장소 접근 상태를 확인하세요."),
                 )
             })?;
             let mut next = self.local.clone();
@@ -221,7 +221,7 @@ impl Desktop {
             next.save(&self.path).map_err(|_| {
                 (
                     ErrorArea::Storage,
-                    "호스트 설정 파일을 저장하지 못했습니다. 저장 위치와 쓰기 권한을 확인하세요.",
+                    t("호스트 설정 파일을 저장하지 못했습니다. 저장 위치와 쓰기 권한을 확인하세요."),
                 )
             })?;
             self.local = next;
@@ -307,8 +307,9 @@ impl Desktop {
             Ok(Some(path)) => path,
             Ok(None) => return, // Cancellation preserves all input, key, status and errors.
             Err(()) => {
-                feedback.auth_error =
-                    Some("파일 선택창을 열지 못했습니다. 경로를 입력해 가져오세요.");
+                feedback.auth_error = Some(t(
+                    "파일 선택창을 열지 못했습니다. 경로를 입력해 가져오세요.",
+                ));
                 return;
             }
         };
@@ -318,8 +319,8 @@ impl Desktop {
                 fields[KEY_PATH].update(cx, |input, cx| {
                     input.set_content(&path.to_string_lossy(), cx)
                 });
-                feedback.key_status = Some(format!(
-                    "가져옴: {} · 저장할 때 형식과 키 암호를 확인합니다.",
+                feedback.key_status = Some(tr!(
+                    "가져옴: {0} · 저장할 때 형식과 키 암호를 확인합니다.",
                     path.file_name()
                         .unwrap_or(path.as_os_str())
                         .to_string_lossy()
@@ -343,7 +344,7 @@ impl Desktop {
         let result = (|| {
             let saved = match original {
                 Some(host) => storage::read_optional(&host.credential_ref)
-                    .map_err(|_| "보호 저장소에서 자격 증명을 읽지 못했습니다.")?
+                    .map_err(|_| t("보호 저장소에서 자격 증명을 읽지 못했습니다."))?
                     .unwrap_or_default(),
                 None => Credential::default(),
             };
@@ -354,7 +355,7 @@ impl Desktop {
                 "",
                 &fields[PASSPHRASE].read(cx).content,
             )?;
-            ssh::public_key(&credential).map_err(|_| INVALID_KEY)
+            ssh::public_key(&credential).map_err(|_| t(INVALID_KEY))
         })();
         match result {
             Ok(key) => {
@@ -396,9 +397,9 @@ impl Desktop {
         self.button(
             format!("show-secret-{index}"),
             if field.read(cx).secret_visible() {
-                "☑ 비밀번호 표시"
+                t("☑ 비밀번호 표시")
             } else {
-                "☐ 비밀번호 표시"
+                t("☐ 비밀번호 표시")
             },
             cx,
             move |_, _, cx| {
@@ -419,8 +420,8 @@ impl Desktop {
         else {
             unreachable!()
         };
-        let mut connection = self.host_section("host-connection", "연결 정보");
-        for (i, label) in ["별칭", "호스트 / IP", "포트", "사용자 이름"]
+        let mut connection = self.host_section("host-connection", t("연결 정보"));
+        for (i, label) in [t("별칭"), t("호스트 / IP"), t("포트"), t("사용자 이름")]
             .iter()
             .enumerate()
         {
@@ -431,9 +432,9 @@ impl Desktop {
         connection = connection.child(self.button(
             "favorite",
             if favorite {
-                "★ 즐겨찾기"
+                t("★ 즐겨찾기")
             } else {
-                "☆ 즐겨찾기"
+                t("☆ 즐겨찾기")
             },
             cx,
             |s, _, _| {
@@ -445,11 +446,11 @@ impl Desktop {
         if let Some(error) = feedback.connection_error {
             connection = connection.child(self.host_message("host-connection-error", error));
         }
-        let mut auth = self.host_section("host-auth", "인증");
+        let mut auth = self.host_section("host-auth", t("인증"));
         let mut choices = div().flex().gap_2();
         for (value, id, label) in [
-            (false, "auth-password", "비밀번호"),
-            (true, "auth-key", "개인키"),
+            (false, "auth-password", t("비밀번호")),
+            (true, "auth-key", t("개인키")),
         ] {
             choices = choices.child(
                 self.button(
@@ -482,59 +483,59 @@ impl Desktop {
         auth = auth.child(choices);
         if key_auth {
             auth = auth
-                .child(div().text_sm().child("개인키 파일 경로"))
+                .child(div().text_sm().child(t("개인키 파일 경로")))
                 .child(self.host_input(KEY_PATH, &fields[KEY_PATH], cx))
                 .child(
                     div()
                         .flex()
                         .flex_wrap()
                         .gap_2()
-                        .child(self.button("select-key", "파일 선택…", cx, |s, w, cx| {
+                        .child(self.button("select-key", t("파일 선택…"), cx, |s, w, cx| {
                             s.import_key(true, w, cx)
                         }))
                         .child(self.button(
                             "import",
-                            "경로에서 가져오기",
+                            t("경로에서 가져오기"),
                             cx,
                             |s, w, cx| s.import_key(false, w, cx),
                         )),
                 );
             let status = if feedback.selecting {
-                "파일 선택 중…".into()
+                t("파일 선택 중…").into()
             } else {
                 feedback.key_status.unwrap_or_else(|| {
                     if original
                         .as_ref()
                         .is_some_and(|h| h.auth == AuthKind::PrivateKey)
                     {
-                        "새 키를 가져오지 않으면 저장된 개인키를 사용합니다.".into()
+                        t("새 키를 가져오지 않으면 저장된 개인키를 사용합니다.").into()
                     } else {
-                        "아직 개인키를 가져오지 않았습니다.".into()
+                        t("아직 개인키를 가져오지 않았습니다.").into()
                     }
                 })
             };
             auth = auth.child(div().id("key-import-status").debug_selector(|| "key-import-status".into()).text_sm().text_color(rgb(self.palette.muted)).child(status))
-                .child(div().text_sm().child("키 암호"))
+                .child(div().text_sm().child(t("키 암호")))
                 .child(self.host_input(PASSPHRASE, &fields[PASSPHRASE], cx))
-                .child(div().text_xs().text_color(rgb(self.palette.muted)).child("암호화된 키는 키 암호를 입력하세요. 기존 키를 유지할 때 비우면 저장된 암호를 사용합니다."))
+                .child(div().text_xs().text_color(rgb(self.palette.muted)).child(t("암호화된 키는 키 암호를 입력하세요. 기존 키를 유지할 때 비우면 저장된 암호를 사용합니다.")))
                 .child(self.secret_toggle(PASSPHRASE, &fields[PASSPHRASE], cx))
                 .child(div().flex().flex_wrap().gap_2()
-                    .child(self.button("generate", "Ed25519 생성", cx, |s, _, cx| {
+                    .child(self.button("generate", t("Ed25519 생성"), cx, |s, _, cx| {
                         match ssh::generate_key() {
                             Ok(key) => if let Some(Dialog::Host { private_key, fields, feedback, .. }) = &mut s.dialog {
                                 *private_key = key.private_key.clone();
                                 fields[KEY_PATH].update(cx, |input, cx| input.set_content("", cx));
                                 fields[PASSPHRASE].update(cx, |input, cx| input.set_content("", cx));
-                                feedback.key_status = Some("Ed25519 개인키를 생성했습니다.".into());
+                                feedback.key_status = Some(t("Ed25519 개인키를 생성했습니다.").into());
                                 feedback.auth_error = None;
                             },
-                            Err(_) => if let Some(Dialog::Host { feedback, .. }) = &mut s.dialog { feedback.auth_error = Some("개인키를 생성하지 못했습니다. 다시 시도하세요."); },
+                            Err(_) => if let Some(Dialog::Host { feedback, .. }) = &mut s.dialog { feedback.auth_error = Some(t("개인키를 생성하지 못했습니다. 다시 시도하세요.")); },
                         }
                     }))
-                    .child(self.button("public-key", "공개키 복사", cx, |s, _, cx| s.copy_public_key(cx))));
+                    .child(self.button("public-key", t("공개키 복사"), cx, |s, _, cx| s.copy_public_key(cx))));
         } else {
             auth = auth
-                .child(div().text_sm().child("비밀번호"))
+                .child(div().text_sm().child(t("비밀번호")))
                 .child(self.host_input(PASSWORD, &fields[PASSWORD], cx))
                 .child(self.secret_toggle(PASSWORD, &fields[PASSWORD], cx));
         }
@@ -546,9 +547,9 @@ impl Desktop {
             .flex_col()
             .gap_3()
             .child(div().text_xl().child(if original.is_some() {
-                "호스트 편집"
+                t("호스트 편집")
             } else {
-                "SSH 호스트 추가"
+                t("SSH 호스트 추가")
             }))
             .child(connection)
             .child(auth);

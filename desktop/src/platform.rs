@@ -56,9 +56,9 @@ pub const TERMINAL_FONT: &str = if cfg!(target_os = "windows") {
     "Menlo"
 };
 pub const STORAGE_LABEL: &str = if cfg!(target_os = "windows") {
-    "Windows DPAPI · 후보 전용 저장소"
+    "Windows DPAPI"
 } else {
-    "macOS Keychain · 후보 전용 저장소"
+    "macOS Keychain"
 };
 pub const EDIT_MODIFIER: &str = if cfg!(target_os = "windows") {
     "ctrl"

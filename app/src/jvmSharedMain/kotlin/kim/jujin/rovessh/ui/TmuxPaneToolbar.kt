@@ -1,5 +1,7 @@
 package kim.jujin.rovessh.ui
 
+import kim.jujin.rovessh.core.t
+import kim.jujin.rovessh.core.tr
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,30 +29,30 @@ import kim.jujin.rovessh.core.TmuxCommand
         }
     }
     Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
-        Column(Modifier.fillMaxWidth().semantics { contentDescription = "tmux 패널 도구" }) {
+        Column(Modifier.fillMaxWidth().semantics { contentDescription = t("tmux 패널 도구") }) {
             HorizontalDivider()
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    PaneToolCategory("패널 분할") {
-                        PaneToolButton("↔", "tmux 패널 분할 ↔", enabled) { manage { TmuxCommand.split(it, true) } }
-                        PaneToolButton("↕", "tmux 패널 분할 ↕", enabled) { manage { TmuxCommand.split(it, false) } }
+                    PaneToolCategory(t("패널 분할")) {
+                        PaneToolButton("↔", t("tmux 패널 분할 ↔"), enabled) { manage { TmuxCommand.split(it, true) } }
+                        PaneToolButton("↕", t("tmux 패널 분할 ↕"), enabled) { manage { TmuxCommand.split(it, false) } }
                     }
                     VerticalDivider(Modifier.height(56.dp))
-                    PaneToolCategory("이동") {
+                    PaneToolCategory(t("이동")) {
                         listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (arrow, direction) ->
-                            PaneToolButton(arrow, "포커스 $arrow", enabled) { manage { TmuxCommand.focusPane(it, direction) } }
+                            PaneToolButton(arrow, tr("포커스 {0}", arrow), enabled) { manage { TmuxCommand.focusPane(it, direction) } }
                         }
                     }
                     VerticalDivider(Modifier.height(56.dp))
-                    PaneToolCategory("크기 조절") {
+                    PaneToolCategory(t("크기 조절")) {
                         listOf("←" to 'L', "→" to 'R', "↑" to 'U', "↓" to 'D').forEach { (arrow, direction) ->
-                            PaneToolButton(arrow, "경계$arrow", enabled) { manage { TmuxCommand.resizePane(it, direction) } }
+                            PaneToolButton(arrow, tr("경계{0}", arrow), enabled) { manage { TmuxCommand.resizePane(it, direction) } }
                         }
                     }
                 }
                 VerticalDivider(Modifier.height(56.dp))
-                PaneToolCategory("닫기") {
-                    PaneToolButton("×", "현재 tmux 패널 닫기", enabled) {
+                PaneToolCategory(t("닫기")) {
+                    PaneToolButton("×", t("현재 tmux 패널 닫기"), enabled) {
                         if (client.status.value.phase == Phase.Ready) client.pane.value?.let(closePane)
                     }
                 }

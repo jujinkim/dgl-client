@@ -108,9 +108,9 @@ expect fun copyPublicKey(value: String)
                     Spacer(Modifier.width(if (mobileLayout) 4.dp else 8.dp))
                     if (mobileLayout) Box(Modifier.weight(1f)) {
                         TextButton({ switching = true }, enabled = connections.isNotEmpty(), modifier = Modifier.fillMaxWidth()
-                            .semantics { contentDescription = "서버 선택" }, contentPadding = PaddingValues(4.dp)) {
+                            .semantics { contentDescription = t("서버 선택") }, contentPadding = PaddingValues(4.dp)) {
                             Column(Modifier.weight(1f)) {
-                                Text(selected?.host?.alias ?: "연결 선택", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(selected?.host?.alias ?: t("연결 선택"), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Text(" ▾")
                         }
@@ -119,9 +119,9 @@ expect fun copyPublicKey(value: String)
                         }
                     } else Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                     selected?.let { HostConnectionMenu(it, model) }
-                    TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(if (explorer) "터미널" else "호스트") }
-                    TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text("알림 ${agentNotices.count { !it.read }}") }
-                    TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text("설정") }
+                    TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(if (explorer) t("터미널") else t("호스트")) }
+                    TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
+                    TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
                 }
                 if (!mobileLayout && connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                     connections.forEach { connection ->
@@ -135,29 +135,29 @@ expect fun copyPublicKey(value: String)
                         if (wide || selected == null || explorer) {
                             Column(if (wide) Modifier.width(272.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("연결", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                                    TextButton({ model.hostEditing = true; adding = true }) { Text("+ 호스트") }
+                                    Text(t("연결"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                    TextButton({ model.hostEditing = true; adding = true }) { Text(t("+ 호스트")) }
                                 }
                                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                                    if (local.hosts.isEmpty()) item { Text("SSH 호스트를 추가하여 시작하세요.\n원격 서버에는 SSH와 tmux만 필요합니다.", Modifier.padding(12.dp)) }
+                                    if (local.hosts.isEmpty()) item { Text(t("SSH 호스트를 추가하여 시작하세요.\n원격 서버에는 SSH와 tmux만 필요합니다."), Modifier.padding(12.dp)) }
                                     items(local.hosts.sortedWith(compareByDescending<HostProfile> { it.favorite }.thenByDescending { it.lastConnected }), key = { it.id }) { host ->
                                         Column(Modifier.fillMaxWidth()) {
                                             Column(Modifier.padding(12.dp)) {
                                                 Text((if (host.favorite) "★ " else "") + host.alias, style = MaterialTheme.typography.titleMedium)
                                                 Text("${host.username}@${host.hostname}:${host.port}", style = MaterialTheme.typography.bodySmall)
-                                                if (host.lastConnected != 0L) Text("최근 연결: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
+                                                if (host.lastConnected != 0L) Text(t("최근 연결: ") + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     TextButton({
                                                         try {
                                                             if (model.credentials.read(host.credentialRef) == null) {
                                                                 model.hostEditing = true
                                                                 edit = host
-                                                                error = "이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요."
+                                                                error = t("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요.")
                                                             } else { model.open(host); explorer = false }
-                                                        } catch (_: Exception) { error = "보호 저장소를 열지 못했습니다." }
-                                                    }) { Text("연결") }
+                                                        } catch (_: Exception) { error = t("보호 저장소를 열지 못했습니다.") }
+                                                    }) { Text(t("연결")) }
                                                     Spacer(Modifier.weight(1f))
-                                                    TreeMenu("${host.alias} 메뉴", listOf("편집" to { model.hostEditing = true; edit = host }, "에이전트 상태 연동" to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = "호스트에 먼저 연결하세요." } }, "삭제…" to { model.hostEditing = true; deletion = host }))
+                                                    TreeMenu(tr("{0} 메뉴", host.alias), listOf(t("편집") to { model.hostEditing = true; edit = host }, t("에이전트 상태 연동") to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = t("호스트에 먼저 연결하세요.") } }, t("삭제…") to { model.hostEditing = true; deletion = host }))
                                                 }
                                             }
                                             HorizontalDivider()
@@ -178,9 +178,9 @@ expect fun copyPublicKey(value: String)
                                 }
                                 else Column(Modifier.align(Alignment.Center).padding(24.dp)) {
                                     Text("Keep the CLI.", style = MaterialTheme.typography.headlineMedium)
-                                    Text("세션은 서버에, 작업은 그대로.", style = MaterialTheme.typography.bodyLarge)
+                                    Text(t("세션은 서버에, 작업은 그대로."), style = MaterialTheme.typography.bodyLarge)
                                     Spacer(Modifier.height(12.dp))
-                                    Text("호스트에 연결하고 기존 tmux 세션을 선택하세요.")
+                                    Text(t("호스트에 연결하고 기존 tmux 세션을 선택하세요."))
                                 }
                             }
                         }
@@ -191,17 +191,17 @@ expect fun copyPublicKey(value: String)
         if (selected == null || explorer || settings || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
         agentDetails?.let { (client, pane) -> AgentDetails(client, model, pane) { agentDetails = null } }
         if (notifications) AgentNotifications(model) { notifications = false }
-        agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { TextButton({ model.agentNavigationError.value = null }) { Text("닫기") } }) }
+        agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { TextButton({ model.agentNavigationError.value = null }) { Text(t("닫기")) } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
         if (settings) SettingsDialog(model, mobileLayout) { settings = false }
-        deletion?.let { host -> ConfirmDialog("호스트 삭제", "${host.alias}의 로컬 설정과 저장된 자격 증명을 삭제합니다.", {
+        deletion?.let { host -> ConfirmDialog(t("호스트 삭제"), tr("{0}의 로컬 설정과 저장된 자격 증명을 삭제합니다.", host.alias), {
             try {
                 model.credentials.delete(host.credentialRef)
                 model.update(local.copy(hosts = local.hosts.filter { it.id != host.id }))
                 deletion = null
-            } catch (_: Exception) { error = "자격 증명을 삭제하지 못했습니다." }
+            } catch (_: Exception) { error = t("자격 증명을 삭제하지 못했습니다.") }
         }, { deletion = null }) }
-        error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("오류") }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text("닫기") } }) }
+        error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text(t("오류")) }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text(t("닫기")) } }) }
         }
     }
 }
@@ -250,12 +250,12 @@ expect fun copyPublicKey(value: String)
     val currentSession = remote.sessions.firstOrNull { it.id == session }
     val canBrowse = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
     val sessionLabel = when (status.phase) {
-        Phase.Shell -> "없음 · 일반 SSH"
-        Phase.Disconnected, Phase.Failed -> "연결 안 됨"
-        Phase.Connecting, Phase.Authenticating, Phase.TrustRequired -> "확인 중"
-        Phase.Reconnecting -> "복구 중"
-        Phase.MissingSession -> "이전 세션 없음"
-        else -> currentSession?.let { displayTreeText(it.name) } ?: "선택 안 함"
+        Phase.Shell -> t("없음 · 일반 SSH")
+        Phase.Disconnected, Phase.Failed -> t("연결 안 됨")
+        Phase.Connecting, Phase.Authenticating, Phase.TrustRequired -> t("확인 중")
+        Phase.Reconnecting -> t("복구 중")
+        Phase.MissingSession -> t("이전 세션 없음")
+        else -> currentSession?.let { displayTreeText(it.name) } ?: t("선택 안 함")
     }
     val statusDetail = if (status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) || status.canStopRetrying) displayTreeText(status.message) else ""
     val statusLabel = listOf(displayTreeText(client.host.alias), status.phase.displayLabel(), remote.targetLabel(session, pane), statusDetail).filter { it.isNotEmpty() }.joinToString(" · ")
@@ -264,14 +264,14 @@ expect fun copyPublicKey(value: String)
     val navigationContent: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier.heightIn(max = if (mobileLayout) 480.dp else 280.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("세션", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                TextButton({ namePrompt = "세션 만들기" to client::createSession }, enabled = canBrowse) { Text("+") }
-                TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), tooltip = { PlainTooltip { Text("세션 새로고침") } }, state = rememberTooltipState()) {
-                    IconButton({ client.refresh() }, enabled = canBrowse && !refreshing, modifier = Modifier.semantics { contentDescription = "세션 새로고침" }) { Text("↻") }
+                Text(t("세션"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                TextButton({ namePrompt = t("세션 만들기") to client::createSession }, enabled = canBrowse) { Text("+") }
+                TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), tooltip = { PlainTooltip { Text(t("세션 새로고침")) } }, state = rememberTooltipState()) {
+                    IconButton({ client.refresh() }, enabled = canBrowse && !refreshing, modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { Text("↻") }
                 }
             }
-            if (status.phase == Phase.Shell) Text("일반 SSH · tmux 목록 확인 불가", Modifier.padding(16.dp))
-            else if (remote.sessions.isEmpty()) Text(if (canBrowse) "세션 없음 · + 버튼으로 생성" else "목록 대기 중", Modifier.padding(16.dp))
+            if (status.phase == Phase.Shell) Text(t("일반 SSH · tmux 목록 확인 불가"), Modifier.padding(16.dp))
+            else if (remote.sessions.isEmpty()) Text(if (canBrowse) t("세션 없음 · + 버튼으로 생성") else t("목록 대기 중"), Modifier.padding(16.dp))
             hierarchy.forEach { row ->
                 key(row.key) { HierarchyEntry(row, 0, client, remote, session, pane, expanded, canBrowse, agentNotices, showAgents,
                     { title, action -> namePrompt = title to action }, { title, action -> deletion = title to action }) }
@@ -281,8 +281,8 @@ expect fun copyPublicKey(value: String)
     Column(Modifier.fillMaxSize()) {
         if (mobileLayout) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("현재 세션: $sessionLabel", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton({ navigation = !navigation }, contentPadding = PaddingValues(0.dp)) { Text("tmux 관리", maxLines = 1) }
+                Text(tr("현재 세션: {0}", sessionLabel), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton({ navigation = !navigation }, contentPadding = PaddingValues(0.dp)) { Text(t("tmux 관리"), maxLines = 1) }
             }
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Text(statusLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -301,26 +301,26 @@ expect fun copyPublicKey(value: String)
             }
         }
         if (mobileLayout && preferences.mobilePaneToolbarVisible) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
-            deletion = "패널 ${remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: "제목 미확인"}" to { client.manage(TmuxCommand.killPane(target)) }
+            deletion = tr("패널 {0}", remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: t("제목 미확인")) to { client.manage(TmuxCommand.killPane(target)) }
         }
         if (status.canRetryNow || status.canStopRetrying) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
-                if (status.canRetryNow) TextButton({ client.retryNow() }) { Text("새로고침 재시도") }
-                if (status.canStopRetrying) TextButton({ client.stopRetrying() }) { Text("재시도 정지") }
+                if (status.canRetryNow) TextButton({ client.retryNow() }) { Text(t("새로고침 재시도")) }
+                if (status.canStopRetrying) TextButton({ client.stopRetrying() }) { Text(t("재시도 정지")) }
             }
         }
         Box(Modifier.fillMaxWidth().height(4.dp)) {
             if (status.showsConnectionProgress) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
         if (!mobileLayout) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("현재 세션: $sessionLabel", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
+            Text(tr("현재 세션: {0}", sessionLabel), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
-            TextButton({ navigation = !navigation }) { Text(if (navigation) "tmux 접기" else "tmux 관리") }
+            TextButton({ navigation = !navigation }) { Text(if (navigation) t("tmux 접기") else t("tmux 관리")) }
         }
         if (navigation && !mobileLayout) navigationContent(Modifier)
-        if (currentPane?.mode?.isNotBlank() == true) Text("tmux ${currentPane.mode} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
+        if (currentPane?.mode?.isNotBlank() == true) Text(tr("tmux {0} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", currentPane.mode), Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
         if (!mobileLayout) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
-            deletion = "패널 ${remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: "제목 미확인"}" to { client.manage(TmuxCommand.killPane(target)) }
+            deletion = tr("패널 {0}", remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: t("제목 미확인")) to { client.manage(TmuxCommand.killPane(target)) }
         }
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
             CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
@@ -337,32 +337,32 @@ expect fun copyPublicKey(value: String)
         // A weighted child needs a finite height before the sheet computes its anchors.
         // Keep the return action visible when the keyboard or landscape reduces the space.
         Column(Modifier.fillMaxWidth().heightIn(max = 600.dp)) {
-            Text("tmux 세션 · 창", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
+            Text(t("tmux 세션 · 창"), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
             navigationContent(Modifier.weight(1f, fill = false))
-            TextButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text("터미널로 돌아가기") }
+            TextButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text(t("터미널로 돌아가기")) }
         }
     }
     trust?.let { request ->
-        AlertDialog(onDismissRequest = { client.trustRequest.value = null; client.disconnect() }, title = { Text("처음 연결하는 서버") },
-            text = { Column { Text(request.endpoint); Spacer(Modifier.height(8.dp)); SelectionContainer { Text(request.fingerprint) }; Spacer(Modifier.height(8.dp)); Text("서버 관리자에게 받은 SHA-256 지문과 일치하는지 확인하세요.") } },
-            confirmButton = { TextButton({ client.trust() }) { Text("신뢰하고 연결") } }, dismissButton = { TextButton({ client.trustRequest.value = null; client.disconnect() }) { Text("취소") } })
+        AlertDialog(onDismissRequest = { client.trustRequest.value = null; client.disconnect() }, title = { Text(t("처음 연결하는 서버")) },
+            text = { Column { Text(request.endpoint); Spacer(Modifier.height(8.dp)); SelectionContainer { Text(request.fingerprint) }; Spacer(Modifier.height(8.dp)); Text(t("서버 관리자에게 받은 SHA-256 지문과 일치하는지 확인하세요.")) } },
+            confirmButton = { TextButton({ client.trust() }) { Text(t("신뢰하고 연결")) } }, dismissButton = { TextButton({ client.trustRequest.value = null; client.disconnect() }) { Text(t("취소")) } })
     }
     namePrompt?.let { (title, action) -> NameDialog(title, { action(it); namePrompt = null }, { namePrompt = null }) }
     if (tmuxDetails && status.phase == Phase.Shell) tmuxProblem?.let {
         TmuxFailureDialog(client.host, it) { tmuxDetails = false }
     }
-    deletion?.let { (target, action) -> ConfirmDialog("$target 삭제", "이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?", { action(); deletion = null }, { deletion = null }) }
-    notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { TextButton({ client.notice.value = null }) { Text("닫기") } }) }
+    deletion?.let { (target, action) -> ConfirmDialog(tr("{0} 삭제", target), t("이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?"), { action(); deletion = null }, { deletion = null }) }
+    notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { TextButton({ client.notice.value = null }) { Text(t("닫기")) } }) }
 }
 
 @Composable private fun HostConnectionMenu(client: ClientConnection, model: AppModel) {
     val status by client.status.collectAsState()
     val hostId = client.host.id
     val actions = buildList<Pair<String, () -> Unit>> {
-        if (!status.canRetryNow) add("재접속" to { model.reconnectSelected(client, hostId) })
-        add("연결 종료" to { model.disconnectSelected(client, hostId) })
+        if (!status.canRetryNow) add(t("재접속") to { model.reconnectSelected(client, hostId) })
+        add(t("연결 종료") to { model.disconnectSelected(client, hostId) })
     }
-    TreeMenu("현재 호스트 ${client.host.alias} 연결 메뉴", actions)
+    TreeMenu(tr("현재 호스트 {0} 연결 메뉴", client.host.alias), actions)
 }
 
 @Composable private fun HierarchyEntry(row: HierarchyRow, depth: Int, client: ClientConnection, remote: RemoteState,
@@ -370,20 +370,20 @@ expect fun copyPublicKey(value: String)
     showAgents: (String) -> Unit, prompt: (String, (String) -> Unit) -> Unit, delete: (String, () -> Unit) -> Unit) {
     val actions = buildList<Pair<String, () -> Unit>> {
         if (row.kind == TreeKind.Session) {
-            add("창 만들기" to { prompt("창 만들기") { client.manage(TmuxCommand.newWindow(row.session, it)) } })
-            add("세션 이름 변경" to { prompt("세션 이름 변경") { client.manage(TmuxCommand.renameSession(row.session, it)) } })
-            add("세션 삭제…" to { delete("세션 ${row.label.title}") { client.manage(TmuxCommand.killSession(row.session)) } })
+            add(t("창 만들기") to { prompt(t("창 만들기")) { client.manage(TmuxCommand.newWindow(row.session, it)) } })
+            add(t("세션 이름 변경") to { prompt(t("세션 이름 변경")) { client.manage(TmuxCommand.renameSession(row.session, it)) } })
+            add(t("세션 삭제…") to { delete(tr("세션 {0}", row.label.title)) { client.manage(TmuxCommand.killSession(row.session)) } })
         }
         if (row.kind != TreeKind.Pane) row.window?.let { w ->
-            add("창 이름 변경" to { prompt("창 이름 변경") { client.manage(TmuxCommand.renameWindow(w, it)) } })
-            add("창 삭제…" to { delete("창") { client.manage(TmuxCommand.killWindow(w)) } })
+            add(t("창 이름 변경") to { prompt(t("창 이름 변경")) { client.manage(TmuxCommand.renameWindow(w, it)) } })
+            add(t("창 삭제…") to { delete(t("창")) { client.manage(TmuxCommand.killWindow(w)) } })
         }
         remote.panes.firstOrNull { it.window == row.window && it.active }?.id?.let { p ->
-            listOf(true to "패널 좌우 나누기", false to "패널 상하 나누기").forEach { (horizontal, label) ->
+            listOf(true to t("패널 좌우 나누기"), false to t("패널 상하 나누기")).forEach { (horizontal, label) ->
                 add(label to { client.selectTarget(row.session, row.window, p); client.manage(TmuxCommand.split(p, horizontal)) })
             }
-            add("패널 제목 변경" to { prompt("패널 제목 변경") { client.manage(TmuxCommand.renamePane(p, it)) } })
-            add("패널 삭제…" to { delete("패널 ${row.label.title}") { client.manage(TmuxCommand.killPane(p)) } })
+            add(t("패널 제목 변경") to { prompt(t("패널 제목 변경")) { client.manage(TmuxCommand.renamePane(p, it)) } })
+            add(t("패널 삭제…") to { delete(tr("패널 {0}", row.label.title)) { client.manage(TmuxCommand.killPane(p)) } })
         }
     }
     TreeRow(row.label, depth, row.selected(remote, session, pane), if (row.children.isEmpty()) null else expanded[row.key] == true,
@@ -419,7 +419,7 @@ expect fun copyPublicKey(value: String)
             drawLine(guideColor, androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height), 1.dp.toPx())
         }
     }.padding(start = (depth * 20).dp).semantics { selected = active }, verticalAlignment = Alignment.CenterVertically) {
-        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = "${label.fullText} ${if (expanded) "접기" else "펼치기"}" }) { Text(if (expanded) "▾" else "▸") }
+        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("{0} {1}", label.fullText, if (expanded) t("접기") else t("펼치기")) }) { Text(if (expanded) "▾" else "▸") }
         else Spacer(Modifier.width(48.dp))
         Box(Modifier.weight(1f)) {
             TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
@@ -437,7 +437,7 @@ expect fun copyPublicKey(value: String)
                 }
             }
         }
-        TreeMenu("${label.fullText} 메뉴", actions, enabled)
+        TreeMenu(tr("{0} 메뉴", label.fullText), actions, enabled)
         status()
     }
 }
@@ -455,43 +455,43 @@ expect fun copyPublicKey(value: String)
     var favorite by remember { mutableStateOf(original?.favorite ?: false) }
     var generatedPublic by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text(if (original == null) "SSH 호스트 추가" else "호스트 편집") }, text = {
+    EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text(if (original == null) t("SSH 호스트 추가") else t("호스트 편집")) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            OutlinedTextField(alias, { alias = it }, label = { Text("별칭") }, singleLine = true)
-            OutlinedTextField(hostname, { hostname = it }, label = { Text("호스트 / IP") }, singleLine = true)
+            OutlinedTextField(alias, { alias = it }, label = { Text(t("별칭")) }, singleLine = true)
+            OutlinedTextField(hostname, { hostname = it }, label = { Text(t("호스트 / IP")) }, singleLine = true)
             Row {
-                OutlinedTextField(port, { port = it }, label = { Text("포트") }, singleLine = true, modifier = Modifier.width(90.dp))
+                OutlinedTextField(port, { port = it }, label = { Text(t("포트")) }, singleLine = true, modifier = Modifier.width(90.dp))
                 Spacer(Modifier.width(8.dp))
-                OutlinedTextField(username, { username = it }, label = { Text("사용자 이름") }, singleLine = true)
+                OutlinedTextField(username, { username = it }, label = { Text(t("사용자 이름")) }, singleLine = true)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) { AccentCheckbox(favorite, { favorite = it }); Text("즐겨찾기") }
-            Row { FilterChip(auth == AuthKind.Password, { auth = AuthKind.Password }, label = { Text("비밀번호") }); Spacer(Modifier.width(8.dp)); FilterChip(auth == AuthKind.PrivateKey, { auth = AuthKind.PrivateKey }, label = { Text("개인키") }) }
+            Row(verticalAlignment = Alignment.CenterVertically) { AccentCheckbox(favorite, { favorite = it }); Text(t("즐겨찾기")) }
+            Row { FilterChip(auth == AuthKind.Password, { auth = AuthKind.Password }, label = { Text(t("비밀번호")) }); Spacer(Modifier.width(8.dp)); FilterChip(auth == AuthKind.PrivateKey, { auth = AuthKind.PrivateKey }, label = { Text(t("개인키")) }) }
             val passwordTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation()
             val showPasswordControl: @Composable () -> Unit = {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(showPassword, role = Role.Checkbox, onValueChange = { showPassword = it }), verticalAlignment = Alignment.CenterVertically) {
                     AccentCheckbox(showPassword, onCheckedChange = null, modifier = Modifier.padding(12.dp))
-                    Text("비밀번호 표시")
+                    Text(t("비밀번호 표시"))
                 }
             }
             if (auth == AuthKind.Password) {
-                OutlinedTextField(password, { password = it }, label = { Text(if (original == null) "비밀번호" else "새 비밀번호 (비우면 기존 유지)") }, visualTransformation = passwordTransformation, singleLine = true)
+                OutlinedTextField(password, { password = it }, label = { Text(if (original == null) t("비밀번호") else t("새 비밀번호 (비우면 기존 유지)")) }, visualTransformation = passwordTransformation, singleLine = true)
                 showPasswordControl()
             }
             else {
                 ImportKeyButton({ privateKey = it; generatedPublic = null }, { error = it })
-                Text(if (privateKey.isEmpty()) "Ed25519 / RSA · 암호화 키 지원" else "개인키를 가져왔습니다.", style = MaterialTheme.typography.labelSmall)
-                OutlinedTextField(passphrase, { passphrase = it }, label = { Text("키 암호") }, visualTransformation = passwordTransformation, singleLine = true)
+                Text(if (privateKey.isEmpty()) t("Ed25519 / RSA · 암호화 키 지원") else t("개인키를 가져왔습니다."), style = MaterialTheme.typography.labelSmall)
+                OutlinedTextField(passphrase, { passphrase = it }, label = { Text(t("키 암호")) }, visualTransformation = passwordTransformation, singleLine = true)
                 showPasswordControl()
-                TextButton({ try { val generated = model.keys.ed25519(); privateKey = generated.credential.privateKey; passphrase = ""; generatedPublic = generated.publicKey } catch (_: Exception) { error = "키 생성 실패" } }) { Text("Ed25519 키 생성") }
+                TextButton({ try { val generated = model.keys.ed25519(); privateKey = generated.credential.privateKey; passphrase = ""; generatedPublic = generated.publicKey } catch (_: Exception) { error = t("키 생성 실패") } }) { Text(t("Ed25519 키 생성")) }
                 if (privateKey.isNotEmpty() || original?.auth == AuthKind.PrivateKey) {
-                    Text("공개키를 서버의 authorized_keys에 등록하세요.")
+                    Text(t("공개키를 서버의 authorized_keys에 등록하세요."))
                     TextButton({
                         try {
                             val credential = if (privateKey.isNotEmpty()) Credential(privateKey = privateKey, passphrase = passphrase)
                                 else requireNotNull(model.credentials.read(original!!.credentialRef)).let { if (passphrase.isNotEmpty()) Credential(it.password, it.privateKey, passphrase) else it }
                             copyPublicKey(generatedPublic ?: model.keys.publicKey(credential))
-                        } catch (_: Exception) { error = "공개키를 읽지 못했습니다. 개인키와 키 암호 또는 보호 저장소를 확인하세요." }
-                    }) { Text("공개키 복사") }
+                        } catch (_: Exception) { error = t("공개키를 읽지 못했습니다. 개인키와 키 암호 또는 보호 저장소를 확인하세요.") }
+                    }) { Text(t("공개키 복사")) }
                 }
             }
             Text(model.storageDescription, style = MaterialTheme.typography.labelSmall)
@@ -513,42 +513,50 @@ expect fun copyPublicKey(value: String)
                 }
                 model.update(model.local.value.copy(hosts = model.local.value.hosts.filter { it.id != id } + profile))
                 dismiss()
-            } catch (_: IllegalArgumentException) { error = "필수 입력과 포트(1–65535), 자격 증명을 확인하세요." }
-            catch (_: Exception) { error = "보호 저장소에 저장하지 못했습니다. 저장을 중단했습니다." }
-        }) { Text("저장") }
-    }, dismissButton = { TextButton(dismiss) { Text("취소") } })
+            } catch (_: IllegalArgumentException) { error = t("필수 입력과 포트(1–65535), 자격 증명을 확인하세요.") }
+            catch (_: Exception) { error = t("보호 저장소에 저장하지 못했습니다. 저장을 중단했습니다.") }
+        }) { Text(t("저장")) }
+    }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
 }
 
 @Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, dismiss: () -> Unit) {
     val local by model.local.collectAsState()
     var forget by remember { mutableStateOf<String?>(null) }
-    EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text("설정") }, text = {
+    EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text(t("설정")) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("테마", style = MaterialTheme.typography.titleSmall)
-            Row { listOf("system" to "시스템", "light" to "밝게", "dark" to "어둡게").forEach { (value, label) -> FilterChip(local.preferences.theme == value, { model.update(local.copy(preferences = local.preferences.copy(theme = value))) }, label = { Text(label) }) } }
+            Text(t("언어"), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("system" to t("시스템"), "ko" to "한국어", "en" to "English").forEach { (value, label) ->
+                    val choice = local.preferences.language.takeIf { it == "ko" || it == "en" } ?: "system"
+                    FilterChip(choice == value,
+                        { model.modify { it.copy(preferences = it.preferences.copy(language = value)) } }, label = { Text(label) })
+                }
+            }
+            Text(t("테마"), style = MaterialTheme.typography.titleSmall)
+            Row { listOf("system" to t("시스템"), "light" to t("밝게"), "dark" to t("어둡게")).forEach { (value, label) -> FilterChip(local.preferences.theme == value, { model.update(local.copy(preferences = local.preferences.copy(theme = value))) }, label = { Text(label) }) } }
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(local.preferences.showAllHierarchy, role = Role.Switch, onValueChange = { enabled ->
                 model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) }
             }), verticalAlignment = Alignment.CenterVertically) {
                 AccentSwitch(local.preferences.showAllHierarchy, null)
-                Text("단일 창도 표시", Modifier.padding(start = 8.dp))
+                Text(t("단일 창도 표시"), Modifier.padding(start = 8.dp))
             }
             AccentSettingsUi(local.preferences.accent) { accent ->
                 model.modify { it.copy(preferences = it.preferences.copy(accent = accent)) }
             }
-            Text("터미널 글자 크기: ${local.preferences.fontSize}")
+            Text(tr("터미널 글자 크기: {0}", local.preferences.fontSize))
             Row {
-                TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize - 1).coerceAtLeast(10)))) }) { Text("작게") }
-                TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize + 1).coerceAtMost(28)))) }) { Text("크게") }
+                TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize - 1).coerceAtLeast(10)))) }) { Text(t("작게")) }
+                TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize + 1).coerceAtMost(28)))) }) { Text(t("크게")) }
             }
-            Text("스크롤백: ${local.preferences.scrollback}줄 · 터미널에서 스크롤·선택·복사")
+            Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback))
             if (mobileLayout) {
                 Row(Modifier.fillMaxWidth().toggleable(local.preferences.smoothTerminalTransitions, role = Role.Switch, onValueChange = { enabled ->
                         model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) }
                     }), verticalAlignment = Alignment.CenterVertically) {
                     AccentSwitch(local.preferences.smoothTerminalTransitions, null)
                     Column(Modifier.padding(start = 8.dp)) {
-                        Text("부드러운 터미널 화면 전환")
-                        Text("화면 크기가 바뀔 때 크기·페이드·블러 효과 적용", style = MaterialTheme.typography.bodySmall)
+                        Text(t("부드러운 터미널 화면 전환"))
+                        Text(t("화면 크기가 바뀔 때 크기·페이드·블러 효과 적용"), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -558,23 +566,23 @@ expect fun copyPublicKey(value: String)
             AgentNotificationSettingsUi(model)
             CloudSyncSettings(model)
             PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
-            Text("신뢰한 서버", style = MaterialTheme.typography.titleSmall)
+            Text(t("신뢰한 서버"), style = MaterialTheme.typography.titleSmall)
             local.trust.forEach { (endpoint, fingerprint) ->
-                Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; TextButton({ forget = endpoint }) { Text("신뢰 키 삭제") } }
+                Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; TextButton({ forget = endpoint }) { Text(t("신뢰 키 삭제")) } }
             }
             Text(model.storageDescription)
         }
-    }, confirmButton = { TextButton(dismiss) { Text("닫기") } })
-    forget?.let { endpoint -> ConfirmDialog("신뢰 키 삭제", "$endpoint 키를 삭제합니다. 다음 연결에서 지문을 다시 확인해야 합니다.", { model.update(local.copy(trust = local.trust - endpoint)); forget = null }, { forget = null }) }
+    }, confirmButton = { TextButton(dismiss) { Text(t("닫기")) } })
+    forget?.let { endpoint -> ConfirmDialog(t("신뢰 키 삭제"), tr("{0} 키를 삭제합니다. 다음 연결에서 지문을 다시 확인해야 합니다.", endpoint), { model.update(local.copy(trust = local.trust - endpoint)); forget = null }, { forget = null }) }
 }
 
 @Composable private fun NameDialog(title: String, accept: (String) -> Unit, dismiss: () -> Unit) {
     var value by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { OutlinedTextField(value, { value = it.take(128) }, label = { Text("이름") }, singleLine = true) },
-        confirmButton = { TextButton({ accept(value) }, enabled = value.isNotBlank() && value.none { it == '.' || it == ':' || it.code < 32 }) { Text("확인") } }, dismissButton = { TextButton(dismiss) { Text("취소") } })
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { OutlinedTextField(value, { value = it.take(128) }, label = { Text(t("이름")) }, singleLine = true) },
+        confirmButton = { TextButton({ accept(value) }, enabled = value.isNotBlank() && value.none { it == '.' || it == ':' || it.code < 32 }) { Text(t("확인")) } }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
 }
 @Composable private fun ConfirmDialog(title: String, message: String, accept: () -> Unit, dismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(message) }, confirmButton = { TextButton(accept) { Text("삭제") } }, dismissButton = { TextButton(dismiss) { Text("취소") } })
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(message) }, confirmButton = { TextButton(accept) { Text(t("삭제")) } }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
 }
 
 @Composable private fun EditorDialog(

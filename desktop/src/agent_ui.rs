@@ -60,7 +60,7 @@ impl Desktop {
         ) {
             if !notifications::show(&notice) {
                 self.notification_status =
-                    "OS 알림을 요청하지 못했습니다. 앱 내 알림은 유지됩니다.".into();
+                    t("OS 알림을 요청하지 못했습니다. 앱 내 알림은 유지됩니다.").into();
             }
         }
         for id in notifications::take_clicks() {
@@ -81,7 +81,7 @@ impl Desktop {
         let notice = self.inbox.recent.iter().find(|n| n.id() == id).cloned();
         self.inbox.mark_read(id);
         let Some(n) = notice else {
-            self.error = Some("대상 연결이 종료되었습니다.".into());
+            self.error = Some(t("대상 연결이 종료되었습니다.").into());
             return;
         };
         let tab = self
@@ -128,7 +128,7 @@ impl Desktop {
             self.dialog = None;
             self.focus_active_terminal(cx);
         } else {
-            self.error = Some("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.".into());
+            self.error = Some(t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.").into());
         }
         cx.notify();
     }
@@ -171,21 +171,21 @@ impl Desktop {
         if snapshot.current(agent::now_ms())
             && let Some(n) = unread.iter().min_by_key(|n| n.event.kind.priority())
         {
-            label = format!(
-                "{} · 읽지 않은 사건 {}건",
+            label = tr!(
+                "{0} · 읽지 않은 사건 {1}건",
                 n.event.kind.label(),
                 unread.len()
             );
         }
-        let icon = if label.contains("질문") {
+        let icon = if label.contains("? ") {
             "?"
-        } else if label.contains("승인") {
+        } else if label.contains("◇ ") {
             "◇"
-        } else if label.contains("오류") {
+        } else if label.contains("! ") {
             "!"
-        } else if label.contains("응답") {
+        } else if label.contains("○ ") {
             "○"
-        } else if label.contains("작업 사건") {
+        } else if label.contains("↻ ") {
             "↻"
         } else {
             "—"
@@ -259,8 +259,10 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_3()
-            .child(format!("에이전트 상태 연동 · {alias}"))
-            .child("마지막 관측 사건입니다. 현재 입력·승인 대기 또는 작업 성공을 뜻하지 않습니다.")
+            .child(tr!("에이전트 상태 연동 · {0}", alias))
+            .child(t(
+                "마지막 관측 사건입니다. 현재 입력·승인 대기 또는 작업 성공을 뜻하지 않습니다.",
+            ))
             .child({
                 let mut filtered = state.agents.clone();
                 filtered.observations.retain(|o| {
@@ -288,7 +290,7 @@ impl Desktop {
                 o.agent.label(),
                 hierarchy::target_label(&state.remote, Some(&o.session), Some(&o.pane)),
                 if o.actor != "parent" {
-                    " · 서브에이전트"
+                    t(" · 서브에이전트")
                 } else {
                     ""
                 }
@@ -297,21 +299,23 @@ impl Desktop {
                 o.last
                     .as_ref()
                     .map(|e| {
-                        format!(
-                            "{} · {} · {}초 전",
+                        tr!(
+                            "{0} · {1} · {2}초 전",
                             e.kind.label(),
                             e.event,
                             agent::now_ms().saturating_sub(e.at) / 1000
                         )
                     })
-                    .unwrap_or_else(|| "미연동 · 상태 미확인".into()),
+                    .unwrap_or_else(|| t("미연동 · 상태 미확인").into()),
             );
-            body = body.child(format!(
-                "진단 정보 · 세션 ID: {} · 창 ID: {} · 패널 ID: {}",
-                o.session, o.window, o.pane
+            body = body.child(tr!(
+                "진단 정보 · 세션 ID: {0} · 창 ID: {1} · 패널 ID: {2}",
+                o.session,
+                o.window,
+                o.pane
             ));
-            body = body.child(format!(
-                "수신 확인 사건: {}",
+            body = body.child(tr!(
+                "수신 확인 사건: {0}",
                 o.supported
                     .iter()
                     .map(|k| k.label())
@@ -322,7 +326,7 @@ impl Desktop {
             let c = connection.clone();
             body = body.child(self.button(
                 format!("agent-go-{}-{}", o.run, o.actor),
-                "패널로 이동",
+                t("패널로 이동"),
                 cx,
                 move |s, w, cx| {
                     let current = c.state();
@@ -347,7 +351,7 @@ impl Desktop {
                         s.group_focus(s.workspace.active, w, cx);
                         s.dialog = None;
                     } else {
-                        s.error = Some("대상 연결 또는 패널이 종료되었습니다.".into());
+                        s.error = Some(t("대상 연결 또는 패널이 종료되었습니다.").into());
                     }
                 },
             ));
@@ -355,11 +359,11 @@ impl Desktop {
         if pane.is_some() {
             return body;
         }
-        body = body.child("선택 설치: Python 3 도우미·사용자 훅을 추가하고 기존 설정을 백업합니다. 대화·명령 본문은 저장하지 않습니다.");
+        body = body.child(t("선택 설치: Python 3 도우미·사용자 훅을 추가하고 기존 설정을 백업합니다. 대화·명령 본문은 저장하지 않습니다."));
         let c = connection.clone();
         body = body.child(self.button(
             "agent-inspect",
-            "설치 전 검사 · 변경 내용 보기",
+            t("설치 전 검사 · 변경 내용 보기"),
             cx,
             move |s, _, _| {
                 s.submit(
@@ -379,32 +383,32 @@ impl Desktop {
                 for field in ["python", "tmux", "helper", "database"] {
                     body = body.child(format!(
                         "{field}: {}",
-                        preview[field].as_str().unwrap_or("미확인")
+                        preview[field].as_str().unwrap_or(t("미확인"))
                     ));
                 }
                 if let Some(configs) = preview["configs"].as_array() {
                     for c in configs {
-                        body = body.child(format!(
-                            "{} · {}\n{}\n{} · {}\n추가 훅: {}",
+                        body = body.child(tr!(
+                            "{0} · {1}\n{2}\n{3} · {4}\n추가 훅: {5}",
                             c["agent"].as_str().unwrap_or(""),
                             c["version"].as_str().unwrap_or(""),
                             c["path"].as_str().unwrap_or(""),
                             if c["installed"].as_bool() == Some(true) {
-                                "설치됨 / 활성화 확인 필요"
+                                t("설치됨 / 활성화 확인 필요")
                             } else {
-                                "설치되지 않음"
+                                t("설치되지 않음")
                             },
                             if c["supported"].as_bool() == Some(true) {
-                                "지원 버전"
+                                t("지원 버전")
                             } else {
-                                "미검증 버전 · 설치 제외"
+                                t("미검증 버전 · 설치 제외")
                             },
                             c["events"]
                         ));
                         if c["experimental"].as_bool() == Some(true) {
-                            body = body.child("실험 지원 · 실제 CLI 수신 미검증");
+                            body = body.child(t("실험 지원 · 실제 CLI 수신 미검증"));
                         }
-                        body = body.child(format!("수집 가능 사건: {}", c["capabilities"]));
+                        body = body.child(tr!("수집 가능 사건: {0}", c["capabilities"]));
                         if let Some(limitations) =
                             c["limitations"].as_str().filter(|s| !s.is_empty())
                         {
@@ -415,8 +419,9 @@ impl Desktop {
                         }
                     }
                 }
-                body = body.child("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 실제 훅 수신으로 확인됩니다. 기존 실행은 종료하지 않습니다.");
-                for (op, label) in [("install", "연동 설치"), ("remove", "dgl 훅만 해제")] {
+                body = body.child(t("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 실제 훅 수신으로 확인됩니다. 기존 실행은 종료하지 않습니다."));
+                for (op, label) in [("install", t("연동 설치")), ("remove", t("dgl 훅만 해제"))]
+                {
                     let c = connection.clone();
                     let token = token.to_owned();
                     body = body.child(self.button(
@@ -444,30 +449,19 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_2()
-            .child("최근 알림 · 이번 실행 중 최대 100건")
-            .child("읽음은 질문 응답·승인 처리를 뜻하지 않습니다.");
+            .child(t("최근 알림 · 이번 실행 중 최대 100건"))
+            .child(t("읽음은 질문 응답·승인 처리를 뜻하지 않습니다."));
         for n in &self.inbox.recent {
             let id = n.id();
             body = body
-                .child(format!(
-                    "{}{} · {} · 진단 정보: 세션 ID {} / 창 ID {} / 패널 ID {}{} · {} · {}초 전",
-                    if n.read { "" } else { "● " },
-                    n.event.agent.label(),
-                    n.endpoint,
-                    n.event.session,
-                    n.event.window,
-                    n.event.pane,
-                    if n.event.actor != "parent" {
-                        " · 서브에이전트"
+                .child(tr!("{0}{1} · {2} · 진단 정보: 세션 ID {3} / 창 ID {4} / 패널 ID {5}{6} · {7} · {8}초 전", if n.read { "" } else { "● " }, n.event.agent.label(), n.endpoint, n.event.session, n.event.window, n.event.pane, if n.event.actor != "parent" {
+                        t(" · 서브에이전트")
                     } else {
                         ""
-                    },
-                    n.event.kind.label(),
-                    agent::now_ms().saturating_sub(n.event.at) / 1000
-                ))
+                    }, n.event.kind.label(), agent::now_ms().saturating_sub(n.event.at) / 1000))
                 .child(self.button(
                     format!("notice-{id}"),
-                    "패널로 이동 · 읽음",
+                    t("패널로 이동 · 읽음"),
                     cx,
                     move |s, _, cx| s.open_agent_notice(&id, cx),
                 ));
@@ -476,23 +470,23 @@ impl Desktop {
     }
     pub fn agent_settings(&self, cx: &mut Context<Self>) -> Div {
         let settings = &self.local.preferences.agent_notifications;
-        let mut body = div().flex().flex_col().child("에이전트 알림");
+        let mut body = div().flex().flex_col().child(t("에이전트 알림"));
         for (i, label, enabled) in [
-            (0, "질문·승인 요청", settings.questions),
-            (1, "응답 종료 신호", settings.responses),
-            (2, "명시적 오류", settings.errors),
-            (3, "OS 알림", settings.os),
+            (0, t("질문·승인 요청"), settings.questions),
+            (1, t("응답 종료 신호"), settings.responses),
+            (2, t("명시적 오류"), settings.errors),
+            (3, t("OS 알림"), settings.os),
         ] {
             body = body.child(self.button(format!("notification-setting-{i}"), format!("{} {label}", if enabled { "☑" } else { "☐" }), cx, move |s, _, _| {
                 let settings = &mut s.local.preferences.agent_notifications;
                 match i { 0 => settings.questions = !settings.questions, 1 => settings.responses = !settings.responses, 2 => settings.errors = !settings.errors, _ => {
                     settings.os = !settings.os;
-                    if settings.os && !notifications::authorize() { s.notification_status = "OS 알림 등록 실패: 패키지 실행과 시스템 알림 설정을 확인하세요.".into(); }
+                    if settings.os && !notifications::authorize() { s.notification_status = t("OS 알림 등록 실패: 패키지 실행과 시스템 알림 설정을 확인하세요.").into(); }
                 } }
                 s.save();
             }));
         }
-        body.child("OS 권한·집중 모드와 관계없이 앱 내 알림은 유지됩니다.")
+        body.child(t("OS 권한·집중 모드와 관계없이 앱 내 알림은 유지됩니다."))
             .child(self.notification_status.clone())
     }
 }

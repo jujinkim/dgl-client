@@ -26,7 +26,7 @@ class TmuxCommand private constructor(val wire: String, val shellWire: String = 
             return "'" + value.replace("'", "'\\''") + "'"
         }
         private fun name(value: String): String {
-            require(value.isNotBlank() && value.length <= 128 && value.none { it == ':' || it == '.' }) { "이름은 1–128자이며 콜론·마침표를 포함할 수 없습니다." }
+            require(value.isNotBlank() && value.length <= 128 && value.none { it == ':' || it == '.' }) { t("이름은 1–128자이며 콜론·마침표를 포함할 수 없습니다.") }
             return quote(value.replace("#", "##")) // Names undergo tmux format expansion once.
         }
         fun newSession(name: String): TmuxCommand {

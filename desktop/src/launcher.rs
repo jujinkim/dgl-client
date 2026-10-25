@@ -178,7 +178,10 @@ impl Desktop {
         .items_center()
         .justify_center()
         .text_size(px(20.))
-        .tooltip(|_, cx| cx.new(|_| workspace_ui::Tip("CLI 실행 메뉴".into())).into())
+        .tooltip(|_, cx| {
+            cx.new(|_| workspace_ui::Tip(t("CLI 실행 메뉴").into()))
+                .into()
+        })
     }
     pub fn render_launcher(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         self.launcher.opened.as_ref()?;
@@ -271,10 +274,12 @@ impl Desktop {
                     })
                     .tooltip(move |_, cx| {
                         cx.new(|_| {
-                            workspace_ui::Tip(format!(
-                                "{service} {suffix} 실행{}",
+                            workspace_ui::Tip(tr!(
+                                "{0} {1} 실행{2}",
+                                service,
+                                suffix,
                                 if experimental {
-                                    " · 실험 지원"
+                                    t(" · 실험 지원")
                                 } else {
                                     ""
                                 }

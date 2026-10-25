@@ -1,5 +1,7 @@
 package kim.jujin.rovessh.ui
 
+import kim.jujin.rovessh.core.t
+import kim.jujin.rovessh.core.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.*
 import androidx.compose.foundation.border
@@ -63,7 +65,7 @@ internal class TerminalFocus {
     var request: () -> Unit = {}
     var keyboard: () -> Unit = {}
     var imeVisible by mutableStateOf(false)
-    var preparePaste: suspend (String, Boolean) -> ByteArray = { _, _ -> error("터미널이 아직 준비되지 않았습니다.") }
+    var preparePaste: suspend (String, Boolean) -> ByteArray = { _, _ -> error(t("터미널이 아직 준비되지 않았습니다.")) }
     var inputAllowed: () -> Boolean = { true }
 }
 internal val LocalTerminalFocus = staticCompositionLocalOf { TerminalFocus() }
@@ -92,19 +94,19 @@ private object AboveLauncher : PopupPositionProvider {
     } }
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (mobile) 0.dp else LocalMinimumInteractiveComponentSize.current,
         LocalViewConfiguration provides if (mobile) compactConfiguration else viewConfiguration) {
-        Row(Modifier.fillMaxWidth().semantics { contentDescription = "터미널 입력 도구" }
+        Row(Modifier.fillMaxWidth().semantics { contentDescription = t("터미널 입력 도구") }
             .padding(horizontal = 4.dp, vertical = if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (mobile) {
                 TerminalToolButton({ terminalFocus.keyboard() }, enabled = available,
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics {
-                        contentDescription = if (imeVisible) "키보드 닫기" else "키보드 열기"
-                        stateDescription = if (imeVisible) "표시됨" else "숨김"
+                        contentDescription = if (imeVisible) t("키보드 닫기") else t("키보드 열기")
+                        stateDescription = if (imeVisible) t("표시됨") else t("숨김")
                     }) { KeyboardIcon() }
                 TerminalToolButton(openComposer, enabled = available, containerColor = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.height(buttonHeight).widthIn(min = 40.dp).semantics { contentDescription = "텍스트 작성 열기" },
-                    contentPadding = PaddingValues(horizontal = 8.dp)) { Text("텍스트 작성", fontSize = 11.sp, maxLines = 1) }
+                    modifier = Modifier.height(buttonHeight).widthIn(min = 40.dp).semantics { contentDescription = t("텍스트 작성 열기") },
+                    contentPadding = PaddingValues(horizontal = 8.dp)) { Text(t("텍스트 작성"), fontSize = 11.sp, maxLines = 1) }
             }
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -124,7 +126,7 @@ private object AboveLauncher : PopupPositionProvider {
             Box {
                 TerminalToolButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
                     contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = "CLI 실행 메뉴" }) { Text("…", fontSize = if (mobile) 18.sp else 22.sp) }
+                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("CLI 실행 메뉴") }) { Text("…", fontSize = if (mobile) 18.sp else 22.sp) }
                 val opened = request
                 if (opened != null) Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
                     properties = PopupProperties(focusable = true)) {
@@ -180,10 +182,10 @@ private object AboveLauncher : PopupPositionProvider {
 }
 
 @Composable private fun LauncherRow(service: String, icon: ImageVector, enabled: Boolean, normal: () -> Unit, bypass: () -> Unit, experimental: Boolean = false) {
-    val support = if (experimental) " · 실험 지원" else ""
+    val support = if (experimental) t(" · 실험 지원") else ""
     Row(Modifier.fillMaxWidth().height(48.dp)) {
-        LauncherItem(service, "$service 실행$support", icon, enabled, Modifier.weight(0.6f), normal, experimental)
-        LauncherItem("Bypass", "$service Bypass 실행$support", LauncherIcons.bolt, enabled, Modifier.weight(0.4f), bypass)
+        LauncherItem(service, tr("{0} 실행{1}", service, support), icon, enabled, Modifier.weight(0.6f), normal, experimental)
+        LauncherItem("Bypass", tr("{0} Bypass 실행{1}", service, support), LauncherIcons.bolt, enabled, Modifier.weight(0.4f), bypass)
     }
 }
 

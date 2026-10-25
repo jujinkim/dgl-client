@@ -179,7 +179,7 @@ pub fn show(notice: &Notice) -> bool {
             notice.event.agent.label(),
             notice.event.pane,
             if notice.event.actor != "parent" {
-                " · 서브에이전트"
+                dgl_core::i18n::t(" · 서브에이전트")
             } else {
                 ""
             }

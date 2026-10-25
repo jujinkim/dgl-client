@@ -1,4 +1,13 @@
 #import <AppKit/AppKit.h>
+
+void dgl_system_language(char *buffer, size_t length) {
+    @autoreleasepool {
+        NSString *tag = [NSLocale preferredLanguages].firstObject ?: @"en";
+        if (![tag getCString:buffer maxLength:length encoding:NSUTF8StringEncoding] && length > 0) {
+            buffer[0] = '\0';
+        }
+    }
+}
 #include <stdint.h>
 #include <math.h>
 

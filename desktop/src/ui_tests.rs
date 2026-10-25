@@ -1379,6 +1379,19 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
     });
     redraw(cx);
     let reset = cx.debug_bounds("reset-shortcuts").unwrap();
+    let body = cx.debug_bounds("dialog-body").unwrap();
+    if reset.bottom() > body.bottom() {
+        view.update(cx, |s, cx| {
+            let offset = s.modal.scroll.offset();
+            s.modal.scroll.set_offset(point(
+                offset.x,
+                offset.y - (reset.bottom() - body.bottom()) - px(8.),
+            ));
+            cx.notify();
+        });
+        redraw(cx);
+    }
+    let reset = cx.debug_bounds("reset-shortcuts").unwrap();
     cx.simulate_click(reset.center(), Modifiers::default());
     redraw(cx);
     view.read_with(cx, |s, _| {

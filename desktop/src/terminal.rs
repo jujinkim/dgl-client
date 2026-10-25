@@ -8,6 +8,7 @@ use alacritty_terminal::{
     vte::ansi::{Color, CursorShape, Processor},
 };
 use dgl_core::connection::{Action, Connection};
+use dgl_core::tr;
 use gpui::{prelude::*, *};
 use std::{collections::HashSet, ops::Range, sync::Arc};
 mod input;
@@ -159,7 +160,7 @@ impl Terminal {
                 Ok(id) => {
                     self.input_requests.insert(id);
                 }
-                Err(e) => self.notice = Some(format!("입력을 보내지 못했습니다: {e}")),
+                Err(e) => self.notice = Some(tr!("입력을 보내지 못했습니다: {0}", e)),
             }
         }
     }

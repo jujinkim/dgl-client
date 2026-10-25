@@ -3,6 +3,7 @@ pub mod agent;
 pub mod command;
 pub mod connection;
 pub mod flow;
+pub mod i18n;
 pub mod input;
 pub mod model;
 pub mod protocol;

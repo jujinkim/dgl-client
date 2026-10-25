@@ -10,12 +10,12 @@ private fun named(value: String, fallback: String) = displayTreeText(value).ifEm
 fun RemoteState.sessionLabel(session: RemoteSession): TreeLabel {
     val children = windows.filter { it.session == session.id }
     val count = panes.count { p -> children.any { it.id == p.window } }
-    return TreeLabel(named(session.name, "이름 없는 세션"), "창 ${children.size}개 · 패널 ${count}개")
+    return TreeLabel(named(session.name, t("이름 없는 세션")), tr("창 {0}개 · 패널 {1}개", children.size, count))
 }
-fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(named(window.name, "이름 없는 창"),
-    "창 ${window.index} · 패널 ${panes.count { it.window == window.id }}개")
+fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(named(window.name, t("이름 없는 창")),
+    tr("창 {0} · 패널 {1}개", window.index, panes.count { it.window == window.id }))
 fun RemotePane.treeLabel(): TreeLabel {
-    val command = named(command, "프로세스 미확인")
+    val command = named(command, t("프로세스 미확인"))
     val mode = displayTreeText(mode).let { if (it.isEmpty()) "" else " · $it" }
     return TreeLabel(named(title, command), "$command · ${width}×${height}$mode")
 }
@@ -42,14 +42,14 @@ fun RemoteState.hierarchyRows(showAll: Boolean): List<HierarchyRow> = sessions.m
 }
 
 fun Phase.displayLabel(): String = when (this) {
-    Phase.Disconnected -> "연결 안 됨"; Phase.Connecting -> "연결 중"; Phase.TrustRequired -> "호스트키 확인"; Phase.Authenticating -> "인증 중"
-    Phase.Selecting -> "세션 선택"; Phase.Restoring -> "터미널 복원 중"; Phase.Ready -> "연결됨"; Phase.Reconnecting -> "재접속 중"
-    Phase.MissingSession -> "이전 세션 없음"; Phase.Failed -> "연결 실패"; Phase.Shell -> "연결됨 · 일반 SSH"
+    Phase.Disconnected -> t("연결 안 됨"); Phase.Connecting -> t("연결 중"); Phase.TrustRequired -> t("호스트키 확인"); Phase.Authenticating -> t("인증 중")
+    Phase.Selecting -> t("세션 선택"); Phase.Restoring -> t("터미널 복원 중"); Phase.Ready -> t("연결됨"); Phase.Reconnecting -> t("재접속 중")
+    Phase.MissingSession -> t("이전 세션 없음"); Phase.Failed -> t("연결 실패"); Phase.Shell -> t("연결됨 · 일반 SSH")
 }
 fun RemoteState.targetLabel(session: String?, pane: String?): String = buildList {
-    sessions.firstOrNull { it.id == session }?.let { add(named(it.name, "이름 없는 세션")) }
+    sessions.firstOrNull { it.id == session }?.let { add(named(it.name, t("이름 없는 세션"))) }
     panes.firstOrNull { it.id == pane }?.let { p ->
-        windows.firstOrNull { it.id == p.window && it.session == session }?.let { add(named(it.name, "이름 없는 창")) }
+        windows.firstOrNull { it.id == p.window && it.session == session }?.let { add(named(it.name, t("이름 없는 창"))) }
         add(p.treeLabel().title)
     }
 }.joinToString(" · ")

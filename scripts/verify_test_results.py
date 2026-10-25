@@ -5,6 +5,9 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'core.I18nTest': ['systemLanguageOverridesAndUnsupportedFallback',
+                      'translationsReorderArgumentsWithoutInterpretingUserData',
+                      'switchingLanguageRefreshesLabelsAndKeepsInputLiteral'],
     'AgentNavigationTest': ['detailsSelectTheConnectionAndRejectARecreatedPane'],
     'HierarchyTest': ['panelStateSeparatesRunsOtherPanesAndOtherConnections', 'sharedHierarchyProjection'],
     'TextComposerTest': ['changedTargetsBeforeAndDuringPreparationDoNotSend', 'emptyAndOversizedPastesNeverEnterQueue',
@@ -24,7 +27,8 @@ TESTS = {
                           'shellFallbackExplainsFailureAndReconnectClearsDetails'],
     'core.TerminalInputTest': ['binaryMouseReportsPreserveEveryByteAndRejectInvalidInput', 'everySupportedKeyAndToolbarOrder', 'mixedStepsUnicodeNewlinesAndNoImplicitEnter',
                                'emptyInvalidAndUtf8SizeLimits', 'oldPreferencesAndIndependentBindingsRoundTrip'],
-    'PreferencesTest': ['repositoryRestoresMacrosAndLegacySettings', 'accentValidationFallbackContrastAndStoredChoice'],
+    'PreferencesTest': ['repositoryRestoresMacrosAndLegacySettings', 'accentValidationFallbackContrastAndStoredChoice',
+                        'languageChoiceSurvivesRestartAndLegacySettingsUseSystem'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification
         unicodeMaySpanOutputEvents extendedOutputAndEmptyOutput malformedAndOversizedMessagesFailClosed
         inputIsHexAndNamesAreQuoted captureEscapingDiffersFromLiveOutput retryAndInputGates
