@@ -32,7 +32,7 @@ public final class SyncTestProvider extends ContentProvider {
         try {
             switch (method) {
                 case "grant":
-                    getContext().grantUriPermission("kim.jujin.rovessh", uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    getContext().grantUriPermission("kim.jujin.dglc", uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                         | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                     break;
                 case "write": Files.write(file(uri).toPath(), extras.getString("data").getBytes(StandardCharsets.UTF_8)); break;

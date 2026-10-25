@@ -728,3 +728,21 @@ GUI·저장 후 재실행은 이번에 실행하지 않았다. 배포용 APK/.ap
 자동화에서 보호 저장소 대역을 사용한 결과를 실제 Keychain/DPAPI 통과로 계산하지 않는다.
 최종 로그는 Git 제외된 `artifacts/host-auth/`의 `rust-final.log`, `clippy-final.log`,
 `macos-build.log`, `windows-typecheck.log`, `secrets-final.log`에 있다.
+
+## 2026-10-25 앱 식별자 변경
+
+Android applicationId, macOS 번들 ID, Windows 알림 AUMID를 `kim.jujin.dglc`로 통일했다.
+Android는 이전 `kim.jujin.rovessh` 앱과 별도로 설치된다. 내부 Kotlin 패키지와 자격 증명
+저장소 이름은 유지했으며 설치·수집·성능 측정 스크립트와 대시보드의 앱 식별자를 갱신했다.
+
+- Android Debug·미서명 Release·계측 테스트 APK 빌드와 `lintDebug` 통과.
+  APK의 앱 ID, 테스트 APK의 `kim.jujin.dglc.test`·targetPackage·동기화 provider authority를 확인했다.
+- `collect_rust_android.py`로 네 ABI·Rust 구현·Debug 서명을 확인하고
+  `artifacts/rust-candidate/android/dgl-rust-debug.apk`와 해시 보고서를 갱신했다.
+- `package_rust_mac.py` 빌드·로컬 ad-hoc 서명 검증 통과.
+  생성한 `.app/Contents/Info.plist`의 번들 ID가 `kim.jujin.dglc`임을 확인했다.
+- APK·Windows 패키징·프레임 측정·리소스·증거 처리 관련 Python 테스트 65개 통과.
+- 대시보드 스키마 검증·Git 제외 확인, 원본 kickoff 체크섬, `git diff --check` 통과.
+
+이번 확인은 CLI 빌드·산출물 검사 범위이며 Android 기기 실행·macOS GUI·알림,
+Windows 네이티브 빌드·DPAPI·GUI는 실행하지 않았다. Windows 빌드·ZIP·수동 CI 경로는 유지한다.

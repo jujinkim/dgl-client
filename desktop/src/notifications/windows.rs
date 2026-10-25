@@ -17,7 +17,7 @@ use ::windows::{
 };
 use std::collections::VecDeque;
 thread_local! { static TOASTS: std::cell::RefCell<VecDeque<ToastNotification>> = const { std::cell::RefCell::new(VecDeque::new()) }; }
-const ID: &str = "kim.jujin.dgl.rust-candidate";
+const ID: &str = "kim.jujin.dglc";
 const ACTIVATOR: GUID = GUID::from_u128(0x5fd514f1_b83f_4f6d_a85b_156ad0e79e33);
 const ACTIVATOR_TEXT: &str = "{5FD514F1-B83F-4F6D-A85B-156AD0E79E33}";
 use ::windows::{

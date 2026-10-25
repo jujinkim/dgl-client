@@ -73,7 +73,7 @@ Rust `Inbox` 하나가 앱의 모든 연결을 집계한다. 같은 사용자/�
 이미 화면에서 읽은 사건은 이후 탭을 바꾸어도 OS에 뒤늦게 알리지 않는다.
 앱이 전면이고 대상 패널이 보이면 OS 요청을 생략한다. 데스크톱 분할 그룹의 보이는 패널도 포함한다.
 
-- macOS: UserNotifications, 번들 ID `kim.jujin.dgl.rust-candidate`. 패키지 `.app`에서 사용한다.
+- macOS: UserNotifications, 번들 ID `kim.jujin.dglc`. 패키지 `.app`에서 사용한다.
 - Windows: 자체 AUMID·사용자 Start Menu 바로가기·COM 알림 활성화. ZIP 배포를 유지한다. [등록·실기 절차](WINDOWS.md#6-에이전트-알림).
 - Android: `agent-observations-v1` 알림 채널과 `POST_NOTIFICATIONS`. 알림 클릭 Intent에는 사건 ID만 전달한다. 포그라운드 서비스·푸시는 추가하지 않는다.
 

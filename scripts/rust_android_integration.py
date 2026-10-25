@@ -28,28 +28,28 @@ def main():
     try:
         for name in ["rust-light", "rust-dark", "rust-editor", "rust-tree", "resize-cache", "ui-failure", "volume-ui-failure"]:
             (out / f"{name}.png").unlink(missing_ok=True)
-            run(["shell", "run-as", "kim.jujin.rovessh", "rm", "-f", f"cache/{name}.png"])
+            run(["shell", "run-as", "kim.jujin.dglc", "rm", "-f", f"cache/{name}.png"])
         run(["shell", "settings", "put", "system", "font_scale", "1.3"])
         run(["shell", "settings", "put", "secure", "show_ime_with_hard_keyboard", "1"])
-        run(["shell", "run-as", "kim.jujin.rovessh", "sh", "-c", '"mkdir -p cache && cat > cache/integration.json"'], input=json.dumps(fixture).encode())
+        run(["shell", "run-as", "kim.jujin.dglc", "sh", "-c", '"mkdir -p cache && cat > cache/integration.json"'], input=json.dumps(fixture).encode())
         classes = "kim.jujin.rovessh.AndroidPlatformTest,kim.jujin.rovessh.AndroidAppFlowTest,kim.jujin.rovessh.AndroidVolumeKeyTest"
         result = run(["shell", "am", "instrument", "-w", "-r", "-e", "dgl.fixture", "true", "-e", "class", classes,
-                      "kim.jujin.rovessh.test/androidx.test.runner.AndroidJUnitRunner"], timeout=240)
+                      "kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner"], timeout=240)
         output = result.stdout.decode()
         (out / "api36-instrumentation.txt").write_text(output)
         print(output)
         for name in ["rust-light", "rust-dark", "rust-editor", "rust-tree", "resize-cache", "ui-failure", "volume-ui-failure"]:
-            image = subprocess.run(base + ["exec-out", "run-as", "kim.jujin.rovessh", "cat", f"cache/{name}.png"], capture_output=True)
+            image = subprocess.run(base + ["exec-out", "run-as", "kim.jujin.dglc", "cat", f"cache/{name}.png"], capture_output=True)
             if image.returncode == 0 and image.stdout.startswith(b"\x89PNG"):
                 (out / f"{name}.png").write_bytes(image.stdout)
         if "FAILURES" in output or "INSTRUMENTATION_FAILED" in output or "OK (8 tests)" not in output:
             raise SystemExit(1)
     finally:
-        run(["shell", "run-as", "kim.jujin.rovessh", "rm", "-f", "cache/integration.json"])
+        run(["shell", "run-as", "kim.jujin.dglc", "rm", "-f", "cache/integration.json"])
         run(["reverse", "--remove", f"tcp:{port}"])
         run(["shell", "settings", "delete", "secure", "show_ime_with_hard_keyboard"] if old == "null" else ["shell", "settings", "put", "secure", "show_ime_with_hard_keyboard", old])
         run(["shell", "settings", "delete", "system", "font_scale"] if old_font == "null" else ["shell", "settings", "put", "system", "font_scale", old_font])
-        run(["shell", "am", "force-stop", "kim.jujin.rovessh"])
+        run(["shell", "am", "force-stop", "kim.jujin.dglc"])
 
 if __name__ == "__main__":
     main()

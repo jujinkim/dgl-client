@@ -38,19 +38,19 @@ fixture = {
     'passphrase': os.environ['DGL_TEST_PASSPHRASE'],
 }
 try:
-    command(['shell', 'run-as', 'kim.jujin.rovessh', 'sh', '-c', '"mkdir -p cache && cat > cache/integration.json"'], input=json.dumps(fixture).encode())
+    command(['shell', 'run-as', 'kim.jujin.dglc', 'sh', '-c', '"mkdir -p cache && cat > cache/integration.json"'], input=json.dumps(fixture).encode())
     result = command(['shell', 'am', 'instrument', '-w', '-r', '-e', 'dgl.fixture', 'true',
-                      'kim.jujin.rovessh.test/androidx.test.runner.AndroidJUnitRunner'], text=True, encoding="utf-8", timeout=240)
+                      'kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner'], text=True, encoding="utf-8", timeout=240)
     print(result.stdout)
     if 'FAILURES' in result.stdout or 'INSTRUMENTATION_FAILED' in result.stdout or 'OK (' not in result.stdout:
-        diagnostic = subprocess.run(base + ['exec-out', 'run-as', 'kim.jujin.rovessh', 'cat', 'cache/ui-failure.png'], capture_output=True)
+        diagnostic = subprocess.run(base + ['exec-out', 'run-as', 'kim.jujin.dglc', 'cat', 'cache/ui-failure.png'], capture_output=True)
         if diagnostic.returncode == 0 and diagnostic.stdout.startswith(b'\x89PNG'):
             Path('.tools/p403-ui-failure.png').write_bytes(diagnostic.stdout)
         raise SystemExit(1)
     report.update(verify(result.stdout))
 finally:
-    command(['shell', 'run-as', 'kim.jujin.rovessh', 'rm', '-f', 'cache/integration.json'])
-    command(['shell', 'run-as', 'kim.jujin.rovessh', 'rm', '-f', 'cache/ui-failure.png'])
+    command(['shell', 'run-as', 'kim.jujin.dglc', 'rm', '-f', 'cache/integration.json'])
+    command(['shell', 'run-as', 'kim.jujin.dglc', 'rm', '-f', 'cache/ui-failure.png'])
     command(['reverse', '--remove', f'tcp:{port}'])
     if keyboard_setting == 'null':
         command(['shell', 'settings', 'delete', 'secure', 'show_ime_with_hard_keyboard'])

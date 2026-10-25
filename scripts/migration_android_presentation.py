@@ -22,7 +22,7 @@ from evidence import ROOT, context, sha256, write_report
 from migration_performance import CONTRACT, p95
 from verify_resources import emulator, run, stop
 
-PACKAGE = 'kim.jujin.rovessh'
+PACKAGE = 'kim.jujin.dglc'
 SOURCES = [
     'scripts/migration_android_presentation.py',
     'scripts/migration_first_presentation.py',
@@ -36,7 +36,7 @@ TRACE_CONFIG = '''buffers { size_kb: 32768 fill_policy: DISCARD }
 duration_ms: 90000
 data_sources { config { name: "linux.ftrace" ftrace_config {
   atrace_categories: "gfx" atrace_categories: "view"
-  atrace_apps: "kim.jujin.rovessh"
+  atrace_apps: "kim.jujin.dglc"
 } } }
 data_sources { config { name: "android.surfaceflinger.frametimeline" } }
 data_sources { config { name: "linux.process_stats" process_stats_config { scan_all_processes_on_start: true } } }
@@ -78,11 +78,11 @@ def extract(processor, trace, mode="upper-bound"):
     frames = query(processor, trace, '''SELECT f.id, f.ts, f.dur, coalesce(f.surface_frame_token,0) AS surface_frame_token,
         f.display_frame_token, f.layer_name, f.present_type, p.name AS process_name
         FROM actual_frame_timeline_slice f JOIN process p USING(upid)
-        WHERE p.name IN ('kim.jujin.rovessh', '/system/bin/surfaceflinger') ORDER BY f.ts, f.id''')
+        WHERE p.name IN ('kim.jujin.dglc', '/system/bin/surfaceflinger') ORDER BY f.ts, f.id''')
     markers = query(processor, trace, '''SELECT s.id, s.name, s.ts, s.dur, t.is_main_thread,
         (SELECT a.name FROM ancestor_slice(s.id) a WHERE a.name GLOB 'Choreographer#doFrame*' LIMIT 1) AS do_frame
         FROM slice s JOIN thread_track tt ON s.track_id=tt.id JOIN thread t USING(utid)
-        JOIN process p USING(upid) WHERE p.name='kim.jujin.rovessh' AND s.name GLOB 'DGL_R1_*'
+        JOIN process p USING(upid) WHERE p.name='kim.jujin.dglc' AND s.name GLOB 'DGL_R1_*'
         ORDER BY s.ts, s.id''')
     losses = query(processor, trace, "SELECT name,value FROM stats WHERE value>0 AND (severity='data_loss' OR name GLOB '*buffer*overrun*')")
     raw = dict(frames=frames, markers=markers, dataLoss=losses)

@@ -24,7 +24,7 @@ def main():
     (app / "Resources").mkdir(exist_ok=True)
     binary = app / "MacOS/dgl-desktop"
     shutil.copy2(ROOT / "target" / ("release" if args.release else "debug") / "dgl-desktop", binary)
-    (app / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "kim.jujin.dgl.rust-candidate", "CFBundleName": "dgl Rust Candidate",
+    (app / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "kim.jujin.dglc", "CFBundleName": "dgl Rust Candidate",
         "CFBundleExecutable": "dgl-desktop", "CFBundlePackageType": "APPL", "CFBundleVersion": "1", "CFBundleShortVersionString": "0.1.0",
         "NSHighResolutionCapable": True}))
     for name in ["NOTICE", "LICENSE-APACHE-GPUI"]:

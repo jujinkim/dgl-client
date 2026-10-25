@@ -158,9 +158,9 @@ ZIP 배포와 기존 빌드 진입점은 유지한다. 추가 빌드 도구는 �
 설정에서 **OS 알림**을 켜면 현재 사용자에게 아래 항목을 등록한다. 관리자 권한은 필요하지 않다.
 이후 OS 알림이 켜진 앱 시작에도 등록 경로를 갱신하므로 ZIP 폴더를 옮긴 뒤에는 앱을 직접 실행한다.
 
-- AUMID: `kim.jujin.dgl.rust-candidate`
+- AUMID: `kim.jujin.dglc`
 - 바로가기: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\dgl Rust Candidate.lnk`
-- `HKCU\Software\Classes\AppUserModelId\kim.jujin.dgl.rust-candidate`
+- `HKCU\Software\Classes\AppUserModelId\kim.jujin.dglc`
 - COM 활성화 CLSID: `{5FD514F1-B83F-4F6D-A85B-156AD0E79E33}`
 - `HKCU\Software\Classes\CLSID\{5FD514F1-B83F-4F6D-A85B-156AD0E79E33}\LocalServer32`
   값은 현재 실행 파일과 `--agent-toast` 인자이다.

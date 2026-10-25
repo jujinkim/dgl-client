@@ -116,8 +116,9 @@ macOS Keychain, Linux Secret Service의 실패를 Storage로 전달하며 평문
 
 후보는 별도 테스트 경로만 사용한다. R6 전환은 기존 영역을 복사하고 검증한 뒤 새 영역을
 선택한다. 원본 `.sealed`/Keystore 키를 추출하거나 평문 임시 파일로 내보내지 않는다.
-Android ID `kim.jujin.rovessh`, Keystore alias
-`kim.jujin.rovessh.credentials.v1`을 유지한다. 복귀는 전환 전 복사본 기준이며 전환 이후
+Android ID는 `kim.jujin.dglc`로 변경했으며 이전 `kim.jujin.rovessh` 앱과 별도로 설치된다.
+Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지하되 이전 앱의 키·데이터에 접근하지 않는다.
+복귀는 전환 전 복사본 기준이며 전환 이후
 변경분은 자동 역병합하지 않고 별도 보존한다. 실패 시 원본은 바뀌지 않아야 한다.
 
 ## 2026-10-24 후보 구현 매핑

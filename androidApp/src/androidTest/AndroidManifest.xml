@@ -2,7 +2,7 @@
     <application>
         <!-- Test APK only: isolated document provider, never bundled with dgl. -->
         <provider android:name="kim.jujin.rovessh.SyncTestProvider"
-            android:authorities="kim.jujin.rovessh.test.sync"
+            android:authorities="kim.jujin.dglc.test.sync"
             android:exported="true" android:grantUriPermissions="true" />
     </application>
 </manifest>

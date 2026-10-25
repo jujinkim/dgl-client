@@ -21,7 +21,7 @@ import java.util.UUID
 class FileSyncTest {
     @Test fun persistedDocumentTransportMergesProtectsSecretsAndRetriesFailedWrites() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val uri = Uri.parse("content://kim.jujin.rovessh.test.sync/${UUID.randomUUID()}")
+        val uri = Uri.parse("content://${context.packageName}.test.sync/${UUID.randomUUID()}")
         val resolver = context.contentResolver
         fun call(method: String, data: String? = null, enabled: Boolean = false) = resolver.call(uri, method, uri.toString(), Bundle().apply { putString("data", data); putBoolean("enabled", enabled) })
         call("write", """{"format":"dgl-sync","version":1,"dataset":"test-dataset","changes":{}}""")

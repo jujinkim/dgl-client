@@ -23,7 +23,7 @@ import time
 from evidence import ROOT, context, write_report
 from resource_results import evaluate, parse_meminfo, parse_macos_threads, renderer_pids, PROFILES
 
-PACKAGE = 'kim.jujin.rovessh'
+PACKAGE = 'kim.jujin.dglc'
 ENVIRONMENTS = ['desktop-3.3a', 'desktop-3.7c', 'android-34', 'android-35', 'android-36']
 
 

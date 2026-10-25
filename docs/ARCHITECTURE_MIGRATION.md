@@ -180,8 +180,9 @@ Windows 배율, macOS Retina, Linux 배율별로 잘림·흐림·클릭 영역�
 
 `settings.json`의 기존 기본값·필드·ID·자격 증명 참조를 fixture로 고정한다.
 Windows의 `.sealed`와 Android의 Keystore 암호문은 기존 OS 사용자/앱 경계 안에서 읽는다.
-Android 앱 ID `kim.jujin.rovessh`와 Keystore 별칭 `kim.jujin.rovessh.credentials.v1`은
-전환 과정에서 유지하는 것을 기본으로 한다. 키를 내보내거나 평문 중간 파일로 옮기지 않는다.
+Android 앱 ID는 `kim.jujin.dglc`이며 이전 `kim.jujin.rovessh` 앱과 별도로 설치된다.
+Keystore 별칭 `kim.jujin.rovessh.credentials.v1`은 유지하지만 앱 경계가 달라 이전 앱의 키·데이터에
+접근하지 않는다. 키를 내보내거나 평문 중간 파일로 옮기지 않는다.
 
 초기 후보 앱은 별도 테스트 데이터 경로를 사용한다. 데이터 전환은 복사본으로
 구형 읽기·신형 저장·실패 중단·기존 앱 복귀를 검증한 뒤 적용한다.

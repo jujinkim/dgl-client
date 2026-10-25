@@ -10,7 +10,7 @@ android {
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     defaultConfig {
-        applicationId = "kim.jujin.rovessh"
+        applicationId = "kim.jujin.dglc"
         minSdk = 34
         targetSdk = 36
         versionCode = 1

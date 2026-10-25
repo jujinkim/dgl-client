@@ -19,7 +19,7 @@ from migration_performance import CONTRACT, RULES, idle_metrics
 from resource_results import renderer_pids
 from verify_resources import emulator, run, stop
 
-PACKAGE = 'kim.jujin.rovessh'
+PACKAGE = 'kim.jujin.dglc'
 SOURCES = ['scripts/migration_android_baseline.py', 'scripts/migration_performance.py',
            'scripts/verify_resources.py', 'scripts/integration.py', 'scripts/resource_workload.py',
            'app/src/resourceProbe/kotlin/kim/jujin/rovessh/ResourceScenario.kt',

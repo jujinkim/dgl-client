@@ -39,7 +39,7 @@ def main():
     source = ROOT / "androidApp/build/outputs/apk/debug/androidApp-debug.apk"
     manifest = subprocess.check_output([str(build_tools / "aapt"), "dump", "badging", str(source)], text=True)
     package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", manifest)
-    if not package or package.groups() != ("kim.jujin.rovessh", "1", "0.1.0"):
+    if not package or package.groups() != ("kim.jujin.dglc", "1", "0.1.0"):
         raise SystemExit("Unexpected candidate identity/version")
     if "sdkVersion:'34'" not in manifest or "targetSdkVersion:'36'" not in manifest:
         raise SystemExit("Unexpected SDK requirements")

@@ -8,7 +8,7 @@ a visual callback, a matching latency ID or a nearby draw is never such proof.
 from collections import Counter, defaultdict
 import re
 
-PACKAGE = 'kim.jujin.rovessh'
+PACKAGE = 'kim.jujin.dglc'
 PRESENT_TYPES = ('On-time Present', 'Late Present', 'Early Present')
 
 

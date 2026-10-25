@@ -48,10 +48,10 @@ Android rust 레이아웃은 호스트/터미널 분리, 연결 선택기, tmux 
   테스트 시 `DGL_CANDIDATE_DIR`로 변경할 수 있다. Keychain service는
   `kim.jujin.rovessh.rust-candidate.v1`이다.
 - Android 설정/암호문: 앱의 `noBackupFilesDir/rust-candidate-v1` 아래.
-  앱 ID `kim.jujin.rovessh`, Keystore alias `kim.jujin.rovessh.credentials.v1`을 유지한다.
+  앱 ID는 `kim.jujin.dglc`이며 Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지한다.
   지문은 보호 저장 성공 후 설정 참조와 일치해야 사용한다. 평문 fallback은 없다.
 - 기존 사용자 설정/암호문의 이전·덮어쓰기는 수행하지 않는다. Android 기본 실행은 Rust다.
-  같은 ID이므로 Android 후보 설치는 설치된 앱 바이너리를 교체한다. 저장 영역은 분리된다.
+  이전 `kim.jujin.rovessh` 앱과 별도로 설치되며 저장 영역도 분리된다.
 
 ## 재현 명령과 산출물
 

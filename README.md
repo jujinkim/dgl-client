@@ -35,7 +35,8 @@ SSH와 표준 tmux를 사용하는 Windows·Mac·Android 터미널 클라이언�
 | macOS ARM64 | GPUI + alacritty_terminal, macOS Keychain | 빌드·코어 SSH/tmux 통과; 실제 GUI·Keychain 저장 인수 **대기** |
 | tmux | 3.3–3.7 범위만 Control Mode 사용 | **3.3a, 3.7c** 실제 서버 검증 |
 
-앱 ID: `kim.jujin.rovessh`. 추가 플랫폼과 WSL 제품 연동은 후속 단계입니다.
+앱 식별자(Android applicationId / macOS 번들 ID / Windows AUMID): `kim.jujin.dglc`.
+추가 플랫폼과 WSL 제품 연동은 후속 단계입니다.
 
 ## 빌드·실행
 
@@ -59,8 +60,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 scripts/package
 - Mac: `artifacts/rust-candidate/mac/dgl Rust Candidate.app` (ARM64, 로컬 ad-hoc 서명).
 - Release APK는 미서명이며 공개 배포용 서명·공증은 하지 않았습니다.
 
-Android 앱 ID `kim.jujin.rovessh`는 유지합니다. 기존 앱에 설치하면 바이너리는 교체되지만
-설정·자격 증명은 `noBackupFilesDir/rust-candidate-v1`에서 따로 저장합니다.
+Android 앱 ID는 `kim.jujin.dglc`입니다. 이전 `kim.jujin.rovessh` 앱과 별도로 설치되며,
+설정·자격 증명은 새 앱의 `noBackupFilesDir/rust-candidate-v1`에 저장합니다.
 이전 사용자 데이터는 자동으로 이전하거나 삭제하지 않습니다.
 
 `crates/dgl-core`는 Rust 연결·tmux 코어, `crates/dgl-uniffi`/`:coreBindings`는 바인딩,
