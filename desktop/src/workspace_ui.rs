@@ -310,22 +310,8 @@ impl Desktop {
             }
         }
         explorer = explorer.child(self.render_tree(cx));
-        sidebar = sidebar
-            .child(explorer)
-            .child(self.button(
-                "agent-notifications",
-                format!(
-                    "알림 {}",
-                    self.inbox.recent.iter().filter(|n| !n.read).count()
-                ),
-                cx,
-                |s, _, _| {
-                    s.dialog = Some(Dialog::Notifications);
-                },
-            ))
-            .child(self.button("settings", "설정", cx, |s, _, _| {
-                s.dialog = Some(Dialog::Settings)
-            }));
+        sidebar = sidebar.child(explorer);
+        let unread = self.inbox.recent.iter().filter(|n| !n.read).count();
         let layout = self.workspace.layout.clone();
         let workspace = self.render_layout(layout, vec![], preview, cx);
         let status = self
@@ -582,7 +568,9 @@ impl Desktop {
                     )
                     .child(
                         div()
+                            .debug_selector(|| "status-bar".into())
                             .h(px(26.))
+                            .flex_shrink_0()
                             .px_3()
                             .flex()
                             .items_center()
@@ -593,6 +581,7 @@ impl Desktop {
                             .child(
                                 div()
                                     .id("connection-status")
+                                    .debug_selector(|| "connection-status".into())
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
@@ -601,6 +590,69 @@ impl Desktop {
                                         move |_, cx| cx.new(|_| Tip(status.clone())).into()
                                     })
                                     .child(status),
+                            )
+                            .child(
+                                div()
+                                    .debug_selector(|| "status-actions".into())
+                                    .flex()
+                                    .flex_shrink_0()
+                                    .items_center()
+                                    // Preserve the prior focus until the modal records it.
+                                    .on_mouse_down(MouseButton::Left, |_, w, _| w.prevent_default())
+                                    .child(
+                                        self.button_base("agent-notifications", cx, |s, _, _| {
+                                            s.dialog = Some(Dialog::Notifications);
+                                        })
+                                        .w(px(56.))
+                                        .h(px(24.))
+                                        .p_0()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .gap_1()
+                                        .tooltip(|_, cx| cx.new(|_| Tip("알림".into())).into())
+                                        .child(
+                                            div()
+                                                .debug_selector(|| "notification-icon".into())
+                                                .child("🔔"),
+                                        )
+                                        .when(
+                                            unread > 0,
+                                            |d| {
+                                                d.child(
+                                                    div()
+                                                        .debug_selector(|| {
+                                                            "unread-notifications".into()
+                                                        })
+                                                        .w(px(24.))
+                                                        .flex_shrink_0()
+                                                        .rounded_full()
+                                                        .bg(rgb(p.accent_fill))
+                                                        .text_color(rgb(p.on_accent))
+                                                        .text_size(px(10.))
+                                                        .line_height(px(14.))
+                                                        .text_center()
+                                                        .child(if unread > 99 {
+                                                            "99+".into()
+                                                        } else {
+                                                            unread.to_string()
+                                                        }),
+                                                )
+                                            },
+                                        ),
+                                    )
+                                    .child(
+                                        self.button("settings", "⚙️", cx, |s, _, _| {
+                                            s.dialog = Some(Dialog::Settings);
+                                        })
+                                        .w(px(28.))
+                                        .h(px(24.))
+                                        .p_0()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .tooltip(|_, cx| cx.new(|_| Tip("설정".into())).into()),
+                                    ),
                             ),
                     ),
             )
@@ -1153,7 +1205,11 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let mut tree = div().mt_3().border_t_1().border_color(rgb(p.line));
+        let mut tree = div()
+            .debug_selector(|| "session-tree".into())
+            .mt_3()
+            .border_t_1()
+            .border_color(rgb(p.line));
         let Some(tab) = self.active_tab() else {
             return tree.into_any_element();
         };
@@ -1188,11 +1244,19 @@ impl Desktop {
                     .when(refreshing || !browse, |d| d.opacity(0.35)),
                 ),
         );
-        if !browse {
-            tree = tree.child(div().px_3().text_xs().child(format!(
-                "{} · 목록 대기",
-                hierarchy::phase_label(&state.phase)
-            )));
+        // Keep cached rows at the same coordinates while the connection recovers.
+        // The status bar already displays the phase; only an empty tree needs a hint.
+        if !browse && state.remote.sessions.is_empty() {
+            tree = tree.child(
+                div()
+                    .debug_selector(|| "session-list-waiting".into())
+                    .px_3()
+                    .text_xs()
+                    .child(format!(
+                        "{} · 목록 대기",
+                        hierarchy::phase_label(&state.phase)
+                    )),
+            );
         }
         for row in hierarchy::rows(&state.remote, self.local.preferences.show_all_hierarchy) {
             tree = tree.child(self.render_hierarchy_row(&row, 0, tid, &connection, &state, cx));

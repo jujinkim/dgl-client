@@ -85,6 +85,15 @@ JVM 46 통과/예상 skip 9, Python 98·웹 8 통과, Android Debug·lint와 Mac
 Mac computer-use는 앱 식별자 연결 실패로 창을 관찰하지 못했으며 GUI·Keychain·OS 변경 인수는 남겼습니다.
 Windows 네이티브·전체 Android 계측은 실행하지 않았습니다. 자세한 과거 검사 내용은 Git 이력에서 찾습니다.
 
+## 2026-10-26: 앱 아이콘
+
+투명 원본·프롬프트를 보존하고 Android 적응형·단색, macOS ICNS, Windows ICO 리소스를 연결했습니다.
+당시 Android Debug·lint(오류 0, 기존 검토 경고 12), Mac ad-hoc 패키징·strict 서명 검사,
+Python 98개·아이콘 재생성 일치·로컬 대시보드 스키마 검증을 통과했습니다.
+전체 Rust 서식 검사는 기존 `password_shell.rs` 차이로 실패했고 변경 build.rs 서식은 통과했습니다.
+Windows 네이티브 빌드·GUI와 macOS Dock/Finder·Android 실제 런처·계측은 실행하지 않았습니다.
+원본·축소·마스크 미리보기와 재생성 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

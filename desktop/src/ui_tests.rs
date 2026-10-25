@@ -35,6 +35,7 @@ struct HierarchyPreview {
     desktop: Entity<Desktop>,
     state: dgl_core::connection::State,
     width: f32,
+    scroll: Option<gpui::ScrollHandle>,
 }
 impl gpui::Render for HierarchyPreview {
     fn render(
@@ -42,12 +43,21 @@ impl gpui::Render for HierarchyPreview {
         _: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> impl gpui::IntoElement {
-        use gpui::{ParentElement, Styled};
+        use gpui::{
+            InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
+            prelude::FluentBuilder,
+        };
         let state = self.state.clone();
         let tree = self
             .desktop
             .update(cx, |s, cx| s.render_tree_state(state, cx));
-        gpui::div().w(px(self.width)).child(tree)
+        gpui::div()
+            .id("hierarchy-preview")
+            .w(px(self.width))
+            .when_some(self.scroll.as_ref(), |d, scroll| {
+                d.h(px(240.)).overflow_y_scroll().track_scroll(scroll)
+            })
+            .child(tree)
     }
 }
 
@@ -72,6 +82,7 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
         desktop: owner,
         state,
         width: 280.,
+        scroll: None,
     });
     for dark in [false, true] {
         desktop.update(ui, |s, _| s.palette = super::theme::Palette::new(dark));
@@ -155,6 +166,7 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
         desktop: owner,
         state,
         width: 240.,
+        scroll: None,
     });
     let focus = ui.update(|_, cx| cx.focus_handle());
     ui.update(|w, _| w.focus(&focus));
@@ -202,6 +214,245 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
     assert!(desktop.read_with(ui, |s, _| s.expanded.contains("1/$1/@1")));
     assert!(ui.update(|w, _| focus.is_focused(w)));
     assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
+}
+
+#[gpui::test]
+fn hierarchy_recovery_preserves_row_positions_expansion_and_scroll(cx: &mut TestAppContext) {
+    use dgl_core::connection::Phase;
+    let (desktop, ui) = setup(cx);
+    let terminal = add_terminal(&desktop, ui);
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v1.json")).unwrap();
+    let mut state = desktop.read_with(ui, |s, _| s.tabs[0].connection.state());
+    state.remote = serde_json::from_value(fixture["remote"].clone()).unwrap();
+    // Enough cached sessions to exercise a real, nonzero scroll offset.
+    for i in 3..20 {
+        let mut session = state.remote.sessions[0].clone();
+        session.id = format!("${i}");
+        state.remote.sessions.push(session);
+    }
+    state.phase = Phase::Ready;
+    state.session = Some("$1".into());
+    state.pane = Some("%2".into());
+    desktop.update(ui, |s, _| {
+        s.local.preferences.show_all_hierarchy = true;
+        s.expanded.insert("1/$1".into());
+    });
+    let scroll = gpui::ScrollHandle::default();
+    let owner = desktop.clone();
+    let (preview, ui) = cx.add_window_view(|_, _| HierarchyPreview {
+        desktop: owner,
+        state,
+        width: 272.,
+        scroll: Some(scroll.clone()),
+    });
+    let focus = ui.update(|_, cx| cx.focus_handle());
+    ui.update(|w, _| w.focus(&focus));
+    for show_all in [true, false] {
+        desktop.update(ui, |s, _| s.local.preferences.show_all_hierarchy = show_all);
+        redraw(ui);
+        scroll.set_offset(point(px(0.), px(-60.)));
+        redraw(ui);
+        assert!(scroll.offset().y < px(0.));
+        let positions =
+            ["session-$1", "window-$1-@2", "session-$3"].map(|id| ui.debug_bounds(id).unwrap());
+        let tree_bounds = ui.debug_bounds("session-tree").unwrap();
+        let offset = scroll.offset();
+        let expanded = desktop.read_with(ui, |s, _| s.expanded.clone());
+        for phase in [
+            Phase::Restoring,
+            Phase::Ready,
+            Phase::Reconnecting,
+            Phase::Connecting,
+            Phase::Authenticating,
+            Phase::Restoring,
+            Phase::Ready,
+        ] {
+            preview.update(ui, |p, cx| {
+                p.state.phase = phase;
+                cx.notify();
+            });
+            redraw(ui);
+            assert!(ui.debug_bounds("session-list-waiting").is_none());
+            assert_eq!(ui.debug_bounds("session-tree").unwrap(), tree_bounds);
+            assert_eq!(
+                positions,
+                ["session-$1", "window-$1-@2", "session-$3"].map(|id| ui.debug_bounds(id).unwrap())
+            );
+            assert_eq!(scroll.offset(), offset);
+            assert_eq!(desktop.read_with(ui, |s, _| s.expanded.clone()), expanded);
+            assert!(ui.update(|w, _| focus.is_focused(w)));
+        }
+    }
+    preview.update(ui, |p, cx| {
+        p.state.remote = Default::default();
+        p.state.phase = Phase::Ready;
+        cx.notify();
+    });
+    redraw(ui);
+    let empty_height = ui.debug_bounds("session-tree").unwrap().size.height;
+    for (phase, waiting) in [
+        (Phase::Connecting, true),
+        (Phase::Restoring, true),
+        (Phase::Reconnecting, true),
+        (Phase::Ready, false),
+        (Phase::Selecting, false),
+    ] {
+        preview.update(ui, |p, cx| {
+            p.state.phase = phase;
+            cx.notify();
+        });
+        redraw(ui);
+        // GPUI retains old debug bounds for removed elements. Compare the current
+        // container height to prove the hint was actually inserted or removed.
+        let height = ui.debug_bounds("session-tree").unwrap().size.height;
+        if waiting {
+            assert!(height > empty_height);
+        } else {
+            assert_eq!(height, empty_height);
+        }
+    }
+    assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
+}
+
+#[gpui::test]
+fn status_actions_stay_at_right_with_long_status_badges_themes_and_splits(cx: &mut TestAppContext) {
+    use dgl_core::agent::{Agent, AgentEvent, Kind, Notice};
+    let (view, cx) = setup(cx);
+    add_terminal(&view, cx);
+    view.update(cx, |s, cx| {
+        s.tabs[0].host.alias = "아주 긴 호스트 상태 문구 🚀 ".repeat(60);
+        cx.notify();
+    });
+    let notice = Notice {
+        endpoint: "fixture".into(),
+        read: false,
+        event: AgentEvent {
+            id: "test".into(),
+            seq: 1,
+            server: "server".into(),
+            run: "run".into(),
+            actor: "parent".into(),
+            session: "$1".into(),
+            window: "@1".into(),
+            pane: "%1".into(),
+            agent: Agent::Codex,
+            kind: Kind::Approval,
+            event: "PermissionRequest".into(),
+            at: dgl_core::agent::now_ms(),
+        },
+    };
+    for split in [false, true] {
+        if split {
+            view.update(cx, |s, cx| {
+                assert!(
+                    s.workspace
+                        .split(1, super::workspace::Axis::Horizontal, 1200., 800.)
+                );
+                cx.notify();
+            });
+            add_terminal(&view, cx);
+            view.update(cx, |s, _| s.workspace.active = 1);
+        }
+        for width in [420., 640., 1200.] {
+            cx.simulate_resize(gpui::size(px(width), px(600.)));
+            for theme in ["light", "dark"] {
+                view.update(cx, |s, _| s.local.preferences.theme = theme.into());
+                let mut previous = None;
+                for unread in [0, 1, 12, 100, 0] {
+                    view.update(cx, |s, cx| {
+                        s.inbox.recent = std::iter::repeat_n(notice.clone(), unread).collect();
+                        cx.notify();
+                    });
+                    redraw(cx);
+                    let bar = cx.debug_bounds("status-bar").unwrap();
+                    let status = cx.debug_bounds("connection-status").unwrap();
+                    let actions = cx.debug_bounds("status-actions").unwrap();
+                    let notifications = cx.debug_bounds("agent-notifications").unwrap();
+                    let settings = cx.debug_bounds("settings").unwrap();
+                    assert_eq!(bar.size.height, px(26.));
+                    assert_eq!(bar.size.width, px(width));
+                    assert_eq!(bar.bottom(), px(600.));
+                    assert_eq!(actions.right(), bar.right() - px(12.));
+                    assert!(status.right() <= actions.left());
+                    assert!(notifications.right() <= settings.left());
+                    for button in [notifications, settings] {
+                        assert!(button.size.width >= px(28.));
+                        assert!(button.top() >= bar.top() && button.bottom() <= bar.bottom());
+                        assert!(
+                            button.top() >= cx.debug_bounds("session-sidebar").unwrap().bottom()
+                        );
+                    }
+                    let icon = cx.debug_bounds("notification-icon").unwrap();
+                    if unread > 0 {
+                        assert!(icon.center().x < notifications.center().x);
+                        let badge = cx.debug_bounds("unread-notifications").unwrap();
+                        assert!(
+                            badge.left() >= notifications.left()
+                                && badge.right() <= notifications.right()
+                        );
+                        assert!(
+                            badge.top() >= notifications.top()
+                                && badge.bottom() <= notifications.bottom()
+                        );
+                    } else {
+                        // A centered bell proves the badge no longer takes layout
+                        // space, even though GPUI keeps its old debug bounds.
+                        assert!(
+                            (f32::from(icon.center().x - notifications.center().x)).abs() <= 1.
+                        );
+                    }
+                    let positions = (notifications, settings);
+                    if let Some(previous) = previous {
+                        assert_eq!(positions, previous);
+                    }
+                    previous = Some(positions);
+                }
+            }
+        }
+    }
+}
+
+#[gpui::test]
+fn status_action_dialogs_restore_focus_and_block_terminal_input(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx);
+    let terminal = add_terminal(&view, cx);
+    redraw(cx);
+    cx.update(|w, cx| w.focus(&terminal.focus_handle(cx)));
+    for id in ["agent-notifications", "settings"] {
+        let button = cx.debug_bounds(id).unwrap();
+        cx.simulate_click(button.center(), Modifiers::default());
+        redraw(cx);
+        assert!(view.read_with(cx, |s, _| match id {
+            "agent-notifications" => matches!(s.dialog, Some(Dialog::Notifications)),
+            _ => matches!(s.dialog, Some(Dialog::Settings)),
+        }));
+        cx.simulate_keystrokes("a ctrl-c");
+        cx.simulate_input("차단");
+        cx.simulate_keystrokes("escape");
+        redraw(cx);
+        assert!(view.read_with(cx, |s, _| s.dialog.is_none()));
+        assert!(cx.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+        // Also exercise the dialog's close button.
+        cx.simulate_click(button.center(), Modifiers::default());
+        redraw(cx);
+        let close = cx.debug_bounds("cancel-dialog").unwrap();
+        cx.simulate_click(close.center(), Modifiers::default());
+        redraw(cx);
+        assert!(view.read_with(cx, |s, _| s.dialog.is_none()));
+        assert!(cx.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+    }
+    cx.simulate_keystrokes(if cfg!(target_os = "windows") {
+        "ctrl-shift-p"
+    } else {
+        "cmd-,"
+    });
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| matches!(s.dialog, Some(Dialog::Settings))));
+    cx.simulate_keystrokes("escape");
+    redraw(cx);
+    assert!(cx.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
 }
 
 struct AgentPanelPreview {

@@ -32,6 +32,7 @@ class AndroidHierarchyTest {
         val targets = mutableListOf<List<String?>>()
         val writes = mutableListOf<ByteArray>()
         val commands = mutableListOf<TmuxCommand>()
+        var surface: TerminalSurface? = null
         override fun captureInputTarget() = InputTarget(1, session.value, pane.value!!)
         override fun selectTarget(session: String, window: String?, pane: String?) { targets += listOf(session, window, pane) }
         override fun connect() { connects++ }
@@ -43,8 +44,8 @@ class AndroidHierarchyTest {
         override fun selectPane(id: String) {}
         override fun createSession(name: String) {}
         override fun refresh() {}
-        override fun bindSurface(value: TerminalSurface?) {}
-        override fun unbindSurface(expected: TerminalSurface) {}
+        override fun bindSurface(value: TerminalSurface?) { surface = value }
+        override fun unbindSurface(expected: TerminalSurface) { if (surface === expected) surface = null }
         override fun resize(value: Size) {}
         override fun restore() {}
         override fun close() {}
@@ -103,6 +104,25 @@ class AndroidHierarchyTest {
                 val sx = bounds(await(session)).left; val wx = bounds(await(window)).left
                 assertTrue(kotlin.math.abs((20 * density).toInt() - (wx - sx)) <= 1)
                 assertNull(node(pane)); assertNull(node("$window 펼치기"))
+                fun terminalBounds(): Rect {
+                    lateinit var rect: Rect
+                    scenario.onActivity {
+                        val view = (first.surface as kim.jujin.rovessh.ui.AndroidTerminal).view
+                        val location = IntArray(2); view.getLocationOnScreen(location)
+                        rect = Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
+                    }
+                    return rect
+                }
+                suspend fun geometry() = listOf(bounds(await(session)), bounds(await(window)), terminalBounds())
+                val beforeRestore = geometry()
+                assertTrue(beforeRestore.last().width() > 0 && beforeRestore.last().height() > 0)
+                for (phase in listOf(Phase.Restoring, Phase.Ready, Phase.Restoring, Phase.Ready)) {
+                    scenario.onActivity { first.status.value = ConnectionStatus(phase) }
+                    instrumentation.waitForIdleSync()
+                    instrumentation.uiAutomation.waitForIdle(100, 5000)
+                    assertEquals("Restoration must preserve expanded rows and terminal bounds: $phase", beforeRestore, geometry())
+                    assertNull(node("목록 대기 중"))
+                }
                 scenario.onActivity { first.remote.value = first.remote.value.copy(panes = first.remote.value.panes.map { it.copy(title = "갱신 제목") }) }
                 instrumentation.waitForIdleSync()
                 await(window)
@@ -115,6 +135,14 @@ class AndroidHierarchyTest {
                 click("개발\n3: 편집 · 패널 1개")
                 assertEquals(listOf(listOf("$1", "@1", null)), first.targets)
                 click("터미널로 돌아가기")
+                // Check the unobscured terminal too: the fixed progress slot must not shift it.
+                val visibleTerminal = terminalBounds()
+                for (phase in listOf(Phase.Restoring, Phase.Ready)) {
+                    scenario.onActivity { first.status.value = ConnectionStatus(phase) }
+                    instrumentation.waitForIdleSync()
+                    instrumentation.uiAutomation.waitForIdle(100, 5000)
+                    assertEquals(visibleTerminal, terminalBounds())
+                }
                 click("현재 호스트 연결 하나 연결 메뉴"); click("재접속")
                 assertEquals(1, first.connects); assertEquals(0, second.connects)
                 scenario.onActivity { app.selected.value = second }
