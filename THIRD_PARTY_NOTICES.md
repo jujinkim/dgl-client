@@ -24,20 +24,23 @@ Corresponding library sources:
 - https://packages.jetbrains.team/maven/p/ij/intellij-dependencies/org/jetbrains/jediterm/jediterm-core/3.59/jediterm-core-3.59-sources.jar
 - https://packages.jetbrains.team/maven/p/ij/intellij-dependencies/org/jetbrains/jediterm/jediterm-ui/3.59/jediterm-ui-3.59-sources.jar
 
-`prepareThirdPartyNotices` copies these notices, reviewed `licenses/` files, both verified 3.59 source JARs, and the packaging JDK's complete `legal/` tree and `release` identity into historical JVM verification resources. `SHA256SUMS` enumerates every delivered file. Generated build/cache files are excluded. Android assets include the notices and license evidence; xterm notices are bundled separately. The Android app does not distribute JediTerm or a JVM.
+Android assets include the reviewed notices and license evidence; xterm notices are bundled separately.
+Android and the GPUI application do not distribute JediTerm or a JVM. The removed JVM installer and
+notice-packaging tasks are summarized in `docs/HISTORY.md`; source checksums and the reference
+rendering test rebuild recipe remain available.
 
 The tested replacement build recipe is `licenses/jediterm-rebuild/README.md`. It builds both published 3.59 source JARs using JDK 17, Kotlin 2.4.21 and Gradle 9.7.0, preserving upstream Kotlin module names. It is not a byte-identical upstream build. The library JARs are replaceable; the original app does not shade or modify them.
 
 Skiko 0.9.22.2 uses Skia revision `a00c390e98`, package `m132-a00c390e98-1`. Versioned Skiko LICENSE/NOTICE, Skia LICENSE/DEPS, archive notices and linked native component notices are included. Portions of this software are copyright the FreeType Project (https://www.freetype.org). JNA 5.18.1 native dispatch and its embedded libffi license are also included. Native notices may conservatively cover additional components present in the upstream Skia archive.
 
-The JVM notice bundle identifies the actual packaging JDK; the local Homebrew JDK notice bundle is development evidence, not proof of a packaged Windows Temurin runtime. Public Windows distribution must retain and verify the Temurin runtime's own legal files and exact source/release identity. The previous Windows packaging path is retired; retained source/replacement tooling is historical test evidence. No repository-wide license for new project code is inferred on the owner's behalf.
+No repository-wide license for new project code is inferred on the owner's behalf.
 
 
 ## Rust candidate dependencies (2026-10-24)
 
-The Rust Android application and Mac GPUI candidate use the versions and checksums in `Cargo.lock`.
+The Rust Android application and macOS/Windows GPUI candidates use the versions and checksums in `Cargo.lock`.
 `scripts/collect_rust_notices.py` bundles registry-provided license texts, Cargo manifests,
-and `DEPENDENCIES.json` with each candidate (Mac Resources / Android assets).
+and `DEPENDENCIES.json` with each candidate (Mac Resources / Android assets / Windows ZIP).
 The inventory includes build and target-specific dependencies; entries without an upstream
 license text explicitly have an empty `licenseFiles` map. This is not a completed public
 release license audit. The GPUI-derived text input additionally includes

@@ -1,0 +1,78 @@
+# 스크립트 안내
+
+저장소 루트에서 실행합니다. 일반 Python 도구는 3.9 이상을 사용하며 필수 SDK·JDK·Rust 설정은
+[개발 안내](../docs/DEVELOPMENT.md), Windows 도구는 [Windows 안내](../docs/WINDOWS.md)를 따릅니다.
+기본 검사에 에뮬레이터·장시간 성능 측정·실제 CLI 호출을 자동으로 추가하지 않습니다.
+
+## 빌드·패키징
+
+| 도구 | 역할·출력 |
+|---|---|
+| `build_rust_android.py` | Gradle에서 호출하는 Rust 네 ABI 빌드·UniFFI 생성 |
+| `collect_rust_android.py` | 빌드된 Debug APK의 ID·SDK·네 ABI·Rust payload·서명 확인, `artifacts/rust-candidate/android/` 수집 |
+| `collect_artifacts.py` | Android Debug/Release APK 정책·assets·라이선스 검사, `artifacts/` 전달물·manifest·해시 생성 |
+| `package_rust_mac.py` | GPUI Debug/`--release` 빌드, `.app`·Rust 고지·ad-hoc 서명 |
+| `run_windows.cmd` / `windows_menu.ps1` | Windows 빌드·실행·검사 메뉴 |
+| `windows_tools.ps1` | Windows 필수 도구 전체 점검·선택적 설치/업데이트 |
+| `build_windows.ps1` | Windows MSVC 환경 구성·빌드. `-CheckOnly`, `-Test`, `-Run` 지원 |
+| `package_rust_windows.py` | x64 PE 검사·고지·해시를 포함한 미서명 ZIP 생성 |
+| `collect_rust_notices.py` | Cargo registry의 고지·manifest·의존성 목록 수집, 패키저에서 사용 |
+
+`collect_artifacts.py`와 `collect_rust_android.py`는 각각 전체 배포 정책 검사와 후보 Debug 전달본 수집을 담당합니다.
+둘 다 기존 빌드를 입력으로 사용하며 이전 JVM 엔진이 제품 APK에 들어가면 실패합니다.
+현재 Windows 배포 경로는 Rust ZIP입니다. 폐기된 JVM MSI/EXE 도구는 [이력](../docs/HISTORY.md)에서 찾을 수 있습니다.
+
+## 기본 검사·유지보수
+
+| 도구 | 용도 |
+|---|---|
+| `check_prompt.py` / `verify_wrapper.py` | 원문 요구사항·Gradle bootstrap 무결성 |
+| `verify_test_results.py` | JVM의 모든 지정 테스트 결과·예상 skip 검사 (`linux`, `ssh`, `windows`) |
+| `verify_android_results.py` | 계측의 지정 테스트 이름·완료·실패/skip 검사; 실행 도구에서 import |
+| `verify_lint.py` | lint 진단·검토 조건·만료 확인 |
+| `scan_secrets.py` | Gitleaks로 작업 파일·전체 staged snapshot·Git refs 검사 |
+| `audit_dependencies.py` | Gradle 선택 inventory와 npm lock의 OSV 검사 |
+| `verify_licenses.py` | 선택 inventory의 라이선스·원문 해시·고지 확인 |
+| `refresh_licenses.py` | 명시적으로 요청할 때 라이선스 근거 갱신; 생성 결과 검토 필요 |
+| `verify_dependency_origins.py` | 의존성 출처와 다운로드 해시 대조 |
+| `evidence.py` | 검사 문맥·안전 경로·해시·보고서 공통 함수 |
+
+```sh
+python3 -m unittest discover -s scripts/tests -v
+```
+
+JVM·Android 테스트를 추가/삭제하면 `verify_test_results.py` / `verify_android_results.py`의 명시적 목록도 갱신합니다.
+`test_evidence.py`가 소스 목록의 누락과 이름·결과 위조를 검사합니다. 결과를 맞추려고 실패·skip을 허용하지 않습니다.
+
+## 선택적 통합 검사
+
+| 도구 | 범위 |
+|---|---|
+| `build_test_tmux.py` | 3.3a/3.7c를 `.tools/`에 빌드; 사용자 tmux는 변경하지 않음 |
+| `integration.py` | 임시 OpenSSH·키·독립 tmux socket 생성/정리. 기본 JVM 검사, `--command`로 Rust/Android 지정 |
+| `android_integration.py` | fixture 안에서 APK 빌드·설치·전체 기본 runner 실행·이름별 결과 검증 |
+| `rust_android_integration.py` | 빌드된 APK의 API36 후보 검사·화면 수집. 기본 11개; fixture 안에서 실행 |
+| `mobile_input_android.py` | 전용 API36의 모바일 입력·WebView 4개 검사·화면 수집 |
+| `verify_android_matrix.py` | API별 전용 AVD 실행·결과 수집. 명시적으로 전체 범위를 요청할 때만 실행 |
+| `verify_agent_cli.py` | 격리된 환경에서 실제 Claude/Codex 훅 검사; 설치·인증·호출 범위 확인 필요 |
+
+`rust_android_integration.py`의 `DGL_ANDROID_TEST_CLASSES`는 `Class` 또는 `Class#method`를 쉼표로 받습니다.
+기대 결과는 공통 이름 목록에서 선택하며 알 수 없는 선택·누락·중복·실패·skip은 거절합니다.
+`DGL_ANDROID_EXPECTED_TESTS` 숫자 override는 사용하지 않습니다.
+
+## 선택적 성능·자원 도구
+
+`migration_` 접두사와 `fixtures/migration/` 경로는 재현·테스트 참조 때문에 유지합니다.
+현재 앱 실행에 필요한 도구는 아니며, 자동으로 성능 인수를 시작하지 않습니다.
+
+| 도구 | 역할 |
+|---|---|
+| `migration_performance.py` | CPU/RSS·패키지 크기 수집, 성능 계약 판정 |
+| `migration_android_baseline.py` | Android 비교 기준선 수집 |
+| `migration_android_presentation.py` | API36 Perfetto 표시 trace 수집·상한/첫 표시 분석 |
+| `migration_first_presentation.py` | 첫 표시 증명·누락 근거 오프라인 판정 |
+| `verify_resources.py` | 격리 자원 부하 실행·보고서 수집 |
+| `resource_workload.py` / `resource_results.py` | 부하 시나리오·표본 판정 공통 코드 |
+
+[성능 계약](../docs/PERFORMANCE.md)에 측정 정의·표본·한계가 있습니다.
+`collected`, smoke 통과, xterm 콜백 시각을 전체 성능·표시 지연 합격으로 기록하지 않습니다.

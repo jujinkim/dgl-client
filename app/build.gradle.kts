@@ -1,5 +1,4 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.security.MessageDigest
 
 plugins {
     kotlin("multiplatform")
@@ -79,7 +78,7 @@ tasks.withType<Test>().configureEach {
     maxHeapSize = "1g"
 }
 
-// Kept outside the production distribution. Used only by isolated Windows CI accounts.
+// Test-only classpath for the optional resource probe; not a product distribution.
 val desktopTests = kotlin.targets.getByName("desktop").compilations.getByName("test")
 // A main class, never a JUnit test; the normal exact test inventory is unchanged.
 tasks.register<Sync>("prepareResourceProbe") {
@@ -89,53 +88,9 @@ tasks.register<Sync>("prepareResourceProbe") {
     into(layout.buildDirectory.dir("resource-probe"))
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
-tasks.register<Sync>("prepareDpapiProbe") {
-    dependsOn("desktopTestClasses")
-    from(desktopTests.output.allOutputs)
-    from(desktopTests.runtimeDependencyFiles)
-    into(layout.buildDirectory.dir("dpapi-probe"))
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
 
 dependencyLocking {
     lockAllConfigurations()
     // Different desktop targets add their own native Skiko artifacts; common versions stay locked.
     lockMode.set(LockMode.LENIENT)
-}
-val librarySources by configurations.creating { isCanBeConsumed = false; isTransitive = false }
-dependencies {
-    add(librarySources.name, "org.jetbrains.jediterm:jediterm-core:3.59:sources")
-    add(librarySources.name, "org.jetbrains.jediterm:jediterm-ui:3.59:sources")
-}
-val prepareThirdPartyNotices by tasks.registering {
-    val destination = layout.buildDirectory.dir("generated/distributionResources/common/third-party")
-    inputs.file(rootProject.file("THIRD_PARTY_NOTICES.md"))
-    val licenseFiles = rootProject.fileTree("licenses") { exclude("**/build/**", "**/.gradle/**", "**/.kotlin/**") }
-    inputs.files(licenseFiles)
-    val javaHome = file(System.getProperty("java.home"))
-    inputs.dir(javaHome.resolve("legal"))
-    inputs.file(javaHome.resolve("release"))
-    inputs.files(librarySources)
-    val windowsBuild = System.getProperty("os.name").startsWith("Windows")
-    val temurinSource = layout.buildDirectory.dir("temurin-source")
-    if (windowsBuild) inputs.dir(temurinSource)
-    outputs.dir(destination)
-    doLast {
-        val directory = destination.get().asFile
-        directory.deleteRecursively(); directory.mkdirs()
-        rootProject.file("THIRD_PARTY_NOTICES.md").copyTo(directory.resolve("THIRD_PARTY_NOTICES.md"))
-        project.copy { from(licenseFiles); into(directory.resolve("licenses")) }
-        librarySources.files.forEach { it.copyTo(directory.resolve(it.name)) }
-        javaHome.resolve("legal").copyRecursively(directory.resolve("jvm/legal"))
-        javaHome.resolve("release").copyTo(directory.resolve("jvm/release"))
-        if (windowsBuild) {
-            check(temurinSource.get().file("source.json").asFile.isFile) { "Run scripts/prepare_temurin_source.py before packaging" }
-            temurinSource.get().asFile.copyRecursively(directory.resolve("jvm/source"))
-            javaHome.resolve("lib/src.zip").copyTo(directory.resolve("jvm/src.zip"))
-        }
-        directory.resolve("SHA256SUMS").writeText(directory.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(directory).path }.joinToString("\n", postfix = "\n") {
-            val sha = MessageDigest.getInstance("SHA-256").digest(it.readBytes()).joinToString("") { byte -> "%02x".format(byte) }
-            "$sha  ${it.relativeTo(directory).invariantSeparatorsPath}"
-        })
-    }
 }

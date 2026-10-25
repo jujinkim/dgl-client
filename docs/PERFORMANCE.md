@@ -1,9 +1,9 @@
-# R1 성능 측정 계약
+# 선택적 성능 측정 계약
 
 2026-10-24, 후보 실행 전 고정. 숫자·표본 수는
-[`performance-v1.json`](../../fixtures/migration/performance-v1.json), 장비는
-[`environments-v1.json`](../../fixtures/migration/environments-v1.json)이 기준이다.
-이번 실행은 현재 Mac과 API36 AVD에 한정한다. 다른 환경 통과를 추정하지 않는다.
+[`performance-v1.json`](../fixtures/migration/performance-v1.json), 장비는
+[`environments-v1.json`](../fixtures/migration/environments-v1.json)이 기준이다.
+기존 수집 범위는 Mac과 API36 AVD에 한정된다. 기본 검증에 계측을 자동 추가하지 않으며 다른 환경 통과를 추정하지 않는다.
 
 | 항목 | 정의·표본 | 판정 |
 |---|---|---|
@@ -91,17 +91,15 @@ WebView visual-state 콜백은 이후 draw에 내용이 반영됨을 보장하�
 부분 계측 성공이며 `qualifiesAsPerformanceAcceptance`는 항상 false다.
 
 ```sh
-rtk proxy env JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+env JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
   ANDROID_HOME="$HOME/Library/Android/sdk" python3 scripts/migration_android_presentation.py \
   --trace-processor .tools/trace_processor_shell
-rtk proxy python3 scripts/migration_android_presentation.py \
+python3 scripts/migration_android_presentation.py \
   --trace-processor .tools/trace_processor_shell --analyze <presentation.perfetto-trace> --output <analysis.json>
 ```
 
-별도로 준비한 로컬 Perfetto `trace_processor_shell`을 명시한다. 이번 검증은 공식 배포
-v58.2 mac-arm64 바이너리를 사용했다(SHA-256
-`d29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa`). 저장소/제품에
-바이너리를 추가하지 않는다. 원시 trace, 추출 행, APK·도구·소스 해시, 실패 보고서를
+별도로 준비한 로컬 Perfetto `trace_processor_shell`을 명시합니다. 바이너리는 저장소/제품에 추가하지 않습니다.
+원시 trace, 추출 행, APK·도구·소스 해시, 실패 보고서를
 `artifacts/migration-r1/`에 보존한다. AVD·임시 키·reverse 포트 정리와 기본 test runner
 복구를 수행하며, 오프라인 재분석은 기존 수집 보고서를 덮어쓰지 않는 새 출력 파일을 사용한다.
 
@@ -138,10 +136,10 @@ flow 행을 보존한다. 유효한 compositor→Android surface 연결과 앞�
 확인하며 정확한 100ms 표시 차이나 입력 성능 통과를 주장하지 않는다.
 
 ```sh
-rtk proxy env JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+env JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
   ANDROID_HOME="$HOME/Library/Android/sdk" python3 scripts/migration_android_presentation.py \
   --mode first-presentation --trace-processor .tools/trace_processor_shell
-rtk proxy python3 scripts/migration_android_presentation.py --mode first-presentation \
+python3 scripts/migration_android_presentation.py --mode first-presentation \
   --trace-processor .tools/trace_processor_shell --analyze <presentation.perfetto-trace> \
   --output <new-analysis.json>
 ```

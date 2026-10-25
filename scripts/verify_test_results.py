@@ -5,12 +5,24 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'AgentNavigationTest': ['detailsSelectTheConnectionAndRejectARecreatedPane'],
+    'HierarchyTest': ['panelStateSeparatesRunsOtherPanesAndOtherConnections', 'sharedHierarchyProjection'],
+    'TextComposerTest': ['changedTargetsBeforeAndDuringPreparationDoNotSend', 'emptyAndOversizedPastesNeverEnterQueue',
+                         'failedSendPreservesDraftAndNeverAutomaticallyRetries', 'sizeGenerationIsNotAnInputDestinationChange',
+                         'unicodeSelectionDraftAndCompletionAreConnectionOwned'],
+    'core.TerminalResizeQueueTest': ['continuousAnimationWaitsForTheLastChange',
+                                    'failedNativeRequestCanBeRetriedAfterConnectionRecovers',
+                                    'newConnectionImmediatelyUsesTheLatestViewport',
+                                    'onlyOneRequestAndOneLatestValueAreRetained',
+                                    'rejectedSubmissionRetainsTheViewportWithoutBusyRetrying',
+                                    'resizeKeepsInputBlockedWithoutShowingConnectionProgress',
+                                    'returningToTheSubmittedSizeNeedsNoRequest'],
     'CliLauncherTest': ['exactCommandsOnceForActiveShellAndPane', 'targetChangesAndUnavailableInputNeverSendOrReplay'],
     'MigrationContractTest': ['controlStreamFixturesAtEveryBoundary', 'escapeFixtures',
                               'commandFixtures', 'inputFixtures', 'settingsFixtures', 'stateFixtures'],
     'TmuxDiscoveryTest': ['resolvesSearchPathsAndQuotesExecutable', 'recordsFailuresAndPreservesTransportFailures',
                           'shellFallbackExplainsFailureAndReconnectClearsDetails'],
-    'core.TerminalInputTest': ['everySupportedKeyAndToolbarOrder', 'mixedStepsUnicodeNewlinesAndNoImplicitEnter',
+    'core.TerminalInputTest': ['binaryMouseReportsPreserveEveryByteAndRejectInvalidInput', 'everySupportedKeyAndToolbarOrder', 'mixedStepsUnicodeNewlinesAndNoImplicitEnter',
                                'emptyInvalidAndUtf8SizeLimits', 'oldPreferencesAndIndependentBindingsRoundTrip'],
     'PreferencesTest': ['repositoryRestoresMacrosAndLegacySettings'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification

@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+from verify_android_results import expected_for_selection, verify
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "artifacts/mobile-input"
@@ -41,8 +42,7 @@ def main():
                      "kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner", timeout=180).decode()
         (OUT / "instrumentation.txt").write_text(result)
         print(result)
-        if "OK (3 tests)" not in result or "FAILURES" in result or "INSTRUMENTATION_FAILED" in result:
-            raise SystemExit(1)
+        verify(result, expected_for_selection("kim.jujin.rovessh.AndroidMobileInputTest,kim.jujin.rovessh.AndroidPlatformTest"))
     finally:
         for name in names:
             image = subprocess.run(ADB + ["exec-out", "run-as", "kim.jujin.dglc", "cat", f"cache/{name}.png"], capture_output=True, timeout=10)

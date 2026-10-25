@@ -1,7 +1,7 @@
-# 공통 코어 계약 v1 (R1)
+# 공통 코어 계약
 
-2026-10-24. 후보가 보존할 계약이다. 아래에 실제 구현 매핑과 인수 범위를 별도로 기록한다. 기존 Kotlin API를 새 공개 API로 간주하지 않는다.
-`fixtures/migration/contract-v1.json`은 기존 호환 계약, 이 문서는 새 동시성·수명 계약이다.
+현재 Rust 코어와 Android·데스크톱 어댑터의 계약입니다. 이름은 언어 중립 명세이며 실제 구현 매핑을 아래에 기록합니다.
+`fixtures/migration/contract-v1.json`은 Kotlin/Rust가 함께 읽는 저장·프로토콜 호환 fixture입니다.
 
 ## 모듈과 공개 값
 
@@ -37,7 +37,7 @@
 `RemoteWindow.index`(정수 창 번호), `RemotePane.title`(터미널 제목)을 상태 JSON에 포함한다.
 Rust·Android 어댑터는 같은 계약을 사용한다. 제목·프로세스 변경 구독은 상태만 갱신하며,
 선택 패널의 크기·모드가 그대로이면 출력 Reset과 세대 변경을 발생시키지 않는다.
-표시 문구·폴백은 데스크톱/Kotlin 표시 모델에서 결정한다. [계층 표시](../SESSION_HIERARCHY.md)를 참고한다.
+표시 문구·폴백은 데스크톱/Kotlin 표시 모델에서 결정한다. [계층 표시](SESSION_HIERARCHY.md)를 참고한다.
 
 ## 명령과 입력
 
@@ -104,7 +104,7 @@ native await 취소는 호출 종료와 코어 작업 취소를 구분해 정의
 ## 저장·호환·복귀
 
 `CredentialStore`/`FileStore`는 플랫폼 어댑터다. Android Keystore, Windows DPAPI,
-macOS Keychain, Linux Secret Service의 실패를 Storage로 전달하며 평문 fallback은 없다.
+macOS Keychain의 저장 실패를 Storage로 전달하며 평문 fallback은 없다. Linux 저장소는 미구현이다.
 최초 키 신뢰는 사용자 승인 후 보호 저장이 성공해야 다음 연결에 적용한다. 변경된 키는
 인증 전에 차단한다. 비밀번호·RSA·Ed25519·암호화 키 실패를 Network로 분류하지 않는다.
 
@@ -112,16 +112,13 @@ macOS Keychain, Linux Secret Service의 실패를 Storage로 전달하며 평문
 알 수 없는 설정 필드는 기존처럼 읽기에서 무시하지만 호환되지 않는 타입/잘못된 ID는
 실패한다. 설정 파일은 최대 16MiB, 쓰기는 임시 파일 후 원자 교체를 우선한다.
 바이트 동일성 대신 모델 의미의 왕복 호환성을 검사한다. 데스크톱 창/레이아웃은 별도
-`desktop-layout-v1.json`이며 기존 settings에 혼합하지 않는다.
+`workspace-layout.json`이며 기존 settings에 혼합하지 않는다.
 
-후보는 별도 테스트 경로만 사용한다. R6 전환은 기존 영역을 복사하고 검증한 뒤 새 영역을
-선택한다. 원본 `.sealed`/Keystore 키를 추출하거나 평문 임시 파일로 내보내지 않는다.
-Android ID는 `kim.jujin.dglc`로 변경했으며 이전 `kim.jujin.rovessh` 앱과 별도로 설치된다.
+후보 저장 영역은 기존 앱과 분리하며 사용자 데이터 자동 이전은 구현하지 않는다.
+Android ID는 `kim.jujin.dglc`이며 이전 `kim.jujin.rovessh` 앱과 별도로 설치된다.
 Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지하되 이전 앱의 키·데이터에 접근하지 않는다.
-복귀는 전환 전 복사본 기준이며 전환 이후
-변경분은 자동 역병합하지 않고 별도 보존한다. 실패 시 원본은 바뀌지 않아야 한다.
 
-## 2026-10-24 후보 구현 매핑
+## 구현 매핑
 
 - `dgl_core::connection::Connection`이 actor를 소유한다. `input`/`action`은 request ID,
   `state()`는 sequence 포함 최신 스냅샷, `completions()`는 한 번만 소비하는 제한된 결과를 반환한다.
@@ -129,8 +126,7 @@ Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지하되 이전 앱의 
 - `NativeConnection`은 상태/명령/대상을 JSON으로 전달하고 출력은 바이트 record로 전달한다.
   원시 tmux/shell 문자열은 UI에 노출하지 않는다. Kotlin은 `stop → jobs join → shutdown → close`로 해제한다.
   콜백 대신 상태·결과·출력을 각각 polling하며 결과는 요청 슬롯과 함께 보존한다.
-- 이번 제품 범위는 선택 pane 한 개와 출력 구독 한 개다. 구독 교체는 이전 출력 예산을 반환하고
-  오래된 구독을 거절한다. 다중 pane 동시 표시/라운드로빈은 이번 API 구현에 추가하지 않는다.
+- 연결당 출력 구독 하나로 현재 창의 모든 보이는 pane을 전달한다. 구독 교체는 이전 출력 예산을 반환하고 오래된 구독을 거절한다.
 - GPUI는 alacritty 엔진 적용 후, Android는 xterm write callback 후 ack한다. Kotlin은
   target/generation을 적용 직전에 다시 비교한다. 구독이 없으면 화면 출력 큐를 만들지 않는다.
 - macOS Keychain 어댑터는 `desktop/src/storage.rs`; Android는 기존 Keystore 구현을
@@ -139,21 +135,20 @@ Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지하되 이전 앱의 
   재사용 컴포넌트를 호출한다. 앱 엔진 선택은 없으며 이전 엔진은 테스트 소스에서만 컴파일한다.
 - 키 생성·공개키 추출은 UniFFI `generate_key`/`public_key`를 통해 Rust에서 수행한다.
   Kotlin `KeyTools`는 UI 경계이며 SSHJ/BC 런타임 의존성은 없다.
-- 새 화면 상태는 메모리에만 둔다. 기존 설정에 레이아웃 필드를 추가하지 않았으며
-  `desktop-layout-v1.json`은 향후 창 상태를 저장할 때 사용할 이름이다.
+- 데스크톱 그룹 배치만 `workspace-layout.json`에 저장한다. 탭·연결·자격 증명은 저장하지 않으며 재실행 시 그룹을 빈 상태로 만든다.
 
-120 fixture·출력 큐/종료·인증·복구 검증 결과와 아직 인수하지 않은 항목은
-[후보 기록](CANDIDATE.md)을 따른다. 자동 검사는 실제 IME/모든 VT 상태의 증거가 아니다.
+공통 fixture·출력 큐/종료·인증·복구 검사와 미검증 항목은
+[검증 기록](VALIDATION.md)을 따른다. 자동 검사는 실제 IME/모든 VT 상태의 증거가 아니다.
 
-## UX 탐색·포커스 확장 (2026-10-24)
+## 탐색·포커스
 
 - `Action::SelectTarget { session, window?, pane? }` / JSON `selectTarget`는 세션 ID와 선택적인 창·패널 ID를 받는다. 전체 원격 목록에서 소속 관계를 검증하고 세션 연결 → 창/패널 선택 → snapshot을 하나의 actor 요청으로 순차 실행한다. 생략된 대상은 해당 세션/창의 활성 패널을 우선한다. 기존 `selectSession`·`selectPane`는 유지한다.
 - 연결 전 초기 목록도 세션·창·패널을 모두 제공한다. 빈 세션 목록이면 하위 조회를 생략한다.
 - `Operation::FocusPane { target, direction }` / JSON `focusPane`는 `%N`과 `L/R/U/D`만 허용한다. `select-pane -t '%N' -L/-R/-U/-D` 실행 뒤 창의 실제 활성 패널을 다시 조회하고 PaneTarget·패널 세대·화면을 함께 갱신한다. 현재 표시 패널과 다른 시작 target은 StaleGeneration으로 거부한다.
-- 다른 연결의 표시 대상은 tmux의 전역 활성 패널 변경을 따라가지 않는다. 각 연결의 PaneTarget으로 출력 필터링과 입력을 수행한다.
+- 같은 세션의 외부 창·활성 pane 선택을 반영한다. 다른 세션으로의 이동은 따라가지 않는다. 출력 target은 pane별 렌더링 식별자, 입력 target은 현재 포커스를 사용한다.
 - 데스크톱 resize는 터미널별 한 요청만 진행하며 이후 크기는 최신 값으로 병합한다. 요청 완료 후 달라진 최신 크기를 보낸다.
 
-## 2026-10-25 창 단위 렌더링 확장
+## 창 단위 렌더링
 
 `State.window`와 `render_targets: pane ID → PaneTarget`을 추가했다. 출력 target은 입력용
 `Connection.target()`과 독립적이다. 포커스 변경은 렌더러 세대를 무효화하지 않는다.
@@ -161,4 +156,4 @@ Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지하되 이전 앱의 
 `ResizePaneTo`는 검증된 pane에 셀 단위 width/height를 요청한다. UniFFI `accepts_output`으로
 Android가 현재 렌더링 대상을 확인한다. bridge 입력은 원래 pane과 입력 target을 함께 제출한다.
 기존 저장 키·입력 ACK·출력 예산·Windows 빌드 진입점은 유지한다.
-자세한 계약은 [TMUX_WINDOW_SYNC.md](../TMUX_WINDOW_SYNC.md)를 따른다.
+자세한 계약은 [TMUX_WINDOW_SYNC.md](TMUX_WINDOW_SYNC.md)를 따른다.

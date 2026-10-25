@@ -3,6 +3,21 @@
 2026-10-25 구현. Mac·Windows·Android는 같은 Rust 관측 모델과 알림 큐를 사용한다.
 SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH 셸에는 세부 관측을 제공하지 않는다.
 
+## CLI 실행 메뉴
+
+하단 `…` 메뉴가 현재 원격 터미널에 보내는 명령입니다. 명령 뒤에 Enter를 한 번 전송합니다.
+CLI 설치·로그인은 원격 환경에서 준비하며 DGL은 기존 프로세스를 종료하거나 다시 로그인하지 않습니다.
+
+| 서비스 | 일반 실행 | Bypass 실행 |
+|---|---|---|
+| Claude Code | `claude` | `claude --dangerously-skip-permissions` |
+| Codex | `codex` | `codex --yolo` |
+| AGY `test` | `agy` | `agy --dangerously-skip-permissions` |
+| Grok Build `test` | `grok` | `grok --always-approve` |
+
+입력 불가 상태에서는 실행하지 않습니다. 메뉴를 연 뒤 연결·탭·pane이 바뀌면 닫으며 실패한 입력을 재전송하지 않습니다.
+Bypass는 각 CLI의 권한 확인을 건너뛰는 옵션이며 `test`는 실험 지원을 뜻합니다.
+
 ## 사용 방법
 
 1. 호스트에 연결한 뒤 호스트 메뉴의 **에이전트 상태 연동**을 연다. 창 행 오른쪽 상태 버튼은 그 창의 모든 pane 관측 상세를 연다.

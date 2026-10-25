@@ -3,7 +3,7 @@
 
 Trace producers must timestamp actual input-ready/present events; SSH callbacks,
 write acknowledgements, am start TotalTime and headless parsing are different metrics.
-See docs/migration/PERFORMANCE.md for the input format and collection procedure.
+See docs/PERFORMANCE.md for the input format and collection procedure.
 """
 import argparse
 import json

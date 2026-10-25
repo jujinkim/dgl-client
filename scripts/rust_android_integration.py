@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from verify_android_results import expected_for_selection, verify
 
 ROOT = Path(__file__).resolve().parents[1]
 adb = str(Path(os.environ["ANDROID_HOME"]) / "platform-tools/adb")
@@ -32,8 +33,8 @@ def main():
         run(["shell", "settings", "put", "system", "font_scale", "1.3"])
         run(["shell", "settings", "put", "secure", "show_ime_with_hard_keyboard", "1"])
         run(["shell", "run-as", "kim.jujin.dglc", "sh", "-c", '"mkdir -p cache && cat > cache/integration.json"'], input=json.dumps(fixture).encode())
-        classes = os.environ.get("DGL_ANDROID_TEST_CLASSES", "kim.jujin.rovessh.AndroidPlatformTest,kim.jujin.rovessh.AndroidAppFlowTest,kim.jujin.rovessh.AndroidVolumeKeyTest")
-        expected = int(os.environ.get("DGL_ANDROID_EXPECTED_TESTS", "9"))
+        classes = os.environ.get("DGL_ANDROID_TEST_CLASSES", "kim.jujin.rovessh.AndroidPlatformTest,kim.jujin.rovessh.AndroidAppFlowTest,kim.jujin.rovessh.AndroidVolumeKeyTest,kim.jujin.rovessh.AndroidHierarchyTest,kim.jujin.rovessh.AndroidMobileInputTest")
+        expected = expected_for_selection(classes)
         result = run(["shell", "am", "instrument", "-w", "-r", "-e", "dgl.fixture", "true", "-e", "class", classes,
                       "kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner"], timeout=240)
         output = result.stdout.decode()
@@ -43,8 +44,7 @@ def main():
             image = subprocess.run(base + ["exec-out", "run-as", "kim.jujin.dglc", "cat", f"cache/{name}.png"], capture_output=True)
             if image.returncode == 0 and image.stdout.startswith(b"\x89PNG"):
                 (out / f"{name}.png").write_bytes(image.stdout)
-        if "FAILURES" in output or "INSTRUMENTATION_FAILED" in output or f"OK ({expected} test" not in output:
-            raise SystemExit(1)
+        verify(output, expected)
     finally:
         run(["shell", "run-as", "kim.jujin.dglc", "rm", "-f", "cache/integration.json"])
         run(["reverse", "--remove", f"tcp:{port}"])

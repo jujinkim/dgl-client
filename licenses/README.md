@@ -10,7 +10,7 @@ Retrieved on 2026-10-23; these texts are redistributed unmodified. The versioned
 - `GPL-3.0-or-later.txt`: https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-or-later.txt
 - `CC0-1.0.txt`: https://raw.githubusercontent.com/spdx/license-list-data/main/text/CC0-1.0.txt
 
-The JediTerm source JARs for **3.59** are resolved with Gradle checksum verification and copied into desktop distribution resources. The licence text from upstream's current tree does not assert that the current upstream dual-licence declaration applies retroactively to 3.59; the notices conservatively retain the 3.59 POM's LGPL declaration.
+The JediTerm source JARs for **3.59** must be supplied to the reference rebuild recipe and checked against the source artifact hashes in `gradle/verification-metadata.xml`. The licence text from upstream's current tree does not assert that the current upstream dual-licence declaration applies retroactively to 3.59; the notices conservatively retain the 3.59 POM's LGPL declaration.
 
 xterm.js and addon-fit notices are copied directly from the npm integrity-verified packages into Android assets by `web/bundle.mjs`. New project code is not assigned a licence by these third-party notices.
 
@@ -29,5 +29,4 @@ Source/archive notices do not assign a license to new application code.
 
 `jediterm-rebuild/` supplies the verified replacement build recipe, compiler metadata
 and dependency locks. Its generated caches and binaries must never be redistributed
-as license materials. `prepareThirdPartyNotices` enforces those exclusions and adds
-JDK legal files and an exhaustive hash manifest at packaging time.
+as license materials. The current Rust apps do not package a JVM or JediTerm; removed JVM packaging procedures are summarized in `docs/HISTORY.md`.

@@ -41,13 +41,8 @@ Android는 xterm.js의 키보드·마우스 처리를 사용한다. `onData`는 
 
 프로토콜 기준: [xterm 제어 시퀀스](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html), [xterm.js onBinary](https://xtermjs.org/docs/api/terminal/classes/terminal/#onbinary).
 
-## 검증 (2026-10-25)
+## 검증 범위
 
-- `cargo test -p dgl-desktop --no-fail-fast`: 18개 통과, 기존 Keychain 실환경 테스트 1개 ignored. GPUI 이벤트 주입으로 조합 키, IME 커밋 경로, 모드별 클릭·드래그·호버, 영역 밖 버튼 해제, 휠 이동량·소수 누적·방향·Shift 우회를 확인했다.
-- `npm test --prefix web`: 브리지 테스트 1개 통과. 텍스트·바이너리 채널의 분리와 입력 크기 제한을 확인했다. 실제 WebView 이벤트 테스트는 아니다.
-- `:app:desktopTest --tests kim.jujin.rovessh.core.TerminalInputTest`: 5개 통과. 바이너리 0–255 값 보존과 잘못된 입력 거부를 포함한다.
-- `:app:compileAndroidMain`: 통과. 기존 deprecated API 등의 경고는 남아 있다.
-- 데스크톱 `clippy --all-targets --no-deps -- -D warnings`, 수정한 Rust 파일의 `rustfmt --check`, `git diff --check`, 대시보드 메타데이터 검증: 통과. 의존 패키지의 향후 Rust 호환성 안내는 남아 있다.
-- 의존성을 포함한 Clippy는 기존 변경 사항인 `crates/dgl-core/src/connection.rs:1062`의 `unnecessary_unwrap` 경고로 실패했다. 이번 입력 수정 범위 밖이므로 해당 코드는 변경하지 않았다.
-
-이번에는 실제 장치의 마우스·키보드 조작, SSH 원격 TUI 상호작용, Android WebView 계측, Windows 네이티브 빌드·GUI 검증을 실행하지 않았다. Windows 빌드·패키징 경로는 유지한다.
+Rust GPUI 이벤트 주입, Kotlin 입력 모델, 웹 브리지 단위 검사를 사용합니다.
+이 결과를 실제 OS 키보드·IME·원격 TUI·Windows GUI 검증으로 간주하지 않습니다.
+현재 결과와 남은 실기 인수는 [VALIDATION.md](VALIDATION.md)를 따릅니다.

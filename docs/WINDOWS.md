@@ -118,7 +118,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 
 `-Test`는 선택 옵션이다. Windows DPAPI의 저장/읽기/덮어쓰기/삭제,
 평문 미저장, 암호문 변조·다른 항목으로 바꿔치기 거부, 저장 실패 처리를 포함한다.
 실제 SSH/tmux 통합 테스트는 기본 Cargo 검사에서 ignored이며 성공으로 계산하지 않는다.
-격리 서버 통합 테스트는 [후보 기록](migration/CANDIDATE.md)의 별도 명령을 따른다.
+격리 서버 통합 테스트는 [개발 안내](DEVELOPMENT.md)의 별도 명령을 따른다.
 기존 JVM `WindowsSecurityTest` 결과는 새 Rust 저장소 검증을 대신하지 않는다.
 
 실기 확인 항목:

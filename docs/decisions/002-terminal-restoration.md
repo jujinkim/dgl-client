@@ -29,7 +29,7 @@ connection/pane/size generation이 달라진 응답은 화면에 적용하지 �
 
 ## 흐름과 한계
 
-- SSH read: 16 KiB, JediTerm pipe: 256 KiB, input: 최대 32×64 KiB, scrollback: 기본 5,000줄.
+- SSH read: 16 KiB, 연결 전체 출력 payload: 256 KiB, 입력 대기: 최대 32×64 KiB, scrollback: 기본 5,000줄.
 - WebView output은 16 KiB write의 xterm 완료 ack를 기다린다. 읽기와 렌더링 사이에 무제한 큐를 두지 않는다.
 - tmux `pause-after=2`가 알리는 지연은 화면 재캡처로 회복한다. 로컬 기록 전체를 보존한다고 주장하지 않는다.
 - renderer surface는 연결보다 짧게 살 수 있다. 연결 탭을 바꾸면 새 surface에 재캡처하며 원격 프로세스를 종료하지 않는다.
@@ -46,11 +46,4 @@ connection/pane/size generation이 달라진 응답은 화면에 적용하지 �
 - [tmux 명령 파싱·명령 목록 오류 규칙](https://github.com/tmux/tmux/blob/3.3a/tmux.1)
 - 실제 SSH 테스트: 연속 번호 출력 중 10회 snapshot 이후 행 순서·중복·누락 비교, 두 클라이언트 동시 연결, 외부 split·rename·삭제.
 
-### 2026-10-25 Android 크기 변경·캐시 전환 검증
-
-- Rust 코어/바인딩 19개, Kotlin 39개(환경 필요 9개 제외), 웹 6개 통과. Kotlin 기존 설정의 기본값과 새 전환 설정 저장·복원, 마지막 변경 기준 150ms 통합과 연결별 요청 분리를 확인했다.
-- API 36 ARM64 에뮬레이터 8개 통과: 실제 WebView 캐시·그라디언트·크기/블러 전환·정리, 키보드 반복 표시 전후 tmux 클라이언트 PID와 WebView 유지, 설정 변경 시 WebView 유지, 회전·복귀. Android 34/35 및 실제 기기는 이번 수정에서 재검증하지 않았다.
-- tmux 3.7c의 크기 변경·독립 연결, 실제 연결 단절/복구, 제목 갱신 시나리오 통과. 3.3a도 각 시나리오는 새 SSH/tmux fixture에서 통과했지만, 같은 fixture를 공유한 일괄 실행은 세션 생성/초기화 단계의 `InvalidArgument` 실패가 남아 있어 일괄 통과로 간주하지 않는다.
-- Android Debug 빌드·lint와 네 ABI/서명 확인 통과. Windows 네이티브 빌드·실기는 미실시.
-
-현재 창 단위·pane별 유지 동작과 입력/출력 세대 분리는 [TMUX_WINDOW_SYNC.md](../TMUX_WINDOW_SYNC.md)를 따른다. 위 과거 실행 결과는 당시 버전의 기록이다.
+현재 pane별 렌더링 세대와 입력 포커스의 분리·로컬 기록 유지 계약은 [TMUX_WINDOW_SYNC.md](../TMUX_WINDOW_SYNC.md)를 따릅니다.
