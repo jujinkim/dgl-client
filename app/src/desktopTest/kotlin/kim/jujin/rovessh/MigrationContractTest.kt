@@ -104,7 +104,7 @@ class MigrationContractTest {
                 val result = command(case)
                 assertEquals(case.text("wire"), result.wire, case.text("id"))
                 assertEquals(case.text("shellWire"), result.shellWire, case.text("id"))
-                assertEquals("'/test path'\\''/tmux' " + result.shellWire.removePrefix("tmux "),
+                assertEquals("'/test path'\\''/tmux' -u " + result.shellWire.removePrefix("tmux "),
                     result.shellWithExecutable("/test path'/tmux"))
             }
         }
@@ -166,11 +166,11 @@ class MigrationContractTest {
                     } }
                     "windows" -> RemoteStateDecoder.windows(rows).map { buildJsonObject {
                         put("id", it.id); put("session", it.session); put("name", it.name)
-                        put("active", it.active); put("layout", it.layout)
+                        put("active", it.active); put("layout", it.layout); put("index", it.index)
                     } }
                     "panes" -> RemoteStateDecoder.panes(rows).map { buildJsonObject {
                         put("id", it.id); put("window", it.window); put("width", it.width); put("height", it.height)
-                        put("active", it.active); put("mode", it.mode); put("command", it.command)
+                        put("active", it.active); put("mode", it.mode); put("command", it.command); put("title", it.title)
                     } }
                     else -> error("Unknown state fixture")
                 })

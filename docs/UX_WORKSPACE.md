@@ -1,5 +1,7 @@
 # flat UX와 데스크톱 탭 그룹
 
+2026-10-25 세션·창·패널 제목과 보조 정보 분리는 [SESSION_HIERARCHY.md](SESSION_HIERARCHY.md)를 따른다.
+
 2026-10-24, `main`에서 구현했다. Android와 Windows·Mac 공통 GPUI 코드에 적용하며 기존 설정·호스트 ID·플랫폼별 자격 증명 저장소와 Windows 빌드·패키징 진입점을 유지한다.
 
 ## 조작과 상태

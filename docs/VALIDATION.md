@@ -609,3 +609,41 @@ Windows 네이티브 빌드·GUI·DPAPI는 이번 작업에서 검증하지 않�
 이번 작업에서는 컴퓨터 화면 조작 없이 CLI와 자동화 검사로 검증했다.
 Android 실제 기기/에뮬레이터의 Wi-Fi 전환·버튼 조작, macOS 실제 GUI,
 Windows 네이티브 빌드·GUI·DPAPI는 수행하지 않았다. Windows 빌드·패키징 경로는 유지한다.
+
+
+## 2026-10-25 세션·창·패널 작업 제목
+
+기존 알림·설정 동기화 변경 52개 파일은 검증 후 `a0ee93c`
+(`feat: add agent notifications and cloud settings sync`)로 `main`에 커밋했다. push하지 않았다.
+이후 작업 제목 표시를 별도 변경으로 구현했다. 표시 규칙·자동 갱신·접근성 한계는
+[SESSION_HIERARCHY.md](SESSION_HIERARCHY.md)를 따른다.
+
+- 기존 변경 확인: Rust workspace **46개 통과**, SSH 3개·대화형 Keychain 1개 ignored;
+  Python **95개 통과**, JVM 테스트·Android Kotlin 컴파일·비밀정보 검사 통과.
+- 변경 후 Rust workspace **48개 통과**, 기본 실행에서는 SSH 4개·Keychain 1개 ignored.
+  공통 계약 **125개 fixture**, 별도 공유 계층 fixture를 포함한다.
+  GPUI 자동화는 240/360px 폭, 밝은/어두운 테마, 긴 한글·조합 이모지, 줄 수 제한,
+  우측 메뉴 비겹침, 제목/화살표/메뉴 클릭 및 갱신 후 포커스·펼침 유지 통과.
+- 격리 OpenSSH + tmux **3.3a·3.7c 각각 SSH 4개 통과**.
+  두 세션·각 두 창·분할 패널, 실제 OSC 제목, 숨긴 창과 다른 세션 변경, 프로세스 변경,
+  활성 패널 전환, 이름·창 번호 변경, 빈 제목, 수동 갱신, 재접속·구독 재등록을 확인했다.
+  메타데이터 변경 중 Reset/Resize 출력 없음, 입력 대상·세대 유지,
+  재접속 뒤 같은 PID와 입력 파일의 단 한 번 기록도 검사했다.
+- JVM **41개 중 32개 통과·9개 예상 skip**.
+  Android 실제 어댑터의 JSON 디코더와 표시 모델이 Rust와 같은 계층 기대값을 읽는다.
+  `:mobileUi:compileDebugKotlin`, `:androidApp:compileDebugKotlin` 통과.
+- `cargo fmt --check`, workspace `clippy --all-targets -- -D warnings`,
+  `git diff --check`, 비밀정보 검사·대시보드 검증 통과.
+  `.dashboard-props.json`은 기능 설명을 갱신하고 Git 제외를 유지했다.
+
+SSH locale이 UTF-8이 아니면 tmux가 Unicode 제목을 밑줄로 바꾸는 현상을 재현해
+조회·Control Mode 실행에 `-u`를 적용했다. tmux 3.7은 저장 단계에서 역슬래시 등을
+자체 정리하므로 테스트는 실제 `pane_title` 값과 비교한다. 그 값을 다시 해석하거나 실행하지 않는다.
+
+이번 검증은 CLI와 자동화로 수행했다. Android 기기/에뮬레이터 UI·TalkBack,
+macOS 실제 GUI·VoiceOver, Windows 네이티브 빌드·GUI·UIA는 실행하지 않았다.
+GPUI 네이티브 접근성 이름은 현재 의존성 API 부재로 미구현이다.
+Windows MSVC x64 빌드·ZIP·수동 CI 경로는 유지했으며, 이번 변경으로 새 배포용 APK/.app/ZIP은 만들지 않았다.
+
+최종 로그: Git 제외된 `artifacts/hierarchy/`의 `rust-final.log`, `android-final.log`,
+`tmux-3.3a-final.log`, `tmux-3.7c-verified.log`, `clippy-final.log`, `secrets-final.log`.

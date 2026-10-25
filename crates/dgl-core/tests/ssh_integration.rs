@@ -827,3 +827,307 @@ async fn workspace_focus_tree_and_independent_connections() {
     }
     inspector.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires scripts/integration.py; isolated SSH/tmux metadata subscriptions"]
+async fn hierarchy_titles_all_sessions_without_screen_reset() {
+    use dgl_core::{connection::State, flow::OutputKind};
+    fn tmux(args: &[&str]) -> String {
+        let output = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
+            .arg("-u")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
+    async fn until(c: &Connection, predicate: impl Fn(&State) -> bool) {
+        tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let state = c.state();
+                assert!(
+                    !matches!(state.phase, Phase::Failed | Phase::Closed),
+                    "{state:?}"
+                );
+                if predicate(&state) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("metadata timeout: {:?}", c.state()));
+    }
+    fn title(pane: &str, value: &str) {
+        tmux(&["select-pane", "-t", pane, "-T", &value.replace('#', "##")]);
+    }
+    let root = std::path::PathBuf::from(std::env::var("DGL_TEST_ROOT").unwrap());
+    let long = "구분하세요 tmux session 🚀 | ' \\ #{pane_id} ".repeat(8);
+    let script = root.join("hierarchy-input.sh");
+    let received = root.join("hierarchy-input.txt");
+    std::fs::write(
+        &script,
+        format!(
+            "printf '\\033]2;%s\\007' {}\nstty -echo\nwhile IFS= read -r line; do printf '%s\\n' \"$line\" >> {}; done\n",
+            dgl_core::command::quote(&long).unwrap(),
+            dgl_core::command::quote(received.to_str().unwrap()).unwrap()
+        ),
+    )
+    .unwrap();
+    let command = format!(
+        "/bin/sh {}",
+        dgl_core::command::quote(script.to_str().unwrap()).unwrap()
+    );
+    let ids = tmux(&[
+        "new-session",
+        "-d",
+        "-s",
+        "hierarchy-a",
+        "-x",
+        "100",
+        "-y",
+        "30",
+        "-P",
+        "-F",
+        "#{session_id}|#{window_id}|#{pane_id}",
+        &command,
+    ]);
+    let ids: Vec<_> = ids.split('|').collect();
+    let (session, window, pane) = (ids[0], ids[1], ids[2]);
+    let sibling = tmux(&[
+        "split-window",
+        "-h",
+        "-d",
+        "-t",
+        pane,
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "sleep 120",
+    ]);
+    let hidden = tmux(&[
+        "new-window",
+        "-d",
+        "-t",
+        session,
+        "-n",
+        "hidden",
+        "-P",
+        "-F",
+        "#{window_id}|#{pane_id}",
+        "sleep 120",
+    ]);
+    let hidden: Vec<_> = hidden.split('|').collect();
+    let other = tmux(&[
+        "new-session",
+        "-d",
+        "-s",
+        "hierarchy-b",
+        "-P",
+        "-F",
+        "#{session_id}|#{window_id}|#{pane_id}",
+        "sleep 120",
+    ]);
+    let other: Vec<_> = other.split('|').collect();
+    let other_hidden = tmux(&[
+        "new-window",
+        "-d",
+        "-t",
+        other[0],
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "sleep 120",
+    ]);
+
+    title(&sibling, "다른 패널");
+    title(hidden[1], "숨겨진 창");
+    title(other[2], "다른 세션");
+    title(&other_hidden, "다른 세션의 숨겨진 창");
+    let (host, credential, fingerprint) = fixture("DGL_TEST_KEY_FILE");
+    let c = Connection::start(host.clone(), credential.clone(), Some(fingerprint.clone()));
+    let sub = c.output().subscribe().unwrap();
+    phase(&c, Phase::Selecting).await;
+    assert_eq!(
+        c.state()
+            .remote
+            .panes
+            .iter()
+            .find(|p| p.id == pane)
+            .unwrap()
+            .title
+            .trim_end(),
+        // tmux 3.7 sanitizes stored titles (including backslashes); preserve
+        // exactly the server's pane_title rather than undoing its own rules.
+        tmux(&["display-message", "-p", "-t", pane, "#{pane_title}"])
+    );
+    completion(
+        &c,
+        c.action(Action::SelectTarget {
+            session: session.into(),
+            window: Some(window.into()),
+            pane: Some(pane.into()),
+        })
+        .unwrap(),
+    )
+    .await;
+    phase(&c, Phase::Ready).await;
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    let target = c.target().unwrap();
+    let pid = tmux(&["display-message", "-p", "-t", pane, "#{pane_pid}"]);
+    while let Some(event) = c.output().poll(sub).unwrap() {
+        c.output().ack(sub, event.sequence).unwrap();
+    }
+    completion(
+        &c,
+        c.input(target.clone(), b"exactly-once\r".to_vec()).unwrap(),
+    )
+    .await;
+    title(pane, "제목 변경 🚀 | ' #(");
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == pane && p.title == "제목 변경 🚀 | ' #(")
+    })
+    .await;
+    title(hidden[1], "숨긴 창 변경");
+    title(&other_hidden, "다른 세션 변경");
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == hidden[1] && p.title == "숨긴 창 변경")
+            && s.remote
+                .panes
+                .iter()
+                .any(|p| p.id == other_hidden && p.title == "다른 세션 변경")
+    })
+    .await;
+    tmux(&["select-pane", "-t", &sibling]);
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == sibling && p.active && p.title == "다른 패널")
+    })
+    .await;
+    completion(
+        &c,
+        c.action(Action::Manage {
+            operation: Operation::RenameSession {
+                target: session.into(),
+                name: "renamed-session".into(),
+            },
+        })
+        .unwrap(),
+    )
+    .await;
+    completion(
+        &c,
+        c.action(Action::Manage {
+            operation: Operation::RenameWindow {
+                target: window.into(),
+                name: "renamed-window".into(),
+            },
+        })
+        .unwrap(),
+    )
+    .await;
+    tmux(&["move-window", "-s", hidden[0], "-t", "renamed-session:9"]);
+    until(&c, |s| {
+        s.remote
+            .windows
+            .iter()
+            .any(|w| w.id == hidden[0] && w.index == 9)
+    })
+    .await;
+    title(&sibling, "");
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == sibling && p.title.is_empty())
+            && s.remote
+                .windows
+                .iter()
+                .any(|w| w.id == window && w.name == "renamed-window")
+    })
+    .await;
+    // Process changes are observed even when neither title nor window name changes.
+    tmux(&["respawn-pane", "-k", "-t", &other_hidden, "cat"]);
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == other_hidden && p.command == "cat")
+    })
+    .await;
+    completion(&c, c.action(Action::Refresh).unwrap()).await;
+    assert_eq!(c.target(), Some(target));
+    assert_eq!(c.state().phase, Phase::Ready);
+    while let Some(event) = c.output().poll(sub).unwrap() {
+        assert_eq!(
+            event.kind,
+            OutputKind::Live,
+            "metadata caused terminal reset"
+        );
+        c.output().ack(sub, event.sequence).unwrap();
+    }
+    assert_eq!(
+        std::fs::read_to_string(&received).unwrap(),
+        "exactly-once\n"
+    );
+    let snapshot = c.state();
+    c.close();
+    c.join().await;
+    title(pane, "재접속 제목");
+    let mut reconnect_host = host;
+    reconnect_host.last_session = Some(session.into());
+    reconnect_host.last_pane = Some(pane.into());
+    let c = Connection::start(reconnect_host, credential, Some(fingerprint));
+    let sub = c.output().subscribe().unwrap();
+    phase(&c, Phase::Ready).await;
+    assert_eq!(c.target().unwrap().pane_id, pane);
+    assert_eq!(
+        tmux(&["display-message", "-p", "-t", pane, "#{pane_pid}"]),
+        pid
+    );
+    assert_eq!(
+        c.state()
+            .remote
+            .panes
+            .iter()
+            .find(|p| p.id == pane)
+            .unwrap()
+            .title,
+        "재접속 제목"
+    );
+    assert_eq!(
+        c.state().remote.windows.len(),
+        snapshot.remote.windows.len()
+    );
+    title(pane, "재접속 후 변경");
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == pane && p.title == "재접속 후 변경")
+    })
+    .await;
+    while let Some(event) = c.output().poll(sub).unwrap() {
+        c.output().ack(sub, event.sequence).unwrap();
+    }
+    assert_eq!(
+        std::fs::read_to_string(&received).unwrap(),
+        "exactly-once\n"
+    );
+    c.close();
+    c.join().await;
+    tmux(&["kill-session", "-t", session]);
+    tmux(&["kill-session", "-t", other[0]]);
+}

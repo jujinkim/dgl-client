@@ -286,7 +286,7 @@ impl Ssh {
         c.exec(
             true,
             format!(
-                "{} -C attach-session -t {}",
+                "{} -u -C attach-session -t {}",
                 command::quote(self.tmux.as_deref().ok_or(Error::NotReady)?)?,
                 command::target(id, '$')?
             ),

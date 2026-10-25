@@ -5,6 +5,7 @@
 
 mod agent_ui;
 mod cloud_sync;
+mod hierarchy;
 mod launcher;
 mod modal;
 mod notifications;
@@ -540,6 +541,14 @@ impl Desktop {
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
+        self.button_base(id, cx, action).child(label.into())
+    }
+    fn button_base(
+        &self,
+        id: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Stateful<Div> {
         let id = id.into();
         let palette = self.palette;
         div()
@@ -559,7 +568,6 @@ impl Desktop {
             })
             .border_1()
             .border_color(gpui::transparent_black())
-            .child(label.into())
             .on_click(cx.listener(move |v, _, w, cx| {
                 action(v, w, cx);
                 cx.stop_propagation();

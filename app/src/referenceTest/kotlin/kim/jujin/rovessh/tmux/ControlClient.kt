@@ -81,6 +81,7 @@ class ControlClient(
         }
         withTimeout(15_000) { startup.await() }
         command(TmuxCommand.flowControl)
+        command(TmuxCommand.metadataSubscription)
         refresh()
         scope.launch {
             for (ignored in changes) {
@@ -150,7 +151,7 @@ class ControlClient(
     }
 
     companion object {
-        private val stateEvents = setOf("%session-changed", "%sessions-changed", "%session-renamed", "%window-add", "%window-close", "%window-renamed", "%unlinked-window-add", "%unlinked-window-close", "%unlinked-window-renamed", "%layout-change", "%window-pane-changed", "%session-window-changed", "%pane-mode-changed")
+        private val stateEvents = setOf("%subscription-changed", "%session-changed", "%sessions-changed", "%session-renamed", "%window-add", "%window-close", "%window-renamed", "%unlinked-window-add", "%unlinked-window-close", "%unlinked-window-renamed", "%layout-change", "%window-pane-changed", "%session-window-changed", "%pane-mode-changed")
     }
 }
 

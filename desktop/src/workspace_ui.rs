@@ -19,6 +19,7 @@ impl Render for Tip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
             .p_2()
+            .max_w(px(640.))
             .bg(rgb(0x30343b))
             .text_color(rgb(0xffffff))
             .child(self.0.clone())
@@ -997,14 +998,72 @@ impl Desktop {
         }
         body
     }
+    fn tree_button(
+        &self,
+        id: impl Into<SharedString>,
+        label: hierarchy::Label,
+        pane: bool,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Stateful<Div> {
+        let full = label.full_text();
+        let id = id.into();
+        let title_id = format!("{id}-title");
+        let detail_id = format!("{id}-detail");
+        self.button_base(id, cx, action)
+            .flex_1()
+            .flex_shrink()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .items_start()
+            .py_2()
+            .tooltip(move |_, cx| cx.new(|_| Tip(full.clone())).into())
+            .child(
+                div()
+                    .id(ElementId::Name(title_id.clone().into()))
+                    .debug_selector(move || title_id)
+                    .w_full()
+                    .text_size(px(if pane { 14. } else { 16. }))
+                    .line_height(px(if pane { 19. } else { 22. }))
+                    .font_weight(if pane {
+                        FontWeight::MEDIUM
+                    } else {
+                        FontWeight::BOLD
+                    })
+                    .line_clamp(2)
+                    .text_ellipsis()
+                    .child(label.title),
+            )
+            .child(
+                div()
+                    .id(ElementId::Name(detail_id.clone().into()))
+                    .debug_selector(move || detail_id)
+                    .w_full()
+                    .text_size(px(12.))
+                    .line_height(px(17.))
+                    .text_color(rgb(self.palette.muted))
+                    .truncate()
+                    .child(label.detail),
+            )
+    }
     fn render_tree(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(tab) = self.active_tab() else {
+            return div().into_any_element();
+        };
+        self.render_tree_state(tab.connection.state(), cx)
+    }
+    pub(super) fn render_tree_state(
+        &mut self,
+        state: dgl_core::connection::State,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = self.palette;
         let mut tree = div().mt_3().border_t_1().border_color(rgb(p.line));
         let Some(tab) = self.active_tab() else {
             return tree.into_any_element();
         };
         let connection = tab.connection.clone();
-        let state = connection.state();
         let tid = tab.id;
         let refreshing = tab.refresh.is_some();
         let browse = matches!(
@@ -1069,29 +1128,24 @@ impl Desktop {
                         cx,
                         move |s, _, _| s.toggle_expanded(toggle.clone()),
                     ))
-                    .child(
-                        self.button(
-                            format!("session-{sid}"),
-                            session.name.clone(),
-                            cx,
-                            move |s, _, _| {
-                                if browse {
-                                    s.submit(
-                                        &c,
-                                        Action::SelectTarget {
-                                            session: select_sid.clone(),
-                                            window: None,
-                                            pane: None,
-                                        },
-                                    );
-                                }
-                            },
-                        )
-                        .font_weight(FontWeight::BOLD)
-                        .flex_1()
-                        .min_w_0()
-                        .truncate(),
-                    )
+                    .child(self.tree_button(
+                        format!("session-{sid}"),
+                        hierarchy::session_label(&state.remote, session),
+                        false,
+                        cx,
+                        move |s, _, _| {
+                            if browse {
+                                s.submit(
+                                    &c,
+                                    Action::SelectTarget {
+                                        session: select_sid.clone(),
+                                        window: None,
+                                        pane: None,
+                                    },
+                                );
+                            }
+                        },
+                    ))
                     .child(self.button(menu_id.clone(), "…", cx, move |s, _, _| {
                         s.toggle_menu(menu.clone())
                     })),
@@ -1182,28 +1236,24 @@ impl Desktop {
                             cx,
                             move |s, _, _| s.toggle_expanded(toggle.clone()),
                         ))
-                        .child(
-                            self.button(
-                                format!("window-{sid}-{wid}"),
-                                win.name.clone(),
-                                cx,
-                                move |s, _, _| {
-                                    if browse {
-                                        s.submit(
-                                            &c,
-                                            Action::SelectTarget {
-                                                session: select_sid.clone(),
-                                                window: Some(select_wid.clone()),
-                                                pane: None,
-                                            },
-                                        );
-                                    }
-                                },
-                            )
-                            .flex_1()
-                            .min_w_0()
-                            .truncate(),
-                        )
+                        .child(self.tree_button(
+                            format!("window-{sid}-{wid}"),
+                            hierarchy::window_label(&state.remote, win),
+                            false,
+                            cx,
+                            move |s, _, _| {
+                                if browse {
+                                    s.submit(
+                                        &c,
+                                        Action::SelectTarget {
+                                            session: select_sid.clone(),
+                                            window: Some(select_wid.clone()),
+                                            pane: None,
+                                        },
+                                    );
+                                }
+                            },
+                        ))
                         .child(self.button(menu_id.clone(), "…", cx, move |s, _, _| {
                             s.toggle_menu(menu.clone())
                         })),
@@ -1270,31 +1320,24 @@ impl Desktop {
                                     && state.pane.as_ref() == Some(&pid),
                                 |d| d.bg(rgb(p.selection)),
                             )
-                            .child(
-                                self.button(
-                                    format!("pane-{sid}-{wid}-{pid}"),
-                                    format!(
-                                        "{} {} · {}×{}",
-                                        pid, pane.command, pane.width, pane.height
-                                    ),
-                                    cx,
-                                    move |s, _, _| {
-                                        if browse {
-                                            s.submit(
-                                                &c,
-                                                Action::SelectTarget {
-                                                    session: select_sid.clone(),
-                                                    window: Some(select_wid.clone()),
-                                                    pane: Some(select_pid.clone()),
-                                                },
-                                            );
-                                        }
-                                    },
-                                )
-                                .flex_1()
-                                .min_w_0()
-                                .truncate(),
-                            )
+                            .child(self.tree_button(
+                                format!("pane-{sid}-{wid}-{pid}"),
+                                hierarchy::pane_label(pane),
+                                true,
+                                cx,
+                                move |s, _, _| {
+                                    if browse {
+                                        s.submit(
+                                            &c,
+                                            Action::SelectTarget {
+                                                session: select_sid.clone(),
+                                                window: Some(select_wid.clone()),
+                                                pane: Some(select_pid.clone()),
+                                            },
+                                        );
+                                    }
+                                },
+                            ))
                             .child(self.button(menu_id.clone(), "…", cx, move |s, _, _| {
                                 s.toggle_menu(menu.clone())
                             })),

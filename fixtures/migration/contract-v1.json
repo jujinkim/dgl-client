@@ -1047,7 +1047,7 @@
       "id": "window",
       "kind": "windows",
       "rows": [
-        "$1|@2|hello\\ world|1|abcd,80x24,0,0,3"
+        "$1|@2|hello\\ world|1|abcd,80x24,0,0,3|7"
       ],
       "expected": [
         {
@@ -1055,7 +1055,8 @@
           "session": "$1",
           "name": "hello world",
           "active": true,
-          "layout": "abcd,80x24,0,0,3"
+          "layout": "abcd,80x24,0,0,3",
+          "index": 7
         }
       ]
     },
@@ -1063,7 +1064,7 @@
       "id": "pane",
       "kind": "panes",
       "rows": [
-        "%3|@2|80|24|1||sh"
+        "%3|@2|80|24|1||sh|구분하세요\\ tmux\\ session\\|한글🚀\\\\끝"
       ],
       "expected": [
         {
@@ -1073,7 +1074,8 @@
           "height": 24,
           "active": true,
           "mode": "",
-          "command": "sh"
+          "command": "sh",
+          "title": "구분하세요 tmux session|한글🚀\\끝"
         }
       ]
     },
@@ -1092,6 +1094,25 @@
         "%1|@1|80"
       ],
       "error": true
+    },
+    {
+      "id": "empty-pane-title",
+      "kind": "panes",
+      "rows": [
+        "%4|@2|40|24|0|copy-mode|python|"
+      ],
+      "expected": [
+        {
+          "id": "%4",
+          "window": "@2",
+          "width": 40,
+          "height": 24,
+          "active": false,
+          "mode": "copy-mode",
+          "command": "python",
+          "title": ""
+        }
+      ]
     }
   ]
 }

@@ -116,7 +116,7 @@ class SshjTransport : SshTransport {
         channels += session
         try {
             // No PTY. Never -d: attaching must not detach other clients.
-            val command = session.exec(TmuxCommand.quote(executable) + " -C attach-session -t " + TmuxCommand.quote(sessionId))
+            val command = session.exec(TmuxCommand.quote(executable) + " -u -C attach-session -t " + TmuxCommand.quote(sessionId))
             SshStream(owner, session, command.inputStream, command.outputStream, command.errorStream, null)
         } catch (e: Exception) { channels -= session; session.close(); throw e }
     }

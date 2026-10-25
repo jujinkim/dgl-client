@@ -505,6 +505,7 @@ impl Control {
                     "%window-pane-changed",
                     "%session-window-changed",
                     "%pane-mode-changed",
+                    "%subscription-changed",
                 ]
                 .contains(&name.as_str())
                 {
@@ -543,6 +544,9 @@ impl Control {
         self.response().await
     }
     async fn refresh(&mut self) -> Result<()> {
+        // Clear before reading: notifications received during the queries still
+        // require another pass, otherwise a concurrent title change can be lost.
+        self.dirty = false;
         let sessions = model::sessions(&self.command(Operation::Sessions).await?)?;
         let windows = model::windows(&self.command(Operation::Windows).await?)?;
         let mut panes = model::panes(&self.command(Operation::Panes).await?)?;
@@ -570,7 +574,27 @@ impl Control {
                 s.generation.pane = s.generation.pane.saturating_add(1);
             }
         });
-        self.dirty = false;
+        Ok(())
+    }
+    async fn refresh_screen_if_needed(&mut self) -> Result<()> {
+        let before = self.shared.state.lock().unwrap().clone();
+        self.refresh().await?;
+        let after = self.shared.state.lock().unwrap().clone();
+        if let Some(id) = after.pane.as_ref() {
+            let screen = |state: &State| {
+                state
+                    .remote
+                    .panes
+                    .iter()
+                    .find(|p| &p.id == id)
+                    .map(|p| (p.width, p.height, p.mode.clone()))
+            };
+            // Names, titles, process names and another client's active pane do
+            // not change this connection's displayed screen or PaneTarget.
+            if screen(&before) != screen(&after) {
+                self.snapshot().await?;
+            }
+        }
         Ok(())
     }
     async fn select_pane(&mut self, id: String) -> Result<()> {
@@ -834,6 +858,7 @@ async fn attach(
     };
     c.response().await?;
     c.command(Operation::FlowControl).await?;
+    c.command(Operation::MetadataSubscription).await?;
     c.command(Operation::ClientSize {
         columns: size.columns,
         rows: size.rows,
@@ -1057,9 +1082,8 @@ async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
                 state.phase,
                 Phase::Ready | Phase::Restoring | Phase::Selecting
             )
-            && state.session.is_some()
+            && let Some(session) = state.session
         {
-            let session = state.session.unwrap();
             if scope.0 != session {
                 cursor = 0;
                 epoch.clear();
@@ -1188,34 +1212,52 @@ async fn connected(
     // A successfully restored connection gets a fresh budget for the next outage.
     shared.update(|s| s.retry = RetryState::default());
     loop {
+        // Commands also consume notifications while waiting for their response.
+        // Service those changes before waiting for another unsolicited event.
+        if control.as_ref().is_some_and(|c| c.dirty || c.paused) {
+            let result = async {
+                let c = control.as_mut().unwrap();
+                if c.dirty {
+                    c.refresh_screen_if_needed().await?;
+                }
+                if c.paused {
+                    c.snapshot().await?;
+                }
+                Ok(())
+            }
+            .await;
+            if result == Err(Error::MissingSession) {
+                missing_session(ssh, &shared, &mut control).await?;
+            } else {
+                result?;
+            }
+        }
         enum Incoming {
             Request(Option<Request>),
             Event(Result<Event>),
             Shell(Option<russh::ChannelMsg>),
+            Refresh,
         }
         let incoming = if let Some(c) = control.as_mut() {
-            tokio::select! {r=rx.recv()=>Incoming::Request(r),e=c.next()=>Incoming::Event(e)}
+            let pending_refresh = c.dirty || c.paused;
+            // A slow link may receive another change during every refresh.
+            // Keep pending user requests eligible instead of starving input.
+            tokio::select! {
+                r=rx.recv()=>Incoming::Request(r),
+                e=c.next()=>Incoming::Event(e),
+                _=std::future::ready(()), if pending_refresh => Incoming::Refresh,
+            }
         } else if let Some(sh) = shell.as_mut() {
             tokio::select! {r=rx.recv()=>Incoming::Request(r),m=sh.wait()=>Incoming::Shell(m)}
         } else {
             Incoming::Request(rx.recv().await)
         };
         match incoming {
+            Incoming::Refresh => {}
             Incoming::Event(e) => {
                 let result = async {
                     let c = control.as_mut().unwrap();
                     c.unsolicited(e?).await?;
-                    if c.dirty {
-                        let old = c.shared.state.lock().unwrap().remote.clone();
-                        c.refresh().await?;
-                        let now = c.shared.state.lock().unwrap().clone();
-                        if now.remote != old && now.pane.is_some() {
-                            c.snapshot().await?;
-                        }
-                    }
-                    if c.paused {
-                        c.snapshot().await?;
-                    }
                     Ok(())
                 }
                 .await;
@@ -1359,7 +1401,7 @@ async fn connected(
                                         c.select_pane(target.clone()).await?;
                                     } else {
                                         c.command(operation.clone()).await?;
-                                        c.refresh().await?;
+                                        c.refresh_screen_if_needed().await?;
                                         if let Some(window) = selected_window {
                                             let remote =
                                                 shared.state.lock().unwrap().remote.clone();
@@ -1372,8 +1414,6 @@ async fn connected(
                                                 .clone();
                                             c.select_pane(pane.clone()).await?;
                                             *remembered = Some(pane);
-                                        } else if shared.target().is_some() {
-                                            c.snapshot().await?;
                                         }
                                     }
                                 } else if tmux {
@@ -1408,7 +1448,7 @@ async fn connected(
                             }
                             Action::Refresh => {
                                 if let Some(c) = control.as_mut() {
-                                    c.refresh().await?;
+                                    c.refresh_screen_if_needed().await?;
                                 } else if tmux {
                                     let remote = list(ssh).await?;
                                     shared.update(|s| s.remote = remote);

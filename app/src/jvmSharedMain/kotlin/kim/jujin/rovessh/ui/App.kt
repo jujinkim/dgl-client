@@ -22,6 +22,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kim.jujin.rovessh.*
@@ -230,7 +232,7 @@ expect fun copyPublicKey(value: String)
             if (status.phase == Phase.Shell) Text("일반 SSH · tmux 목록 확인 불가", Modifier.padding(16.dp))
             else if (remote.sessions.isEmpty()) Text(if (canBrowse) "세션 없음 · + 버튼으로 생성" else "목록 대기 중", Modifier.padding(16.dp))
             remote.sessions.forEach { s ->
-                TreeRow(s.name, 0, session == s.id, expanded[s.id] == true, { expanded[s.id] = expanded[s.id] != true },
+                TreeRow(remote.sessionLabel(s), 0, session == s.id, expanded[s.id] == true, { expanded[s.id] = expanded[s.id] != true },
                     { client.selectTarget(s.id) }, canBrowse, listOf(
                         "+ 창" to { namePrompt = "창 만들기" to { client.manage(TmuxCommand.newWindow(s.id, it)) } },
                         "이름 변경" to { namePrompt = "세션 이름 변경" to { client.manage(TmuxCommand.renameSession(s.id, it)) } },
@@ -238,13 +240,13 @@ expect fun copyPublicKey(value: String)
                     ))
                 if (expanded[s.id] == true) remote.windows.filter { it.session == s.id }.forEach { w ->
                     val key = "${s.id}/${w.id}"
-                    TreeRow(w.name, 1, session == s.id && currentWindow?.id == w.id, expanded[key] == true, { expanded[key] = expanded[key] != true },
+                    TreeRow(remote.windowLabel(w), 1, session == s.id && currentWindow?.id == w.id, expanded[key] == true, { expanded[key] = expanded[key] != true },
                         { client.selectTarget(s.id, w.id) }, canBrowse, listOf(
                             "이름 변경" to { namePrompt = "창 이름 변경" to { client.manage(TmuxCommand.renameWindow(w.id, it)) } },
                             "삭제…" to { deletion = "창 ${w.name}" to { client.manage(TmuxCommand.killWindow(w.id)) } },
                         ))
                     if (expanded[key] == true) remote.panes.filter { it.window == w.id }.forEach { p ->
-                        TreeRow("${p.id} ${p.command} ${p.width}×${p.height}", 2, session == s.id && pane == p.id, null, {},
+                        TreeRow(p.treeLabel(), 2, session == s.id && pane == p.id, null, {},
                             { client.selectTarget(s.id, w.id, p.id) }, canBrowse, listOf(
                                 "삭제…" to { deletion = "패널 ${p.id}" to { client.manage(TmuxCommand.killPane(p.id)) } },
                             ))
@@ -317,7 +319,8 @@ expect fun copyPublicKey(value: String)
         }
     }
 }
-@Composable private fun TreeRow(label: String, depth: Int, active: Boolean, expanded: Boolean?, toggle: () -> Unit,
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun TreeRow(label: TreeLabel, depth: Int, active: Boolean, expanded: Boolean?, toggle: () -> Unit,
     select: () -> Unit, enabled: Boolean, actions: List<Pair<String, () -> Unit>>) {
     val background = when {
         active -> MaterialTheme.colorScheme.secondaryContainer
@@ -327,13 +330,23 @@ expect fun copyPublicKey(value: String)
     }
     Row(Modifier.fillMaxWidth().background(background)
         .padding(start = (depth * 18).dp).semantics { selected = active }, verticalAlignment = Alignment.CenterVertically) {
-        if (expanded != null) IconButton(toggle, modifier = Modifier.semantics { contentDescription = "$label ${if (expanded) "접기" else "펼치기"}" }) { Text(if (expanded) "▾" else "▸") }
+        if (expanded != null) IconButton(toggle, modifier = Modifier.semantics { contentDescription = "${label.fullText} ${if (expanded) "접기" else "펼치기"}" }) { Text(if (expanded) "▾" else "▸") }
         else Spacer(Modifier.width(48.dp))
-        TextButton(select, enabled = enabled, shape = RectangleShape, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-            Text(label, Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                fontWeight = if (depth == 0) FontWeight.Bold else null)
+        TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+            tooltip = { PlainTooltip { Text(label.fullText) } }, state = rememberTooltipState(), modifier = Modifier.weight(1f)) {
+            TextButton(select, enabled = enabled, shape = RectangleShape, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .semantics { contentDescription = label.fullText }) {
+                Column(Modifier.fillMaxWidth().clearAndSetSemantics {}) {
+                    Text(label.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        fontSize = if (depth < 2) 16.sp else 14.sp,
+                        lineHeight = if (depth < 2) 22.sp else 19.sp,
+                        fontWeight = if (depth < 2) FontWeight.Bold else FontWeight.Medium)
+                    Text(label.detail, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        fontSize = 12.sp, lineHeight = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
-        TreeMenu("$label 메뉴", actions, enabled)
+        TreeMenu("${label.fullText} 메뉴", actions, enabled)
     }
 }
 

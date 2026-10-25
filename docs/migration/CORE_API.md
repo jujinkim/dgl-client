@@ -34,6 +34,11 @@
   ResetChunk, ResetEnd, Live. byte buffer는 수신측 소유 불변 복사본이며 UTF-8 코드포인트가
   배치/이벤트 경계를 넘을 수 있다. Kotlin에서 임의로 문자열 변환하지 않는다.
 
+`RemoteWindow.index`(정수 창 번호), `RemotePane.title`(터미널 제목)을 상태 JSON에 포함한다.
+Rust·Android 어댑터는 같은 계약을 사용한다. 제목·프로세스 변경 구독은 상태만 갱신하며,
+선택 패널의 크기·모드가 그대로이면 출력 Reset과 세대 변경을 발생시키지 않는다.
+표시 문구·폴백은 데스크톱/Kotlin 표시 모델에서 결정한다. [계층 표시](../SESSION_HIERARCHY.md)를 참고한다.
+
 ## 명령과 입력
 
 연결별 actor 한 개가 명령을 직렬화한다. 입력 요청 하나의 조각들은 해당 요청 내에서

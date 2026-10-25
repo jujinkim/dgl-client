@@ -120,11 +120,7 @@ class RustClientConnection(
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         val r = s.getValue("remote").jsonObject
         fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
-        remote.value = RemoteState(
-            r.getValue("sessions").jsonArray.map { it.jsonObject.let { v -> RemoteSession(v.str("id"), v.str("name"), v.str("attached").toInt()) } },
-            r.getValue("windows").jsonArray.map { it.jsonObject.let { v -> RemoteWindow(v.str("id"), v.str("session"), v.str("name"), v.str("active").toBoolean(), v.str("layout")) } },
-            r.getValue("panes").jsonArray.map { it.jsonObject.let { v -> RemotePane(v.str("id"), v.str("window"), v.str("width").toInt(), v.str("height").toInt(), v.str("active").toBoolean(), v.str("mode"), v.str("command")) } },
-        )
+        remote.value = RemoteStateDecoder.json(r)
         trustRequest.value = if (phase == Phase.TrustRequired) text("fingerprint")?.let { UnknownHostKey(host.endpoint, it) } else null
         tmuxProblem.value = if (phase == Phase.Shell) {
             val probes = s.getValue("diagnostics").jsonArray.map { it.jsonObject }

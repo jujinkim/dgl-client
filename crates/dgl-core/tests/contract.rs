@@ -40,7 +40,7 @@ fn event(e: Event) -> Value {
     }
 }
 #[test]
-fn contract_124_cases() {
+fn contract_125_cases() {
     let f = fixtures();
     let mut count = 0;
     for c in f["protocol"].as_array().unwrap() {
@@ -179,7 +179,7 @@ fn contract_124_cases() {
             assert_eq!(result.unwrap(), c["expected"], "{}", c["id"]);
         }
     }
-    assert_eq!(count, 124);
+    assert_eq!(count, 125);
 }
 
 #[test]

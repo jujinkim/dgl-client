@@ -218,6 +218,7 @@ pub struct RemoteWindow {
     pub name: String,
     pub active: bool,
     pub layout: String,
+    pub index: u32,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemotePane {
@@ -228,6 +229,7 @@ pub struct RemotePane {
     pub active: bool,
     pub mode: String,
     pub command: String,
+    pub title: String,
 }
 
 pub fn split_record(row: &[u8], count: usize) -> Result<Vec<String>> {
@@ -290,13 +292,14 @@ pub fn sessions(rows: &[Vec<u8>]) -> Result<Vec<RemoteSession>> {
 pub fn windows(rows: &[Vec<u8>]) -> Result<Vec<RemoteWindow>> {
     rows.iter()
         .map(|r| {
-            let f = split_record(r, 5)?;
+            let f = split_record(r, 6)?;
             Ok(RemoteWindow {
                 id: target(&f[1], '@')?,
                 session: target(&f[0], '$')?,
                 name: unquote(&f[2]),
                 active: f[3] == "1",
                 layout: f[4].clone(),
+                index: num(&f[5])?,
             })
         })
         .collect()
@@ -304,7 +307,7 @@ pub fn windows(rows: &[Vec<u8>]) -> Result<Vec<RemoteWindow>> {
 pub fn panes(rows: &[Vec<u8>]) -> Result<Vec<RemotePane>> {
     rows.iter()
         .map(|r| {
-            let f = split_record(r, 7)?;
+            let f = split_record(r, 8)?;
             Ok(RemotePane {
                 id: target(&f[0], '%')?,
                 window: target(&f[1], '@')?,
@@ -313,6 +316,7 @@ pub fn panes(rows: &[Vec<u8>]) -> Result<Vec<RemotePane>> {
                 active: f[4] == "1",
                 mode: unquote(&f[5]),
                 command: unquote(&f[6]),
+                title: unquote(&f[7]),
             })
         })
         .collect()

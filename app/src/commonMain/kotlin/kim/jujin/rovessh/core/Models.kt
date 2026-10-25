@@ -38,8 +38,8 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
 @Serializable data class LocalState(val hosts: List<HostProfile> = emptyList(), val trust: Map<String, String> = emptyMap(), val preferences: Preferences = Preferences())
 
 data class RemoteSession(val id: String, val name: String, val attached: Int)
-data class RemoteWindow(val id: String, val session: String, val name: String, val active: Boolean, val layout: String)
-data class RemotePane(val id: String, val window: String, val width: Int, val height: Int, val active: Boolean, val mode: String, val command: String)
+data class RemoteWindow(val id: String, val session: String, val name: String, val active: Boolean, val layout: String, val index: Int = 0)
+data class RemotePane(val id: String, val window: String, val width: Int, val height: Int, val active: Boolean, val mode: String, val command: String, val title: String = "")
 data class RemoteState(val sessions: List<RemoteSession> = emptyList(), val windows: List<RemoteWindow> = emptyList(), val panes: List<RemotePane> = emptyList())
 data class Size(val columns: Int = 80, val rows: Int = 24) {
     init { require(columns in 2..500 && rows in 2..250) }

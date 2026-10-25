@@ -31,6 +31,105 @@ fn redraw(cx: &mut VisualTestContext) {
     cx.run_until_parked();
 }
 
+struct HierarchyPreview {
+    desktop: Entity<Desktop>,
+    state: dgl_core::connection::State,
+    width: f32,
+}
+impl gpui::Render for HierarchyPreview {
+    fn render(
+        &mut self,
+        _: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        use gpui::{ParentElement, Styled};
+        let state = self.state.clone();
+        let tree = self
+            .desktop
+            .update(cx, |s, cx| s.render_tree_state(state, cx));
+        gpui::div().w(px(self.width)).child(tree)
+    }
+}
+
+#[gpui::test]
+fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppContext) {
+    let (desktop, ui) = setup(cx);
+    let terminal = add_terminal(&desktop, ui);
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v1.json")).unwrap();
+    let mut state = desktop.read_with(ui, |s, _| s.tabs[0].connection.state());
+    state.remote = serde_json::from_value(fixture["remote"].clone()).unwrap();
+    state.phase = dgl_core::connection::Phase::Ready;
+    state.session = Some("$1".into());
+    state.pane = Some("%2".into());
+    desktop.update(ui, |s, _| {
+        s.expanded
+            .extend(["1/$1".into(), "1/$1/@1".into(), "1/$1/@2".into()]);
+    });
+    let owner = desktop.clone();
+    let (preview, ui) = cx.add_window_view(|_, _| HierarchyPreview {
+        desktop: owner,
+        state,
+        width: 280.,
+    });
+    for dark in [false, true] {
+        desktop.update(ui, |s, _| s.palette = super::theme::Palette::new(dark));
+        redraw(ui);
+        for width in [240., 360.] {
+            preview.update(ui, |p, cx| {
+                p.width = width;
+                cx.notify();
+            });
+            redraw(ui);
+            for (id, max_height) in [
+                ("window-$1-@2-title", 44.),
+                ("pane-$1-@2-%3-title", 38.),
+                ("window-$1-@2-detail", 17.),
+            ] {
+                let bounds = ui.debug_bounds(id).unwrap();
+                assert!(
+                    bounds.size.height > px(0.) && bounds.size.height <= px(max_height + 1.),
+                    "{id}: {bounds:?}"
+                );
+                assert!(bounds.right() <= px(width), "{id} overflows: {bounds:?}");
+            }
+            let title = ui.debug_bounds("window-$1-@2").unwrap();
+            let menu = ui.debug_bounds("1/$1/@2/menu").unwrap();
+            assert!(title.right() <= menu.left(), "title overlaps menu");
+        }
+    }
+    let focus = ui.update(|_, cx| cx.focus_handle());
+    ui.update(|w, _| w.focus(&focus));
+    let expanded = desktop.read_with(ui, |s, _| s.expanded.clone());
+    preview.update(ui, |p, cx| {
+        p.state.remote.panes[1].title = "메타데이터 갱신 🚀".into();
+        cx.notify();
+    });
+    redraw(ui);
+    assert!(ui.update(|w, _| focus.is_focused(w)));
+    assert_eq!(desktop.read_with(ui, |s, _| s.expanded.clone()), expanded);
+    let title = ui.debug_bounds("window-$1-@1").unwrap();
+    ui.simulate_click(title.center(), Modifiers::default());
+    assert_eq!(
+        desktop.read_with(ui, |s, _| s.expanded.clone()),
+        expanded,
+        "title selects without toggling"
+    );
+    let toggle = ui.debug_bounds("expand-1/$1/@1").unwrap();
+    ui.simulate_click(toggle.center(), Modifiers::default());
+    assert!(!desktop.read_with(ui, |s, _| s.expanded.contains("1/$1/@1")));
+    redraw(ui);
+    let menu = ui.debug_bounds("1/$1/@1/menu").unwrap();
+    ui.simulate_click(menu.center(), Modifiers::default());
+    redraw(ui);
+    assert_eq!(
+        desktop.read_with(ui, |s, _| s.menu.clone()),
+        Some("1/$1/@1/menu".into())
+    );
+    assert!(ui.debug_bounds("rename-@1").is_some());
+    assert!(terminal.read_with(ui, |t, _| t.sent.is_empty()));
+}
+
 #[gpui::test]
 fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
     use dgl_core::connection::State;

@@ -48,6 +48,7 @@ pub enum Operation {
     Windows,
     Panes,
     FlowControl,
+    MetadataSubscription,
 }
 #[derive(Clone, Debug)]
 pub struct Command {
@@ -79,8 +80,9 @@ impl Command {
             Pause{target:t}|Resume{target:t}=>{target(t,'%')?;format!("refresh-client -A {}",quote(&format!("{}:{}",t,if matches!(op,Pause{..}){"pause"}else{"continue"}))?)},
             Modes{target:t}=>format!("display-message -p -t {} '#{{cursor_x}}|#{{cursor_y}}|#{{alternate_on}}|#{{cursor_flag}}|#{{keypad_cursor_flag}}|#{{keypad_flag}}|#{{mouse_any_flag}}|#{{mouse_button_flag}}|#{{mouse_standard_flag}}|#{{mouse_utf8_flag}}|#{{mouse_sgr_flag}}|#{{bracketed_paste}}|#{{scroll_region_upper}}|#{{scroll_region_lower}}|#{{insert_flag}}|#{{pane_width}}|#{{pane_height}}'",target(t,'%')?),
             Sessions=>"list-sessions -F '#{session_id}|#{q:session_name}|#{session_attached}'".into(),
-            Windows=>"list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}'".into(),
-            Panes=>"list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}'".into(),
+            Windows=>"list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}'".into(),
+            Panes=>"list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}'".into(),
+            MetadataSubscription=>"refresh-client -B 'dgl-metadata::#{S:#{session_id}|#{q:session_name}|#{W:#{window_id}|#{window_index}|#{q:window_name}|#{window_active}|#{P:#{pane_id}|#{pane_active}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title};}}}'".into(),
             FlowControl=>"refresh-client -f 'pause-after=2'".into(),
         };
         let shell_wire = if let NewSession { name: n } = op {
@@ -101,7 +103,7 @@ impl Command {
             return Err(Error::InvalidArgument);
         }
         Ok(format!(
-            "{} {}",
+            "{} -u {}",
             quote(path)?,
             self.shell_wire
                 .strip_prefix("tmux ")

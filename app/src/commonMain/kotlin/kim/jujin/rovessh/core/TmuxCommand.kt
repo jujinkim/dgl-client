@@ -6,7 +6,7 @@ import kotlinx.serialization.json.*
 class TmuxCommand private constructor(val wire: String, val shellWire: String = "tmux $wire", val nativeOperation: JsonObject? = null) {
     fun shellWithExecutable(executable: String): String {
         require(executable.startsWith('/')) { "Expected an absolute tmux path" }
-        return quote(executable) + " " + shellWire.removePrefix("tmux ")
+        return quote(executable) + " -u " + shellWire.removePrefix("tmux ")
     }
 
     companion object {
@@ -67,13 +67,24 @@ class TmuxCommand private constructor(val wire: String, val shellWire: String = 
         private fun validatedPane(pane: String): String { id(pane, '%'); return pane }
         fun modes(pane: String) = TmuxCommand("display-message -p -t ${id(pane, '%')} " + quote("#{cursor_x}|#{cursor_y}|#{alternate_on}|#{cursor_flag}|#{keypad_cursor_flag}|#{keypad_flag}|#{mouse_any_flag}|#{mouse_button_flag}|#{mouse_standard_flag}|#{mouse_utf8_flag}|#{mouse_sgr_flag}|#{bracketed_paste}|#{scroll_region_upper}|#{scroll_region_lower}|#{insert_flag}|#{pane_width}|#{pane_height}"))
         val sessions = TmuxCommand("list-sessions -F '#{session_id}|#{q:session_name}|#{session_attached}'")
-        val windows = TmuxCommand("list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}'")
-        val panes = TmuxCommand("list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}'")
+        val windows = TmuxCommand("list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}'")
+        val panes = TmuxCommand("list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}'")
+        val metadataSubscription = TmuxCommand("refresh-client -B 'dgl-metadata::#{S:#{session_id}|#{q:session_name}|#{W:#{window_id}|#{window_index}|#{q:window_name}|#{window_active}|#{P:#{pane_id}|#{pane_active}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title};}}}'")
         val flowControl = TmuxCommand("refresh-client -f 'pause-after=2'")
     }
 }
 
 object RemoteStateDecoder {
+    /** Native Rust JSON contract, also exercised by shared hierarchy fixtures. */
+    fun json(value: JsonObject): RemoteState {
+        fun JsonObject.str(key: String) = getValue(key).jsonPrimitive.content
+        fun rows(key: String) = value.getValue(key).jsonArray.map { it.jsonObject }
+        return RemoteState(
+            rows("sessions").map { RemoteSession(it.str("id"), it.str("name"), it.str("attached").toInt()) },
+            rows("windows").map { RemoteWindow(it.str("id"), it.str("session"), it.str("name"), it.str("active").toBoolean(), it.str("layout"), it.str("index").toInt()) },
+            rows("panes").map { RemotePane(it.str("id"), it.str("window"), it.str("width").toInt(), it.str("height").toInt(), it.str("active").toBoolean(), it.str("mode"), it.str("command"), it.str("title")) },
+        )
+    }
     private fun splitRecord(value: String): List<String> {
         val fields = mutableListOf<String>(); val part = StringBuilder(); var escaped = false
         for (c in value) {
@@ -87,8 +98,8 @@ object RemoteStateDecoder {
         if (fields.size != count) throw ProtocolException("Invalid state record")
     } }
     fun sessions(rows: List<ByteArray>) = lines(rows, 3).map { RemoteSession(target(it[0], '$'), unquote(it[1]), it[2].toInt()) }
-    fun windows(rows: List<ByteArray>) = lines(rows, 5).map { RemoteWindow(target(it[1], '@'), target(it[0], '$'), unquote(it[2]), it[3] == "1", it[4]) }
-    fun panes(rows: List<ByteArray>) = lines(rows, 7).map { RemotePane(target(it[0], '%'), target(it[1], '@'), it[2].toInt(), it[3].toInt(), it[4] == "1", unquote(it[5]), unquote(it[6])) }
+    fun windows(rows: List<ByteArray>) = lines(rows, 6).map { RemoteWindow(target(it[1], '@'), target(it[0], '$'), unquote(it[2]), it[3] == "1", it[4], it[5].toInt()) }
+    fun panes(rows: List<ByteArray>) = lines(rows, 8).map { RemotePane(target(it[0], '%'), target(it[1], '@'), it[2].toInt(), it[3].toInt(), it[4] == "1", unquote(it[5]), unquote(it[6]), unquote(it[7])) }
     private fun target(value: String, prefix: Char): String {
         if (value.firstOrNull() != prefix || value.drop(1).isEmpty() || value.drop(1).any { !it.isDigit() }) throw ProtocolException("Invalid state id")
         return value
