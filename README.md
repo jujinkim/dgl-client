@@ -70,6 +70,11 @@ Android 앱 ID `kim.jujin.rovessh`는 유지합니다. 기존 앱에 설치하�
 Windows는 VS 2022 Build Tools(C++·Windows SDK·CMake), Rustup, Python 3.9 이상을 준비하고
 저장소 루트의 PowerShell에서 실행합니다. JDK·Android SDK는 Windows 앱 빌드에 필요하지 않습니다.
 
+Windows 메뉴: `.\scripts\run_windows.cmd` (탐색기에서 더블클릭 가능).
+빌드·실행, ZIP만 빌드, 테스트 포함 실행, 전체 도구·업데이트 확인, 도구 설치·업데이트를 선택합니다.
+도구별 문제가 발생해도 나머지를 모두 확인한 뒤 결과를 표시합니다.
+메뉴 없이 빌드·실행: `.\scripts\run_windows.cmd -Run`, 테스트 포함: `.\scripts\run_windows.cmd -Test`.
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 ```

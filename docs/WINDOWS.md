@@ -42,6 +42,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 
 
 ## 2. 빌드와 산출물
 
+Windows 작업 메뉴를 열려면 저장소 루트에서 다음 짧은 명령을 사용한다.
+탐색기에서 `scripts\run_windows.cmd`를 더블클릭해도 된다.
+현재 작업 폴더와 관계없이 동작하며 빌드 실패 시 앱을 실행하지 않는다.
+
+```powershell
+.\scripts\run_windows.cmd
+```
+
+메뉴: 1 빌드·실행, 2 빌드·ZIP만 생성, 3 빌드·테스트·실행,
+4 전체 빌드 도구·업데이트 확인, 5 빌드 도구 설치·업데이트, 0 종료.
+선택 작업이 실패해도 결과를 표시하고 메뉴로 돌아오므로 더블클릭한 창이 바로 닫히지 않는다.
+메뉴 없이 바로 빌드·실행하려면 `.\scripts\run_windows.cmd -Run`,
+테스트도 실행하려면 `.\scripts\run_windows.cmd -Test`를 사용한다.
+
+도구 확인은 Git·Python·Rustup·VS 2022 Build Tools의 WinGet 업데이트 목록,
+Rust 업데이트 정보, 로컬 MSVC·CMake·SDK(rc/fxc)·Python 버전·고정 Rust 도구와 target을
+모두 확인한다. 하나가 실패해도 독립된 나머지 항목을 확인하고 마지막에 문제를 모아 표시한다.
+WinGet의 업데이트 목록에 나타나지 않는 도구도 있으므로 로컬 필수 도구 검사와 함께 판단한다.
+필수 도구에 문제가 있으면 전체 검사를 끝낸 뒤 빌드는 시작하지 않는다.
+
+설치·업데이트 선택은 WinGet으로 위 네 패키지를 각각 설치/업데이트 시도한다.
+VS에는 `desktop/windows.vsconfig`를 전달하며 Rust는 프로젝트 고정 버전 1.98.1과
+MSVC target을 설치한다. 기존 VS에 빠진 구성 요소는 Visual Studio Installer에서
+vsconfig를 가져와 추가해야 할 수 있다. 설치 중 관리자 권한 요청이 나올 수 있다.
+WinGet이 없으면 Microsoft Store의 App Installer를 설치/업데이트하거나 도구를 수동 설치한다.
+설치 실패도 나머지 항목 처리를 막지 않으며 마지막에 전체 로컬 검사를 다시 수행한다.
+PATH 반영이나 재부팅이 필요하면 터미널 또는 Windows를 재시작하고 메뉴 4로 재확인한다.
+설치는 메뉴 5에서만 수행하며 메뉴 4는 도구를 설치/업데이트하지 않는다.
+
 저장소 루트에서:
 
 ```powershell
