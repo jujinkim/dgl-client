@@ -3,7 +3,9 @@
     windows_subsystem = "windows"
 )]
 
+mod accent_ui;
 mod agent_ui;
+mod appearance;
 mod cloud_sync;
 mod composer;
 mod file_picker;
@@ -96,6 +98,9 @@ struct Desktop {
     tabs: Vec<Tab>,
     workspace: Workspace,
     palette: theme::Palette,
+    appearance: Option<appearance::Appearance>,
+    accent_input: Entity<TextInput>,
+    accent_error: bool,
     modal: modal::Modal,
     expanded: HashSet<String>,
     menu: Option<String>,
@@ -150,6 +155,18 @@ impl Desktop {
         if error.is_some() {
             cloud_sync.block_invalid_local();
         }
+        let accent_value = local
+            .preferences
+            .accent
+            .custom_color
+            .as_deref()
+            .unwrap_or("#2468C9");
+        let accent_input = cx.new(|cx| TextInput::new(accent_value, "#RRGGBB", false, cx));
+        cx.observe(&accent_input, |s, _, cx| {
+            s.accent_error = false;
+            cx.notify();
+        })
+        .detach();
         Self {
             runtime,
             path,
@@ -157,6 +174,9 @@ impl Desktop {
             tabs: vec![],
             workspace,
             palette: theme::Palette::new(true),
+            appearance: None,
+            accent_input,
+            accent_error: false,
             modal: modal::Modal::default(),
             expanded: HashSet::new(),
             menu: None,
@@ -454,7 +474,7 @@ impl Desktop {
             .flex_shrink_0()
             .cursor_pointer()
             .hover(move |s| {
-                let s = s.bg(rgb(palette.selection));
+                let s = s.bg(rgb(palette.selection)).text_color(rgb(palette.fg));
                 if bottom {
                     s.border_color(rgb(palette.selection))
                 } else {
@@ -464,11 +484,13 @@ impl Desktop {
             .when_some(focus, |d, focus| d.track_focus(&focus))
             .when(bottom, |d| d.focusable())
             .focus(move |s| {
-                s.bg(rgb(palette.selection)).border_color(rgb(if bottom {
-                    palette.selection
-                } else {
-                    palette.accent
-                }))
+                s.bg(rgb(palette.selection))
+                    .text_color(rgb(palette.fg))
+                    .border_color(rgb(if bottom {
+                        palette.selection
+                    } else {
+                        palette.accent
+                    }))
             })
             .border_1()
             .border_color(if bottom {
@@ -547,7 +569,12 @@ impl Render for Desktop {
                 WindowAppearance::Dark | WindowAppearance::VibrantDark
             ),
         };
-        self.palette = theme::Palette::new(dark);
+        let dark = self.appearance.as_ref().map_or(dark, |a| a.dark);
+        self.palette = theme::Palette::with_accent(
+            dark,
+            &self.local.preferences.accent,
+            self.appearance.as_ref().and_then(|a| a.accent),
+        );
         self.sync_launcher(window, cx);
         let bg = self.palette.bg;
         if self.dialog.is_none() {
@@ -669,6 +696,7 @@ impl Render for Desktop {
                 Dialog::Settings => {
                     body = body
                         .child(div().text_xl().child("설정"))
+                        .child(self.accent_settings(cx))
                         .child(self.shortcut_settings(cx))
                         .child(self.cloud_sync_settings(cx))
                         .child(self.agent_settings(cx))
@@ -820,7 +848,11 @@ fn main() {
                     windows_ime::install(window).expect("Windows IME handler unavailable");
                     #[cfg(not(target_os = "windows"))]
                     let _ = window;
-                    cx.new(|cx| Desktop::new(runtime, path, cx))
+                    cx.new(|cx| {
+                        let mut desktop = Desktop::new(runtime, path, cx);
+                        desktop.init_appearance(window, cx);
+                        desktop
+                    })
                 },
             )
             .unwrap();

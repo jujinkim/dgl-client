@@ -24,7 +24,7 @@ TESTS = {
                           'shellFallbackExplainsFailureAndReconnectClearsDetails'],
     'core.TerminalInputTest': ['binaryMouseReportsPreserveEveryByteAndRejectInvalidInput', 'everySupportedKeyAndToolbarOrder', 'mixedStepsUnicodeNewlinesAndNoImplicitEnter',
                                'emptyInvalidAndUtf8SizeLimits', 'oldPreferencesAndIndependentBindingsRoundTrip'],
-    'PreferencesTest': ['repositoryRestoresMacrosAndLegacySettings'],
+    'PreferencesTest': ['repositoryRestoresMacrosAndLegacySettings', 'accentValidationFallbackContrastAndStoredChoice'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification
         unicodeMaySpanOutputEvents extendedOutputAndEmptyOutput malformedAndOversizedMessagesFailClosed
         inputIsHexAndNamesAreQuoted captureEscapingDiffersFromLiveOutput retryAndInputGates

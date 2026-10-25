@@ -19,7 +19,7 @@ import kim.jujin.rovessh.*
             TextButton({ model.chooseSyncFile(true) }, enabled = !state.busy) { Text("새 파일") }
         }
         Text("iCloud Drive: Android에서는 직접 파일 연결을 지원하지 않습니다. Mac·Windows에서 사용할 수 있습니다.", style = MaterialTheme.typography.bodySmall)
-        Text("호스트·테마·글자 크기·스크롤백·앱 내 알림 설정을 공유합니다. 비밀번호·개인키·신뢰 키·매크로·OS 알림은 이 기기에 유지합니다.", style = MaterialTheme.typography.bodySmall)
+        Text("호스트·테마·강조 색상 선택·글자 크기·스크롤백·앱 내 알림 설정을 공유합니다. 비밀번호·개인키·신뢰 키·매크로·OS 알림은 이 기기에 유지합니다.", style = MaterialTheme.typography.bodySmall)
         if (state.connected) {
             Text(state.location, style = MaterialTheme.typography.bodySmall)
             Row {

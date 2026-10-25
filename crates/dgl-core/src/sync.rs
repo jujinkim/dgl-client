@@ -68,6 +68,7 @@ impl SharedHost {
 pub enum Value {
     Host(Option<SharedHost>),
     Theme(String),
+    Accent(crate::accent::AccentSettings),
     FontSize(i32),
     Scrollback(i32),
     Questions(bool),
@@ -84,6 +85,7 @@ impl Value {
                         .is_none_or(|h| h.id == id && h.local(None).validate().is_ok())
             }),
             Self::Theme(v) => key == "theme" && ["system", "dark", "light"].contains(&v.as_str()),
+            Self::Accent(v) => key == "accent" && v.valid(),
             Self::FontSize(v) => key == "fontSize" && (10..=28).contains(v),
             Self::Scrollback(v) => key == "scrollback" && (0..=1_000_000).contains(v),
             Self::Questions(_) => key == "questions",
@@ -104,6 +106,11 @@ impl Value {
             ),
             Self::Host(None) => "호스트 삭제".into(),
             Self::Theme(v) => format!("테마: {v}"),
+            Self::Accent(v) => format!(
+                "강조 색상: {} {}",
+                v.mode,
+                v.custom_color.as_deref().unwrap_or("")
+            ),
             Self::FontSize(v) => format!("글자 크기: {v}"),
             Self::Scrollback(v) => format!("스크롤백: {v}"),
             Self::Questions(v) => format!("질문 알림: {v}"),
@@ -117,6 +124,7 @@ fn snapshot(local: &LocalState) -> Snapshot {
     let p = &local.preferences;
     let mut result = BTreeMap::from([
         ("theme".into(), Value::Theme(p.theme.clone())),
+        ("accent".into(), Value::Accent(p.accent.clone())),
         ("fontSize".into(), Value::FontSize(p.font_size)),
         ("scrollback".into(), Value::Scrollback(p.scrollback)),
         (
@@ -158,7 +166,7 @@ impl Default for Document {
     fn default() -> Self {
         Self {
             format: "dgl-sync".into(),
-            version: 1,
+            version: 2,
             dataset: identity(),
             changes: BTreeMap::new(),
         }
@@ -169,13 +177,14 @@ impl Document {
         if bytes.len() > MAX_BYTES {
             return Err(Error::InvalidArgument);
         }
-        let doc: Self = serde_json::from_slice(bytes).map_err(|_| Error::InvalidArgument)?;
+        let mut doc: Self = serde_json::from_slice(bytes).map_err(|_| Error::InvalidArgument)?;
         doc.validate()?;
+        doc.version = 2;
         Ok(doc)
     }
     fn validate(&self) -> Result<()> {
         if self.format != "dgl-sync"
-            || self.version != 1
+            || ![1, 2].contains(&self.version)
             || !crate::model::valid_id(&self.dataset)
             || self.changes.len() > MAX_CHANGES
         {
@@ -185,6 +194,7 @@ impl Document {
             if !crate::model::valid_id(id)
                 || c.clock == 0
                 || !c.value.valid(&c.key)
+                || (self.version == 1 && matches!(c.value, Value::Accent(_)))
                 || c.parents.len() > MAX_CHANGES
             {
                 return Err(Error::InvalidArgument);
@@ -298,17 +308,24 @@ impl Cache {
             return Err(Error::InvalidArgument);
         }
         let cache: Self = serde_json::from_slice(bytes).map_err(|_| Error::InvalidArgument)?;
-        cache.document.validate()?;
-        if !crate::model::valid_id(&cache.device)
-            || cache.observed.iter().any(|(k, v)| !v.valid(k))
-            || cache.known.iter().any(|(key, ids)| {
+        cache.upgrade()
+    }
+    fn upgrade(mut self) -> Result<Self> {
+        self.document.validate()?;
+        if !crate::model::valid_id(&self.device)
+            || self.observed.iter().any(|(k, v)| !v.valid(k))
+            || self.known.iter().any(|(key, ids)| {
                 ids.iter()
-                    .any(|id| cache.document.changes.get(id).is_none_or(|c| &c.key != key))
+                    .any(|id| self.document.changes.get(id).is_none_or(|c| &c.key != key))
             })
         {
             return Err(Error::InvalidArgument);
         }
-        Ok(cache)
+        self.document.version = 2;
+        self.observed
+            .entry("accent".into())
+            .or_insert_with(|| Value::Accent(Default::default()));
+        Ok(self)
     }
     pub fn encode(&self) -> Result<String> {
         serde_json::to_string(self).map_err(|_| Error::Storage)
@@ -345,6 +362,9 @@ pub fn exchange(
 ) -> Result<Exchange> {
     local.validate()?;
     let remote = Document::decode(remote)?;
+    // Desktop checkpoints embed Cache directly via serde; UniFFI uses decode.
+    // Both entry paths must validate and migrate before adding v2 revisions.
+    let cache = cache.map(Cache::upgrade).transpose()?;
     let current = snapshot(local);
     let first = cache.is_none();
     let mut cache = cache.unwrap_or_else(|| Cache {
@@ -376,6 +396,11 @@ pub fn exchange(
             .collect();
         if !matching.is_empty() {
             cache.known.insert(key, matching);
+            continue;
+        }
+        // Missing in v1 means system/default, not a new local edit. Do not
+        // manufacture an upgrade revision concurrent with a remote color choice.
+        if key == "accent" && parents.is_empty() && value == Value::Accent(Default::default()) {
             continue;
         }
         if !first && cache.observed.get(&key) == current.get(&key) {
@@ -446,6 +471,7 @@ pub fn exchange(
                 }
             }
             Value::Theme(v) => next.preferences.theme = v.clone(),
+            Value::Accent(v) => next.preferences.accent = v.clone(),
             Value::FontSize(v) => next.preferences.font_size = *v,
             Value::Scrollback(v) => next.preferences.scrollback = *v,
             Value::Questions(v) => next.preferences.agent_notifications.questions = *v,
@@ -679,7 +705,7 @@ mod tests {
             assert!(Document::decode(source.as_bytes()).is_err());
         }
         let mut value: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        value["version"] = 2.into();
+        value["version"] = 3.into();
         assert!(Document::decode(value.to_string().as_bytes()).is_err());
         let other = Document::default().encode().unwrap();
         assert!(exchange(Some(a.cache), &a.local, other.as_bytes(), &[]).is_err());
@@ -692,5 +718,110 @@ mod tests {
             .parents
             .insert("missing".into());
         assert!(document.encode().is_err());
+    }
+    #[test]
+    fn v1_cache_upgrades_without_conflict_and_delayed_v1_preserves_history() {
+        let (a, doc) = initial();
+        // A real v1 has neither an accent revision nor an observed accent value.
+        let mut legacy: serde_json::Value = serde_json::from_str(&doc).unwrap();
+        legacy["version"] = 1.into();
+        let v1 = legacy.to_string();
+        let mut cache: serde_json::Value =
+            serde_json::from_str(&a.cache.encode().unwrap()).unwrap();
+        cache["document"] = legacy.clone();
+        cache["observed"].as_object_mut().unwrap().remove("accent");
+        let migrated = Cache::decode(cache.to_string().as_bytes()).unwrap();
+        let embedded: Cache = serde_json::from_value(cache).unwrap();
+        assert_eq!(migrated.document.dataset, a.cache.document.dataset);
+        assert_eq!(migrated.document.changes, a.cache.document.changes);
+        let upgraded = exchange(Some(migrated.clone()), &a.local, v1.as_bytes(), &[]).unwrap();
+        assert!(upgraded.conflicts.is_empty());
+        assert_eq!(
+            upgraded.cache.document.changes.len(),
+            a.cache.document.changes.len()
+        );
+        assert_eq!(upgraded.cache.document.version, 2);
+
+        let mut custom = a.local.clone();
+        custom.preferences.accent = crate::accent::AccentSettings {
+            mode: "custom".into(),
+            custom_color: Some("#E6BB24".into()),
+        };
+        let edited = exchange(Some(embedded), &custom, v1.as_bytes(), &[]).unwrap();
+        let applied = exchange(Some(migrated), &a.local, edited.document.as_bytes(), &[]).unwrap();
+        assert!(applied.conflicts.is_empty());
+        assert_eq!(applied.local.preferences.accent, custom.preferences.accent);
+        let mut old_doc = Document::decode(v1.as_bytes()).unwrap();
+        let parents = old_doc.heads()["fontSize"].clone();
+        old_doc
+            .add(
+                "old-device",
+                "fontSize".into(),
+                Value::FontSize(22),
+                parents,
+            )
+            .unwrap();
+        let mut old_json = serde_json::to_value(old_doc).unwrap();
+        old_json["version"] = 1.into();
+        let merged = exchange(
+            Some(applied.cache),
+            &applied.local,
+            old_json.to_string().as_bytes(),
+            &[],
+        )
+        .unwrap();
+        assert!(merged.conflicts.is_empty());
+        assert_eq!(merged.local.preferences.font_size, 22);
+        assert_eq!(merged.local.preferences.accent, custom.preferences.accent);
+        assert_eq!(merged.cache.document.dataset, a.cache.document.dataset);
+        assert!(
+            a.cache.document.changes.keys().all(|id| merged
+                .cache
+                .document
+                .changes
+                .contains_key(id))
+        );
+    }
+    #[test]
+    fn accent_is_one_atomic_choice_with_explicit_concurrent_resolution() {
+        let (a, doc) = initial();
+        let b = exchange(None, &a.local, doc.as_bytes(), &[]).unwrap();
+        let mut la = a.local.clone();
+        la.preferences.accent = crate::accent::AccentSettings {
+            mode: "custom".into(),
+            custom_color: Some("#8056D9".into()),
+        };
+        let mut lb = b.local.clone();
+        lb.preferences.accent = crate::accent::AccentSettings {
+            mode: "default".into(),
+            custom_color: Some("#21999D".into()),
+        };
+        let a = exchange(Some(a.cache), &la, doc.as_bytes(), &[]).unwrap();
+        let b = exchange(Some(b.cache), &lb, doc.as_bytes(), &[]).unwrap();
+        let conflict = exchange(Some(a.cache), &a.local, b.document.as_bytes(), &[]).unwrap();
+        assert_eq!(conflict.conflicts.len(), 1);
+        assert_eq!(conflict.conflicts[0].key, "accent");
+        assert_eq!(conflict.local.preferences.accent, la.preferences.accent);
+        let revision = conflict.conflicts[0]
+            .choices
+            .iter()
+            .find(|c| c.label.contains("#21999D"))
+            .unwrap()
+            .revision
+            .clone();
+        let resolved = exchange(
+            Some(conflict.cache),
+            &conflict.local,
+            conflict.document.as_bytes(),
+            &[Resolution {
+                key: "accent".into(),
+                revision,
+            }],
+        )
+        .unwrap();
+        assert!(resolved.conflicts.is_empty());
+        assert_eq!(resolved.local.preferences.accent, lb.preferences.accent);
+        assert!(!resolved.document.contains("systemColor"));
+        assert!(!resolved.document.contains("resolved"));
     }
 }

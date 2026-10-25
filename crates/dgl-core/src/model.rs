@@ -81,6 +81,7 @@ impl std::fmt::Debug for Credential {
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
     pub theme: String,
+    pub accent: crate::accent::AccentSettings,
     pub mobile_pane_toolbar_visible: bool,
     pub font_size: i32,
     pub scrollback: i32,
@@ -96,6 +97,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             theme: "system".into(),
+            accent: Default::default(),
             mobile_pane_toolbar_visible: true,
             font_size: 14,
             scrollback: 5000,

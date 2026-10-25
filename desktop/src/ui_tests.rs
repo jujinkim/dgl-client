@@ -471,7 +471,7 @@ fn modal_focus_cycle_buttons_restore_and_occlusion(cx: &mut TestAppContext) {
     redraw(cx);
     assert!(view.read_with(cx, |s, _| s.dialog.is_none()));
     assert!(cx.update(|w, _| previous.is_focused(w)));
-    // A dialog without inputs starts on a button and is operable from the keyboard.
+    // Settings retains its initial close button even with an editable accent field.
     view.update(cx, |s, cx| {
         s.dialog = Some(Dialog::Settings);
         cx.notify();
@@ -515,6 +515,77 @@ fn add_terminal(view: &Entity<Desktop>, cx: &mut VisualTestContext) -> Entity<Te
         cx.notify();
         terminal
     })
+}
+#[gpui::test]
+fn accent_presets_hex_modes_restore_and_modal_input_isolation(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx);
+    let terminal = add_terminal(&view, cx);
+    view.update(cx, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(cx);
+    let input = view.read_with(cx, |s, _| s.accent_input.clone());
+    let click = |selector: &'static str, cx: &mut VisualTestContext| {
+        let bounds = cx.debug_bounds(selector).unwrap();
+        cx.simulate_click(bounds.center(), Modifiers::default());
+        redraw(cx);
+    };
+    click("accent-preset-#E6BB24", cx);
+    assert_eq!(input.read_with(cx, |i, _| i.content.to_string()), "#E6BB24");
+    for mode in ["accent-system", "accent-default", "accent-custom"] {
+        click(mode, cx);
+    }
+    view.read_with(cx, |s, _| {
+        assert_eq!(s.local.preferences.accent.mode, "custom");
+        assert_eq!(
+            s.local.preferences.accent.custom_color.as_deref(),
+            Some("#E6BB24")
+        );
+    });
+    cx.update(|w, cx| {
+        w.focus(&input.focus_handle(cx));
+        input.update(cx, |i, cx| i.set_content("#invalid", cx));
+    });
+    cx.simulate_keystrokes("enter");
+    assert!(view.read_with(cx, |s, _| s.accent_error));
+    assert_eq!(
+        view.read_with(cx, |s, _| s.local.preferences.accent.custom_color.clone())
+            .as_deref(),
+        Some("#E6BB24")
+    );
+    cx.update(|_, cx| input.update(cx, |i, cx| i.set_content("#ab12cd", cx)));
+    redraw(cx);
+    // Typing and applying must retain the entity, caret focus, and modal.
+    cx.simulate_keystrokes("enter");
+    redraw(cx);
+    assert!(cx.update(|w, cx| input.focus_handle(cx).is_focused(w)));
+    view.read_with(cx, |s, _| {
+        assert_eq!(input.entity_id(), s.accent_input.entity_id());
+        assert_eq!(
+            s.local.preferences.accent.custom_color.as_deref(),
+            Some("#AB12CD")
+        );
+        assert_eq!(
+            dgl_core::model::LocalState::read(&s.path)
+                .unwrap()
+                .preferences
+                .accent,
+            s.local.preferences.accent
+        );
+    });
+    cx.simulate_keystrokes("tab shift-tab");
+    assert!(cx.update(|w, cx| input.focus_handle(cx).is_focused(w)));
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
+    let (path, runtime) = view.read_with(cx, |s, _| (s.path.clone(), s.runtime.clone()));
+    let restored = cx.update(|_, cx| cx.new(|cx| Desktop::new(runtime, path, cx)));
+    assert_eq!(
+        restored.read_with(cx, |s, cx| s.accent_input.read(cx).content.to_string()),
+        "#AB12CD"
+    );
+    cx.simulate_keystrokes("escape");
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| s.dialog.is_none()));
 }
 #[gpui::test]
 fn prompt_ime_enter_and_background_terminal_input(cx: &mut TestAppContext) {

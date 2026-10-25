@@ -49,6 +49,9 @@ impl Modal {
         self.ring.borrow_mut().push(handle.clone());
         handle
     }
+    pub fn input(&self, handle: FocusHandle) {
+        self.ring.borrow_mut().push(handle);
+    }
     pub fn reveal_on_focus(
         &self,
         focus: FocusHandle,

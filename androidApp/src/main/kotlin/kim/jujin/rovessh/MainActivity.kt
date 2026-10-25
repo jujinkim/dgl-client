@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
 import androidx.compose.runtime.*
+import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import kim.jujin.rovessh.ui.App
@@ -77,6 +78,14 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
                 val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
                     else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                window.setBackgroundDrawable((if (dark) 0xff1e1f22.toInt() else 0xfff7f7f8.toInt()).toDrawable())
+                if (android.os.Build.VERSION.SDK_INT >= 35) {
+                    val mask = android.view.WindowInsetsController.APPEARANCE_TRANSPARENT_CAPTION_BAR_BACKGROUND or
+                        android.view.WindowInsetsController.APPEARANCE_LIGHT_CAPTION_BARS
+                    val appearance = android.view.WindowInsetsController.APPEARANCE_TRANSPARENT_CAPTION_BAR_BACKGROUND or
+                        (if (dark) 0 else android.view.WindowInsetsController.APPEARANCE_LIGHT_CAPTION_BARS)
+                    window.insetsController?.setSystemBarsAppearance(appearance, mask)
+                }
             }
             App(holder.app, mobileLayout = true)
         }

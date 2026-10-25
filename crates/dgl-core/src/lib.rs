@@ -1,3 +1,4 @@
+pub mod accent;
 pub mod agent;
 pub mod command;
 pub mod connection;

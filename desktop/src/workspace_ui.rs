@@ -418,6 +418,14 @@ impl Desktop {
                             w.prevent_default();
                         }
                         "enter" => {
+                            if matches!(s.dialog, Some(Dialog::Settings))
+                                && s.accent_input.focus_handle(cx).is_focused(w)
+                                && !s.accent_input.read(cx).is_composing()
+                            {
+                                s.apply_accent(cx);
+                                cx.stop_propagation();
+                                w.prevent_default();
+                            }
                             if let Some(Dialog::Prompt { input, .. }) = &s.dialog
                                 && input.focus_handle(cx).is_focused(w)
                                 && !input.read(cx).is_composing()

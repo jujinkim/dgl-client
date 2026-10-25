@@ -99,7 +99,7 @@ import kotlinx.serialization.json.*
     val settings = local.preferences.agentNotifications
     Text("에이전트 알림", style = MaterialTheme.typography.titleSmall)
     listOf("질문·승인 요청" to settings.questions, "응답 종료 신호" to settings.responses, "명시적 오류" to settings.errors, "OS 알림" to settings.os).forEachIndexed { i, (label, enabled) ->
-        Row { Checkbox(enabled, { value ->
+        Row { AccentCheckbox(enabled, { value ->
             val next = when (i) { 0 -> settings.copy(questions = value); 1 -> settings.copy(responses = value); 2 -> settings.copy(errors = value); else -> settings.copy(os = value) }
             model.modify { it.copy(preferences = it.preferences.copy(agentNotifications = next)) }
         }); Text(label, Modifier.padding(top = 12.dp)) }

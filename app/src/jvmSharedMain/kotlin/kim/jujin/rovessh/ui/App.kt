@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -78,10 +80,27 @@ expect fun copyPublicKey(value: String)
         surfaceVariant = Color(0xffeeeef0), onSurfaceVariant = Color(0xff626670), surfaceContainer = Color(0xffeeeef0), surfaceContainerLow = Color(0xffeeeef0), surfaceContainerHigh = Color(0xffeeeef0), surfaceContainerHighest = Color(0xffeeeef0), surfaceContainerLowest = Color.White,
         outlineVariant = Color(0xffd7d9df),
     )
-    MaterialTheme(colorScheme = colors, shapes = Shapes(
+    val systemAccent = PlatformAccentColor(dark)
+    val raw = local.preferences.accent.resolve(dark, systemAccent)
+    val bg = if (dark) 0x1e1f22 else 0xf7f7f8
+    val selection = if (raw == (if (dark) 0x75aaff else 0x2468c9)) {
+        if (dark) 0x2b4264 else 0xdbe9ff
+    } else blendAccent(raw, bg, 0.22)
+    fun rgb(value: Int) = Color(0xff000000 or value.toLong())
+    val readable = readableAccent(raw, listOf(bg, if (dark) 0x25262a else 0xeeeef0, selection))
+    // Text and focus use an adjusted color; filled controls retain the raw color.
+    val roles = colors.copy(primary = rgb(readable), onPrimary = rgb(onAccentColor(readable)),
+        secondary = rgb(readable), onSecondary = rgb(onAccentColor(readable)),
+        tertiary = rgb(readable), onTertiary = rgb(onAccentColor(readable)),
+        primaryContainer = rgb(selection), onPrimaryContainer = rgb(readable),
+        secondaryContainer = rgb(selection), onSecondaryContainer = rgb(readable),
+        tertiaryContainer = rgb(selection), onTertiaryContainer = rgb(readable))
+    MaterialTheme(colorScheme = roles, shapes = Shapes(
         extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), small = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         medium = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), large = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(0.dp))) {
+        CompositionLocalProvider(LocalAccentFill provides (rgb(raw) to rgb(onAccentColor(raw))),
+            LocalTextSelectionColors provides TextSelectionColors(rgb(readable), rgb(selection))) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = if (mobileLayout) 4.dp else 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -183,6 +202,7 @@ expect fun copyPublicKey(value: String)
             } catch (_: Exception) { error = "자격 증명을 삭제하지 못했습니다." }
         }, { deletion = null }) }
         error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("오류") }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text("닫기") } }) }
+        }
     }
 }
 
@@ -444,12 +464,12 @@ expect fun copyPublicKey(value: String)
                 Spacer(Modifier.width(8.dp))
                 OutlinedTextField(username, { username = it }, label = { Text("사용자 이름") }, singleLine = true)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(favorite, { favorite = it }); Text("즐겨찾기") }
+            Row(verticalAlignment = Alignment.CenterVertically) { AccentCheckbox(favorite, { favorite = it }); Text("즐겨찾기") }
             Row { FilterChip(auth == AuthKind.Password, { auth = AuthKind.Password }, label = { Text("비밀번호") }); Spacer(Modifier.width(8.dp)); FilterChip(auth == AuthKind.PrivateKey, { auth = AuthKind.PrivateKey }, label = { Text("개인키") }) }
             val passwordTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation()
             val showPasswordControl: @Composable () -> Unit = {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(showPassword, role = Role.Checkbox, onValueChange = { showPassword = it }), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(showPassword, onCheckedChange = null, modifier = Modifier.padding(12.dp))
+                    AccentCheckbox(showPassword, onCheckedChange = null, modifier = Modifier.padding(12.dp))
                     Text("비밀번호 표시")
                 }
             }
@@ -509,8 +529,11 @@ expect fun copyPublicKey(value: String)
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(local.preferences.showAllHierarchy, role = Role.Switch, onValueChange = { enabled ->
                 model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) }
             }), verticalAlignment = Alignment.CenterVertically) {
-                Switch(local.preferences.showAllHierarchy, null)
+                AccentSwitch(local.preferences.showAllHierarchy, null)
                 Text("단일 창도 표시", Modifier.padding(start = 8.dp))
+            }
+            AccentSettingsUi(local.preferences.accent) { accent ->
+                model.modify { it.copy(preferences = it.preferences.copy(accent = accent)) }
             }
             Text("터미널 글자 크기: ${local.preferences.fontSize}")
             Row {
@@ -522,7 +545,7 @@ expect fun copyPublicKey(value: String)
                 Row(Modifier.fillMaxWidth().toggleable(local.preferences.smoothTerminalTransitions, role = Role.Switch, onValueChange = { enabled ->
                         model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) }
                     }), verticalAlignment = Alignment.CenterVertically) {
-                    Switch(local.preferences.smoothTerminalTransitions, null)
+                    AccentSwitch(local.preferences.smoothTerminalTransitions, null)
                     Column(Modifier.padding(start = 8.dp)) {
                         Text("부드러운 터미널 화면 전환")
                         Text("화면 크기가 바뀔 때 크기·페이드·블러 효과 적용", style = MaterialTheme.typography.bodySmall)

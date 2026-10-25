@@ -37,6 +37,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val volumeDown: VolumeBinding = VolumeBinding(),
     val smoothTerminalTransitions: Boolean = false,
     val showAllHierarchy: Boolean = false,
+    val accent: AccentSettings = AccentSettings(),
 )
 @Serializable data class LocalState(val hosts: List<HostProfile> = emptyList(), val trust: Map<String, String> = emptyMap(), val preferences: Preferences = Preferences())
 

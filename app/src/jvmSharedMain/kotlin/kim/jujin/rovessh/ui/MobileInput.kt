@@ -69,7 +69,7 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
             val option: @Composable (Modifier) -> Unit = { modifier ->
                 Row(modifier.toggleable(enter, enabled = !sending, role = Role.Checkbox,
                     onValueChange = { composer.includeEnter.value = it }), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(enter, null, enabled = !sending, modifier = if (compact) Modifier.size(32.dp) else Modifier)
+                    AccentCheckbox(enter, null, enabled = !sending, modifier = if (compact) Modifier.size(32.dp) else Modifier)
                     Text("Enter 함께 보내기", fontSize = if (compact) 12.sp else 14.sp, maxLines = 1)
                 }
             }

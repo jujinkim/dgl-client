@@ -27,7 +27,7 @@ private val VolumeAction.label: String get() = when (this) {
         onValueChange = { update(preferences.copy(volumeKeysEnabled = it)) })
         .semantics { contentDescription = "볼륨 키로 단축키 실행" }, verticalAlignment = Alignment.CenterVertically) {
         Text("볼륨 키로 단축키 실행", Modifier.weight(1f))
-        Switch(preferences.volumeKeysEnabled, onCheckedChange = null)
+        AccentSwitch(preferences.volumeKeysEnabled, onCheckedChange = null)
     }
     Text("앱 전면의 입력 가능한 터미널에서만 실행합니다.", style = MaterialTheme.typography.bodySmall)
     listOf(true to preferences.volumeUp, false to preferences.volumeDown).forEach { (up, binding) ->

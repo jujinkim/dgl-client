@@ -620,6 +620,7 @@
         "hosts": [],
         "trust": {},
         "preferences": {
+          "accent": {"mode": "system"},
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -672,6 +673,7 @@
         "hosts": [],
         "trust": {},
         "preferences": {
+          "accent": {"mode": "system"},
           "theme": "dark",
           "fontSize": 19,
           "scrollback": 5000,
@@ -776,6 +778,7 @@
           "example.test:22": "SHA256:synthetic-test-only"
         },
         "preferences": {
+          "accent": {"mode": "system"},
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -866,6 +869,7 @@
         ],
         "trust": {},
         "preferences": {
+          "accent": {"mode": "system"},
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -979,6 +983,7 @@
         "hosts": [],
         "trust": {},
         "preferences": {
+          "accent": {"mode": "system"},
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -1020,6 +1025,7 @@
         "hosts": [],
         "trust": {},
         "preferences": {
+          "accent": {"mode": "system"},
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -1056,6 +1062,7 @@
         "hosts": [],
         "trust": {},
         "preferences": {
+          "accent": {"mode": "system"},
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
