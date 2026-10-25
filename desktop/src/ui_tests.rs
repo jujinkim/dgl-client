@@ -1244,8 +1244,24 @@ fn composer_restores_focus_draft_selection_and_enter_option_and_blocks_terminal(
     cx.simulate_keystrokes("shift-left shift-left");
     let selection =
         cx.update(|w, cx| input.update(cx, |i, cx| i.selected_text_range(false, w, cx).unwrap()));
-    let option = cx.debug_bounds("composer-enter").unwrap();
-    cx.simulate_click(option.center(), Modifiers::default());
+    let checkbox = cx.debug_bounds("composer-enter-box").unwrap();
+    let label = cx.debug_bounds("composer-enter-label").unwrap();
+    assert_eq!(checkbox.size, gpui::size(px(18.), px(18.)));
+    assert!(checkbox.right() < label.left());
+    assert_eq!(checkbox.center().y, label.center().y);
+    cx.simulate_click(checkbox.center(), Modifiers::default());
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| s.composers[&1].include_enter));
+    assert_eq!(checkbox, cx.debug_bounds("composer-enter-box").unwrap());
+    assert_eq!(label, cx.debug_bounds("composer-enter-label").unwrap());
+    cx.simulate_click(label.center(), Modifiers::default());
+    redraw(cx);
+    assert!(!view.read_with(cx, |s, _| s.composers[&1].include_enter));
+    cx.simulate_keystrokes("tab shift-tab space");
+    cx.simulate_event(gpui::KeyUpEvent {
+        keystroke: gpui::Keystroke::parse("space").unwrap(),
+    });
+    redraw(cx);
     assert!(view.read_with(cx, |s, _| s.composers[&1].include_enter));
     cx.simulate_keystrokes("escape");
     redraw(cx);
@@ -1320,6 +1336,15 @@ fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
     let send = cx.debug_bounds("send-composer").unwrap();
     cx.simulate_click(send.center(), Modifiers::default());
     cx.simulate_click(send.center(), Modifiers::default());
+    let option = cx.debug_bounds("composer-enter").unwrap();
+    cx.simulate_click(option.center(), Modifiers::default());
+    for key in ["space", "enter"] {
+        cx.simulate_keystrokes(key);
+        cx.simulate_event(gpui::KeyUpEvent {
+            keystroke: gpui::Keystroke::parse(key).unwrap(),
+        });
+    }
+    assert!(!view.read_with(cx, |s, _| s.composers[&2].include_enter));
     assert_eq!(
         input.read_with(cx, |i, _| i.content.to_string()),
         "second draft"
