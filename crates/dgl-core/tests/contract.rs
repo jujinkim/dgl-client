@@ -8,6 +8,37 @@ use serde_json::{Value, json};
 fn fixtures() -> Value {
     serde_json::from_str(include_str!("../../../fixtures/migration/contract-v1.json")).unwrap()
 }
+
+#[test]
+fn pane_resize_uses_tmux_cell_dimensions_independently_of_viewport_limits() {
+    for (columns, rows) in [(1, 1), (700, 300)] {
+        let command = Command::new(&Operation::ResizePaneTo {
+            target: "%7".into(),
+            columns,
+            rows,
+        })
+        .unwrap();
+        assert_eq!(
+            command.wire,
+            format!("resize-pane -t '%7' -x {columns} -y {rows}")
+        );
+    }
+    assert!(
+        Command::new(&Operation::ResizePaneTo {
+            target: "%7".into(),
+            columns: 0,
+            rows: 10
+        })
+        .is_err()
+    );
+    assert!(
+        Command::new(&Operation::ClientSize {
+            columns: 700,
+            rows: 300
+        })
+        .is_err()
+    );
+}
 fn text<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap()
 }
@@ -202,10 +233,18 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
     }
     let mut state = model::LocalState::default();
     assert!(state.preferences.mobile_pane_toolbar_visible);
+    assert!(!state.preferences.show_all_hierarchy);
+    state.preferences.show_all_hierarchy = true;
     state.preferences.mobile_pane_toolbar_visible = false;
     assert!(!state.preferences.smooth_terminal_transitions);
     state.preferences.smooth_terminal_transitions = true;
     state.save(&path).unwrap();
+    assert!(
+        model::LocalState::read(&path)
+            .unwrap()
+            .preferences
+            .show_all_hierarchy
+    );
     assert!(
         !model::LocalState::read(&path)
             .unwrap()
@@ -251,4 +290,24 @@ fn directional_focus_encoding_rejects_invalid_targets_and_directions() {
             .is_err()
         );
     }
+}
+
+#[test]
+fn pane_title_uses_stable_target_and_quotes_literal_formats() {
+    let operation = Operation::RenamePane {
+        target: "%12".into(),
+        name: "작업 #S ' 제목".into(),
+    };
+    let command = dgl_core::command::Command::new(&operation).unwrap();
+    assert_eq!(
+        command.wire,
+        "select-pane -t '%12' -T '작업 ##S '\\'' 제목'"
+    );
+    assert!(
+        dgl_core::command::Command::new(&Operation::RenamePane {
+            target: "@12".into(),
+            name: "작업".into()
+        })
+        .is_err()
+    );
 }

@@ -1,4 +1,4 @@
-//! One selected pane, one renderer subscription. Payload remains charged until renderer ack.
+//! One selected window, one renderer subscription, independent per-pane targets. Payload remains charged until renderer ack.
 use crate::{Error, Result, model::Size};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, sync::Mutex};
@@ -17,6 +17,15 @@ pub struct PaneTarget {
     pub connection: u64,
     pub pane_id: String,
     pub generation: Generation,
+}
+impl PaneTarget {
+    /// A viewport change does not change where queued user input belongs.
+    pub fn same_input_destination(&self, other: &Self) -> bool {
+        self.connection == other.connection
+            && self.pane_id == other.pane_id
+            && self.generation.connection == other.generation.connection
+            && self.generation.pane == other.generation.pane
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputKind {
@@ -223,6 +232,18 @@ mod tests {
                 size: 1,
             },
         }
+    }
+    #[test]
+    fn input_survives_size_changes_but_never_focus_or_connection_changes() {
+        let original = target();
+        let mut resized = original.clone();
+        resized.generation.size += 1;
+        assert!(original.same_input_destination(&resized));
+        resized.generation.pane += 1;
+        assert!(!original.same_input_destination(&resized));
+        let mut reconnected = original.clone();
+        reconnected.generation.connection += 1;
+        assert!(!original.same_input_destination(&reconnected));
     }
     #[tokio::test]
     async fn full_queue_ack_and_close() {

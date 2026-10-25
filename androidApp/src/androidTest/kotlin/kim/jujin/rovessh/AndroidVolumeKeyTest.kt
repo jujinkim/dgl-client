@@ -131,7 +131,7 @@ class AndroidVolumeKeyTest {
                 press(scenario, false)
                 click("터미널로 돌아가기")
                 waitForText("현재 세션: 없음 · 일반 SSH")
-                waitForText("일반 SSH · tmux 탐지 실패")
+                waitForText("Volume test · 연결됨 · 일반 SSH")
                 click("tmux 실패 상세 정보")
                 waitForText("이 호스트에서 실행할 수 있는 tmux를 찾지 못했습니다.")
                 waitForText("호스트: Volume test\ntest@example.test:22")

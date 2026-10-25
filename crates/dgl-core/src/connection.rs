@@ -9,7 +9,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -50,6 +50,9 @@ pub struct State {
     pub generation: Generation,
     pub session: Option<String>,
     pub pane: Option<String>,
+    pub window: Option<String>,
+    /// Render identities are independent of the active input pane.
+    pub render_targets: BTreeMap<String, PaneTarget>,
     pub remote: RemoteState,
     pub fingerprint: Option<String>,
     pub error: Option<Error>,
@@ -207,6 +210,22 @@ impl Shared {
             Some(r.permit),
         ));
     }
+    async fn emit_to(
+        &self,
+        target: &PaneTarget,
+        kind: OutputKind,
+        size: Size,
+        bytes: &[u8],
+    ) -> Result<()> {
+        let id = self.output.subscription();
+        if id != 0 {
+            match self.output.push(id, target, kind, size, bytes).await {
+                Err(Error::StaleGeneration) => {}
+                r => r?,
+            }
+        }
+        Ok(())
+    }
     async fn emit(&self, kind: OutputKind, size: Size, bytes: &[u8]) -> Result<()> {
         if let Some(target) = self.target() {
             let id = self.output.subscription();
@@ -238,6 +257,8 @@ impl Connection {
                 },
                 session: host.last_session.clone(),
                 pane: None,
+                window: None,
+                render_targets: BTreeMap::new(),
                 remote: Default::default(),
                 fingerprint: trusted.clone(),
                 error: None,
@@ -300,7 +321,9 @@ impl Connection {
                 s.retry.connecting = false;
                 s.agents.invalidate();
                 s.pane = None;
+                s.window = None;
                 s.generation.connection = s.generation.connection.saturating_add(1);
+                s.render_targets.clear();
             });
             shared.done.store(true, Ordering::SeqCst);
             shared.finished.notify_waiters();
@@ -355,7 +378,10 @@ impl Connection {
         if !matches!(s.phase, Phase::Ready | Phase::Shell) {
             return Err(Error::NotReady);
         }
-        if self.target().as_ref() != Some(&target) {
+        if self
+            .target()
+            .is_none_or(|current| !current.same_input_destination(&target))
+        {
             return Err(Error::StaleGeneration);
         }
         self.submit(RequestKind::Input { target, bytes })
@@ -461,9 +487,10 @@ struct Control {
     events: VecDeque<Event>,
     shared: Arc<Shared>,
     size: Size,
-    live: bool,
+    screens: BTreeMap<String, (PaneTarget, Size, String)>,
+    capturing: Option<String>,
     dirty: bool,
-    paused: bool,
+    paused: HashSet<String>,
 }
 impl Control {
     async fn next(&mut self) -> Result<Event> {
@@ -484,19 +511,22 @@ impl Control {
     async fn unsolicited(&mut self, e: Event) -> Result<()> {
         match e {
             Event::Output { pane, bytes } => {
-                if self.live && self.shared.target().is_some_and(|t| t.pane_id == pane) {
+                if self.capturing.as_ref() != Some(&pane)
+                    && let Some((target, size, _)) = self.screens.get(&pane)
+                {
                     self.shared
-                        .emit(OutputKind::Live, self.size, &bytes)
+                        .emit_to(target, OutputKind::Live, *size, &bytes)
                         .await?;
                 }
             }
-            Event::Notification { name, .. } => {
+            Event::Notification { name, arguments } => {
                 if name == "%exit" {
                     return Err(Error::MissingSession);
                 }
-                if name == "%pause" {
-                    self.paused = true;
-                    self.live = false;
+                if name == "%pause"
+                    && let Some(pane) = arguments.split_whitespace().next()
+                {
+                    self.paused.insert(pane.to_owned());
                 }
                 if [
                     "%session-changed",
@@ -571,38 +601,30 @@ impl Control {
             {
                 s.phase = Phase::MissingSession;
                 s.pane = None;
-            } else if s
-                .pane
-                .as_ref()
-                .is_some_and(|id| !s.remote.panes.iter().any(|v| &v.id == id))
-            {
-                s.phase = Phase::Selecting;
-                s.pane = None;
-                s.generation.pane = s.generation.pane.saturating_add(1);
+                s.window = None;
+                s.render_targets.clear();
+            } else {
+                // Window/pane selection is shared with ordinary clients in this session.
+                let window = s
+                    .remote
+                    .windows
+                    .iter()
+                    .find(|w| Some(&w.session) == s.session.as_ref() && w.active);
+                let pane = window
+                    .and_then(|w| s.remote.panes.iter().find(|p| p.window == w.id && p.active));
+                let next = pane.map(|p| p.id.clone());
+                if s.pane != next {
+                    s.pane = next;
+                    s.generation.pane = s.generation.pane.saturating_add(1);
+                }
+                s.window = window.map(|w| w.id.clone());
             }
         });
         Ok(())
     }
     async fn refresh_screen_if_needed(&mut self, resizing: bool) -> Result<()> {
-        let before = self.shared.state.lock().unwrap().clone();
         self.refresh().await?;
-        let after = self.shared.state.lock().unwrap().clone();
-        if let Some(id) = after.pane.as_ref() {
-            let screen = |state: &State| {
-                state
-                    .remote
-                    .panes
-                    .iter()
-                    .find(|p| &p.id == id)
-                    .map(|p| (p.width, p.height, p.mode.clone()))
-            };
-            // Names, titles, process names and another client's active pane do
-            // not change this connection's displayed screen or PaneTarget.
-            if screen(&before) != screen(&after) {
-                self.snapshot(resizing).await?;
-            }
-        }
-        Ok(())
+        self.sync_screens(resizing, false).await
     }
     async fn select_pane(&mut self, id: String) -> Result<()> {
         let state = self.shared.state.lock().unwrap().clone();
@@ -612,42 +634,77 @@ impl Control {
             .iter()
             .find(|p| p.id == id)
             .ok_or(Error::InvalidArgument)?;
-        if !state
+        let window = state
             .remote
             .windows
             .iter()
-            .any(|w| w.id == p.window && Some(&w.session) == state.session.as_ref())
-        {
-            return Err(Error::InvalidArgument);
-        }
-        self.live = false;
-        self.shared.update(|s| {
-            s.phase = Phase::Restoring;
-            s.resizing = false;
-            s.pane = Some(id.clone());
-            s.generation.pane = s
-                .generation
-                .pane
-                .checked_add(1)
-                .expect("generation exhausted");
-        });
+            .find(|w| w.id == p.window && Some(&w.session) == state.session.as_ref())
+            .ok_or(Error::InvalidArgument)?;
         self.command(Operation::SelectWindow {
-            target: p.window.clone(),
+            target: window.id.clone(),
         })
         .await?;
         self.command(Operation::SelectPane { target: id }).await?;
-        self.snapshot(false).await
+        self.refresh_screen_if_needed(false).await
+    }
+    async fn sync_screens(&mut self, resizing: bool, force: bool) -> Result<()> {
+        let state = self.shared.state.lock().unwrap().clone();
+        let visible = state
+            .remote
+            .windows
+            .iter()
+            .find(|w| {
+                Some(&w.id) == state.window.as_ref() && Some(&w.session) == state.session.as_ref()
+            })
+            .map(|w| {
+                state
+                    .remote
+                    .panes
+                    .iter()
+                    .filter(|p| p.window == w.id && (!w.zoomed || p.active))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        self.screens
+            .retain(|id, _| visible.iter().any(|p| &p.id == id));
+        self.shared.update(|s| {
+            s.render_targets
+                .retain(|id, _| visible.iter().any(|p| &p.id == id))
+        });
+        for p in visible {
+            let size = Size {
+                columns: p.width,
+                rows: p.height,
+            };
+            if force
+                || self.paused.contains(&p.id)
+                || self
+                    .screens
+                    .get(&p.id)
+                    .is_none_or(|(_, old, mode)| *old != size || *mode != p.mode)
+            {
+                self.snapshot_pane(p.id.clone(), resizing).await?;
+                if let Some(screen) = self.screens.get_mut(&p.id) {
+                    screen.2 = p.mode;
+                }
+            }
+        }
+        self.paused.retain(|id| self.screens.contains_key(id));
+        if self.shared.state.lock().unwrap().pane.is_some() {
+            self.shared.phase(Phase::Ready);
+        }
+        Ok(())
     }
     async fn snapshot(&mut self, resizing: bool) -> Result<()> {
-        let Some(t) = self.shared.target() else {
-            return Ok(());
-        };
-        self.live = false;
+        self.sync_screens(resizing, true).await
+    }
+    async fn snapshot_pane(&mut self, id: String, resizing: bool) -> Result<()> {
+        self.capturing = Some(id.clone());
         self.shared.update(|s| {
             s.phase = Phase::Restoring;
             s.resizing = resizing;
         });
-        let id = t.pane_id;
         let commands = [
             Operation::Pause { target: id.clone() },
             Operation::Modes { target: id.clone() },
@@ -689,8 +746,29 @@ impl Control {
         if fields.len() != 17 {
             return Err(Error::Protocol);
         }
-        self.size = Size::new(fields[15], fields[16]).map_err(|_| Error::Protocol)?;
+        if fields[15] == 0 || fields[16] == 0 {
+            return Err(Error::Protocol);
+        }
+        self.size = Size {
+            columns: fields[15],
+            rows: fields[16],
+        };
+        let target = {
+            let s = self.shared.state.lock().unwrap();
+            PaneTarget {
+                connection: s.handle,
+                pane_id: id.clone(),
+                generation: Generation {
+                    connection: s.generation.connection,
+                    pane: 0,
+                    size: s.generation.size.checked_add(1).expect("size exhausted"),
+                },
+            }
+        };
+        self.screens
+            .insert(id.clone(), (target.clone(), self.size, String::new()));
         self.shared.update(|s| {
+            s.render_targets.insert(id.clone(), target.clone());
             s.generation.size = s.generation.size.checked_add(1).expect("size exhausted");
             // The capture may observe a newer layout than the preceding list query.
             // Keep that baseline so its queued layout notification cannot recapture it.
@@ -699,19 +777,21 @@ impl Control {
                 pane.height = self.size.rows;
             }
         });
-        self.shared.emit(OutputKind::Resize, self.size, &[]).await?;
         self.shared
-            .emit(OutputKind::ResetBegin, self.size, b"\x1bc")
+            .emit_to(&target, OutputKind::Resize, self.size, &[])
+            .await?;
+        self.shared
+            .emit_to(&target, OutputKind::ResetBegin, self.size, b"\x1bc")
             .await?;
         let main = self.response().await?;
         if fields[2] == 1 {
-            self.draw(main).await?;
+            self.draw(&target, main).await?;
             self.shared
-                .emit(OutputKind::ResetChunk, self.size, b"\x1b[?1049h")
+                .emit_to(&target, OutputKind::ResetChunk, self.size, b"\x1b[?1049h")
                 .await?;
         }
         let screen = self.response().await?;
-        self.draw(screen).await?;
+        self.draw(&target, screen).await?;
         let mut modes = format!(
             "\x1b[0m\x1b[{};{}r\x1b[{};{}H",
             fields[12] + 1,
@@ -740,11 +820,12 @@ impl Control {
             if fields[14] == 1 { 'h' } else { 'l' }
         ));
         self.shared
-            .emit(OutputKind::ResetChunk, self.size, modes.as_bytes())
+            .emit_to(&target, OutputKind::ResetChunk, self.size, modes.as_bytes())
             .await?;
         for row in self.response().await? {
             self.shared
-                .emit(
+                .emit_to(
+                    &target,
                     OutputKind::ResetChunk,
                     self.size,
                     &crate::protocol::decode(&row, true)?,
@@ -753,24 +834,25 @@ impl Control {
         }
         self.response().await?;
         self.shared
-            .emit(OutputKind::ResetEnd, self.size, &[])
+            .emit_to(&target, OutputKind::ResetEnd, self.size, &[])
             .await?;
-        self.live = true;
-        self.paused = false;
-        self.shared.phase(Phase::Ready);
+        self.capturing = None;
+        self.paused.remove(&id);
         Ok(())
     }
-    async fn draw(&self, rows: Vec<Vec<u8>>) -> Result<()> {
+    async fn draw(&self, target: &PaneTarget, rows: Vec<Vec<u8>>) -> Result<()> {
         for (i, row) in rows.into_iter().enumerate() {
             self.shared
-                .emit(
+                .emit_to(
+                    target,
                     OutputKind::ResetChunk,
                     self.size,
                     format!("\x1b[{};1H", i + 1).as_bytes(),
                 )
                 .await?;
             self.shared
-                .emit(
+                .emit_to(
+                    target,
                     OutputKind::ResetChunk,
                     self.size,
                     &crate::protocol::decode(&row, true)?,
@@ -863,6 +945,8 @@ async fn attach(
         s.error = None;
         s.session = Some(id.clone());
         s.pane = None;
+        s.window = None;
+        s.render_targets.clear();
     });
     let mut c = Control {
         stream,
@@ -870,9 +954,10 @@ async fn attach(
         events: VecDeque::new(),
         shared,
         size,
-        live: false,
+        screens: BTreeMap::new(),
+        capturing: None,
         dirty: false,
-        paused: false,
+        paused: HashSet::new(),
     };
     c.response().await?;
     c.command(Operation::FlowControl).await?;
@@ -1069,6 +1154,8 @@ async fn run(
                 .checked_add(1)
                 .expect("connection generation exhausted");
             s.pane = None;
+            s.window = None;
+            s.render_targets.clear();
         });
         let delay = match result {
             Err(request) => {
@@ -1185,6 +1272,8 @@ async fn missing_session(ssh: &Ssh, shared: &Shared, control: &mut Option<Contro
     let remote = list(ssh).await?;
     shared.update(|s| {
         s.remote = remote;
+        s.window = None;
+        s.render_targets.clear();
         s.phase = Phase::MissingSession;
         s.error = Some(Error::MissingSession);
         s.pane = None;
@@ -1208,7 +1297,7 @@ async fn connected(
         shared.update(|s| s.remote = remote.clone());
         if let Some(id) = session {
             if remote.sessions.iter().any(|s| s.id == id) {
-                control = Some(attach(ssh, shared.clone(), id, *size, remembered.clone()).await?);
+                control = Some(attach(ssh, shared.clone(), id, *size, None).await?);
             } else {
                 shared.phase(Phase::MissingSession)
             }
@@ -1232,14 +1321,17 @@ async fn connected(
     loop {
         // Commands also consume notifications while waiting for their response.
         // Service those changes before waiting for another unsolicited event.
-        if control.as_ref().is_some_and(|c| c.dirty || c.paused) {
+        if control
+            .as_ref()
+            .is_some_and(|c| c.dirty || !c.paused.is_empty())
+        {
             let result = async {
                 let c = control.as_mut().unwrap();
                 if c.dirty {
                     c.refresh_screen_if_needed(false).await?;
                 }
-                if c.paused {
-                    c.snapshot(false).await?;
+                if !c.paused.is_empty() {
+                    c.sync_screens(false, false).await?;
                 }
                 Ok(())
             }
@@ -1257,7 +1349,7 @@ async fn connected(
             Refresh,
         }
         let incoming = if let Some(c) = control.as_mut() {
-            let pending_refresh = c.dirty || c.paused;
+            let pending_refresh = c.dirty || !c.paused.is_empty();
             // A slow link may receive another change during every refresh.
             // Keep pending user requests eligible instead of starving input.
             tokio::select! {
@@ -1302,7 +1394,7 @@ async fn connected(
                 let result = async {
                     match &r.kind {
                         RequestKind::Input { target, bytes } => {
-                            if shared.target().as_ref() != Some(target) {
+                            if shared.target().is_none_or(|current| !current.same_input_destination(target)) {
                                 return Err(Error::StaleGeneration);
                             }
                             if !matches!(
@@ -1441,6 +1533,7 @@ async fn connected(
                                             | Operation::NewWindow { .. }
                                             | Operation::RenameSession { .. }
                                             | Operation::RenameWindow { .. }
+                                            | Operation::RenamePane { .. }
                                             | Operation::KillSession { .. }
                                             | Operation::KillWindow { .. }
                                             | Operation::KillPane { .. }
@@ -1493,21 +1586,8 @@ async fn connected(
                                     shared.emit(OutputKind::Resize, next, &[]).await?;
                                 }
                                 if let Some(c) = control.as_mut() {
-                                    let generation = shared.state.lock().unwrap().generation.size;
-                                    c.command(Operation::ClientSize {
-                                        columns: *columns,
-                                        rows: *rows,
-                                    })
-                                    .await?;
-                                    // Refresh the layout before capturing it. If another client
-                                    // constrains this pane, the requested viewport may not change
-                                    // its actual size at all. Keep live output and its generation.
+                                    c.command(Operation::ClientSize { columns: *columns, rows: *rows }).await?;
                                     c.refresh_screen_if_needed(true).await?;
-                                    if shared.state.lock().unwrap().generation.size == generation {
-                                        // fit() resized the local grid even if another client's
-                                        // smaller viewport kept this pane's dimensions unchanged.
-                                        shared.emit(OutputKind::Resize, c.size, &[]).await?;
-                                    }
                                 }
                             }
                         },

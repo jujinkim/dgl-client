@@ -37,7 +37,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use terminal::Terminal;
+use terminal::WindowTerminal as Terminal;
 use text_input::TextInput;
 use workspace::{Axis, GroupId, Layout, TabId, Workspace};
 actions!(dgl, [Quit]);
@@ -55,6 +55,7 @@ enum PromptOp {
     Window(String),
     RenameSession(String),
     RenameWindow(String),
+    RenamePane(String),
 }
 #[derive(Clone)]
 enum DeleteOp {
@@ -83,7 +84,7 @@ enum Dialog {
         operation: DeleteOp,
     },
     Settings,
-    Agents(Arc<Connection>, String),
+    Agents(Arc<Connection>, String, Option<String>),
     Notifications,
 }
 struct Desktop {
@@ -235,7 +236,7 @@ impl Desktop {
                 }
                 let input = tab
                     .terminal
-                    .update(cx, |t, _| t.complete(result.request_id));
+                    .update(cx, |t, cx| t.complete(result.request_id, cx));
                 if let Some(e) = result.error
                     && (input
                         || !matches!(
@@ -464,6 +465,7 @@ impl Desktop {
             PromptOp::Window(target) => Operation::NewWindow { target, name },
             PromptOp::RenameSession(target) => Operation::RenameSession { target, name },
             PromptOp::RenameWindow(target) => Operation::RenameWindow { target, name },
+            PromptOp::RenamePane(target) => Operation::RenamePane { target, name },
         };
         match connection.action(Action::Manage { operation }) {
             Ok(_) => self.dialog = None,
@@ -588,8 +590,8 @@ impl Render for Desktop {
                             self.button("confirm-delete", "삭제", cx, |s, _, _| s.confirm()),
                         );
                 }
-                Dialog::Agents(connection, alias) => {
-                    body = body.child(self.agent_details(connection, alias, cx));
+                Dialog::Agents(connection, alias, pane) => {
+                    body = body.child(self.agent_details(connection, alias, pane.as_deref(), cx));
                 }
                 Dialog::Notifications => {
                     body = body.child(self.recent_agents(cx));
@@ -599,7 +601,24 @@ impl Render for Desktop {
                         .child(div().text_xl().child("설정"))
                         .child(self.shortcut_settings(cx))
                         .child(self.cloud_sync_settings(cx))
-                        .child(self.agent_settings(cx));
+                        .child(self.agent_settings(cx))
+                        .child(self.button(
+                            "show-all-hierarchy",
+                            format!(
+                                "{} 단일 창도 표시",
+                                if self.local.preferences.show_all_hierarchy {
+                                    "☑"
+                                } else {
+                                    "☐"
+                                }
+                            ),
+                            cx,
+                            |s, _, _| {
+                                s.local.preferences.show_all_hierarchy =
+                                    !s.local.preferences.show_all_hierarchy;
+                                s.save();
+                            },
+                        ));
                     for (value, label) in
                         [("system", "시스템"), ("light", "밝게"), ("dark", "어둡게")]
                     {

@@ -13,7 +13,8 @@ class PreferencesTest {
             val legacy = LocalRepository(directory).read()
             assertEquals(Preferences(fontSize = 19), legacy.preferences)
             assertTrue(legacy.preferences.mobilePaneToolbarVisible)
-            val state = legacy.copy(preferences = legacy.preferences.copy(volumeKeysEnabled = true, smoothTerminalTransitions = true, mobilePaneToolbarVisible = false,
+            assertFalse(legacy.preferences.showAllHierarchy)
+            val state = legacy.copy(preferences = legacy.preferences.copy(showAllHierarchy = true, volumeKeysEnabled = true, smoothTerminalTransitions = true, mobilePaneToolbarVisible = false,
                 volumeUp = VolumeBinding(VolumeAction.Macro, List(65536) { MacroStep.Key(TerminalKey.Enter) }),
                 volumeDown = VolumeBinding(VolumeAction.Macro, listOf(MacroStep.Text("한".repeat(21845)), MacroStep.Key(TerminalKey.Enter)))))
             LocalRepository(directory).save(state)

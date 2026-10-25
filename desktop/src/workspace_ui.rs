@@ -235,6 +235,9 @@ impl Desktop {
                     .items_center()
                     .border_b_1()
                     .border_color(rgb(p.line))
+                    .when(self.active_tab().is_some_and(|t| t.host.id == id), |d| {
+                        d.bg(rgb(p.selection))
+                    })
                     .child(
                         self.button(
                             format!("host-{id}"),
@@ -258,7 +261,9 @@ impl Desktop {
                     div()
                         .pl_3()
                         .flex()
+                        .flex_wrap()
                         .text_sm()
+                        .child(self.host_connection_controls(&host.id, cx))
                         .child(
                             self.button(format!("edit-{id}"), "편집", cx, move |s, _, cx| {
                                 s.menu = None;
@@ -271,12 +276,17 @@ impl Desktop {
                             cx,
                             move |s, _, _| {
                                 s.menu = None;
-                                if let Some(tab) =
-                                    s.tabs.iter().rev().find(|t| t.host.id == setup_host.id)
+                                if let Some(tab) = s
+                                    .active_tab()
+                                    .filter(|t| t.host.id == setup_host.id)
+                                    .or_else(|| {
+                                        s.tabs.iter().rev().find(|t| t.host.id == setup_host.id)
+                                    })
                                 {
                                     s.dialog = Some(Dialog::Agents(
                                         tab.connection.clone(),
                                         setup_host.alias.clone(),
+                                        None,
                                     ));
                                 } else {
                                     s.error = Some("호스트에 먼저 연결하세요.".into());
@@ -321,13 +331,20 @@ impl Desktop {
             .active_tab()
             .map(|tab| {
                 let state = tab.connection.state();
-                format!(
-                    "{} · {:?} · {} · {}",
-                    tab.host.alias,
-                    state.phase,
-                    state.session.as_deref().unwrap_or("세션 선택"),
-                    state.pane.as_deref().unwrap_or("—")
-                ) + &state.error.map(|e| format!(" · {e}")).unwrap_or_default()
+                [
+                    hierarchy::display_text(&tab.host.alias),
+                    hierarchy::phase_label(&state.phase).into(),
+                    hierarchy::target_label(
+                        &state.remote,
+                        state.session.as_deref(),
+                        state.pane.as_deref(),
+                    ),
+                ]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ")
+                    + &state.error.map(|e| format!(" · {e}")).unwrap_or_default()
             })
             .unwrap_or_else(|| "빈 그룹 · 왼쪽 호스트를 선택하여 연결".into());
         let mut shortcuts = div()
@@ -548,7 +565,18 @@ impl Desktop {
                             .border_t_1()
                             .border_color(rgb(p.line))
                             .text_xs()
-                            .child(status),
+                            .child(
+                                div()
+                                    .id("connection-status")
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .tooltip({
+                                        let status = status.clone();
+                                        move |_, cx| cx.new(|_| Tip(status.clone())).into()
+                                    })
+                                    .child(status),
+                            ),
                     ),
             )
             .children(self.render_launcher(cx))
@@ -719,7 +747,6 @@ impl Desktop {
                             },
                         )),
                     )
-                    .child(self.agent_badge(tab.connection.clone(), &tab.host, None, cx))
                     .child(self.button(menu.clone(), "…", cx, move |s, _, _| {
                         s.toggle_menu(toggle.clone())
                     }))
@@ -998,6 +1025,48 @@ impl Desktop {
         }
         body
     }
+    fn host_connection_controls(&self, host: &str, cx: &mut Context<Self>) -> Div {
+        let mut controls = div().flex().text_xs();
+        if let Some(tab) = self.active_tab().filter(|t| t.host.id == host) {
+            let tid = tab.id;
+            let handle = tab.connection.state().handle;
+            let host_id = host.to_owned();
+            let retry_host = host_id.clone();
+            if !tab.connection.state().can_retry_now() {
+                controls = controls.child(self.button(
+                    "host-reconnect",
+                    "재접속",
+                    cx,
+                    move |s, _, cx| {
+                        if s.matches_selected_connection(&retry_host, tid, handle)
+                            && s.active_tab()
+                                .is_some_and(|t| !t.connection.state().can_retry_now())
+                        {
+                            s.menu = None;
+                            s.reconnect(cx);
+                        }
+                    },
+                ));
+            }
+            controls = controls.child(self.button(
+                "host-disconnect",
+                "연결 종료",
+                cx,
+                move |s, _, _| {
+                    if s.matches_selected_connection(&host_id, tid, handle) {
+                        s.menu = None;
+                        s.close_tab(tid);
+                    }
+                },
+            ));
+        }
+        controls
+    }
+    pub(super) fn matches_selected_connection(&self, host: &str, tid: TabId, handle: u64) -> bool {
+        self.active_tab().is_some_and(|t| {
+            t.id == tid && t.host.id == host && t.connection.state().handle == handle
+        })
+    }
     fn tree_button(
         &self,
         id: impl Into<SharedString>,
@@ -1095,298 +1164,288 @@ impl Desktop {
                 ),
         );
         if !browse {
-            tree = tree.child(
+            tree = tree.child(div().px_3().text_xs().child(format!(
+                "{} · 목록 대기",
+                hierarchy::phase_label(&state.phase)
+            )));
+        }
+        for row in hierarchy::rows(&state.remote, self.local.preferences.show_all_hierarchy) {
+            tree = tree.child(self.render_hierarchy_row(&row, 0, tid, &connection, &state, cx));
+        }
+        tree.into_any_element()
+    }
+    fn render_hierarchy_row(
+        &self,
+        row: &hierarchy::Row,
+        depth: usize,
+        tid: TabId,
+        connection: &Arc<Connection>,
+        state: &dgl_core::connection::State,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let browse = matches!(
+            state.phase,
+            Phase::Selecting | Phase::Ready | Phase::MissingSession
+        );
+        let p = self.palette;
+        let expand = format!("{tid}/{}", row.key);
+        let toggle = expand.clone();
+        let menu_id = format!("{expand}/menu");
+        let menu = menu_id.clone();
+        let c = connection.clone();
+        let target = row.clone();
+        let id = match row.kind {
+            hierarchy::Kind::Session => format!("session-{}", row.session),
+            hierarchy::Kind::Window => {
+                format!("window-{}-{}", row.session, row.window.as_deref().unwrap())
+            }
+            hierarchy::Kind::Pane => format!(
+                "pane-{}-{}-{}",
+                row.session,
+                row.window.as_deref().unwrap(),
+                row.pane.as_deref().unwrap()
+            ),
+        };
+        let mut line = div()
+            .id(SharedString::from(format!("row-{}", row.key)))
+            .relative()
+            .flex()
+            .items_center()
+            .pl(px(depth as f32 * 20.))
+            .when(row.kind == hierarchy::Kind::Session, |d| {
+                d.bg(rgb(p.session_header))
+            })
+            .when(row.selected(state), |d| d.bg(rgb(p.selection)));
+        for guide in 0..depth {
+            line = line.child(
                 div()
-                    .px_3()
-                    .text_xs()
-                    .child(format!("{:?} · 목록 대기", state.phase)),
+                    .absolute()
+                    .left(px(guide as f32 * 20. + 14.))
+                    .top_0()
+                    .bottom_0()
+                    .w(px(1.))
+                    .bg(rgb(p.line)),
             );
         }
-        for session in &state.remote.sessions {
-            let sid = session.id.clone();
-            let expand = format!("{tid}/{sid}");
-            let toggle = expand.clone();
-            let menu_id = format!("{expand}/menu");
-            let menu = menu_id.clone();
-            let c = connection.clone();
-            let select_sid = sid.clone();
-            tree = tree.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .bg(rgb(p.session_header))
-                    .when(state.session.as_ref() == Some(&sid), |d| {
-                        d.bg(rgb(p.selection))
-                    })
-                    .child(self.button(
-                        format!("expand-{expand}"),
-                        if self.expanded.contains(&expand) {
-                            "▾"
-                        } else {
-                            "▸"
-                        },
-                        cx,
-                        move |s, _, _| s.toggle_expanded(toggle.clone()),
-                    ))
-                    .child(self.tree_button(
-                        format!("session-{sid}"),
-                        hierarchy::session_label(&state.remote, session),
-                        false,
-                        cx,
-                        move |s, _, _| {
-                            if browse {
-                                s.submit(
-                                    &c,
-                                    Action::SelectTarget {
-                                        session: select_sid.clone(),
-                                        window: None,
-                                        pane: None,
-                                    },
-                                );
-                            }
-                        },
-                    ))
-                    .child(self.button(menu_id.clone(), "…", cx, move |s, _, _| {
-                        s.toggle_menu(menu.clone())
-                    })),
-            );
-            if self.menu.as_ref() == Some(&menu_id) {
-                let add = sid.clone();
-                let rename = sid.clone();
-                let kill = sid.clone();
-                let c = connection.clone();
-                tree = tree.child(
-                    div()
-                        .pl_4()
-                        .text_xs()
-                        .flex()
-                        .flex_wrap()
-                        .child(self.button(
-                            format!("new-window-{sid}"),
-                            "+ 창",
-                            cx,
-                            move |s, _, cx| {
-                                s.menu = None;
-                                s.prompt("창 만들기", PromptOp::Window(add.clone()), cx);
+        line = if row.children.is_empty() {
+            line.child(div().w(px(28.)).flex_shrink_0())
+        } else {
+            line.child(
+                self.button(
+                    format!("expand-{expand}"),
+                    if self.expanded.contains(&expand) {
+                        "▾"
+                    } else {
+                        "▸"
+                    },
+                    cx,
+                    move |s, _, _| s.toggle_expanded(toggle.clone()),
+                )
+                .w(px(28.))
+                .px_0(),
+            )
+        };
+        line = line
+            .child(self.tree_button(
+                id,
+                row.label.clone(),
+                row.kind == hierarchy::Kind::Pane,
+                cx,
+                move |s, _, _| {
+                    if browse {
+                        s.submit(
+                            &c,
+                            Action::SelectTarget {
+                                session: target.session.clone(),
+                                window: target.window.clone(),
+                                pane: target.pane.clone(),
                             },
-                        ))
-                        .child(self.button(
-                            format!("rename-session-{sid}"),
-                            "이름 변경",
-                            cx,
-                            move |s, _, cx| {
-                                s.menu = None;
-                                s.prompt(
-                                    "세션 이름 변경",
-                                    PromptOp::RenameSession(rename.clone()),
-                                    cx,
-                                );
-                            },
-                        ))
-                        .child(self.button(
-                            format!("kill-session-{sid}"),
-                            "삭제…",
-                            cx,
-                            move |s, _, _| {
-                                s.menu = None;
-                                s.dialog = Some(Dialog::Delete {
-                                    title: format!("세션 {kill} 삭제"),
-                                    operation: DeleteOp::Remote(
-                                        c.clone(),
-                                        Operation::KillSession {
-                                            target: kill.clone(),
-                                        },
-                                    ),
-                                });
-                            },
-                        )),
-                );
-            }
-            if !self.expanded.contains(&expand) {
-                continue;
-            }
-            for win in state.remote.windows.iter().filter(|w| w.session == sid) {
-                let wid = win.id.clone();
-                let expand = format!("{tid}/{sid}/{wid}");
-                let toggle = expand.clone();
-                let menu_id = format!("{expand}/menu");
-                let menu = menu_id.clone();
-                let c = connection.clone();
-                let select_sid = sid.clone();
-                let select_wid = wid.clone();
-                let selected = state.session.as_ref() == Some(&sid)
-                    && state
-                        .remote
-                        .panes
-                        .iter()
-                        .any(|p| Some(&p.id) == state.pane.as_ref() && p.window == wid);
-                tree = tree.child(
-                    div()
-                        .pl_4()
-                        .flex()
-                        .items_center()
-                        .when(selected, |d| d.bg(rgb(p.selection)))
-                        .child(self.button(
-                            format!("expand-{expand}"),
-                            if self.expanded.contains(&expand) {
-                                "▾"
-                            } else {
-                                "▸"
-                            },
-                            cx,
-                            move |s, _, _| s.toggle_expanded(toggle.clone()),
-                        ))
-                        .child(self.tree_button(
-                            format!("window-{sid}-{wid}"),
-                            hierarchy::window_label(&state.remote, win),
-                            false,
-                            cx,
-                            move |s, _, _| {
-                                if browse {
-                                    s.submit(
-                                        &c,
-                                        Action::SelectTarget {
-                                            session: select_sid.clone(),
-                                            window: Some(select_wid.clone()),
-                                            pane: None,
-                                        },
-                                    );
-                                }
-                            },
-                        ))
-                        .child(self.button(menu_id.clone(), "…", cx, move |s, _, _| {
-                            s.toggle_menu(menu.clone())
-                        })),
-                );
-                if self.menu.as_ref() == Some(&menu_id) {
-                    let rename = wid.clone();
-                    let kill = wid.clone();
-                    let c = connection.clone();
-                    tree = tree.child(
-                        div()
-                            .pl_8()
-                            .flex()
-                            .text_xs()
-                            .child(self.button(
-                                format!("rename-{wid}"),
-                                "이름 변경",
-                                cx,
-                                move |s, _, cx| {
-                                    s.menu = None;
-                                    s.prompt(
-                                        "창 이름 변경",
-                                        PromptOp::RenameWindow(rename.clone()),
-                                        cx,
-                                    );
-                                },
-                            ))
-                            .child(self.button(
-                                format!("kill-{wid}"),
-                                "삭제…",
-                                cx,
-                                move |s, _, _| {
-                                    s.menu = None;
-                                    s.dialog = Some(Dialog::Delete {
-                                        title: format!("창 {kill} 삭제"),
-                                        operation: DeleteOp::Remote(
-                                            c.clone(),
-                                            Operation::KillWindow {
-                                                target: kill.clone(),
-                                            },
-                                        ),
-                                    });
-                                },
-                            )),
-                    );
-                }
-                if !self.expanded.contains(&expand) {
-                    continue;
-                }
-                for pane in state.remote.panes.iter().filter(|p| p.window == wid) {
-                    let pid = pane.id.clone();
-                    let c = connection.clone();
-                    let select_sid = sid.clone();
-                    let select_wid = wid.clone();
-                    let select_pid = pid.clone();
-                    let menu_id = format!("{expand}/{pid}/menu");
-                    let menu = menu_id.clone();
-                    tree = tree.child(
-                        div()
-                            .pl_8()
-                            .flex()
-                            .items_center()
-                            .when(
-                                state.session.as_ref() == Some(&sid)
-                                    && state.pane.as_ref() == Some(&pid),
-                                |d| d.bg(rgb(p.selection)),
-                            )
-                            .child(self.tree_button(
-                                format!("pane-{sid}-{wid}-{pid}"),
-                                hierarchy::pane_label(pane),
-                                true,
-                                cx,
-                                move |s, _, _| {
-                                    if browse {
-                                        s.submit(
-                                            &c,
-                                            Action::SelectTarget {
-                                                session: select_sid.clone(),
-                                                window: Some(select_wid.clone()),
-                                                pane: Some(select_pid.clone()),
-                                            },
-                                        );
-                                    }
-                                },
-                            ))
-                            .child(self.button(menu_id.clone(), "…", cx, move |s, _, _| {
-                                s.toggle_menu(menu.clone())
-                            })),
-                    );
-                    if let Some(tab) = self.active_tab() {
-                        tree = tree.child(self.agent_badge(
-                            connection.clone(),
-                            &tab.host,
-                            Some(&pid),
-                            cx,
-                        ));
+                        );
                     }
-                    if self.menu.as_ref() == Some(&menu_id) {
-                        let c = connection.clone();
-                        let kill = pid.clone();
-                        tree = tree.child(self.button(
-                            format!("kill-{pid}"),
-                            "패널 삭제…",
-                            cx,
-                            move |s, _, _| {
-                                s.menu = None;
-                                s.dialog = Some(Dialog::Delete {
-                                    title: format!("패널 {kill} 삭제"),
-                                    operation: DeleteOp::Remote(
-                                        c.clone(),
-                                        Operation::KillPane {
-                                            target: kill.clone(),
-                                        },
-                                    ),
-                                });
-                            },
-                        ));
-                    }
-                }
-            }
-        }
-        tree.child(
-            div()
-                .flex()
-                .text_xs()
-                .when(!state.can_retry_now(), |d| {
-                    d.child(self.button("reconnect", "재접속", cx, |s, _, cx| s.reconnect(cx)))
+                },
+            ))
+            .child(
+                self.button(menu_id.clone(), "…", cx, move |s, _, _| {
+                    s.toggle_menu(menu.clone())
                 })
-                .child(self.button("disconnect", "연결 종료", cx, |s, _, _| {
-                    if let Some(id) = s.workspace.selected() {
-                        s.close_tab(id);
-                    }
-                })),
-        )
-        .into_any_element()
+                .w(px(28.))
+                .px_0(),
+            );
+        if let Some(pid) = &row.window
+            && let Some(tab) = self.active_tab()
+        {
+            line = line.child(self.agent_badge(connection.clone(), &tab.host, pid, state, cx));
+        }
+        let mut body = div().flex().flex_col().child(line);
+        if browse && self.menu.as_ref() == Some(&menu_id) {
+            body = body.child(self.hierarchy_menu(row, depth, connection, cx));
+        }
+        if self.expanded.contains(&expand) {
+            for child in &row.children {
+                body = body.child(self.render_hierarchy_row(
+                    child,
+                    depth + 1,
+                    tid,
+                    connection,
+                    state,
+                    cx,
+                ));
+            }
+        }
+        body
+    }
+    fn hierarchy_menu(
+        &self,
+        row: &hierarchy::Row,
+        depth: usize,
+        connection: &Arc<Connection>,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let mut menu = div()
+            .pl(px(depth as f32 * 20. + 28.))
+            .flex()
+            .flex_wrap()
+            .text_xs();
+        if row.kind == hierarchy::Kind::Session {
+            let add = row.session.clone();
+            menu = menu.child(self.button(
+                format!("new-window-{add}"),
+                "창 만들기",
+                cx,
+                move |s, _, cx| {
+                    s.menu = None;
+                    s.prompt("창 만들기", PromptOp::Window(add.clone()), cx);
+                },
+            ));
+            let target = row.session.clone();
+            menu = menu.child(self.button(
+                format!("rename-session-{target}"),
+                "세션 이름 변경",
+                cx,
+                move |s, _, cx| {
+                    s.menu = None;
+                    s.prompt(
+                        "세션 이름 변경",
+                        PromptOp::RenameSession(target.clone()),
+                        cx,
+                    );
+                },
+            ));
+            menu = menu.child(self.hierarchy_delete(
+                format!("kill-session-{}", row.session),
+                "세션 삭제…",
+                row.label.title.clone(),
+                Operation::KillSession {
+                    target: row.session.clone(),
+                },
+                connection,
+                cx,
+            ));
+        }
+        if row.kind != hierarchy::Kind::Pane
+            && let Some(window) = &row.window
+        {
+            let target = window.clone();
+            menu = menu.child(self.button(
+                format!("rename-{target}"),
+                "창 이름 변경",
+                cx,
+                move |s, _, cx| {
+                    s.menu = None;
+                    s.prompt("창 이름 변경", PromptOp::RenameWindow(target.clone()), cx);
+                },
+            ));
+            menu = menu.child(self.hierarchy_delete(
+                format!("kill-{window}"),
+                "창 삭제…",
+                "창".into(),
+                Operation::KillWindow {
+                    target: window.clone(),
+                },
+                connection,
+                cx,
+            ));
+        }
+        let active_pane = row.window.as_ref().and_then(|id| {
+            connection
+                .state()
+                .remote
+                .panes
+                .iter()
+                .find(|p| &p.window == id && p.active)
+                .map(|p| p.id.clone())
+        });
+        if let Some(pane) = &active_pane {
+            for (horizontal, label) in [(true, "패널 좌우 나누기"), (false, "패널 상하 나누기")]
+            {
+                let c = connection.clone();
+                let mut target = row.clone();
+                target.pane = Some(pane.clone());
+                menu = menu.child(self.button(
+                    format!("split-{pane}-{horizontal}"),
+                    label,
+                    cx,
+                    move |s, _, _| {
+                        s.menu = None;
+                        s.submit(
+                            &c,
+                            Action::SelectTarget {
+                                session: target.session.clone(),
+                                window: target.window.clone(),
+                                pane: target.pane.clone(),
+                            },
+                        );
+                        s.submit(
+                            &c,
+                            Action::Manage {
+                                operation: Operation::Split {
+                                    target: target.pane.clone().unwrap(),
+                                    horizontal,
+                                },
+                            },
+                        );
+                    },
+                ));
+            }
+            let target = pane.clone();
+            menu = menu.child(self.button(
+                format!("rename-pane-{target}"),
+                "패널 제목 변경",
+                cx,
+                move |s, _, cx| {
+                    s.menu = None;
+                    s.prompt("패널 제목 변경", PromptOp::RenamePane(target.clone()), cx);
+                },
+            ));
+            menu = menu.child(self.hierarchy_delete(
+                format!("kill-{pane}"),
+                "패널 삭제…",
+                "패널".into(),
+                Operation::KillPane {
+                    target: pane.clone(),
+                },
+                connection,
+                cx,
+            ));
+        }
+        menu
+    }
+    fn hierarchy_delete(
+        &self,
+        id: String,
+        label: &'static str,
+        title: String,
+        operation: Operation,
+        connection: &Arc<Connection>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let c = connection.clone();
+        self.button(id, label, cx, move |s, _, _| {
+            s.menu = None;
+            s.dialog = Some(Dialog::Delete {
+                title: format!("{title} 삭제"),
+                operation: DeleteOp::Remote(c.clone(), operation.clone()),
+            });
+        })
     }
 }

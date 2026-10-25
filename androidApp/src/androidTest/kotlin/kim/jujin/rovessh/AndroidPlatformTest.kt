@@ -123,6 +123,48 @@ class AndroidPlatformTest {
         }
     }
 
+    @Test fun windowPanesKeepIndependentScreensAndOnlyTheContainerRequestsSize() = runBlocking<Unit> {
+        val sizes = Channel<Size>(32)
+        lateinit var terminal: AndroidTerminal
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                terminal = AndroidTerminal(activity, Preferences(), {}, { sizes.trySend(it) })
+                activity.setContentView(FrameLayout(activity).apply { addView(terminal.view, FrameLayout.LayoutParams(-1, -1)) })
+            }
+            try {
+                terminal.write(byteArrayOf())
+                withTimeout(5000) { sizes.receive() }
+                val remote = RemoteState(windows = listOf(RemoteWindow("@1", "$1", "nested", true, "", width = 81, height = 24)),
+                    panes = listOf(RemotePane("%1", "@1", 40, 24, true, "", "sh"), RemotePane("%2", "@1", 40, 24, false, "", "sh", left = 41)))
+                terminal.layout(remote, "@1", "%1", "first")
+                for ((pane, text) in listOf("%1" to "LEFT_PERSIST", "%2" to "RIGHT_PERSIST")) {
+                    terminal.outputPane(pane, pane)
+                    terminal.resizeRemote(Size(40, 24))
+                    terminal.reset(text.encodeToByteArray())
+                }
+                withTimeout(5000) { while (!js(terminal, "[...document.querySelectorAll('.pane .xterm-screen')].map(s=>s.textContent).join('|')").contains("RIGHT_PERSIST")) delay(20) }
+                js(terminal, "window.__left=document.querySelectorAll('.pane .xterm')[0]; true")
+                terminal.layout(remote, "@1", "%2", "second")
+                assertTrue(js(terminal, "window.__left === document.querySelectorAll('.pane .xterm')[0]").contains("true"))
+                val screen = js(terminal, "[...document.querySelectorAll('.pane .xterm-screen')].map(s=>s.textContent).join('|')")
+                assertTrue(screen.contains("LEFT_PERSIST")); assertTrue(screen.contains("RIGHT_PERSIST"))
+                assertEquals("2", js(terminal, "document.querySelectorAll('.pane').length"))
+                assertTrue(js(terminal, "Math.abs(document.querySelector('.pane').getBoundingClientRect().height-document.querySelector('.pane .xterm-screen').getBoundingClientRect().height)<2").contains("true"))
+                assertTrue(js(terminal, "document.querySelector('#window').click(); document.activeElement.classList.contains('xterm-helper-textarea')").contains("true"))
+                delay(150)
+                while (sizes.tryReceive().isSuccess) { }
+                terminal.outputPane("%2", "resized")
+                terminal.resizeRemote(Size(32, 12))
+                terminal.write("RIGHT_APPEND".encodeToByteArray())
+                delay(100)
+                assertTrue("Pane grids must never request client resize", sizes.tryReceive().isFailure)
+                assertTrue(js(terminal, "document.querySelectorAll('.pane .xterm-screen')[0].textContent").contains("LEFT_PERSIST"))
+                terminal.layout(remote.copy(windows = remote.windows.map { it.copy(zoomed = true) }), "@1", "%2", "zoom")
+                assertEquals("1", js(terminal, "[...document.querySelectorAll('.pane')].filter(p=>p.style.display!=='none').length"))
+            } finally { instrumentation.runOnMainSync { terminal.close() } }
+        }
+    }
+
     private fun js(terminal: AndroidTerminal, script: String): String {
         val latch = CountDownLatch(1); var result = ""
         instrumentation.runOnMainSync { terminal.view.evaluateJavascript(script) { result = it; latch.countDown() } }

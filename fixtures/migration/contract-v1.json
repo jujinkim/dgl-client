@@ -655,7 +655,8 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
-          "mobilePaneToolbarVisible": true
+          "mobilePaneToolbarVisible": true,
+          "showAllHierarchy": false
         }
       }
     },
@@ -706,7 +707,8 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
-          "mobilePaneToolbarVisible": true
+          "mobilePaneToolbarVisible": true,
+          "showAllHierarchy": false
         }
       }
     },
@@ -823,7 +825,8 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
-          "mobilePaneToolbarVisible": true
+          "mobilePaneToolbarVisible": true,
+          "showAllHierarchy": false
         }
       }
     },
@@ -898,7 +901,8 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
-          "mobilePaneToolbarVisible": true
+          "mobilePaneToolbarVisible": true,
+          "showAllHierarchy": false
         }
       }
     },
@@ -1000,7 +1004,8 @@
             "CtrlB"
           ],
           "smoothTerminalTransitions": false,
-          "mobilePaneToolbarVisible": true
+          "mobilePaneToolbarVisible": true,
+          "showAllHierarchy": false
         }
       }
     },
@@ -1035,7 +1040,8 @@
           },
           "terminalShortcuts": [],
           "smoothTerminalTransitions": false,
-          "mobilePaneToolbarVisible": true
+          "mobilePaneToolbarVisible": true,
+          "showAllHierarchy": false
         }
       }
     },
@@ -1085,7 +1091,8 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
-          "mobilePaneToolbarVisible": false
+          "mobilePaneToolbarVisible": false,
+          "showAllHierarchy": false
         }
       }
     }
@@ -1109,7 +1116,7 @@
       "id": "window",
       "kind": "windows",
       "rows": [
-        "$1|@2|hello\\ world|1|abcd,80x24,0,0,3|7"
+        "$1|@2|hello\\ world|1|abcd,80x24,0,0,3|7|80|24|0|"
       ],
       "expected": [
         {
@@ -1118,7 +1125,11 @@
           "name": "hello world",
           "active": true,
           "layout": "abcd,80x24,0,0,3",
-          "index": 7
+          "index": 7,
+          "width": 80,
+          "height": 24,
+          "zoomed": false,
+          "visible_layout": ""
         }
       ]
     },
@@ -1126,7 +1137,7 @@
       "id": "pane",
       "kind": "panes",
       "rows": [
-        "%3|@2|80|24|1||sh|구분하세요\\ tmux\\ session\\|한글🚀\\\\끝"
+        "%3|@2|80|24|1||sh|구분하세요\\ tmux\\ session\\|한글🚀\\\\끝|0|0"
       ],
       "expected": [
         {
@@ -1137,7 +1148,9 @@
           "active": true,
           "mode": "",
           "command": "sh",
-          "title": "구분하세요 tmux session|한글🚀\\끝"
+          "title": "구분하세요 tmux session|한글🚀\\끝",
+          "left": 0,
+          "top": 0
         }
       ]
     },
@@ -1161,7 +1174,7 @@
       "id": "empty-pane-title",
       "kind": "panes",
       "rows": [
-        "%4|@2|40|24|0|copy-mode|python|"
+        "%4|@2|40|24|0|copy-mode|python||0|0"
       ],
       "expected": [
         {
@@ -1172,7 +1185,9 @@
           "active": false,
           "mode": "copy-mode",
           "command": "python",
-          "title": ""
+          "title": "",
+          "left": 0,
+          "top": 0
         }
       ]
     }

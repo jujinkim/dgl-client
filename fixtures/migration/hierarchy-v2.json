@@ -1,0 +1,503 @@
+[
+  {
+    "name": "single-window-single-pane",
+    "remote": {
+      "sessions": [
+        {
+          "id": "$1",
+          "name": "개발",
+          "attached": 1
+        }
+      ],
+      "windows": [
+        {
+          "id": "@1",
+          "session": "$1",
+          "name": "편집",
+          "index": 3,
+          "active": true,
+          "layout": "layout",
+          "width": 80,
+          "height": 24,
+          "zoomed": false,
+          "visible_layout": "layout"
+        }
+      ],
+      "panes": [
+        {
+          "id": "%1",
+          "window": "@1",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "sh",
+          "title": "작업",
+          "left": 0,
+          "top": 0
+        }
+      ]
+    },
+    "compact": [
+      [
+        "$1",
+        0,
+        "개발",
+        "3: 편집 · 패널 1개",
+        "@1",
+        null,
+        false
+      ]
+    ],
+    "all": [
+      [
+        "$1",
+        0,
+        "개발",
+        "창 1개 · 패널 1개",
+        null,
+        null,
+        true
+      ],
+      [
+        "$1/@1",
+        1,
+        "편집",
+        "창 3 · 패널 1개",
+        "@1",
+        null,
+        false
+      ]
+    ]
+  },
+  {
+    "name": "single-window-multiple-panes",
+    "remote": {
+      "sessions": [
+        {
+          "id": "$1",
+          "name": "개발",
+          "attached": 1
+        }
+      ],
+      "windows": [
+        {
+          "id": "@1",
+          "session": "$1",
+          "name": "편집",
+          "index": 3,
+          "active": true,
+          "layout": "layout",
+          "width": 80,
+          "height": 24,
+          "zoomed": false,
+          "visible_layout": "layout"
+        }
+      ],
+      "panes": [
+        {
+          "id": "%1",
+          "window": "@1",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "sh",
+          "title": "작업",
+          "left": 0,
+          "top": 0
+        },
+        {
+          "id": "%2",
+          "window": "@1",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "zsh",
+          "title": "원격-hostname",
+          "left": 0,
+          "top": 0
+        }
+      ]
+    },
+    "compact": [
+      [
+        "$1",
+        0,
+        "개발",
+        "3: 편집 · 패널 2개",
+        "@1",
+        null,
+        false
+      ]
+    ],
+    "all": [
+      [
+        "$1",
+        0,
+        "개발",
+        "창 1개 · 패널 2개",
+        null,
+        null,
+        true
+      ],
+      [
+        "$1/@1",
+        1,
+        "편집",
+        "창 3 · 패널 2개",
+        "@1",
+        null,
+        false
+      ]
+    ]
+  },
+  {
+    "name": "multiple-windows-single-panes-duplicate-and-empty-titles",
+    "remote": {
+      "sessions": [
+        {
+          "id": "$1",
+          "name": "동일 이름",
+          "attached": 1
+        }
+      ],
+      "windows": [
+        {
+          "id": "@1",
+          "session": "$1",
+          "name": "동일 이름",
+          "index": 0,
+          "active": true,
+          "layout": "layout",
+          "width": 80,
+          "height": 24,
+          "zoomed": false,
+          "visible_layout": "layout"
+        },
+        {
+          "id": "@2",
+          "session": "$1",
+          "name": "동일 이름",
+          "index": 7,
+          "active": true,
+          "layout": "layout",
+          "width": 80,
+          "height": 24,
+          "zoomed": false,
+          "visible_layout": "layout"
+        }
+      ],
+      "panes": [
+        {
+          "id": "%1",
+          "window": "@1",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "sh",
+          "title": "동일 이름",
+          "left": 0,
+          "top": 0
+        },
+        {
+          "id": "%2",
+          "window": "@2",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "python",
+          "title": "\t\u0007\n",
+          "left": 0,
+          "top": 0
+        }
+      ]
+    },
+    "compact": [
+      [
+        "$1",
+        0,
+        "동일 이름",
+        "창 2개 · 패널 2개",
+        null,
+        null,
+        true
+      ],
+      [
+        "$1/@1",
+        1,
+        "동일 이름",
+        "창 0 · 패널 1개",
+        "@1",
+        null,
+        false
+      ],
+      [
+        "$1/@2",
+        1,
+        "동일 이름",
+        "창 7 · 패널 1개",
+        "@2",
+        null,
+        false
+      ]
+    ],
+    "all": [
+      [
+        "$1",
+        0,
+        "동일 이름",
+        "창 2개 · 패널 2개",
+        null,
+        null,
+        true
+      ],
+      [
+        "$1/@1",
+        1,
+        "동일 이름",
+        "창 0 · 패널 1개",
+        "@1",
+        null,
+        false
+      ],
+      [
+        "$1/@2",
+        1,
+        "동일 이름",
+        "창 7 · 패널 1개",
+        "@2",
+        null,
+        false
+      ]
+    ]
+  },
+  {
+    "name": "multiple-branches-empty-and-duplicate-names",
+    "remote": {
+      "sessions": [
+        {
+          "id": "$1",
+          "name": "개발",
+          "attached": 1
+        },
+        {
+          "id": "$2",
+          "name": "개발",
+          "attached": 1
+        },
+        {
+          "id": "$3",
+          "name": "빈 세션",
+          "attached": 1
+        }
+      ],
+      "windows": [
+        {
+          "id": "@1",
+          "session": "$1",
+          "name": "편집",
+          "index": 0,
+          "active": true,
+          "layout": "layout",
+          "width": 80,
+          "height": 24,
+          "zoomed": false,
+          "visible_layout": "layout"
+        },
+        {
+          "id": "@2",
+          "session": "$1",
+          "name": "서버",
+          "index": 1,
+          "active": true,
+          "layout": "layout",
+          "width": 80,
+          "height": 24,
+          "zoomed": false,
+          "visible_layout": "layout"
+        },
+        {
+          "id": "@3",
+          "session": "$2",
+          "name": "",
+          "index": 2,
+          "active": true,
+          "layout": "layout",
+          "width": 80,
+          "height": 24,
+          "zoomed": false,
+          "visible_layout": "layout"
+        }
+      ],
+      "panes": [
+        {
+          "id": "%1",
+          "window": "@1",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "sh",
+          "title": "작업",
+          "left": 0,
+          "top": 0
+        },
+        {
+          "id": "%2",
+          "window": "@1",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "sh",
+          "title": "작업",
+          "left": 0,
+          "top": 0
+        },
+        {
+          "id": "%3",
+          "window": "@2",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "sh",
+          "title": "검사",
+          "left": 0,
+          "top": 0
+        },
+        {
+          "id": "%4",
+          "window": "@2",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "sh",
+          "title": "",
+          "left": 0,
+          "top": 0
+        },
+        {
+          "id": "%5",
+          "window": "@3",
+          "width": 80,
+          "height": 24,
+          "active": true,
+          "mode": "",
+          "command": "",
+          "title": "",
+          "left": 0,
+          "top": 0
+        }
+      ]
+    },
+    "compact": [
+      [
+        "$1",
+        0,
+        "개발",
+        "창 2개 · 패널 4개",
+        null,
+        null,
+        true
+      ],
+      [
+        "$1/@1",
+        1,
+        "편집",
+        "창 0 · 패널 2개",
+        "@1",
+        null,
+        false
+      ],
+      [
+        "$1/@2",
+        1,
+        "서버",
+        "창 1 · 패널 2개",
+        "@2",
+        null,
+        false
+      ],
+      [
+        "$2",
+        0,
+        "개발",
+        "2: 이름 없는 창 · 패널 1개",
+        "@3",
+        null,
+        false
+      ],
+      [
+        "$3",
+        0,
+        "빈 세션",
+        "창 0개 · 패널 0개",
+        null,
+        null,
+        false
+      ]
+    ],
+    "all": [
+      [
+        "$1",
+        0,
+        "개발",
+        "창 2개 · 패널 4개",
+        null,
+        null,
+        true
+      ],
+      [
+        "$1/@1",
+        1,
+        "편집",
+        "창 0 · 패널 2개",
+        "@1",
+        null,
+        false
+      ],
+      [
+        "$1/@2",
+        1,
+        "서버",
+        "창 1 · 패널 2개",
+        "@2",
+        null,
+        false
+      ],
+      [
+        "$2",
+        0,
+        "개발",
+        "창 1개 · 패널 1개",
+        null,
+        null,
+        true
+      ],
+      [
+        "$2/@3",
+        1,
+        "이름 없는 창",
+        "창 2 · 패널 1개",
+        "@3",
+        null,
+        false
+      ],
+      [
+        "$3",
+        0,
+        "빈 세션",
+        "창 0개 · 패널 0개",
+        null,
+        null,
+        false
+      ]
+    ]
+  }
+]

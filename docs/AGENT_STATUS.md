@@ -5,7 +5,7 @@ SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH �
 
 ## 사용 방법
 
-1. 호스트에 연결한 뒤 호스트 메뉴의 **에이전트 상태 연동** 또는 탭/연결의 상태 배지를 연다.
+1. 호스트에 연결한 뒤 호스트 메뉴의 **에이전트 상태 연동**을 연다. 창 행 오른쪽 상태 버튼은 그 창의 모든 pane 관측 상세를 연다.
 2. **설치 전 검사 · 변경 내용 보기**에서 Python, tmux, CLI 버전, 수정할 파일과 추가 훅을 확인한다.
 3. **연동 설치**를 누른다. 현재 버전 검증 대상은 Codex **0.163.0 / 0.164.0**, Claude Code **2.1.310**이다. 이 두 CLI의 다른 버전은 설치에서 제외한다. AGY·Grok Build는 설치된 CLI에 실험 지원으로 설치를 허용하며 실행 메뉴의 작은 `test` 배지를 유지한다. 미설치·설정 오류는 CLI별로 표시하며 다른 정상 CLI의 설치를 막지 않는다.
 4. Codex에서는 `/hooks`에서 추가된 도우미 명령을 직접 검토·신뢰한다. 앱은 훅 신뢰를 우회하거나 CLI를 재시작하지 않는다.
@@ -29,10 +29,11 @@ SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH �
 | ! 오류 | 공식 오류 훅을 받았음. 종료 코드나 화면 문구로 추정하지 않음 |
 | 중립 / 상태 미확인 | 미연동, Python/조회 문제, 단절, 누락 또는 오래된 관측 |
 
-탭의 대표 사건은 질문·승인 → 오류 → 응답 확인 → 활동 순이다. 읽지 않은 사건과 관측은 별개다.
+패널의 대표 사건은 질문·승인 → 오류 → 응답 확인 → 활동 순이다. 읽지 않은 사건과 관측은 별개다.
 다른 작업이 진행되어도 읽지 않은 질문은 알림에 남는다. 읽음 처리나 알림 클릭은 원격 입력·승인을 전송하지 않는다.
 서브에이전트 사건은 별도 실행 주체로 표시하며 `SubagentStop`을 부모의 Stop으로 올리지 않는다.
 같은 CLI 프로세스의 다른 대화도 별도 주체로 구분한다. AGY는 새 실행의 `SessionStart`로 주 대화를 연결하므로 이미 실행 중인 CLI에 설치한 것만으로 상태를 복원하지 않는다.
+창 버튼은 합쳐진 세션 행에도 표시한다. 상태 미확인·읽지 않은 사건 수·상세의 실행 목록은 같은 연결과 창으로 필터링한다. 탭·서버 선택 집계 배지는 표시하지 않는다.
 배지 상세와 알림에서 세션·창·패널로 이동할 수 있다. 종료·재생성된 대상은 이동을 거부하고 재접속하지 않는다.
 
 ## 서비스별 수집 계약
@@ -128,3 +129,5 @@ Debug 데스크톱 패키지에서 `DGL_CANDIDATE_DIR`를 임시 디렉터리로
 [Android 알림 권한](https://developer.android.com/develop/ui/compose/notifications/notification-permission),
 [Apple 알림 권한](https://developer.apple.com/documentation/usernotifications/asking-permission-to-use-notifications),
 [Windows 데스크톱 알림 활성화](https://learn.microsoft.com/en-us/windows/apps/design/shell/tiles-and-notifications/send-local-toast-desktop-cpp-wrl).
+
+창 상태 버튼은 해당 창의 모든 pane 관측과 미확인 사건을 집계한다. 합쳐진 단일 창 세션 행도 같은 필터를 쓴다. 상세의 이동 버튼은 관측의 실제 pane을 선택한다.

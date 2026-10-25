@@ -543,6 +543,7 @@ mod tests {
                 text: "PRIVATE-MACRO-TOKEN".into(),
             });
         local.preferences.agent_notifications.os = true;
+        local.preferences.show_all_hierarchy = true;
         let out = exchange(Some(a.cache), &local, doc.as_bytes(), &[]).unwrap();
         for value in [
             "SECRET-REFERENCE",
@@ -551,6 +552,7 @@ mod tests {
             "PRIVATE-MACRO-TOKEN",
             "credentialRef",
             "volumeUp",
+            "showAllHierarchy",
             "privateKey",
             "password",
         ] {
@@ -566,6 +568,7 @@ mod tests {
         assert!(other.local.trust.is_empty());
         assert!(other.local.preferences.volume_up.steps.is_empty());
         assert!(!other.local.preferences.agent_notifications.os);
+        assert!(!other.local.preferences.show_all_hierarchy);
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {

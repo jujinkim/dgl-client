@@ -26,6 +26,9 @@ interface ClientConnection {
     fun createSession(name: String)
     fun manage(command: TmuxCommand)
     fun refresh()
+    fun paneInput(pane: String, target: String?, bytes: ByteArray) { input(bytes) }
+    fun focusPane(pane: String, target: String?) { selectPane(pane) }
+    fun resizePane(pane: String, target: String?, size: Size) {}
     fun input(bytes: ByteArray)
     /** Identity excludes the size generation: opening the IME must not change the destination. */
     fun captureInputTarget(): InputTarget? = null

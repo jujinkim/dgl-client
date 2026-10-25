@@ -52,7 +52,7 @@ StaleGeneration, NotReady, Closed 중 하나를 즉시 반환한다. Accepted는
 아니다. 실행 직전 세대를 다시 검사하고 완료 이벤트를 Sent/Cancelled/StaleGeneration/
 TransportLost로 전달한다. 연결 단절 시 전송 성공 범위를 알 수 없는 요청도
 TransportLost로 끝내며 **자동 재전송하지 않는다**. 복구 중 입력은 거절한다.
-포커스가 바뀌어도 이미 수락한 입력은 원래 pane으로만 가거나 취소된다.
+포커스가 바뀌어도 이미 수락한 입력은 원래 pane으로만 가거나 취소된다. 크기 세대만 달라진 경우 목적지 변경으로 취급하지 않고, 연결/포커스 세대와 pane ID를 검사한다.
 
 취소는 requestId 기준으로 멱등적이다. 이미 보낸 바이트는 회수하지 않는다. 관리 명령의
 불확정 원격 결과도 자동 반복하지 않고 refresh로 확인한다. UI의 삭제 확인 후에만
@@ -79,7 +79,7 @@ tmux `pause-after`/pause 후에는 resume 전에 새 snapshot을 얻는다.
 resize는 해당 패널의 size 세대를 증가시킨다. 외부 split/kill/resize는 서버 레이아웃으로
 상태를 갱신하고 영향받는 패널만 복원한다. 구독 해제/패널 삭제/새 세대에서 오래된 출력과
 스냅샷 결과를 폐기하고 예산을 반환한다. 이미 UI로 넘어간 옛 버퍼도 세대 확인 후 적용하지
-않고 ack/해제한다. 여러 패널 출력은 각각 순서를 보존하고 라운드로빈으로 전달한다.
+않고 ack/해제한다. 여러 패널 출력은 pane별 순서를 보존하며 tmux 제어 스트림 순서로 전달한다.
 
 ## 상태, 종료, Android 수명
 
@@ -152,3 +152,13 @@ Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지하되 이전 앱의 
 - `Operation::FocusPane { target, direction }` / JSON `focusPane`는 `%N`과 `L/R/U/D`만 허용한다. `select-pane -t '%N' -L/-R/-U/-D` 실행 뒤 창의 실제 활성 패널을 다시 조회하고 PaneTarget·패널 세대·화면을 함께 갱신한다. 현재 표시 패널과 다른 시작 target은 StaleGeneration으로 거부한다.
 - 다른 연결의 표시 대상은 tmux의 전역 활성 패널 변경을 따라가지 않는다. 각 연결의 PaneTarget으로 출력 필터링과 입력을 수행한다.
 - 데스크톱 resize는 터미널별 한 요청만 진행하며 이후 크기는 최신 값으로 병합한다. 요청 완료 후 달라진 최신 크기를 보낸다.
+
+## 2026-10-25 창 단위 렌더링 확장
+
+`State.window`와 `render_targets: pane ID → PaneTarget`을 추가했다. 출력 target은 입력용
+`Connection.target()`과 독립적이다. 포커스 변경은 렌더러 세대를 무효화하지 않는다.
+`RemoteWindow`에 width/height/zoomed/visible_layout, `RemotePane`에 left/top을 추가했다.
+`ResizePaneTo`는 검증된 pane에 셀 단위 width/height를 요청한다. UniFFI `accepts_output`으로
+Android가 현재 렌더링 대상을 확인한다. bridge 입력은 원래 pane과 입력 target을 함께 제출한다.
+기존 저장 키·입력 ACK·출력 예산·Windows 빌드 진입점은 유지한다.
+자세한 계약은 [TMUX_WINDOW_SYNC.md](../TMUX_WINDOW_SYNC.md)를 따른다.

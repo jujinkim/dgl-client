@@ -38,7 +38,8 @@ internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.D
     val composeView = LocalView.current
     val focus = LocalTerminalFocus.current
     val terminal = remember(client, preferences.fontSize, preferences.scrollback) {
-        AndroidTerminal(context, preferences, { if (focus.inputAllowed()) client.input(it) }, client::resize)
+        AndroidTerminal(context, preferences, { if (focus.inputAllowed()) client.input(it) }, client::resize,
+            { pane, target, bytes -> if (focus.inputAllowed()) client.paneInput(pane, target, bytes) }, client::focusPane, client::resizePane)
     }
     val allowed = focus.inputAllowed()
     LaunchedEffect(terminal, allowed) { terminal.setInputEnabled(allowed) }
@@ -87,7 +88,10 @@ internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.D
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-class AndroidTerminal(context: Context, preferences: Preferences, private val input: (ByteArray) -> Unit, private val resize: (Size) -> Unit) : TerminalSurface {
+class AndroidTerminal(context: Context, preferences: Preferences, private val input: (ByteArray) -> Unit, private val resize: (Size) -> Unit,
+    private val paneInput: ((String, String?, ByteArray) -> Unit)? = null,
+    private val focusPane: (String, String?) -> Unit = { _, _ -> },
+    private val resizePane: (String, String?, Size) -> Unit = { _, _, _ -> }) : TerminalSurface {
     val view = WebView(context)
     private val ready = CompletableDeferred<Unit>()
     private val mutex = Mutex()
@@ -128,6 +132,12 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             if (raw.length > 65536) return@addWebMessageListener
             try {
                 val json = JSONObject(raw)
+                fun target() = json.optString("target").takeUnless { it.isEmpty() || it == "null" }
+                fun inputForPane(bytes: ByteArray) {
+                    if (bytes.size <= 65536) {
+                        if (paneInput != null) paneInput.invoke(json.getString("pane"), target(), bytes) else input(bytes)
+                    }
+                }
                 when (json.getString("type")) {
                     "ready" -> {
                         view.evaluateJavascript("window.configure(${preferences.fontSize.coerceIn(10, 28)},${preferences.scrollback.coerceIn(100, 10000)})", null)
@@ -135,9 +145,11 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                     }
                     "input" -> {
                         val bytes = json.getString("data").toByteArray(Charsets.UTF_8)
-                        if (bytes.size <= 65536) input(bytes)
+                        inputForPane(bytes)
                     }
-                    "input-binary" -> input(kim.jujin.rovessh.core.TerminalInput.decodeBinary(json.getString("data")))
+                    "input-binary" -> inputForPane(kim.jujin.rovessh.core.TerminalInput.decodeBinary(json.getString("data")))
+                    "focus" -> focusPane(json.getString("pane"), target())
+                    "resize-pane" -> resizePane(json.getString("pane"), target(), Size(json.getInt("columns"), json.getInt("rows")))
                     "resize" -> {
                         val columns = json.getInt("columns"); val rows = json.getInt("rows")
                         if (columns in 2..500 && rows in 2..250) resize(Size(columns, rows))
@@ -148,6 +160,20 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         }
         } else error("Update Android System WebView")
         view.loadUrl("https://appassets.androidplatform.net/assets/terminal/index.html")
+    }
+    override suspend fun layout(remote: RemoteState, window: String?, pane: String?, inputTarget: String?) {
+        withTimeout(15_000) { ready.await() }
+        val w = remote.windows.firstOrNull { it.id == window }
+        val value = JSONObject().put("window", window ?: JSONObject.NULL).put("active", pane ?: JSONObject.NULL)
+            .put("inputTarget", inputTarget ?: JSONObject.NULL).put("columns", w?.width ?: 80).put("rows", w?.height ?: 24)
+            .put("panes", org.json.JSONArray().apply { remote.panes.forEach { p -> put(JSONObject()
+                .put("id", p.id).put("left", p.left).put("top", p.top).put("width", p.width).put("height", p.height)
+                .put("visible", p.window == window && (w?.zoomed != true || p.active))) } })
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setLayout($value)", null) }
+    }
+    override suspend fun outputPane(pane: String, target: String) {
+        withTimeout(15_000) { ready.await() }
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.outputPane(${JSONObject.quote(pane)},${JSONObject.quote(target)})", null) }
     }
     override suspend fun write(bytes: ByteArray) { deliver(bytes, false) }
     override suspend fun reset(bytes: ByteArray) { deliver(bytes, true) }

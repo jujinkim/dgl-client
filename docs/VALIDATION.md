@@ -746,3 +746,106 @@ Android는 이전 `kim.jujin.rovessh` 앱과 별도로 설치된다. 내부 Kotl
 
 이번 확인은 CLI 빌드·산출물 검사 범위이며 Android 기기 실행·macOS GUI·알림,
 Windows 네이티브 빌드·DPAPI·GUI는 실행하지 않았다. Windows 빌드·ZIP·수동 CI 경로는 유지한다.
+
+
+## 2026-10-25 세션 계층 패널 개선
+
+`main`에서 Mac·Windows 공통 GPUI 탐색기와 Android 세션 관리에 단일 자식 합치기,
+기기별 `showAllHierarchy`(기본 false), 실제 이름 기반 상태 표시, 20px/dp 들여쓰기와
+고정 폭 메뉴·패널 상태 버튼을 적용했다. 패널 상세는 연결·패널로 필터링하며 같은 패널의
+여러 실행을 보존한다. 재접속·연결 종료는 선택된 호스트의 연결 메뉴로 옮겼다.
+실행 직전 호스트 ID와 연결 핸들/객체 및 재시도 조건을 재확인한다.
+
+- Rust 코어·UniFFI·GPUI: **60개 통과, 5개 예상 ignore**. GPUI는 두 테마와
+  240/272/360px에서 순차 20px 들여쓰기, 텍스트·메뉴·상태 버튼 비겹침, 합쳐진 메뉴,
+  설정·메타데이터 변경 뒤 펼침·선택·포커스 유지, 상태 상세의 다른 패널 제외와
+  같은 패널의 여러 실행, 동일 호스트에서 선택된 연결만 종료, 원격 입력 미전송을 검사했다.
+- 공통 `hierarchy-v2.json`의 단일/복수 창·패널, 전체 표시 전환, 빈 제목·프로세스,
+  중복 이름·hostname 제목을 Rust·Kotlin 표시 모델에서 검증했다. 기존 설정의 기본값과
+  true 저장·재로드, 클라우드 동기화 허용 목록에서 제외되는 것도 확인했다.
+- Kotlin JVM: **54개 중 45개 통과, 9개 예상 skip**(별도 SSH·Windows 환경 검사).
+  패널별 관측·미확인·읽지 않은 사건 분리와 동일 호스트 연결의 재접속·종료 대상 재확인 포함.
+- Android Debug 앱·계측 APK(네 Rust ABI) 빌드와 lint 통과. lint는 **오류 0, 경고 12**.
+  API 36 전용 AVD의 새 계층 UI 계측 **1개 통과**: 합쳐진 메뉴, 실제 패널 선택,
+  48dp 터치 영역·버튼 비겹침·20dp 들여쓰기, 밝게/어둡게, 설정·메타데이터 갱신 뒤 펼침 유지,
+  패널 상세의 여러 실행·다른 패널 제외, 원격 입력·명령 미전송, 선택된 호스트 연결 조작을 확인했다.
+  UIAutomation은 메타데이터 변경 후 캐시를 비워 최신 접근성 트리를 읽는다.
+- API 36 + 격리 OpenSSH/tmux 3.7c 기존 수용 계측 **8개 통과**. 이름 기반 계층 검사,
+  패널 선택·창 생성, 실제 SSH/일반 셸·키보드·런처·볼륨키·회전 회귀를 확인했다.
+  전체 계층을 검사하는 기존 흐름은 설정을 켜고, ID 대신 실제 창 이름과 고유한 패널 제목으로
+  행을 찾는다. 프로토콜·대상 검사는 원래의 안정적인 tmux ID를 사용한다.
+- 격리 OpenSSH + tmux **3.3a·3.7c**: 각각 계층 메타데이터 통합 **1개 통과**.
+  패널 제목 변경 명령의 실제 실행·리터럴 `#S` 보존, 숨겨진 대상 갱신, 입력 대상·PID 유지,
+  메타데이터만 바뀔 때 화면 Reset/Resize 없음과 exactly-once 입력 회귀를 확인했다.
+- Clippy `-D warnings`·변경 Rust 구현 파일 형식 검사 통과. 기존 전이 의존성의
+  future-incompatibility 알림은 남아 있다. Windows ZIP 패키저 단위 검사 **3개 통과**.
+- macOS Debug `.app` 빌드·로컬 ad-hoc 패키징과 Android 후보 APK의 네 ABI·Rust 구현·
+  Debug 서명 확인 및 수집 통과. 앱 버전/빌드 번호는 **0.1.0 / 1**을 유지한다.
+- 계층·에이전트 UX 문서와 로컬 대시보드 설명을 갱신했다. 대시보드 스키마 검증,
+  Git 제외 확인, 비밀정보 검사와 `git diff --check` 통과.
+
+Windows MSVC 네이티브 빌드·DPAPI·GUI는 사용자 확인 범위로 미수행이다.
+`scripts/build_windows.ps1`, `scripts/package_rust_windows.py`, 수동 Windows CI 경로와
+공통 플랫폼 지원을 유지했다. macOS의 실제 VoiceOver·Keychain·OS 알림 실기,
+Android 실물 기기·장시간 네트워크 전환 검증은 이번 결과에 포함하지 않는다.
+최종 로그·검사 요약은 Git 제외된 `artifacts/hierarchy-panel/`에 보관한다.
+
+
+## 2026-10-25 실제 tmux 창 동기화
+
+현재 구현·범위는 [TMUX_WINDOW_SYNC.md](TMUX_WINDOW_SYNC.md)를 따른다.
+기존 main의 미커밋 작업과 Windows MSVC x64 빌드·ZIP·수동 CI 진입점을 유지했다.
+
+- 세션 트리는 세션 → 창까지만 표시한다. 기존 showAllHierarchy 값은 단일 창 표시 여부로 읽는다.
+  합쳐진 세션 행과 창 행의 에이전트 버튼은 창에 속한 관측을 집계하고 상세에서 실제 pane으로 이동한다.
+- 선택 창의 보이는 pane 전체를 좌표·실제 열/행으로 표시한다. 포커스와 출력 세대는 독립적이며,
+  클릭·메타데이터 변경은 기존 터미널을 재생성하거나 재캡처하지 않는다.
+- 경계의 픽셀 이동은 양 플랫폼에서 같은 정수 셀 수로 반올림한다. 셀 변화가 없는 드래그는 요청하지 않는다.
+  tmux가 확정한 결과를 표시하고, pane 크기 변경을 클라이언트 viewport 요청으로 되먹임하지 않는다.
+- 입력의 연결·pane·포커스 세대를 검사한다. 크기 세대만 달라졌다고 같은 pane의 입력을 취소하지 않는다.
+  복원 중 입력 차단과 실패 입력 무재전송은 유지한다.
+
+| 검사 | 확인 결과 |
+|---|---|
+| Rust workspace | 63 통과, 환경 필요 6 ignored; 126개 기존 공통 계약과 pane 셀 크기·입력 세대 검사 포함 |
+| Rust Clippy / 서식 | host all-targets -D warnings 통과; 변경한 Rust 파일 rustfmt --check 통과 |
+| Kotlin/JVM | 54개 중 45 통과, SSH/Windows 환경 필요 9 skip |
+| 웹 | 8 통과; 실제 컨테이너 크기, 0 크기 레이아웃 무시, pane resize 무되먹임·ACK·입력·캐시 검사 |
+| Python 도구 | 100 통과; Windows 패키징 경로 검사 포함 |
+| Android 빌드 | Debug·미서명 Release·계측 APK 통과, lint 오류 0/경고 12 |
+| tmux 3.3a | SSH 통합 5개를 각각 새 fixture에서 통과 |
+| tmux 3.7c | SSH 통합 5개 일괄 통과 |
+| Android API 36 | 최종 계측 11개 일괄 통과; 시스템 글꼴 1.3, 실제 SSH GUI·키보드·회전·볼륨·창 집계 포함 |
+| Mac 패키지 | ARM64 debug .app 재생성·로컬 ad-hoc 서명 검증; 실제 GUI/Keychain 인수와 구분 |
+| 대시보드 | 설명 갱신·검증기 통과, JSON Git 제외 유지 |
+
+SSH/tmux 검사는 3.3a와 3.7c의 임시 OpenSSH·독립 tmux socket을 사용한다.
+중첩 좌우/상하 분할, 모든 pane의 라이브 출력, 포커스 전환 시 Reset 부재,
+외부 pane 선택·확대/복귀·크기 변경·창 전환·삭제와 재접속을 검사했다.
+일반 SSH PTY를 실제 attach하고 GUI 입력과 SSH 입력이 원격 파일에 각각 한 번 기록되는지 확인한다.
+GUI를 닫고 다시 열어도 pane ID·PID·작업 경로가 같고, 오래된 lastPane이 서버 선택을 덮어쓰지 않는다.
+연결 전체 출력 예산·ACK·구독 교체·닫기 회귀는 Rust 검사에서 유지한다.
+
+검증 중 Android에서 수정한 문제:
+
+- 임시 0 높이를 2행으로 전송하던 viewport 계산을 실제 컨테이너·문자 셀 측정으로 교체했다.
+- 서버 grid보다 큰 화면의 빈 영역도 현재 pane에 포커스를 전달한다.
+- 모달이 열린 동안 원격 포커스 갱신이 WebView 포커스를 가져가지 않도록 제한했다.
+- tmux 관리 시트에 유한 높이를 주고 펼침 anchor 생성 후 show를 요청해 반복 열기를 안정화했다.
+- 큰 시스템 글꼴에서 창 집계의 세 번째 관측이 화면 아래에 놓이는 검사는 실제 스크롤 후 확인한다.
+
+Android Debug 전달본은 artifacts/rust-candidate/android/dgl-rust-debug.apk이며 네 ABI·Rust 엔진·v2 debug 서명을 확인했다.
+Mac 출력은 artifacts/rust-candidate/mac/dgl Rust Candidate.app이다.
+Windows 네이티브 빌드·DPAPI·GUI, Android 34/35 재실행과 실제 기기·장시간 네트워크 전환은 이번 인수에 포함하지 않는다.
+
+SSH 원문: artifacts/rust-candidate/core/window-sync-3.3a.txt와 window-sync-3.7c.txt.
+3.3a의 공유 fixture 일괄 실행에서는 세션 생성 시 간헐적인 InvalidArgument가 관측되어,
+최종 판정은 검사마다 새 SSH/tmux fixture를 만든 5개 개별 실행으로 했다. 원격 변경을 자동 재시도하는 코드를 추가하지 않았다.
+
+Android 계측 원문은 artifacts/rust-candidate/android/api36-instrumentation.txt의 OK (11 tests)다.
+WebView의 pane별 화면 유지·실제 grid 치수·창 컨테이너만 resize 요청,
+키보드/입력 차단·캐시 전환·보호 저장소, 실제 SSH의 분할·포커스·창 생성·글자 크기·테마·회전/복귀,
+창별 상세 관측·호스트 연결 메뉴·텍스트 작성/볼륨 키 회귀를 확인했다.
+
+후속 사용자 지시에 따라 추가 계측을 중단하고 API 36 AVD를 종료했다.
+API 34·35는 실행하지 않았다. 이후 기본 검증 범위는 기본 기능 검사와 유닛 테스트로 유지한다.

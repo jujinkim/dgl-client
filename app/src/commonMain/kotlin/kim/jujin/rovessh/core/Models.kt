@@ -36,15 +36,16 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val volumeUp: VolumeBinding = VolumeBinding(),
     val volumeDown: VolumeBinding = VolumeBinding(),
     val smoothTerminalTransitions: Boolean = false,
+    val showAllHierarchy: Boolean = false,
 )
 @Serializable data class LocalState(val hosts: List<HostProfile> = emptyList(), val trust: Map<String, String> = emptyMap(), val preferences: Preferences = Preferences())
 
 data class RemoteSession(val id: String, val name: String, val attached: Int)
-data class RemoteWindow(val id: String, val session: String, val name: String, val active: Boolean, val layout: String, val index: Int = 0)
-data class RemotePane(val id: String, val window: String, val width: Int, val height: Int, val active: Boolean, val mode: String, val command: String, val title: String = "")
+data class RemoteWindow(val id: String, val session: String, val name: String, val active: Boolean, val layout: String, val index: Int = 0, val width: Int = 80, val height: Int = 24, val zoomed: Boolean = false, val visibleLayout: String = "")
+data class RemotePane(val id: String, val window: String, val width: Int, val height: Int, val active: Boolean, val mode: String, val command: String, val title: String = "", val left: Int = 0, val top: Int = 0)
 data class RemoteState(val sessions: List<RemoteSession> = emptyList(), val windows: List<RemoteWindow> = emptyList(), val panes: List<RemotePane> = emptyList())
 data class Size(val columns: Int = 80, val rows: Int = 24) {
-    init { require(columns in 2..500 && rows in 2..250) }
+    init { require(columns in 1..65535 && rows in 1..65535) }
 }
 data class Generation(val connection: Long, val pane: Long, val size: Long)
 enum class Phase { Disconnected, Connecting, TrustRequired, Authenticating, Selecting, Restoring, Ready, Reconnecting, MissingSession, Failed, Shell }
@@ -56,6 +57,7 @@ data class ConnectionStatus(
     val canRetryNow: Boolean = false,
     val canStopRetrying: Boolean = false,
     val resizing: Boolean = false,
+    val window: String? = null,
 ) {
     val acceptsInput get() = phase == Phase.Ready || phase == Phase.Shell
     val showsConnectionProgress get() = phase == Phase.Connecting || phase == Phase.Reconnecting ||
@@ -109,6 +111,8 @@ interface TmuxController {
 
 /** write completes only when bytes have been accepted by a bounded renderer queue. */
 interface TerminalSurface {
+    suspend fun layout(remote: RemoteState, window: String?, pane: String?, inputTarget: String?) {}
+    suspend fun outputPane(pane: String, target: String) {}
     suspend fun write(bytes: ByteArray)
     suspend fun reset(bytes: ByteArray)
     suspend fun resizeRemote(size: Size) {}

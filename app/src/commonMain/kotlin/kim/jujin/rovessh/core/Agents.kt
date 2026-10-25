@@ -22,3 +22,18 @@ fun agentMessage(kind: String) = when (kind) {
     "Question" -> "? 질문이 발생했습니다"; "Approval" -> "◇ 승인 요청이 발생했습니다"; "Response" -> "○ 응답 종료 신호를 받았습니다"
     "Error" -> "! 명시적 오류를 받았습니다"; "Activity" -> "↻ 작업 사건을 받았습니다"; else -> "— 실행 종료/중단 신호를 받았습니다"
 }
+
+/** A window (@ID) or pane (%ID) filter drives the button, unknown state, unread count, and details. */
+data class PanelAgentState(val observations: List<AgentObservation>, val unread: List<AgentNotice>, val label: String)
+fun AgentSnapshot.panelState(pane: String?, endpoint: String, notices: List<AgentNotice>, now: Long): PanelAgentState {
+    val observations = observations.filter { pane == null || (if (pane.startsWith("@")) it.window == pane else it.pane == pane) }
+    val events = observations.mapNotNull { it.last }.filter { it.kind != "Ended" }
+    val representative = events.minByOrNull { agentPriority(it.kind) }
+    val unread = notices.filter { n -> !n.read && n.endpoint == endpoint && n.event.server == server &&
+        (pane == null || (if (pane.startsWith("@")) pane == n.event.window else pane == n.event.pane)) && observations.any { it.pane == n.event.pane && it.run == n.event.run && it.last != null } }
+    val priority = unread.minByOrNull { agentPriority(it.event.kind) }
+    val label = if (current(now) && priority != null) "${agentMessage(priority.event.kind)} · 읽지 않은 사건 ${unread.size}건"
+        else if (!current(now) || representative == null) "상태 미확인"
+        else agentMessage(representative.kind) + " ${events.count { agentPriority(it.kind) == agentPriority(representative.kind) }}"
+    return PanelAgentState(observations, unread, label)
+}

@@ -7,25 +7,26 @@ use alacritty_terminal::{
     term::{Config, TermMode, cell::Flags},
     vte::ansi::{Color, CursorShape, Processor},
 };
-use dgl_core::{
-    connection::{Action, Connection},
-    flow::OutputKind,
-    model::Size,
-};
+use dgl_core::connection::{Action, Connection};
 use gpui::{prelude::*, *};
 use std::{collections::HashSet, ops::Range, sync::Arc};
 mod input;
 #[cfg(test)]
 mod input_tests;
 mod paint;
+mod window;
 use input::{ScrollAccumulator, button_code, key_sequence, mouse_modifiers, mouse_sequence};
 use paint::{CellLayer, paint_grid};
+pub use window::WindowTerminal;
 #[derive(Clone)]
-struct Listener(Arc<Connection>);
+struct Listener(Arc<Connection>, Option<String>);
 impl EventListener for Listener {
     fn send_event(&self, event: Event) {
         if let Event::PtyWrite(text) = event
-            && let Some(t) = self.0.target()
+            && let Some(t) = self
+                .0
+                .target()
+                .filter(|t| self.1.as_ref().is_none_or(|id| id == &t.pane_id))
         {
             let _ = self.0.input(t, text.into_bytes());
         }
@@ -45,7 +46,7 @@ impl Dimensions for GridSize {
 }
 pub struct Terminal {
     pub connection: Arc<Connection>,
-    subscription: u64,
+    pane_id: Option<String>,
     term: Term<Listener>,
     parser: Processor,
     focus: FocusHandle,
@@ -57,9 +58,6 @@ pub struct Terminal {
     mouse_button: Option<MouseButton>,
     last_mouse: Option<(CellPoint, u8)>,
     scroll: ScrollAccumulator,
-    requested: Size,
-    sent_size: Size,
-    resize_request: Option<u64>,
     displayed_pane: Option<String>,
     pub enabled: bool,
     #[cfg(test)]
@@ -68,22 +66,34 @@ pub struct Terminal {
     input_requests: HashSet<u64>,
 }
 impl Terminal {
+    #[cfg(test)]
     pub fn new(
         connection: Arc<Connection>,
         font_size: i32,
         scrollback: i32,
         cx: &mut Context<Self>,
     ) -> Self {
-        let subscription = connection.output().subscribe().unwrap();
+        Self::build(connection, None, font_size, scrollback, cx)
+    }
+    fn build(
+        connection: Arc<Connection>,
+        pane_id: Option<String>,
+        font_size: i32,
+        scrollback: i32,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let config = Config {
             scrolling_history: scrollback.clamp(100, 10000) as usize,
             ..Default::default()
         };
-        let term = Term::new(config, &GridSize(80, 24), Listener(connection.clone()));
-        let _ = connection.action(Action::Snapshot);
+        let term = Term::new(
+            config,
+            &GridSize(80, 24),
+            Listener(connection.clone(), pane_id.clone()),
+        );
         Self {
             connection,
-            subscription,
+            pane_id,
             term,
             parser: Processor::new(),
             focus: cx.focus_handle(),
@@ -95,46 +105,12 @@ impl Terminal {
             mouse_button: None,
             last_mouse: None,
             scroll: ScrollAccumulator::default(),
-            requested: Size::default(),
-            sent_size: Size::default(),
-            resize_request: None,
             displayed_pane: None,
             enabled: true,
             #[cfg(test)]
             sent: Vec::new(),
             notice: None,
             input_requests: HashSet::new(),
-        }
-    }
-    pub fn tick(&mut self, cx: &mut Context<Self>) {
-        if self.resize_request.is_none()
-            && self.requested != self.sent_size
-            && let Ok(id) = self.connection.action(Action::Resize {
-                columns: self.requested.columns,
-                rows: self.requested.rows,
-            })
-        {
-            self.resize_request = Some(id);
-            self.sent_size = self.requested;
-        }
-        let output = self.connection.output();
-        for _ in 0..64 {
-            let Ok(Some(e)) = output.poll(self.subscription) else {
-                break;
-            };
-            if self.connection.target().as_ref() == Some(&e.target) {
-                match e.kind {
-                    OutputKind::Resize => self
-                        .term
-                        .resize(GridSize(e.size.columns as usize, e.size.rows as usize)),
-                    OutputKind::ResetBegin => {
-                        self.begin_snapshot(&e.target.pane_id, &e.bytes);
-                    }
-                    _ => self.parser.advance(&mut self.term, &e.bytes),
-                }
-            }
-            let _ = output.ack(self.subscription, e.sequence);
-            cx.notify();
         }
     }
     fn begin_snapshot(&mut self, pane: &str, reset: &[u8]) {
@@ -174,7 +150,11 @@ impl Terminal {
         }
         #[cfg(test)]
         self.sent.push(bytes.clone());
-        if let Some(t) = self.connection.target() {
+        if let Some(t) = self
+            .connection
+            .target()
+            .filter(|t| self.pane_id.as_ref().is_none_or(|id| id == &t.pane_id))
+        {
             match self.connection.input(t, bytes) {
                 Ok(id) => {
                     self.input_requests.insert(id);
@@ -184,9 +164,6 @@ impl Terminal {
         }
     }
     pub fn complete(&mut self, id: u64) -> bool {
-        if self.resize_request == Some(id) {
-            self.resize_request = None;
-        }
         self.input_requests.remove(&id)
     }
     pub fn set_font(&mut self, n: i32) {
@@ -278,6 +255,15 @@ impl Terminal {
             return;
         };
         window.focus(&self.focus);
+        if let Some(id) = self.pane_id.as_ref()
+            && self.connection.state().pane.as_ref() != Some(id)
+        {
+            let _ = self
+                .connection
+                .action(Action::SelectPane { id: id.clone() });
+            cx.notify();
+            return;
+        }
         if self.mouse_active(e.modifiers) {
             self.dragging = false;
             self.term.selection = None;
@@ -394,11 +380,6 @@ impl Terminal {
         }
         cx.stop_propagation();
         cx.notify();
-    }
-}
-impl Drop for Terminal {
-    fn drop(&mut self) {
-        self.connection.output().unsubscribe(self.subscription);
     }
 }
 impl Focusable for Terminal {
@@ -558,15 +539,6 @@ impl Render for Terminal {
                     move |bounds, _, cx| {
                         entity.update(cx, |this, _| {
                             this.bounds = bounds;
-                            let (w, h) = this.cell_size();
-                            let requested = Size::new(
-                                (f32::from(bounds.size.width) / w).floor().clamp(2., 500.) as u16,
-                                (f32::from(bounds.size.height) / h).floor().clamp(2., 250.) as u16,
-                            )
-                            .unwrap();
-                            if this.requested != requested {
-                                this.requested = requested;
-                            }
                         });
                     },
                     move |bounds, _, window, cx| {
@@ -683,11 +655,11 @@ mod tests {
     };
     use dgl_core::{
         connection::Connection,
-        model::{AuthKind, Credential, HostProfile, Size},
+        model::{AuthKind, Credential, HostProfile},
     };
     use gpui::{AppContext, TestAppContext};
     #[gpui::test]
-    fn resize_coalesces_and_same_pane_snapshot_preserves_history(cx: &mut TestAppContext) {
+    fn same_pane_snapshot_preserves_history(cx: &mut TestAppContext) {
         // This runtime deliberately stays unpolled: an in-flight request cannot complete.
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -709,20 +681,7 @@ mod tests {
         };
         let connection = Connection::start(host, Credential::default(), None);
         let terminal = cx.new(|cx| Terminal::new(connection.clone(), 14, 5000, cx));
-        terminal.update(cx, |t, cx| {
-            t.requested = Size::new(90, 30).unwrap();
-            t.tick(cx);
-            let request = t.resize_request.unwrap();
-            for columns in 91..150 {
-                t.requested = Size::new(columns, 31).unwrap();
-                t.tick(cx);
-                assert_eq!(t.resize_request, Some(request));
-            }
-            assert_eq!(t.sent_size.columns, 90);
-            t.complete(request);
-            t.tick(cx);
-            assert_ne!(t.resize_request, Some(request));
-            assert_eq!(t.sent_size, Size::new(149, 31).unwrap());
+        terminal.update(cx, |t, _| {
             t.term.resize(GridSize(80, 10));
             t.begin_snapshot("%1", b"\x1bc");
             for _ in 0..80 {

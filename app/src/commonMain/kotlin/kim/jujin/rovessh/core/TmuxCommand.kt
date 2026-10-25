@@ -45,6 +45,7 @@ class TmuxCommand private constructor(val wire: String, val shellWire: String = 
         fun killWindow(window: String) = TmuxCommand("kill-window -t ${id(window, '@')}", nativeOperation = operation("killWindow", target = window))
         fun split(pane: String, horizontal: Boolean) = TmuxCommand("split-window ${if (horizontal) "-h" else "-v"} -t ${id(pane, '%')}", nativeOperation = operation("split", target = pane, horizontal = horizontal))
         fun selectPane(pane: String) = TmuxCommand("select-pane -t ${id(pane, '%')}", nativeOperation = operation("selectPane", target = pane))
+        fun renamePane(pane: String, name: String) = TmuxCommand("select-pane -t ${id(pane, '%')} -T ${name(name)}", nativeOperation = operation("renamePane", target = pane, name = name))
         fun killPane(pane: String) = TmuxCommand("kill-pane -t ${id(pane, '%')}", nativeOperation = operation("killPane", target = pane))
         fun focusPane(pane: String, direction: Char): TmuxCommand {
             require(direction in "LRUD")
@@ -54,7 +55,7 @@ class TmuxCommand private constructor(val wire: String, val shellWire: String = 
             require(direction in "LRUD")
             return TmuxCommand("resize-pane -t ${id(pane, '%')} -$direction 3", nativeOperation = operation("resizePane", target = pane, direction = direction))
         }
-        fun clientSize(size: Size) = TmuxCommand("refresh-client -C ${size.columns},${size.rows}")
+        fun clientSize(size: Size): TmuxCommand { require(size.columns in 2..500 && size.rows in 2..250); return TmuxCommand("refresh-client -C ${size.columns},${size.rows}") }
         fun send(pane: String, bytes: ByteArray): TmuxCommand {
             require(bytes.size in 1..256)
             return TmuxCommand("send-keys -H -t ${id(pane, '%')} " + bytes.joinToString(" ") { (it.toInt() and 255).toString(16).padStart(2, '0') })
@@ -67,8 +68,8 @@ class TmuxCommand private constructor(val wire: String, val shellWire: String = 
         private fun validatedPane(pane: String): String { id(pane, '%'); return pane }
         fun modes(pane: String) = TmuxCommand("display-message -p -t ${id(pane, '%')} " + quote("#{cursor_x}|#{cursor_y}|#{alternate_on}|#{cursor_flag}|#{keypad_cursor_flag}|#{keypad_flag}|#{mouse_any_flag}|#{mouse_button_flag}|#{mouse_standard_flag}|#{mouse_utf8_flag}|#{mouse_sgr_flag}|#{bracketed_paste}|#{scroll_region_upper}|#{scroll_region_lower}|#{insert_flag}|#{pane_width}|#{pane_height}"))
         val sessions = TmuxCommand("list-sessions -F '#{session_id}|#{q:session_name}|#{session_attached}'")
-        val windows = TmuxCommand("list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}'")
-        val panes = TmuxCommand("list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}'")
+        val windows = TmuxCommand("list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}|#{window_width}|#{window_height}|#{window_zoomed_flag}|#{window_visible_layout}'")
+        val panes = TmuxCommand("list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}|#{pane_left}|#{pane_top}'")
         val metadataSubscription = TmuxCommand("refresh-client -B 'dgl-metadata::#{S:#{session_id}|#{q:session_name}|#{W:#{window_id}|#{window_index}|#{q:window_name}|#{window_active}|#{P:#{pane_id}|#{pane_active}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title};}}}'")
         val flowControl = TmuxCommand("refresh-client -f 'pause-after=2'")
     }
@@ -81,8 +82,8 @@ object RemoteStateDecoder {
         fun rows(key: String) = value.getValue(key).jsonArray.map { it.jsonObject }
         return RemoteState(
             rows("sessions").map { RemoteSession(it.str("id"), it.str("name"), it.str("attached").toInt()) },
-            rows("windows").map { RemoteWindow(it.str("id"), it.str("session"), it.str("name"), it.str("active").toBoolean(), it.str("layout"), it.str("index").toInt()) },
-            rows("panes").map { RemotePane(it.str("id"), it.str("window"), it.str("width").toInt(), it.str("height").toInt(), it.str("active").toBoolean(), it.str("mode"), it.str("command"), it.str("title")) },
+            rows("windows").map { RemoteWindow(it.str("id"), it.str("session"), it.str("name"), it.str("active").toBoolean(), it.str("layout"), it.str("index").toInt(), it["width"]?.jsonPrimitive?.int ?: 80, it["height"]?.jsonPrimitive?.int ?: 24, it["zoomed"]?.jsonPrimitive?.boolean ?: false, it["visible_layout"]?.jsonPrimitive?.content ?: "") },
+            rows("panes").map { RemotePane(it.str("id"), it.str("window"), it.str("width").toInt(), it.str("height").toInt(), it.str("active").toBoolean(), it.str("mode"), it.str("command"), it.str("title"), it["left"]?.jsonPrimitive?.int ?: 0, it["top"]?.jsonPrimitive?.int ?: 0) },
         )
     }
     private fun splitRecord(value: String): List<String> {
@@ -98,8 +99,8 @@ object RemoteStateDecoder {
         if (fields.size != count) throw ProtocolException("Invalid state record")
     } }
     fun sessions(rows: List<ByteArray>) = lines(rows, 3).map { RemoteSession(target(it[0], '$'), unquote(it[1]), it[2].toInt()) }
-    fun windows(rows: List<ByteArray>) = lines(rows, 6).map { RemoteWindow(target(it[1], '@'), target(it[0], '$'), unquote(it[2]), it[3] == "1", it[4], it[5].toInt()) }
-    fun panes(rows: List<ByteArray>) = lines(rows, 8).map { RemotePane(target(it[0], '%'), target(it[1], '@'), it[2].toInt(), it[3].toInt(), it[4] == "1", unquote(it[5]), unquote(it[6]), unquote(it[7])) }
+    fun windows(rows: List<ByteArray>) = lines(rows, 10).map { RemoteWindow(target(it[1], '@'), target(it[0], '$'), unquote(it[2]), it[3] == "1", it[4], it[5].toInt(), it[6].toInt(), it[7].toInt(), it[8] == "1", it[9]) }
+    fun panes(rows: List<ByteArray>) = lines(rows, 10).map { RemotePane(target(it[0], '%'), target(it[1], '@'), it[2].toInt(), it[3].toInt(), it[4] == "1", unquote(it[5]), unquote(it[6]), unquote(it[7]), it[8].toInt(), it[9].toInt()) }
     private fun target(value: String, prefix: Char): String {
         if (value.firstOrNull() != prefix || value.drop(1).isEmpty() || value.drop(1).any { !it.isDigit() }) throw ProtocolException("Invalid state id")
         return value

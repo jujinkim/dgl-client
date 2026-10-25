@@ -3,6 +3,35 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
+test('client viewport uses container pixels and ignores zero layouts and pane grid changes', () => {
+  const messages = []; let observe, render;
+  const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
+  let terminal;
+  class Terminal {
+    cols = 80; rows = 24; options = {}; parser = { registerOscHandler() {} };
+    element = { querySelector: () => ({ getBoundingClientRect: () => ({ width: this.cols * 10, height: this.rows * 20 }) }) };
+    constructor() { terminal = this; }
+    loadAddon() {} open() {} onData() {} onBinary() {}
+    onRender(callback) { render = callback; }
+    resize(columns, rows) { this.cols = columns; this.rows = rows; }
+  }
+  const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
+  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
+    window, Terminal, TextEncoder, FitAddon: { FitAddon: class { fit() { throw new Error('No pane fit'); } } },
+    document: { getElementById: () => root },
+    ResizeObserver: class { constructor(callback) { observe = callback; } observe() { observe(); } },
+  });
+  assert.deepEqual(messages.splice(0), [{ type: 'resize', columns: 100, rows: 30 }, { type: 'ready' }]);
+  root.clientHeight = 0; observe();
+  assert.deepEqual(messages, [], 'hidden/recreated WebViews must not shrink tmux to two rows');
+  root.clientHeight = 600;
+  window.resizePane(40, 12); render();
+  assert.equal(terminal.rows, 12);
+  assert.deepEqual(messages, [], 'server grid changes cannot request a client resize');
+  root.clientHeight = 240; observe();
+  assert.deepEqual(messages, [{ type: 'resize', columns: 100, rows: 12 }]);
+});
+
 test('terminal bridge forwards text and raw mouse input through distinct channels', () => {
   const messages = [];
   const listeners = {};
@@ -25,11 +54,11 @@ test('terminal bridge forwards text and raw mouse input through distinct channel
   assert.deepEqual(messages.splice(0), [{ type: 'ready' }]);
   for (const data of ['한글😀', '\x1b[1;6D', '\x1b[<35;1;1M', '\x1b[<64;1;1M']) {
     listeners.data(data);
-    assert.deepEqual(messages.splice(0), [{ type: 'input', data }]);
+    assert.deepEqual(messages.splice(0), [{ type: 'input', data, pane: 'shell', target: null }]);
   }
   const data = '\x1b[M \x85\xff';
   listeners.binary(data);
-  assert.deepEqual(messages.splice(0), [{ type: 'input-binary', data }]);
+  assert.deepEqual(messages.splice(0), [{ type: 'input-binary', data, pane: 'shell', target: null }]);
   assert.deepEqual([...messages], []);
   listeners.binary('a'.repeat(65537));
   listeners.data('한'.repeat(21846));
@@ -68,7 +97,7 @@ test('composer captures the renderer paste once, blocks background input and enf
   assert.equal(window.preparePaste('a'.repeat(65524), false).length, 65536);
   assert.throws(() => window.preparePaste('a'.repeat(65524), true));
   window.setInputEnabled(true); listeners.data('after');
-  assert.deepEqual(messages, [{ type: 'input', data: 'after' }]);
+  assert.deepEqual(messages, [{ type: 'input', data: 'after', pane: 'shell', target: null }]);
   window.focusTerminal(); window.focusTerminal();
   assert.equal(focused, 2);
 });

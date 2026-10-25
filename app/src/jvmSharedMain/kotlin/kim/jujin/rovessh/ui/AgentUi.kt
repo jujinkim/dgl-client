@@ -1,7 +1,6 @@
 package kim.jujin.rovessh.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -16,41 +15,43 @@ import kotlinx.serialization.json.*
 
 @Composable internal fun AgentBadge(client: ClientConnection, pane: String? = null, notices: List<AgentNotice> = emptyList(), compact: Boolean = false, onDetails: (() -> Unit)? = null) {
     val snapshot by client.agents.collectAsState()
-    val observations = snapshot.observations.filter { pane == null || it.pane == pane }
-    val events = observations.mapNotNull { it.last }.filter { it.kind != "Ended" }
-    val representative = events.minByOrNull { agentPriority(it.kind) }
-    val unread = notices.filter { n -> !n.read && n.endpoint == client.agentEndpoint && n.event.server == snapshot.server && (pane == null || pane == n.event.pane) && observations.any { it.run == n.event.run && it.last != null } }
-    val latestUnread = unread.minByOrNull { agentPriority(it.event.kind) }
-    val label = if (snapshot.current(System.currentTimeMillis()) && latestUnread != null) "${agentMessage(latestUnread.event.kind)} · 읽지 않은 사건 ${unread.size}건" else if (!snapshot.current(System.currentTimeMillis()) || representative == null) "상태 미확인"
-        else agentMessage(representative.kind) + " ${events.count { agentPriority(it.kind) == agentPriority(representative.kind) }}"
-    Row(Modifier.clickable(enabled = onDetails != null) { onDetails?.invoke() }.semantics { contentDescription = observations.map { agentName(it.agent) }.distinct().joinToString() + " · " + label }, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        observations.map { it.agent }.distinct().forEach { agent ->
-            Icon(LauncherIcons.agent(agent), agentName(agent), Modifier.size(16.dp))
+    val (observations, unread, label) = snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis())
+    val description = observations.map { agentName(it.agent) }.distinct().joinToString().ifEmpty { "터미널" } + " · " + label
+    if (compact) {
+        val icon = when { label.contains("질문") -> "?"; label.contains("승인") -> "◇"; label.contains("오류") -> "!"; label.contains("응답") -> "○"; label.contains("작업 사건") -> "↻"; else -> "—" }
+        IconButton({ onDetails?.invoke() }, enabled = onDetails != null,
+            modifier = Modifier.size(48.dp).semantics { contentDescription = "창 에이전트 상태 · $description" }) {
+            Text(icon + if (unread.isEmpty()) "" else unread.size.toString(), maxLines = 1)
         }
-        if (observations.isEmpty()) Text("▣", style = MaterialTheme.typography.labelSmall)
-        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = if (compact) 1 else 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+    } else Row(Modifier.semantics { contentDescription = description }, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        observations.map { it.agent }.distinct().forEach { agent -> Icon(LauncherIcons.agent(agent), agentName(agent), Modifier.size(16.dp)) }
+        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 
-@Composable internal fun AgentDetails(client: ClientConnection, model: AppModel, dismiss: () -> Unit) {
+@Composable internal fun AgentDetails(client: ClientConnection, model: AppModel, pane: String? = null, dismiss: () -> Unit) {
     val snapshot by client.agents.collectAsState()
     val setup by client.agentSetup.collectAsState()
+    val notices by model.agentNotifications.collectAsState()
     var inspected by remember { mutableStateOf(false) }
     val preview = setup?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }
     val token = preview?.get("token")?.jsonPrimitive?.content
     AlertDialog(onDismissRequest = dismiss, title = { Text("에이전트 상태 연동 · ${client.host.alias}") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("마지막으로 관측된 사건입니다. 현재 입력·승인 대기나 작업 성공을 뜻하지 않습니다.")
-            AgentBadge(client)
-            snapshot.observations.forEach { o ->
-                Text("${agentName(o.agent)} · ${o.session}/${o.window}/${o.pane}" + if (o.actor != "parent") " · 서브에이전트" else "")
+            AgentBadge(client, pane, notices)
+            val remote by client.remote.collectAsState()
+            snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis()).observations.forEach { o ->
+                Text("${agentName(o.agent)} · ${remote.targetLabel(o.session, o.pane)}" + if (o.actor != "parent") " · 서브에이전트" else "")
                 Text(o.last?.let { "${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}" } ?: "미연동 · 상태 미확인")
-                Text("수신 확인 사건: ${o.supported.joinToString().ifEmpty { "미확인" }}", style = MaterialTheme.typography.labelSmall)
+                Text("진단 정보 · 세션 ID: ${o.session} · 창 ID: ${o.window} · 패널 ID: ${o.pane}", style = MaterialTheme.typography.labelSmall)
+                Text("수신 확인 사건: ${o.supported.joinToString { agentMessage(it) }.ifEmpty { "미확인" }}", style = MaterialTheme.typography.labelSmall)
                 TextButton({
                     model.openAgentObservation(client, o)
                     dismiss()
                 }) { Text("패널로 이동") }
             }
+            if (pane == null) {
             Text("선택 설치: Python 3 도우미와 사용자 훅을 추가합니다. 기존 훅을 보존하고 설정 백업을 만듭니다. 대화·명령 본문은 저장하지 않습니다.")
             TextButton({ inspected = true; client.configureAgents("inspect") }) { Text("설치 전 검사 · 변경 내용 보기") }
             if (inspected && preview == null) Text("검사 중…")
@@ -72,6 +73,7 @@ import kotlinx.serialization.json.*
                 TextButton({ client.configureAgents("install", token) }) { Text("연동 설치") }
                 TextButton({ client.configureAgents("remove", token) }) { Text("dgl 훅만 해제") }
             }
+            }
         }
     }, confirmButton = { TextButton(dismiss) { Text("닫기") } })
 }
@@ -83,7 +85,7 @@ import kotlinx.serialization.json.*
             Text("이번 앱 실행 중 최대 100건. 읽음은 질문 응답·승인 처리를 뜻하지 않습니다.")
             if (notices.isEmpty()) Text("수신한 알림이 없습니다.")
             notices.forEach { n ->
-                Text("${if (n.read) "" else "● "}${agentName(n.event.agent)} · ${n.endpoint}\n${n.event.session}/${n.event.window}/${n.event.pane}" + if (n.event.actor != "parent") " · 서브에이전트" else "")
+                Text("${if (n.read) "" else "● "}${agentName(n.event.agent)} · ${n.endpoint}\n진단 정보 · 세션 ID: ${n.event.session} · 창 ID: ${n.event.window} · 패널 ID: ${n.event.pane}" + if (n.event.actor != "parent") " · 서브에이전트" else "")
                 Text(agentMessage(n.event.kind))
                 Text("${n.event.event} · ${java.util.Date(n.event.at)}", style = MaterialTheme.typography.labelSmall)
                 TextButton({ model.openAgentNotice(n.id); dismiss() }) { Text("패널로 이동 · 읽음") }

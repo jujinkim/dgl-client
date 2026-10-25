@@ -38,9 +38,10 @@ impl Desktop {
                         .groups
                         .values()
                         .any(|g| g.selected == Some(tab.id))
-                    && let Some(pane) = state.pane.as_ref()
                 {
-                    visible.insert(format!("{}:{}:{}", key, state.agents.server, pane));
+                    for pane in state.render_targets.keys() {
+                        visible.insert(format!("{}:{}:{}", key, state.agents.server, pane));
+                    }
                 }
             }
             self.inbox.ingest(
@@ -124,12 +125,20 @@ impl Desktop {
         &self,
         connection: Arc<Connection>,
         host: &HostProfile,
-        pane: Option<&str>,
+        pane: &str,
+        state: &dgl_core::connection::State,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        let state = connection.state();
-        let snapshot = &state.agents;
-        let mut label = snapshot.label(pane, agent::now_ms());
+        let mut filtered = state.agents.clone();
+        filtered.observations.retain(|o| {
+            if pane.starts_with('@') {
+                o.window == pane
+            } else {
+                o.pane == pane
+            }
+        });
+        let snapshot = &filtered;
+        let mut label = snapshot.label(None, agent::now_ms());
         let unread: Vec<_> =
             self.inbox
                 .recent
@@ -138,7 +147,11 @@ impl Desktop {
                     !n.read
                         && n.endpoint == endpoint(host)
                         && n.event.server == snapshot.server
-                        && pane.is_none_or(|p| p == n.event.pane)
+                        && (if pane.starts_with('@') {
+                            pane == n.event.window
+                        } else {
+                            pane == n.event.pane
+                        })
                         && snapshot.observations.iter().any(|o| {
                             o.run == n.event.run && o.pane == n.event.pane && o.last.is_some()
                         })
@@ -166,8 +179,9 @@ impl Desktop {
         } else {
             "—"
         };
-        let id = format!("agent-{}-{}", state.handle, pane.unwrap_or("tab"));
+        let id = format!("agent-{}-{}", state.handle, pane);
         let title = host.alias.clone();
+        let target_pane = pane.to_owned();
         let tip = label.clone();
         let mut badge = self
             .button(
@@ -182,27 +196,33 @@ impl Desktop {
                 ),
                 cx,
                 move |s, _, _| {
-                    s.dialog = Some(Dialog::Agents(connection.clone(), title.clone()));
+                    s.dialog = Some(Dialog::Agents(
+                        connection.clone(),
+                        title.clone(),
+                        Some(target_pane.clone()),
+                    ));
                 },
             )
             .flex()
             .items_center()
             .gap_1()
+            .w(px(48.))
+            .px_1()
+            .flex_shrink_0()
+            .overflow_hidden()
             .text_xs()
             .tooltip(move |_, cx| cx.new(|_| workspace_ui::Tip(tip.clone())).into());
-        for a in Agent::ALL {
-            if snapshot
-                .observations
-                .iter()
-                .any(|o| o.agent == a && pane.is_none_or(|p| p == o.pane))
-            {
-                badge = badge.child(
-                    svg()
-                        .path(a.icon())
-                        .size(px(15.))
-                        .text_color(rgb(self.palette.fg)),
-                );
-            }
+        if unread.len() < 10
+            && let Some(a) = Agent::ALL
+                .into_iter()
+                .find(|a| snapshot.observations.iter().any(|o| o.agent == *a))
+        {
+            badge = badge.child(
+                svg()
+                    .path(a.icon())
+                    .size(px(15.))
+                    .text_color(rgb(self.palette.fg)),
+            );
         }
         badge
     }
@@ -210,9 +230,19 @@ impl Desktop {
         &self,
         connection: Arc<Connection>,
         alias: String,
+        pane: Option<&str>,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        let state = connection.state();
+        self.agent_details_state(connection.clone(), alias, pane, connection.state(), cx)
+    }
+    pub(super) fn agent_details_state(
+        &self,
+        connection: Arc<Connection>,
+        alias: String,
+        pane: Option<&str>,
+        state: dgl_core::connection::State,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let mut body = div()
             .id("agent-details")
             .flex()
@@ -220,14 +250,32 @@ impl Desktop {
             .gap_3()
             .child(format!("에이전트 상태 연동 · {alias}"))
             .child("마지막 관측 사건입니다. 현재 입력·승인 대기 또는 작업 성공을 뜻하지 않습니다.")
-            .child(state.agents.label(None, agent::now_ms()));
-        for o in &state.agents.observations {
+            .child({
+                let mut filtered = state.agents.clone();
+                filtered.observations.retain(|o| {
+                    pane.is_none_or(|p| {
+                        if p.starts_with('@') {
+                            p == o.window
+                        } else {
+                            p == o.pane
+                        }
+                    })
+                });
+                filtered.label(None, agent::now_ms())
+            });
+        for o in state.agents.observations.iter().filter(|o| {
+            pane.is_none_or(|p| {
+                if p.starts_with('@') {
+                    p == o.window
+                } else {
+                    p == o.pane
+                }
+            })
+        }) {
             body = body.child(format!(
-                "{} · {}/{}/{}{}",
+                "{} · {}{}",
                 o.agent.label(),
-                o.session,
-                o.window,
-                o.pane,
+                hierarchy::target_label(&state.remote, Some(&o.session), Some(&o.pane)),
                 if o.actor != "parent" {
                     " · 서브에이전트"
                 } else {
@@ -247,7 +295,18 @@ impl Desktop {
                     })
                     .unwrap_or_else(|| "미연동 · 상태 미확인".into()),
             );
-            body = body.child(format!("수신 확인 사건: {:?}", o.supported));
+            body = body.child(format!(
+                "진단 정보 · 세션 ID: {} · 창 ID: {} · 패널 ID: {}",
+                o.session, o.window, o.pane
+            ));
+            body = body.child(format!(
+                "수신 확인 사건: {}",
+                o.supported
+                    .iter()
+                    .map(|k| k.label())
+                    .collect::<Vec<_>>()
+                    .join(" · ")
+            ));
             let target = o.clone();
             let c = connection.clone();
             body = body.child(self.button(
@@ -292,6 +351,9 @@ impl Desktop {
                     }
                 },
             ));
+        }
+        if pane.is_some() {
+            return body;
         }
         body = body.child("선택 설치: Python 3 도우미·사용자 훅을 추가하고 기존 설정을 백업합니다. 대화·명령 본문은 저장하지 않습니다.");
         let c = connection.clone();
@@ -388,7 +450,7 @@ impl Desktop {
             let id = n.id();
             body = body
                 .child(format!(
-                    "{}{} · {} · {}/{}/{}{} · {} · {}초 전",
+                    "{}{} · {} · 진단 정보: 세션 ID {} / 창 ID {} / 패널 ID {}{} · {} · {}초 전",
                     if n.read { "" } else { "● " },
                     n.event.agent.label(),
                     n.endpoint,

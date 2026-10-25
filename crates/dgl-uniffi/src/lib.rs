@@ -104,6 +104,22 @@ impl NativeConnection {
             .target()
             .map(|t| serde_json::to_string(&t).unwrap())
     }
+    /// Output identity belongs to a pane renderer, independently of input focus.
+    pub fn accepts_output(&self, target_json: String) -> bool {
+        let Ok(target) = serde_json::from_str::<dgl_core::flow::PaneTarget>(&target_json) else {
+            return false;
+        };
+        let s = self.inner.state();
+        if target.pane_id == "shell" {
+            self.inner.target().as_ref() == Some(&target)
+        } else {
+            s.render_targets.get(&target.pane_id) == Some(&target)
+                && matches!(
+                    s.phase,
+                    dgl_core::connection::Phase::Ready | dgl_core::connection::Phase::Restoring
+                )
+        }
+    }
     pub fn submit_input(&self, target_json: String, bytes: Vec<u8>) -> Result<u64, CoreError> {
         Ok(self.inner.input(
             serde_json::from_str(&target_json).map_err(|_| invalid())?,

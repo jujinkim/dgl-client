@@ -90,6 +90,7 @@ pub struct Preferences {
     pub volume_up: crate::input::VolumeBinding,
     pub volume_down: crate::input::VolumeBinding,
     pub smooth_terminal_transitions: bool,
+    pub show_all_hierarchy: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -104,6 +105,7 @@ impl Default for Preferences {
             volume_up: Default::default(),
             volume_down: Default::default(),
             smooth_terminal_transitions: false,
+            show_all_hierarchy: false,
         }
     }
 }
@@ -223,6 +225,14 @@ pub struct RemoteWindow {
     pub active: bool,
     pub layout: String,
     pub index: u32,
+    #[serde(default)]
+    pub width: u16,
+    #[serde(default)]
+    pub height: u16,
+    #[serde(default)]
+    pub zoomed: bool,
+    #[serde(default)]
+    pub visible_layout: String,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemotePane {
@@ -234,6 +244,10 @@ pub struct RemotePane {
     pub mode: String,
     pub command: String,
     pub title: String,
+    #[serde(default)]
+    pub left: u16,
+    #[serde(default)]
+    pub top: u16,
 }
 
 pub fn split_record(row: &[u8], count: usize) -> Result<Vec<String>> {
@@ -296,7 +310,7 @@ pub fn sessions(rows: &[Vec<u8>]) -> Result<Vec<RemoteSession>> {
 pub fn windows(rows: &[Vec<u8>]) -> Result<Vec<RemoteWindow>> {
     rows.iter()
         .map(|r| {
-            let f = split_record(r, 6)?;
+            let f = split_record(r, 10)?;
             Ok(RemoteWindow {
                 id: target(&f[1], '@')?,
                 session: target(&f[0], '$')?,
@@ -304,6 +318,10 @@ pub fn windows(rows: &[Vec<u8>]) -> Result<Vec<RemoteWindow>> {
                 active: f[3] == "1",
                 layout: f[4].clone(),
                 index: num(&f[5])?,
+                width: num(&f[6])?,
+                height: num(&f[7])?,
+                zoomed: f[8] == "1",
+                visible_layout: f[9].clone(),
             })
         })
         .collect()
@@ -311,7 +329,7 @@ pub fn windows(rows: &[Vec<u8>]) -> Result<Vec<RemoteWindow>> {
 pub fn panes(rows: &[Vec<u8>]) -> Result<Vec<RemotePane>> {
     rows.iter()
         .map(|r| {
-            let f = split_record(r, 8)?;
+            let f = split_record(r, 10)?;
             Ok(RemotePane {
                 id: target(&f[0], '%')?,
                 window: target(&f[1], '@')?,
@@ -321,6 +339,8 @@ pub fn panes(rows: &[Vec<u8>]) -> Result<Vec<RemotePane>> {
                 mode: unquote(&f[5]),
                 command: unquote(&f[6]),
                 title: unquote(&f[7]),
+                left: num(&f[8])?,
+                top: num(&f[9])?,
             })
         })
         .collect()

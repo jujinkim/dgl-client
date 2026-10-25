@@ -130,7 +130,7 @@ class RustClientConnection(
             Phase.Selecting -> "tmux 세션을 선택하거나 만드세요."; Phase.Restoring -> if (resizing) "연결됨 · tmux" else "터미널 복원 중…"; Phase.Ready -> "연결됨 · tmux"
             Phase.Shell -> "일반 SSH · tmux 탐지 실패"; Phase.Reconnecting -> "연결 복구 중…"; Phase.MissingSession -> "이전 세션이 삭제되었습니다. 직접 선택하세요."
             else -> "연결 종료"
-        }, attempt, canRetryNow, canStopRetrying, resizing)
+        }, attempt, canRetryNow, canStopRetrying, resizing, text("window"))
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         val r = s.getValue("remote").jsonObject
         fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
@@ -167,62 +167,40 @@ class RustClientConnection(
         val id = c.subscribe(); subscription = id
         val current = epoch
         outputJob = scope.launch {
-            var displayedTarget: List<JsonElement?>? = null
-            var displayedOutputTarget: String? = null
-            var snapshotTarget: String? = null
-            fun identity(target: String): List<JsonElement?> {
-                val t = json.parseToJsonElement(target).jsonObject
-                val generation = t.getValue("generation").jsonObject
-                return listOf(t["connection"], t["pane_id"], generation["connection"], generation["pane"])
-            }
+            val displayed = mutableMapOf<String, String>()
+            var layoutSequence = ""
             try {
                 terminal.cancelSnapshot()
                 while (isActive && current == epoch) {
+                    val state = json.parseToJsonElement(c.stateJson()).jsonObject
+                    val sequence = state.getValue("sequence").toString()
+                    if (sequence != layoutSequence) {
+                        layoutSequence = sequence
+                        fun text(key: String) = state[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+                        terminal.layout(RemoteStateDecoder.json(state.getValue("remote").jsonObject), text("window"), text("pane"), c.targetJson())
+                        if (text("phase") !in setOf("Ready", "Restoring", "Shell")) {
+                            terminal.cancelSnapshot(); displayed.clear()
+                        }
+                    }
                     val event = c.pollOutput(id)
-                    val target = c.targetJson()
-                    if (displayedTarget != null && status.value.phase !in setOf(Phase.Ready, Phase.Restoring, Phase.Shell)) {
-                        terminal.cancelSnapshot()
-                        displayedTarget = null
-                        displayedOutputTarget = null
-                        snapshotTarget = null
-                    }
-                    if (snapshotTarget != null && (target != snapshotTarget || status.value.phase in setOf(Phase.Reconnecting, Phase.Failed, Phase.Disconnected))) {
-                        terminal.cancelSnapshot()
-                        snapshotTarget = null
-                    }
                     if (event == null) { delay(8); continue }
-                    if (surface === terminal && target == event.targetJson) {
+                    if (surface === terminal && c.acceptsOutput(event.targetJson)) {
+                        val target = json.parseToJsonElement(event.targetJson).jsonObject.getValue("pane_id").jsonPrimitive.content
+                        terminal.outputPane(target, event.targetJson)
                         when (event.kind) {
                             "Resize" -> {
-                                val next = identity(event.targetJson)
-                                if (next != displayedTarget) terminal.cancelSnapshot()
-                                if (next == displayedTarget && next[1]?.jsonPrimitive?.content != "shell" &&
-                                    event.targetJson != displayedOutputTarget) {
-                                    // Capture before xterm changes its grid and clears DOM rows.
-                                    terminal.beginSnapshot()
-                                    snapshotTarget = event.targetJson
-                                }
+                                if (displayed[target] != null && displayed[target] != event.targetJson) terminal.beginSnapshot()
                                 terminal.resizeRemote(Size(event.columns.toInt(), event.rows.toInt()))
                             }
                             "ResetBegin" -> {
-                                val next = identity(event.targetJson)
-                                // Never display an old pane/connection over a newly selected one.
-                                if (snapshotTarget != event.targetJson) {
-                                    if (displayedTarget == next) terminal.beginSnapshot() else terminal.cancelSnapshot()
-                                }
-                                displayedTarget = next
-                                snapshotTarget = event.targetJson
+                                if (displayed[target] != null) terminal.beginSnapshot()
                                 terminal.reset(event.bytes)
                             }
                             "ResetChunk", "Live" -> terminal.write(event.bytes)
-                            "ResetEnd" -> {
-                                terminal.endSnapshot()
-                                displayedOutputTarget = event.targetJson
-                                snapshotTarget = null
-                            }
+                            "ResetEnd" -> { terminal.endSnapshot(); displayed[target] = event.targetJson }
                         }
                     }
-                    // AndroidTerminal.write/reset return only after xterm's write callback.
+                    // Payload stays charged until xterm confirms the pane's write callback.
                     c.acknowledge(id, event.sequence)
                 }
             } catch (e: CancellationException) { throw e }
@@ -280,6 +258,22 @@ class RustClientConnection(
             resizes.defer(now)
             notice.value = "화면 크기 변경을 전송하지 못했습니다. 잠시 후 다시 시도합니다."
         }
+    }
+    @Synchronized override fun paneInput(pane: String, target: String?, bytes: ByteArray) {
+        val c = native ?: return
+        if (!status.value.acceptsInput || target == null) return
+        val current = c.targetJson() ?: return
+        if (inputTargetIdentity(target) != inputTargetIdentity(current) || json.parseToJsonElement(current).jsonObject["pane_id"]?.jsonPrimitive?.content != pane) return
+        try { inputRequests.add(c.submitInput(target, bytes)) } catch (_: Exception) { notice.value = "대상 변경으로 입력을 취소했습니다." }
+    }
+    @Synchronized override fun focusPane(pane: String, target: String?) {
+        if (target != null && native?.targetJson()?.let { inputTargetIdentity(it) == inputTargetIdentity(target) } == true) selectPane(pane)
+    }
+    @Synchronized override fun resizePane(pane: String, target: String?, size: Size) {
+        if (target == null || native?.targetJson() != target) return
+        action(buildJsonObject { put("action", "manage"); put("operation", buildJsonObject {
+            put("op", "resizePaneTo"); put("target", pane); put("columns", size.columns); put("rows", size.rows)
+        }) })
     }
     @Synchronized override fun input(bytes: ByteArray) { val c = native ?: return; if (!status.value.acceptsInput) return; try { c.targetJson()?.let { inputRequests.add(c.submitInput(it, bytes)) } } catch (_: Exception) { notice.value = "입력을 전송하지 않았습니다. 대기열 또는 연결 상태를 확인하세요." } }
     @Synchronized override fun captureInputTarget(): InputTarget? = native?.targetJson()?.let {

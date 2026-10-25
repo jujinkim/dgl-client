@@ -33,7 +33,7 @@ connection/pane/size generation이 달라진 응답은 화면에 적용하지 �
 - WebView output은 16 KiB write의 xterm 완료 ack를 기다린다. 읽기와 렌더링 사이에 무제한 큐를 두지 않는다.
 - tmux `pause-after=2`가 알리는 지연은 화면 재캡처로 회복한다. 로컬 기록 전체를 보존한다고 주장하지 않는다.
 - renderer surface는 연결보다 짧게 살 수 있다. 연결 탭을 바꾸면 새 surface에 재캡처하며 원격 프로세스를 종료하지 않는다.
-- Android viewport 변경은 마지막 변경부터 150ms 동안 묶으며 전송 중 요청 하나와 최신 대기 크기 하나만 유지한다. Rust는 같은 요청 크기를 무시하고, tmux 크기 변경 후 목록을 갱신해 실제 패널 크기가 달라질 때만 캡처한다. 다른 클라이언트가 크기를 제한하면 실제 크기만 렌더러에 다시 전달한다.
+- Android viewport 변경은 마지막 변경부터 150ms 동안 묶으며 전송 중 요청 하나와 최신 대기 크기 하나만 유지한다. Rust는 같은 요청 크기를 무시하고, tmux 크기 변경 후 목록을 갱신해 실제 패널 크기가 달라질 때만 캡처한다. 다른 클라이언트가 크기를 제한하면 실제 pane 크기를 유지하며, 변경이 없으면 추가 Resize 이벤트도 보내지 않는다.
 - 크기 조정 복원은 `resizing` 표시로 연결 복구 UI와 구분하지만 내부 `Restoring` 입력 차단과 세대 검사는 유지한다. 캡처에서 확인한 실제 크기를 목록의 비교 기준에도 반영하여 후속 레이아웃 알림의 중복 캡처를 막는다.
 - Android는 번들 xterm DOM 렌더러의 보이는 화면 한 장만 복제해 캡처 조각을 가린다. `ResetEnd`에서 xterm 렌더 이벤트와 paint 기회를 확인한 뒤 180ms fade로 제거한다. 선택형 `smoothTerminalTransitions`(기본 false)은 240ms 크기 보간·크로스페이드·2px 블러를 추가한다. 캐시는 입력·접근성 대상에서 제외하며 대상 변경·실패·해제와 15초 제한에서 정리한다. 입력 버퍼·스크롤백을 복제하지 않으며 기존 출력 ACK·크기 제한을 유지한다.
 - 현재 pen 속성·모든 VT 내부 상태는 tmux format/capture만으로 완전히 복원할 수 없다. 완전한 emulator serialization이 아니다. 색상 화면·커서·alternate 전환과 일반 출력은 테스트하고 미확인 상태는 명시한다.
@@ -52,3 +52,5 @@ connection/pane/size generation이 달라진 응답은 화면에 적용하지 �
 - API 36 ARM64 에뮬레이터 8개 통과: 실제 WebView 캐시·그라디언트·크기/블러 전환·정리, 키보드 반복 표시 전후 tmux 클라이언트 PID와 WebView 유지, 설정 변경 시 WebView 유지, 회전·복귀. Android 34/35 및 실제 기기는 이번 수정에서 재검증하지 않았다.
 - tmux 3.7c의 크기 변경·독립 연결, 실제 연결 단절/복구, 제목 갱신 시나리오 통과. 3.3a도 각 시나리오는 새 SSH/tmux fixture에서 통과했지만, 같은 fixture를 공유한 일괄 실행은 세션 생성/초기화 단계의 `InvalidArgument` 실패가 남아 있어 일괄 통과로 간주하지 않는다.
 - Android Debug 빌드·lint와 네 ABI/서명 확인 통과. Windows 네이티브 빌드·실기는 미실시.
+
+현재 창 단위·pane별 유지 동작과 입력/출력 세대 분리는 [TMUX_WINDOW_SYNC.md](../TMUX_WINDOW_SYNC.md)를 따른다. 위 과거 실행 결과는 당시 버전의 기록이다.

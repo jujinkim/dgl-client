@@ -250,7 +250,8 @@ async fn agent_hidden_pane_case(service: dgl_core::agent::Agent, executable: &st
     assert_eq!(event.kind, Kind::Response);
     assert_eq!(event.agent, service);
     assert_eq!(event.pane, hidden);
-    assert_ne!(c.state().pane.as_ref(), Some(&hidden));
+    // The ordinary client selected this window while creating it; GUI follows that session selection.
+    assert!(c.state().remote.panes.iter().any(|p| p.id == hidden));
     completion(
         &c,
         c.action(Action::SelectTarget {
@@ -826,11 +827,13 @@ async fn workspace_focus_tree_and_independent_connections() {
         })
         .await
         .unwrap();
-        assert_eq!(
-            second.state().pane.as_ref(),
-            Some(&left),
-            "another connection keeps its displayed target"
-        );
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while second.state().pane.as_ref() != Some(&actual) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
     }
     completion(
         &c,
@@ -859,18 +862,30 @@ async fn workspace_focus_tree_and_independent_connections() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     let target = c.target().unwrap();
     assert_eq!(target.connection, before_resize.connection);
-    assert_eq!(target.generation.connection, before_resize.generation.connection);
+    assert_eq!(
+        target.generation.connection,
+        before_resize.generation.connection
+    );
     assert_eq!(target.generation.pane, before_resize.generation.pane);
     assert_eq!(target.generation.size, before_resize.generation.size + 1);
     assert!(!c.state().resizing);
-    assert_eq!(events.lock().unwrap().iter().filter(|e| e.kind == OutputKind::ResetBegin).count(), 1,
-        "one resize must not be captured again for its layout notification");
+    assert_eq!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.kind == OutputKind::ResetBegin)
+            .count(),
+        1,
+        "one resize must not be captured again for its layout notification"
+    );
     assert!(
         events
             .lock()
             .unwrap()
             .iter()
-            .any(|e| e.kind == OutputKind::ResetEnd && e.target == target)
+            .any(|e| e.kind == OutputKind::ResetEnd
+                && e.target == c.state().render_targets[&target.pane_id])
     );
     assert!(
         events
@@ -883,37 +898,94 @@ async fn workspace_focus_tree_and_independent_connections() {
                 && e.size.rows == 37)
     );
     assert_eq!(second.state().session.as_ref(), Some(&first));
-    assert_eq!(second.state().pane.as_ref(), Some(&left));
+    assert!(
+        second
+            .state()
+            .remote
+            .panes
+            .iter()
+            .any(|p| Some(&p.id) == second.state().pane.as_ref() && p.window == first_window)
+    );
     events.lock().unwrap().clear();
-    completion(&c, c.action(Action::Resize { columns: 101, rows: 37 }).unwrap()).await;
+    completion(
+        &c,
+        c.action(Action::Resize {
+            columns: 101,
+            rows: 37,
+        })
+        .unwrap(),
+    )
+    .await;
     tokio::time::sleep(Duration::from_millis(200)).await;
-    assert_eq!(c.target().unwrap(), target, "identical dimensions keep the output generation");
-    assert!(!events.lock().unwrap().iter().any(|e| matches!(e.kind, OutputKind::ResetBegin | OutputKind::Resize)));
+    assert_eq!(
+        c.target().unwrap(),
+        target,
+        "identical dimensions keep the output generation"
+    );
+    assert!(
+        !events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e.kind, OutputKind::ResetBegin | OutputKind::Resize))
+    );
     // Another client can constrain the actual pane while Android's viewport changes.
-    let (mut constrained_host, constrained_credential, constrained_fingerprint) = fixture("DGL_TEST_KEY_FILE");
+    let (mut constrained_host, constrained_credential, constrained_fingerprint) =
+        fixture("DGL_TEST_KEY_FILE");
     constrained_host.last_session = Some(other.clone());
     constrained_host.last_pane = Some(other_pane.clone());
-    let constrained = Connection::start(constrained_host, constrained_credential, Some(constrained_fingerprint));
+    let constrained = Connection::start(
+        constrained_host,
+        constrained_credential,
+        Some(constrained_fingerprint),
+    );
     phase(&constrained, Phase::Ready).await;
     let result = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
         .args(["set-option", "-w", "-t", &other, "window-size", "smallest"])
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(result.status.success());
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let s = c.state();
-            if s.phase == Phase::Ready && s.remote.panes.iter().any(|p| p.id == other_pane && p.width == 80 && p.height == 24) { break; }
+            if s.phase == Phase::Ready
+                && s.remote
+                    .panes
+                    .iter()
+                    .any(|p| p.id == other_pane && p.width == 80 && p.height == 24)
+            {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
     events.lock().unwrap().clear();
     let constrained_target = c.target().unwrap();
-    completion(&c, c.action(Action::Resize { columns: 135, rows: 45 }).unwrap()).await;
+    completion(
+        &c,
+        c.action(Action::Resize {
+            columns: 135,
+            rows: 45,
+        })
+        .unwrap(),
+    )
+    .await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(c.target().unwrap(), constrained_target);
-    assert!(!events.lock().unwrap().iter().any(|e| e.kind == OutputKind::ResetBegin));
-    assert!(events.lock().unwrap().iter().any(|e| e.kind == OutputKind::Resize && e.size.columns == 80 && e.size.rows == 24));
+    assert!(
+        !events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.kind == OutputKind::ResetBegin)
+    );
+    assert!(
+        events.lock().unwrap().is_empty(),
+        "unchanged server grid needs no renderer resize"
+    );
     constrained.close();
     constrained.join().await;
     c.close();
@@ -1140,7 +1212,32 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
         .unwrap(),
     )
     .await;
-    tmux(&["move-window", "-s", hidden[0], "-t", "renamed-session:9"]);
+    completion(
+        &c,
+        c.action(Action::Manage {
+            operation: Operation::RenamePane {
+                target: pane.into(),
+                name: "패널 제목 변경 #S".into(),
+            },
+        })
+        .unwrap(),
+    )
+    .await;
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == pane && p.title == "패널 제목 변경 #S")
+    })
+    .await;
+    tmux(&[
+        "move-window",
+        "-d",
+        "-s",
+        hidden[0],
+        "-t",
+        "renamed-session:9",
+    ]);
     until(&c, |s| {
         s.remote
             .windows
@@ -1170,7 +1267,8 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
     })
     .await;
     completion(&c, c.action(Action::Refresh).unwrap()).await;
-    assert_eq!(c.target(), Some(target));
+    assert_eq!(c.target().unwrap().pane_id, sibling);
+    assert_eq!(c.state().render_targets.len(), 2);
     assert_eq!(c.state().phase, Phase::Ready);
     while let Some(event) = c.output().poll(sub).unwrap() {
         assert_eq!(
@@ -1194,7 +1292,7 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
     let c = Connection::start(reconnect_host, credential, Some(fingerprint));
     let sub = c.output().subscribe().unwrap();
     phase(&c, Phase::Ready).await;
-    assert_eq!(c.target().unwrap().pane_id, pane);
+    assert_eq!(c.target().unwrap().pane_id, sibling);
     assert_eq!(
         tmux(&["display-message", "-p", "-t", pane, "#{pane_pid}"]),
         pid
@@ -1233,3 +1331,6 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
     tmux(&["kill-session", "-t", session]);
     tmux(&["kill-session", "-t", other[0]]);
 }
+
+#[path = "ssh_integration/window_sync.rs"]
+mod window_sync;

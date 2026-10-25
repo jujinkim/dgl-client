@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.RectangleShape
@@ -29,6 +30,7 @@ import androidx.compose.ui.window.DialogProperties
 import kim.jujin.rovessh.*
 import kim.jujin.rovessh.core.*
 import java.util.UUID
+import kotlinx.coroutines.flow.first
 
 @Composable expect fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier)
 @Composable expect fun ImportKeyButton(onKey: (String) -> Unit, onError: (String) -> Unit)
@@ -44,7 +46,7 @@ expect fun copyPublicKey(value: String)
     var edit by remember { mutableStateOf<HostProfile?>(null) }
     var adding by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
-    var agentDetails by remember { mutableStateOf<ClientConnection?>(null) }
+    var agentDetails by remember { mutableStateOf<Pair<ClientConnection, String?>?>(null) }
     var notifications by remember { mutableStateOf(false) }
     var switching by remember { mutableStateOf(false) }
     val agentNav by model.agentNavigation.collectAsState()
@@ -90,21 +92,21 @@ expect fun copyPublicKey(value: String)
                             .semantics { contentDescription = "서버 선택" }, contentPadding = PaddingValues(4.dp)) {
                             Column(Modifier.weight(1f)) {
                                 Text(selected?.host?.alias ?: "연결 선택", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                selected?.let { c -> AgentBadge(c, notices = agentNotices, compact = true) { agentDetails = c } }
                             }
                             Text(" ▾")
                         }
                         DropdownMenu(switching, { switching = false }) {
-                            connections.forEach { connection -> DropdownMenuItem(text = { Column { Text(connection.host.alias, maxLines = 2, overflow = TextOverflow.Ellipsis); AgentBadge(connection, notices = agentNotices) { switching = false; agentDetails = connection } } }, onClick = { model.selected.value = connection; explorer = false; switching = false }) }
+                            connections.forEach { connection -> DropdownMenuItem(text = { Text(connection.host.alias, maxLines = 2, overflow = TextOverflow.Ellipsis) }, onClick = { model.selected.value = connection; explorer = false; switching = false }) }
                         }
                     } else Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                    TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 40.dp)) { Text(if (explorer) "터미널" else "호스트") }
-                    TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 40.dp)) { Text("알림 ${agentNotices.count { !it.read }}") }
-                    TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 40.dp)) { Text("설정") }
+                    selected?.let { HostConnectionMenu(it, model) }
+                    TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(if (explorer) "터미널" else "호스트") }
+                    TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text("알림 ${agentNotices.count { !it.read }}") }
+                    TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text("설정") }
                 }
                 if (!mobileLayout && connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                     connections.forEach { connection ->
-                        FilterChip(selected == connection, { model.selected.value = connection; explorer = false }, label = { Column { Text(connection.host.alias); AgentBadge(connection, notices = agentNotices) { agentDetails = connection } } })
+                        FilterChip(selected == connection, { model.selected.value = connection; explorer = false }, label = { Text(connection.host.alias) })
                         TextButton({ model.removeConnection(connection) }) { Text("×") }
                     }
                 }
@@ -136,7 +138,7 @@ expect fun copyPublicKey(value: String)
                                                         } catch (_: Exception) { error = "보호 저장소를 열지 못했습니다." }
                                                     }) { Text("연결") }
                                                     Spacer(Modifier.weight(1f))
-                                                    TreeMenu("${host.alias} 메뉴", listOf("편집" to { model.hostEditing = true; edit = host }, "에이전트 상태 연동" to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it } ?: run { error = "호스트에 먼저 연결하세요." } }, "삭제…" to { model.hostEditing = true; deletion = host }))
+                                                    TreeMenu("${host.alias} 메뉴", listOf("편집" to { model.hostEditing = true; edit = host }, "에이전트 상태 연동" to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = "호스트에 먼저 연결하세요." } }, "삭제…" to { model.hostEditing = true; deletion = host }))
                                                 }
                                             }
                                             HorizontalDivider()
@@ -150,7 +152,7 @@ expect fun copyPublicKey(value: String)
                             Box(Modifier.weight(1f).fillMaxHeight()) {
                                 if (selected != null) key(selected) {
                                     val client = selected!!
-                                    ConnectionScreen(client, local.preferences, mobileLayout, model, { agentDetails = client }) {
+                                    ConnectionScreen(client, local.preferences, mobileLayout, model, { agentDetails = client to it }) {
                                         model.selected.value === client && (wide || !explorer) &&
                                             !notifications && !switching && agentError == null && agentDetails == null && !settings && !adding && edit == null && deletion == null && error == null
                                     }
@@ -168,7 +170,7 @@ expect fun copyPublicKey(value: String)
             }
         }
         if (selected == null || explorer || settings || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
-        agentDetails?.let { AgentDetails(it, model) { agentDetails = null } }
+        agentDetails?.let { (client, pane) -> AgentDetails(client, model, pane) { agentDetails = null } }
         if (notifications) AgentNotifications(model) { notifications = false }
         agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { TextButton({ model.agentNavigationError.value = null }) { Text("닫기") } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
@@ -185,7 +187,7 @@ expect fun copyPublicKey(value: String)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, model: AppModel, showAgents: () -> Unit, inputAllowed: () -> Boolean) {
+@Composable private fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, model: AppModel, showAgents: (String) -> Unit, inputAllowed: () -> Boolean) {
     val status by client.status.collectAsState()
     val remote by client.remote.collectAsState()
     val refreshing by client.refreshing.collectAsState()
@@ -197,6 +199,13 @@ expect fun copyPublicKey(value: String)
     val tmuxProblem by client.tmuxProblem.collectAsState()
     var tmuxDetails by remember(tmuxProblem) { mutableStateOf(false) }
     var navigation by remember { mutableStateOf(!mobileLayout) }
+    val navigationSheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    LaunchedEffect(navigation, mobileLayout) {
+        if (mobileLayout && navigation) {
+            snapshotFlow { navigationSheet.hasExpandedState }.first { it }
+            navigationSheet.show()
+        }
+    }
     var namePrompt by remember { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }
     var deletion by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     val agentNav by model.agentNavigation.collectAsState()
@@ -218,7 +227,6 @@ expect fun copyPublicKey(value: String)
     DisposableEffect(client) { onDispose { if (model.visibleConnection === client) model.visibleConnection = null } }
     PlatformInputRegistration(client, preferences, terminalInputAllowed)
     val currentPane = remote.panes.firstOrNull { it.id == pane }
-    val currentWindow = remote.windows.firstOrNull { it.id == currentPane?.window && it.session == session }
     val currentSession = remote.sessions.firstOrNull { it.id == session }
     val canBrowse = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
     val sessionLabel = when (status.phase) {
@@ -227,8 +235,12 @@ expect fun copyPublicKey(value: String)
         Phase.Connecting, Phase.Authenticating, Phase.TrustRequired -> "확인 중"
         Phase.Reconnecting -> "복구 중"
         Phase.MissingSession -> "이전 세션 없음"
-        else -> currentSession?.let { "${it.name} (${it.id})" } ?: "선택 안 함"
+        else -> currentSession?.let { displayTreeText(it.name) } ?: "선택 안 함"
     }
+    val statusDetail = if (status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) || status.canStopRetrying) displayTreeText(status.message) else ""
+    val statusLabel = listOf(displayTreeText(client.host.alias), status.phase.displayLabel(), remote.targetLabel(session, pane), statusDetail).filter { it.isNotEmpty() }.joinToString(" · ")
+    val agentNotices by model.agentNotifications.collectAsState()
+    val hierarchy = remote.hierarchyRows(preferences.showAllHierarchy)
     val navigationContent: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier.heightIn(max = if (mobileLayout) 480.dp else 280.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -240,28 +252,9 @@ expect fun copyPublicKey(value: String)
             }
             if (status.phase == Phase.Shell) Text("일반 SSH · tmux 목록 확인 불가", Modifier.padding(16.dp))
             else if (remote.sessions.isEmpty()) Text(if (canBrowse) "세션 없음 · + 버튼으로 생성" else "목록 대기 중", Modifier.padding(16.dp))
-            remote.sessions.forEach { s ->
-                TreeRow(remote.sessionLabel(s), 0, session == s.id, expanded[s.id] == true, { expanded[s.id] = expanded[s.id] != true },
-                    { client.selectTarget(s.id) }, canBrowse, listOf(
-                        "+ 창" to { namePrompt = "창 만들기" to { client.manage(TmuxCommand.newWindow(s.id, it)) } },
-                        "이름 변경" to { namePrompt = "세션 이름 변경" to { client.manage(TmuxCommand.renameSession(s.id, it)) } },
-                        "삭제…" to { deletion = "세션 ${s.name}" to { client.manage(TmuxCommand.killSession(s.id)) } },
-                    ))
-                if (expanded[s.id] == true) remote.windows.filter { it.session == s.id }.forEach { w ->
-                    val key = "${s.id}/${w.id}"
-                    TreeRow(remote.windowLabel(w), 1, session == s.id && currentWindow?.id == w.id, expanded[key] == true, { expanded[key] = expanded[key] != true },
-                        { client.selectTarget(s.id, w.id) }, canBrowse, listOf(
-                            "이름 변경" to { namePrompt = "창 이름 변경" to { client.manage(TmuxCommand.renameWindow(w.id, it)) } },
-                            "삭제…" to { deletion = "창 ${w.name}" to { client.manage(TmuxCommand.killWindow(w.id)) } },
-                        ))
-                    if (expanded[key] == true) remote.panes.filter { it.window == w.id }.forEach { p ->
-                        TreeRow(p.treeLabel(), 2, session == s.id && pane == p.id, null, {},
-                            { client.selectTarget(s.id, w.id, p.id) }, canBrowse, listOf(
-                                "삭제…" to { deletion = "패널 ${p.id}" to { client.manage(TmuxCommand.killPane(p.id)) } },
-                            ))
-                        Row(Modifier.padding(start = 66.dp)) { AgentBadge(client, p.id, onDetails = showAgents) }
-                    }
-                }
+            hierarchy.forEach { row ->
+                key(row.key) { HierarchyEntry(row, 0, client, remote, session, pane, expanded, canBrowse, agentNotices, showAgents,
+                    { title, action -> namePrompt = title to action }, { title, action -> deletion = title to action }) }
             }
         }
     }
@@ -271,14 +264,9 @@ expect fun copyPublicKey(value: String)
                 Text("현재 세션: $sessionLabel", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 TextButton({ navigation = !navigation }, contentPadding = PaddingValues(0.dp)) { Text("tmux 관리", maxLines = 1) }
             }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(status.message, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
-                }
-                if (!status.canRetryNow && status.phase in setOf(Phase.Disconnected, Phase.Failed, Phase.MissingSession))
-                    TextButton({ client.connect() }, contentPadding = PaddingValues(0.dp)) { Text("재연결") }
-                else TextButton({ client.disconnect() }, contentPadding = PaddingValues(0.dp)) { Text("연결 종료") }
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(statusLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
             }
             PaneToolbarToggle(preferences.mobilePaneToolbarVisible) {
                 model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
@@ -286,16 +274,14 @@ expect fun copyPublicKey(value: String)
         } else {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Text(status.message, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f, fill = false),
+                    Text(statusLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f, fill = false),
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
                 }
-                if (!status.canRetryNow && (status.phase == Phase.Disconnected || status.phase == Phase.Failed || status.phase == Phase.MissingSession)) TextButton({ client.connect() }) { Text("재연결") }
-                else TextButton({ client.disconnect() }) { Text("연결 종료") }
             }
         }
         if (mobileLayout && preferences.mobilePaneToolbarVisible) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
-            deletion = "패널 $target" to { client.manage(TmuxCommand.killPane(target)) }
+            deletion = "패널 ${remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: "제목 미확인"}" to { client.manage(TmuxCommand.killPane(target)) }
         }
         if (status.canRetryNow || status.canStopRetrying) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
@@ -314,7 +300,7 @@ expect fun copyPublicKey(value: String)
         if (navigation && !mobileLayout) navigationContent(Modifier)
         if (currentPane?.mode?.isNotBlank() == true) Text("tmux ${currentPane.mode} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
         if (!mobileLayout) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
-            deletion = "패널 $target" to { client.manage(TmuxCommand.killPane(target)) }
+            deletion = "패널 ${remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: "제목 미확인"}" to { client.manage(TmuxCommand.killPane(target)) }
         }
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
             CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
@@ -327,10 +313,14 @@ expect fun copyPublicKey(value: String)
         DisposableEffect(composer) { onDispose { if (model.selected.value === client && inputAllowed()) terminalFocus.request() } }
         TextInputDialog(composer, terminalFocus, { model.selected.value === client && inputAllowed() }, status.acceptsInput)
     }
-    if (mobileLayout && navigation) ModalBottomSheet(onDismissRequest = { navigation = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Text("tmux 세션 · 창 · 패널", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
-        navigationContent(Modifier.weight(1f, fill = false))
-        TextButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text("터미널로 돌아가기") }
+    if (mobileLayout && navigation) ModalBottomSheet(onDismissRequest = { navigation = false }, sheetState = navigationSheet) {
+        // A weighted child needs a finite height before the sheet computes its anchors.
+        // Keep the return action visible when the keyboard or landscape reduces the space.
+        Column(Modifier.fillMaxWidth().heightIn(max = 600.dp)) {
+            Text("tmux 세션 · 창", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
+            navigationContent(Modifier.weight(1f, fill = false))
+            TextButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text("터미널로 돌아가기") }
+        }
     }
     trust?.let { request ->
         AlertDialog(onDismissRequest = { client.trustRequest.value = null; client.disconnect() }, title = { Text("처음 연결하는 서버") },
@@ -345,10 +335,49 @@ expect fun copyPublicKey(value: String)
     notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { TextButton({ client.notice.value = null }) { Text("닫기") } }) }
 }
 
+@Composable private fun HostConnectionMenu(client: ClientConnection, model: AppModel) {
+    val status by client.status.collectAsState()
+    val hostId = client.host.id
+    val actions = buildList<Pair<String, () -> Unit>> {
+        if (!status.canRetryNow) add("재접속" to { model.reconnectSelected(client, hostId) })
+        add("연결 종료" to { model.disconnectSelected(client, hostId) })
+    }
+    TreeMenu("현재 호스트 ${client.host.alias} 연결 메뉴", actions)
+}
+
+@Composable private fun HierarchyEntry(row: HierarchyRow, depth: Int, client: ClientConnection, remote: RemoteState,
+    session: String?, pane: String?, expanded: MutableMap<String, Boolean>, enabled: Boolean, notices: List<AgentNotice>,
+    showAgents: (String) -> Unit, prompt: (String, (String) -> Unit) -> Unit, delete: (String, () -> Unit) -> Unit) {
+    val actions = buildList<Pair<String, () -> Unit>> {
+        if (row.kind == TreeKind.Session) {
+            add("창 만들기" to { prompt("창 만들기") { client.manage(TmuxCommand.newWindow(row.session, it)) } })
+            add("세션 이름 변경" to { prompt("세션 이름 변경") { client.manage(TmuxCommand.renameSession(row.session, it)) } })
+            add("세션 삭제…" to { delete("세션 ${row.label.title}") { client.manage(TmuxCommand.killSession(row.session)) } })
+        }
+        if (row.kind != TreeKind.Pane) row.window?.let { w ->
+            add("창 이름 변경" to { prompt("창 이름 변경") { client.manage(TmuxCommand.renameWindow(w, it)) } })
+            add("창 삭제…" to { delete("창") { client.manage(TmuxCommand.killWindow(w)) } })
+        }
+        remote.panes.firstOrNull { it.window == row.window && it.active }?.id?.let { p ->
+            listOf(true to "패널 좌우 나누기", false to "패널 상하 나누기").forEach { (horizontal, label) ->
+                add(label to { client.selectTarget(row.session, row.window, p); client.manage(TmuxCommand.split(p, horizontal)) })
+            }
+            add("패널 제목 변경" to { prompt("패널 제목 변경") { client.manage(TmuxCommand.renamePane(p, it)) } })
+            add("패널 삭제…" to { delete("패널 ${row.label.title}") { client.manage(TmuxCommand.killPane(p)) } })
+        }
+    }
+    TreeRow(row.label, depth, row.selected(remote, session, pane), if (row.children.isEmpty()) null else expanded[row.key] == true,
+        { expanded[row.key] = expanded[row.key] != true }, { client.selectTarget(row.session, row.window, row.pane) }, enabled, actions,
+        status = { row.window?.let { p -> AgentBadge(client, p, notices, compact = true) { showAgents(p) } } })
+    if (expanded[row.key] == true) row.children.forEach { child ->
+        key(child.key) { HierarchyEntry(child, depth + 1, client, remote, session, pane, expanded, enabled, notices, showAgents, prompt, delete) }
+    }
+}
+
 @Composable private fun TreeMenu(label: String, actions: List<Pair<String, () -> Unit>>, enabled: Boolean = true) {
     var menu by remember { mutableStateOf(false) }
-    Box {
-        IconButton({ menu = true }, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { Text("…") }
+    Box(Modifier.size(48.dp)) {
+        IconButton({ menu = true }, enabled = enabled, modifier = Modifier.size(48.dp).semantics { contentDescription = label }) { Text("…") }
         DropdownMenu(menu, { menu = false }) {
             actions.forEach { (text, action) -> DropdownMenuItem(text = { Text(text) }, onClick = { menu = false; action() }) }
         }
@@ -356,32 +385,40 @@ expect fun copyPublicKey(value: String)
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun TreeRow(label: TreeLabel, depth: Int, active: Boolean, expanded: Boolean?, toggle: () -> Unit,
-    select: () -> Unit, enabled: Boolean, actions: List<Pair<String, () -> Unit>>) {
+    select: () -> Unit, enabled: Boolean, actions: List<Pair<String, () -> Unit>>, status: @Composable () -> Unit = {}) {
+    val guideColor = MaterialTheme.colorScheme.outlineVariant
     val background = when {
         active -> MaterialTheme.colorScheme.secondaryContainer
         depth == 0 -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
             .compositeOver(MaterialTheme.colorScheme.surfaceContainer)
         else -> Color.Transparent
     }
-    Row(Modifier.fillMaxWidth().background(background)
-        .padding(start = (depth * 18).dp).semantics { selected = active }, verticalAlignment = Alignment.CenterVertically) {
-        if (expanded != null) IconButton(toggle, modifier = Modifier.semantics { contentDescription = "${label.fullText} ${if (expanded) "접기" else "펼치기"}" }) { Text(if (expanded) "▾" else "▸") }
+    Row(Modifier.fillMaxWidth().background(background).drawBehind {
+        repeat(depth) { level ->
+            val x = (level * 20 + 24).dp.toPx()
+            drawLine(guideColor, androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height), 1.dp.toPx())
+        }
+    }.padding(start = (depth * 20).dp).semantics { selected = active }, verticalAlignment = Alignment.CenterVertically) {
+        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = "${label.fullText} ${if (expanded) "접기" else "펼치기"}" }) { Text(if (expanded) "▾" else "▸") }
         else Spacer(Modifier.width(48.dp))
-        TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-            tooltip = { PlainTooltip { Text(label.fullText) } }, state = rememberTooltipState(), modifier = Modifier.weight(1f)) {
-            TextButton(select, enabled = enabled, shape = RectangleShape, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                .semantics { contentDescription = label.fullText }) {
-                Column(Modifier.fillMaxWidth().clearAndSetSemantics {}) {
-                    Text(label.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        fontSize = if (depth < 2) 16.sp else 14.sp,
-                        lineHeight = if (depth < 2) 22.sp else 19.sp,
-                        fontWeight = if (depth < 2) FontWeight.Bold else FontWeight.Medium)
-                    Text(label.detail, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        fontSize = 12.sp, lineHeight = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(Modifier.weight(1f)) {
+            TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+                tooltip = { PlainTooltip { Text(label.fullText) } }, state = rememberTooltipState(), modifier = Modifier.fillMaxWidth()) {
+                TextButton(select, enabled = enabled, shape = RectangleShape, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .semantics { contentDescription = label.fullText }) {
+                    Column(Modifier.fillMaxWidth().clearAndSetSemantics {}) {
+                        Text(label.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            fontSize = if (depth < 2) 16.sp else 14.sp,
+                            lineHeight = if (depth < 2) 22.sp else 19.sp,
+                            fontWeight = if (depth < 2) FontWeight.Bold else FontWeight.Medium)
+                        Text(label.detail, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            fontSize = 12.sp, lineHeight = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
         TreeMenu("${label.fullText} 메뉴", actions, enabled)
+        status()
     }
 }
 
@@ -469,6 +506,12 @@ expect fun copyPublicKey(value: String)
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("테마", style = MaterialTheme.typography.titleSmall)
             Row { listOf("system" to "시스템", "light" to "밝게", "dark" to "어둡게").forEach { (value, label) -> FilterChip(local.preferences.theme == value, { model.update(local.copy(preferences = local.preferences.copy(theme = value))) }, label = { Text(label) }) } }
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(local.preferences.showAllHierarchy, role = Role.Switch, onValueChange = { enabled ->
+                model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) }
+            }), verticalAlignment = Alignment.CenterVertically) {
+                Switch(local.preferences.showAllHierarchy, null)
+                Text("단일 창도 표시", Modifier.padding(start = 8.dp))
+            }
             Text("터미널 글자 크기: ${local.preferences.fontSize}")
             Row {
                 TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize - 1).coerceAtLeast(10)))) }) { Text("작게") }

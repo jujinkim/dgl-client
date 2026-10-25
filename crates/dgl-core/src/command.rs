@@ -23,27 +23,86 @@ fn name(s: &str) -> Result<String> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum Operation {
-    NewSession { name: String },
-    RenameSession { target: String, name: String },
-    KillSession { target: String },
-    SwitchSession { target: String },
-    NewWindow { target: String, name: String },
-    RenameWindow { target: String, name: String },
-    SelectWindow { target: String },
-    KillWindow { target: String },
-    SelectPane { target: String },
-    KillPane { target: String },
-    Split { target: String, horizontal: bool },
-    ResizePane { target: String, direction: char },
-    FocusPane { target: String, direction: char },
-    ClientSize { columns: u16, rows: u16 },
-    Send { target: String, bytes: Vec<u8> },
-    Capture { target: String },
-    CaptureMain { target: String },
-    Pending { target: String },
-    Pause { target: String },
-    Resume { target: String },
-    Modes { target: String },
+    NewSession {
+        name: String,
+    },
+    RenameSession {
+        target: String,
+        name: String,
+    },
+    KillSession {
+        target: String,
+    },
+    SwitchSession {
+        target: String,
+    },
+    NewWindow {
+        target: String,
+        name: String,
+    },
+    RenameWindow {
+        target: String,
+        name: String,
+    },
+    SelectWindow {
+        target: String,
+    },
+    KillWindow {
+        target: String,
+    },
+    SelectPane {
+        target: String,
+    },
+    KillPane {
+        target: String,
+    },
+    RenamePane {
+        target: String,
+        name: String,
+    },
+    Split {
+        target: String,
+        horizontal: bool,
+    },
+    ResizePane {
+        target: String,
+        direction: char,
+    },
+    ResizePaneTo {
+        target: String,
+        columns: u16,
+        rows: u16,
+    },
+    FocusPane {
+        target: String,
+        direction: char,
+    },
+    ClientSize {
+        columns: u16,
+        rows: u16,
+    },
+    Send {
+        target: String,
+        bytes: Vec<u8>,
+    },
+    Capture {
+        target: String,
+    },
+    CaptureMain {
+        target: String,
+    },
+    Pending {
+        target: String,
+    },
+    Pause {
+        target: String,
+    },
+    Resume {
+        target: String,
+    },
+    Modes {
+        target: String,
+    },
     Sessions,
     Windows,
     Panes,
@@ -68,10 +127,12 @@ impl Command {
             SelectWindow{target:t}=>format!("select-window -t {}",target(t,'@')?),
             KillWindow{target:t}=>format!("kill-window -t {}",target(t,'@')?),
             SelectPane{target:t}=>format!("select-pane -t {}",target(t,'%')?),
+            RenamePane{target:t,name:n}=>format!("select-pane -t {} -T {}",target(t,'%')?,name(n)?),
             KillPane{target:t}=>format!("kill-pane -t {}",target(t,'%')?),
             Split{target:t,horizontal}=>format!("split-window -{} -t {}",if *horizontal{'h'}else{'v'},target(t,'%')?),
             FocusPane{target:t,direction}=>{if !"LRUD".contains(*direction){return Err(Error::InvalidArgument)}format!("select-pane -t {} -{}",target(t,'%')?,direction)},
             ResizePane{target:t,direction}=>{if !"LRUD".contains(*direction){return Err(Error::InvalidArgument)}format!("resize-pane -t {} -{} 3",target(t,'%')?,direction)},
+            ResizePaneTo{target:t,columns,rows}=>{if *columns == 0 || *rows == 0 {return Err(Error::InvalidArgument)}format!("resize-pane -t {} -x {columns} -y {rows}",target(t,'%')?)},
             ClientSize{columns,rows}=>{Size::new(*columns,*rows)?;format!("refresh-client -C {columns},{rows}")},
             Send{target:t,bytes}=>{if bytes.is_empty()||bytes.len()>256{return Err(Error::InvalidArgument)}format!("send-keys -H -t {} {}",target(t,'%')?,bytes.iter().map(|b|format!("{b:02x}")).collect::<Vec<_>>().join(" "))},
             Capture{target:t}=>format!("capture-pane -p -e -C -N -t {}",target(t,'%')?),
@@ -80,8 +141,8 @@ impl Command {
             Pause{target:t}|Resume{target:t}=>{target(t,'%')?;format!("refresh-client -A {}",quote(&format!("{}:{}",t,if matches!(op,Pause{..}){"pause"}else{"continue"}))?)},
             Modes{target:t}=>format!("display-message -p -t {} '#{{cursor_x}}|#{{cursor_y}}|#{{alternate_on}}|#{{cursor_flag}}|#{{keypad_cursor_flag}}|#{{keypad_flag}}|#{{mouse_any_flag}}|#{{mouse_button_flag}}|#{{mouse_standard_flag}}|#{{mouse_utf8_flag}}|#{{mouse_sgr_flag}}|#{{bracketed_paste}}|#{{scroll_region_upper}}|#{{scroll_region_lower}}|#{{insert_flag}}|#{{pane_width}}|#{{pane_height}}'",target(t,'%')?),
             Sessions=>"list-sessions -F '#{session_id}|#{q:session_name}|#{session_attached}'".into(),
-            Windows=>"list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}'".into(),
-            Panes=>"list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}'".into(),
+            Windows=>"list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}|#{window_width}|#{window_height}|#{window_zoomed_flag}|#{window_visible_layout}'".into(),
+            Panes=>"list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}|#{pane_left}|#{pane_top}'".into(),
             MetadataSubscription=>"refresh-client -B 'dgl-metadata::#{S:#{session_id}|#{q:session_name}|#{W:#{window_id}|#{window_index}|#{q:window_name}|#{window_active}|#{P:#{pane_id}|#{pane_active}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title};}}}'".into(),
             FlowControl=>"refresh-client -f 'pause-after=2'".into(),
         };

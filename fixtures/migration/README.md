@@ -32,4 +32,6 @@ Run: `./gradlew :app:desktopTest` then the exact test inventory verifier. Changi
 fixture requires explaining the compatibility change and advancing the contract
 version for incompatible changes. Never update expectations merely to pass a port.
 
-`hierarchy-v1.json` shares full tree-label expectations between GPUI/Rust and Kotlin, including native JSON fields, active-pane titles, fallback names, counts, copy mode and control-character cleanup.
+`hierarchy-v1.json` preserves long-title/native JSON input for UI regression checks; its historical label expectations describe the old active-pane window headings.
+`hierarchy-v2.json` fixes the current compact/all projection expectations shared by Rust and Kotlin: single/multiple branches, empty titles, duplicate names, stable target IDs, visible depths, and child/arrow presence. Window headings now use actual window names; pane fallbacks omit IDs.
+The additive local `showAllHierarchy` preference defaults to false in the v1 settings contract. It does not extend cloud sync or change existing target IDs/wire envelopes.

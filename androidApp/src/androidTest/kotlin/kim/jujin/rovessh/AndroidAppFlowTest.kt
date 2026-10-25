@@ -49,7 +49,7 @@ class AndroidAppFlowTest {
                     previous = app.local.value
                     app.credentials.write(profile.id, credential)
                     app.update(previous.copy(hosts = previous.hosts + profile, trust = previous.trust + (profile.endpoint to fixture.getString("fingerprint"))))
-                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(volumeKeysEnabled = true, smoothTerminalTransitions = false, mobilePaneToolbarVisible = true,
+                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(volumeKeysEnabled = true, smoothTerminalTransitions = false, mobilePaneToolbarVisible = true, showAllHierarchy = true,
                         volumeUp = VolumeBinding(VolumeAction.Macro, listOf(
                             MacroStep.Text("dgl_volume_count=\$((\${dgl_volume_count:-0}+1)); tmux set-option -p -t \"\$TMUX_PANE\" @dgl-volume-count \"\$dgl_volume_count\""),
                             MacroStep.Key(TerminalKey.Enter))))))
@@ -78,7 +78,7 @@ class AndroidAppFlowTest {
                     throw AssertionError("Toolbar timeout: activePackage=${root?.packageName}; children=${root?.childCount}; phase=${connection.status.value.phase}")
                 }
                 stage = "keyboard visibility"
-                val sessionLabel = "현재 세션: $name ($session)"
+                val sessionLabel = "현재 세션: $name"
                 assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, sessionLabel))
 
                 assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, sessionLabel))
@@ -128,7 +128,7 @@ class AndroidAppFlowTest {
                     scenario.onActivity { activity ->
                         val web = findWebView(activity.window.decorView)
                         diagnostic = "nativeFocus=${web?.hasFocus()}, size=${web?.width}x${web?.height}, status=${connection.status.value.phase}"
-                        web?.evaluateJavascript("JSON.stringify({active:document.activeElement.tagName,viewport:[innerWidth,innerHeight],terminalHeight:document.querySelector('#terminal').clientHeight})") { diagnostic += it; latch.countDown() }
+                        web?.evaluateJavascript("JSON.stringify({active:document.activeElement.tagName,viewport:[innerWidth,innerHeight],terminalHeight:document.querySelector('#terminal').clientHeight,panes:[...document.querySelectorAll('.pane')].map(p=>({display:p.style.display,bounds:p.getBoundingClientRect().toJSON()}))})") { diagnostic += it; latch.countDown() }
                     }
                     latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
                     instrumentation.uiAutomation.takeScreenshot()?.let { bitmap -> File(instrumentation.targetContext.cacheDir, "ui-failure.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
@@ -178,21 +178,26 @@ class AndroidAppFlowTest {
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 assertNotNull(connection.sendInput(targetBeforeKeyboard, "must-not-send".encodeToByteArray()).error)
+                admin.execute("tmux " + TmuxCommand.renamePane(splitPane.id, "UI 분할 패널").wire)
+                withTimeout(10000) { connection.remote.first { it.panes.any { p -> p.id == splitPane.id && p.title == "UI 분할 패널" } } }
                 stage = "GUI tree expansion"
                 // Expansion must not change the selected target; selecting a row is separate.
                 val beforeExpand = connection.pane.value
                 clickText("tmux 관리")
+                stage = "session expand"
                 clickMatching { it.contentDescription?.toString()?.let { text -> text.startsWith("$name\n") && text.endsWith(" 펼치기") } == true }
                 val window = connection.remote.value.windows.first { it.id == splitPane.window && it.session == session }
-                clickMatching { it.contentDescription?.toString()?.let { text -> text.contains("$name · ${window.index}: ") && text.endsWith(" 펼치기") } == true }
                 assertEquals(beforeExpand, connection.pane.value)
-                clickMatching { it.contentDescription?.toString()?.let { text -> text.contains("\n${splitPane.id} · ") && !text.endsWith(" 메뉴") } == true }
+                stage = "window selection"
+                clickMatching { it.contentDescription?.toString() == connection.remote.value.windowLabel(window).fullText }
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 clickText("터미널로 돌아가기")
+                stage = "focus left"
                 clickText("포커스 ←")
                 withTimeout(10000) { connection.pane.first { it == pane } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                stage = "focus right"
                 clickText("포커스 →")
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
@@ -215,8 +220,9 @@ class AndroidAppFlowTest {
                 runVolumeMacro(scenario, admin, splitPane.id)
                 assertEquals("1", admin.execute("tmux show-options -pv -t '$pane' @dgl-volume-count").decodeToString().trim())
                 clickText("tmux 관리")
+                stage = "session expand"
                 clickMatching { it.contentDescription?.toString()?.let { text -> text.startsWith("$name\n") && text.endsWith(" 메뉴") } == true }
-                clickText("+ 창")
+                clickText("창 만들기")
                 stage = "GUI name editor"
                 // Wait for the dialog window; the terminal itself also exposes an
                 // editable textarea and must not receive the test's name input.
@@ -254,6 +260,11 @@ class AndroidAppFlowTest {
                         delay(50)
                     }
                 }
+                stage = "terminal screenshots"
+                // New windows now become the shared current window. Seed its own screen;
+                // the old test implicitly photographed the previously selected pane's text.
+                admin.execute("tmux " + TmuxCommand.send(connection.pane.value!!,
+                    "printf 'WINDOW_CAPTURE_1\\nWINDOW_CAPTURE_2\\nWINDOW_CAPTURE_3\\nWINDOW_CAPTURE_4\\n'\r".encodeToByteArray()).wire)
                 run {
                     for (theme in listOf("light", "dark")) {
                         scenario.onActivity { app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(theme = theme))) }
@@ -307,7 +318,7 @@ class AndroidAppFlowTest {
                         bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
                     }
                 }
-                throw AssertionError("Android UI timeout: $stage; activePackage=${root?.packageName}; phase=${connection.status.value.phase}")
+                throw AssertionError("Android UI timeout: $stage; activePackage=${root?.packageName}; phase=${connection.status.value.phase}; all=${app.local.value.preferences.showAllHierarchy}; notice=${connection.notice.value}; ui=${dumpUi(root)}; windows=${connection.remote.value.windows}; panes=${connection.remote.value.panes}")
               }
             }
         } catch (e: TimeoutCancellationException) {
@@ -400,6 +411,11 @@ class AndroidAppFlowTest {
         if (view is ViewGroup) for (i in 0 until view.childCount) findWebView(view.getChildAt(i))?.let { return it }
         return null
     }
+    private fun dumpUi(node: android.view.accessibility.AccessibilityNodeInfo?): String {
+        if (node == null) return ""
+        return listOfNotNull(node.text, node.contentDescription).joinToString("|") +
+            (0 until node.childCount).joinToString(prefix = "[", postfix = "]") { dumpUi(node.getChild(it)) }
+    }
     private fun findText(node: android.view.accessibility.AccessibilityNodeInfo?, value: String): android.view.accessibility.AccessibilityNodeInfo? {
         return findNode(node) { it.text?.toString() == value || it.contentDescription?.toString() == value }
     }
@@ -414,6 +430,7 @@ class AndroidAppFlowTest {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         withTimeout(5000) {
             while (true) {
+                automation.clearCache()
                 var node = findNode(automation.rootInActiveWindow, predicate)
                 while (node != null && !node.isClickable) node = node.parent
                 if (node?.isEnabled == true && node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) break

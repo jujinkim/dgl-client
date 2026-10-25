@@ -31,7 +31,12 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         agentScope.launch {
             while (isActive) {
                 val visible = visibleConnection?.takeIf { foreground && it.status.value.phase == Phase.Ready }
-                val keys = visible?.pane?.value?.let { setOf("${visible.agentEndpoint}:${visible.agents.value.server}:$it") } ?: emptySet()
+                val keys = visible?.let { client ->
+                    val remote = client.remote.value
+                    val window = remote.windows.firstOrNull { it.id == (client.status.value.window ?: remote.panes.firstOrNull { p -> p.id == client.pane.value }?.window) }
+                    remote.panes.filter { it.window == window?.id && (!window.zoomed || it.active) }
+                        .map { "${client.agentEndpoint}:${client.agents.value.server}:${it.id}" }.toSet()
+                } ?: emptySet()
                 val result = synchronized(agentInbox) {
                     if (!isActive) return@launch
                     agentInbox.tick(connections.value.map { it.agentEndpoint to if (it.status.value.phase in setOf(Phase.Ready, Phase.Restoring, Phase.Selecting)) it.agents.value else AgentSnapshot() }, keys, local.value.preferences.agentNotifications)
@@ -72,6 +77,14 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     fun open(host: HostProfile) {
         val connection = connectionFactory(host, credentials, local, ::modify)
         connections.value += connection; selected.value = connection; connection.connect()
+    }
+    private fun isSelectedHost(client: ClientConnection, hostId: String) =
+        selected.value === client && connections.value.any { it === client } && client.host.id == hostId
+    fun reconnectSelected(client: ClientConnection, hostId: String) {
+        if (isSelectedHost(client, hostId) && !client.status.value.canRetryNow) client.connect()
+    }
+    fun disconnectSelected(client: ClientConnection, hostId: String) {
+        if (isSelectedHost(client, hostId)) client.disconnect()
     }
     fun removeConnection(connection: ClientConnection) {
         composers.remove(connection)?.close()

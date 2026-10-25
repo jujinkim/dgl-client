@@ -166,11 +166,11 @@ class MigrationContractTest {
                     } }
                     "windows" -> RemoteStateDecoder.windows(rows).map { buildJsonObject {
                         put("id", it.id); put("session", it.session); put("name", it.name)
-                        put("active", it.active); put("layout", it.layout); put("index", it.index)
+                        put("active", it.active); put("layout", it.layout); put("index", it.index); put("width", it.width); put("height", it.height); put("zoomed", it.zoomed); put("visible_layout", it.visibleLayout)
                     } }
                     "panes" -> RemoteStateDecoder.panes(rows).map { buildJsonObject {
                         put("id", it.id); put("window", it.window); put("width", it.width); put("height", it.height)
-                        put("active", it.active); put("mode", it.mode); put("command", it.command); put("title", it.title)
+                        put("active", it.active); put("mode", it.mode); put("command", it.command); put("title", it.title); put("left", it.left); put("top", it.top)
                     } }
                     else -> error("Unknown state fixture")
                 })

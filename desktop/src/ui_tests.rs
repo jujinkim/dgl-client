@@ -63,6 +63,7 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
     state.session = Some("$1".into());
     state.pane = Some("%2".into());
     desktop.update(ui, |s, _| {
+        s.local.preferences.show_all_hierarchy = true;
         s.expanded
             .extend(["1/$1".into(), "1/$1/@1".into(), "1/$1/@2".into()]);
     });
@@ -75,17 +76,13 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
     for dark in [false, true] {
         desktop.update(ui, |s, _| s.palette = super::theme::Palette::new(dark));
         redraw(ui);
-        for width in [240., 360.] {
+        for width in [240., 272., 360.] {
             preview.update(ui, |p, cx| {
                 p.width = width;
                 cx.notify();
             });
             redraw(ui);
-            for (id, max_height) in [
-                ("window-$1-@2-title", 44.),
-                ("pane-$1-@2-%3-title", 38.),
-                ("window-$1-@2-detail", 17.),
-            ] {
+            for (id, max_height) in [("window-$1-@2-title", 44.), ("window-$1-@2-detail", 17.)] {
                 let bounds = ui.debug_bounds(id).unwrap();
                 assert!(
                     bounds.size.height > px(0.) && bounds.size.height <= px(max_height + 1.),
@@ -93,6 +90,19 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
                 );
                 assert!(bounds.right() <= px(width), "{id} overflows: {bounds:?}");
             }
+            let session_x = ui.debug_bounds("session-$1").unwrap().left();
+            let window_x = ui.debug_bounds("window-$1-@1").unwrap().left();
+            assert_eq!(window_x - session_x, px(20.));
+            assert!(ui.debug_bounds("pane-$1-@1-%1").is_none());
+            let pane = ui.debug_bounds("window-$1-@2").unwrap();
+            let pane_menu = ui.debug_bounds("1/$1/@2/menu").unwrap();
+            let badge_id = preview.read_with(ui, |p, _| format!("agent-{}-@2", p.state.handle));
+            let badge = ui
+                .debug_bounds(Box::leak(badge_id.into_boxed_str()))
+                .unwrap();
+            assert!(pane.right() <= pane_menu.left());
+            assert!(pane_menu.right() <= badge.left());
+            assert!(badge.right() <= px(width));
             let title = ui.debug_bounds("window-$1-@2").unwrap();
             let menu = ui.debug_bounds("1/$1/@2/menu").unwrap();
             assert!(title.right() <= menu.left(), "title overlaps menu");
@@ -115,9 +125,7 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
         expanded,
         "title selects without toggling"
     );
-    let toggle = ui.debug_bounds("expand-1/$1/@1").unwrap();
-    ui.simulate_click(toggle.center(), Modifiers::default());
-    assert!(!desktop.read_with(ui, |s, _| s.expanded.contains("1/$1/@1")));
+    assert!(ui.debug_bounds("expand-1/$1/@1").is_none());
     redraw(ui);
     let menu = ui.debug_bounds("1/$1/@1/menu").unwrap();
     ui.simulate_click(menu.center(), Modifiers::default());
@@ -127,7 +135,199 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
         Some("1/$1/@1/menu".into())
     );
     assert!(ui.debug_bounds("rename-@1").is_some());
-    assert!(terminal.read_with(ui, |t, _| t.sent.is_empty()));
+    assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
+}
+
+#[gpui::test]
+fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppContext) {
+    let (desktop, ui) = setup(cx);
+    let terminal = add_terminal(&desktop, ui);
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v2.json")).unwrap();
+    let mut state = desktop.read_with(ui, |s, _| s.tabs[0].connection.state());
+    state.remote = serde_json::from_value(fixture[0]["remote"].clone()).unwrap();
+    state.phase = dgl_core::connection::Phase::Ready;
+    state.session = Some("$1".into());
+    state.pane = Some("%1".into());
+    let handle = state.handle;
+    let owner = desktop.clone();
+    let (preview, ui) = cx.add_window_view(|_, _| HierarchyPreview {
+        desktop: owner,
+        state,
+        width: 240.,
+    });
+    let focus = ui.update(|_, cx| cx.focus_handle());
+    ui.update(|w, _| w.focus(&focus));
+    redraw(ui);
+    let row = ui.debug_bounds("session-$1").unwrap();
+    let menu = ui.debug_bounds("1/$1/menu").unwrap();
+    let badge = ui
+        .debug_bounds(Box::leak(format!("agent-{handle}-@1").into_boxed_str()))
+        .unwrap();
+    assert!(
+        row.right() <= menu.left() && menu.right() <= badge.left() && badge.right() <= px(240.)
+    );
+    ui.simulate_click(menu.center(), Modifiers::default());
+    redraw(ui);
+    for id in [
+        "new-window-$1",
+        "rename-session-$1",
+        "kill-session-$1",
+        "rename-@1",
+        "kill-@1",
+    ] {
+        assert!(ui.debug_bounds(id).is_some(), "missing merged action {id}");
+    }
+    assert!(ui.update(|w, _| focus.is_focused(w)));
+    ui.simulate_click(badge.center(), Modifiers::default());
+    assert!(desktop.read_with(
+        ui,
+        |s, _| matches!(&s.dialog, Some(super::Dialog::Agents(_, _, Some(pane))) if pane == "@1")
+    ));
+    let before = preview.read_with(ui, |p, _| (p.state.session.clone(), p.state.pane.clone()));
+    desktop.update(ui, |s, _| {
+        s.dialog = None;
+        s.local.preferences.show_all_hierarchy = true;
+        s.expanded.extend(["1/$1".into(), "1/$1/@1".into()]);
+    });
+    redraw(ui);
+    assert!(ui.debug_bounds("window-$1-@1").is_some());
+    assert!(ui.debug_bounds("pane-$1-@1-%1").is_none());
+    desktop.update(ui, |s, _| s.local.preferences.show_all_hierarchy = false);
+    redraw(ui);
+    assert_eq!(
+        before,
+        preview.read_with(ui, |p, _| (p.state.session.clone(), p.state.pane.clone()))
+    );
+    assert!(desktop.read_with(ui, |s, _| s.expanded.contains("1/$1/@1")));
+    assert!(ui.update(|w, _| focus.is_focused(w)));
+    assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
+}
+
+struct AgentPanelPreview {
+    desktop: Entity<Desktop>,
+    connection: Arc<Connection>,
+    state: dgl_core::connection::State,
+}
+impl gpui::Render for AgentPanelPreview {
+    fn render(
+        &mut self,
+        _: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        let state = self.state.clone();
+        let connection = self.connection.clone();
+        self.desktop.update(cx, |s, cx| {
+            s.agent_details_state(connection, "검증".into(), Some("%1"), state, cx)
+        })
+    }
+}
+
+#[gpui::test]
+fn panel_details_keep_all_runs_and_exclude_other_panes(cx: &mut TestAppContext) {
+    use dgl_core::agent::{Agent, AgentEvent, Kind, Observation, Snapshot};
+    let (desktop, ui) = setup(cx);
+    let terminal = add_terminal(&desktop, ui);
+    let connection = desktop.read_with(ui, |s, _| s.tabs[0].connection.clone());
+    let mut state = connection.state();
+    let event = |run: &str, pane: &str, kind| AgentEvent {
+        id: run.into(),
+        seq: 1,
+        server: "server".into(),
+        run: run.into(),
+        actor: "parent".into(),
+        session: "$1".into(),
+        window: "@1".into(),
+        pane: pane.into(),
+        agent: Agent::Claude,
+        kind,
+        event: "Test".into(),
+        at: dgl_core::agent::now_ms(),
+    };
+    state.agents = Snapshot {
+        valid: true,
+        observed_at: dgl_core::agent::now_ms(),
+        observations: [
+            event("one", "%1", Kind::Question),
+            event("two", "%1", Kind::Response),
+            event("other", "%2", Kind::Error),
+        ]
+        .into_iter()
+        .map(|e| Observation {
+            session: e.session.clone(),
+            window: e.window.clone(),
+            pane: e.pane.clone(),
+            run: e.run.clone(),
+            actor: e.actor.clone(),
+            agent: e.agent,
+            last: Some(e),
+            supported: vec![],
+        })
+        .collect(),
+        ..Default::default()
+    };
+    assert!(
+        state
+            .agents
+            .label(Some("%1"), dgl_core::agent::now_ms())
+            .contains("질문")
+    );
+    assert!(
+        state
+            .agents
+            .label(Some("%2"), dgl_core::agent::now_ms())
+            .contains("오류")
+    );
+    assert!(
+        state
+            .agents
+            .label(Some("%3"), dgl_core::agent::now_ms())
+            .contains("미확인")
+    );
+    let owner = desktop.clone();
+    let (_, ui) = cx.add_window_view(|_, _| AgentPanelPreview {
+        desktop: owner,
+        connection,
+        state,
+    });
+    redraw(ui);
+    assert!(ui.debug_bounds("agent-go-one-parent").is_some());
+    assert!(ui.debug_bounds("agent-go-two-parent").is_some());
+    assert!(ui.debug_bounds("agent-go-other-parent").is_none());
+    assert!(ui.debug_bounds("agent-inspect").is_none());
+    assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
+}
+
+#[gpui::test]
+fn host_disconnect_only_closes_the_selected_connection(cx: &mut TestAppContext) {
+    let (desktop, ui) = setup(cx);
+    let first_terminal = add_terminal(&desktop, ui);
+    let second_terminal = add_terminal(&desktop, ui);
+    let (first_id, first_handle, second_id) = desktop.update(ui, |s, _| {
+        s.local.hosts.push(s.tabs[0].host.clone());
+        (
+            s.tabs[0].id,
+            s.tabs[0].connection.state().handle,
+            s.tabs[1].id,
+        )
+    });
+    assert!(!desktop.read_with(ui, |s, _| s.matches_selected_connection(
+        "fixture",
+        first_id,
+        first_handle
+    )));
+    redraw(ui);
+    let menu = ui.debug_bounds("host-menu-fixture").unwrap();
+    ui.simulate_click(menu.center(), Modifiers::default());
+    redraw(ui);
+    let disconnect = ui.debug_bounds("host-disconnect").unwrap();
+    ui.simulate_click(disconnect.center(), Modifiers::default());
+    redraw(ui);
+    assert!(desktop.read_with(ui, |s, _| s.tabs.len() == 1
+        && s.tabs[0].id == first_id
+        && s.workspace.selected() != Some(second_id)));
+    assert!(first_terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
+    assert!(second_terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
 }
 
 #[gpui::test]
@@ -183,7 +383,7 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
             && s.tabs[0].id == tab
             && s.tabs[0].terminal.entity_id() == terminal.entity_id()
     }));
-    assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
     connection.close();
     runtime.block_on(connection.join());
 }
@@ -222,7 +422,7 @@ fn agent_notice_missing_target_is_read_without_reconnect_or_input(cx: &mut TestA
     assert!(view.read_with(cx, |s, _| s.inbox.recent[0].read));
     assert!(view.read_with(cx, |s, _| s.error.as_ref().unwrap().contains("종료")));
     assert_eq!(view.read_with(cx, |s, _| s.tabs.len()), 1);
-    assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
 }
 fn input(view: &Entity<Desktop>, cx: &mut VisualTestContext) -> Entity<TextInput> {
     view.read_with(cx, |s, _| match s.dialog.as_ref().unwrap() {
@@ -324,10 +524,10 @@ fn prompt_ime_enter_and_background_terminal_input(cx: &mut TestAppContext) {
     cx.update(|w, cx| w.focus(&terminal.focus_handle(cx)));
     cx.simulate_keystrokes("tab");
     assert_eq!(
-        terminal.read_with(cx, |t, _| t.sent.clone()),
+        terminal.read_with(cx, |t, cx| t.captured_inputs(cx).clone()),
         vec![vec![b'\t']]
     );
-    terminal.update(cx, |t, _| t.sent.clear());
+    terminal.update(cx, |t, cx| t.clear_captured_inputs(cx));
     view.update(cx, |s, cx| {
         s.prompt("세션 만들기", PromptOp::Session, cx);
         cx.notify();
@@ -341,7 +541,7 @@ fn prompt_ime_enter_and_background_terminal_input(cx: &mut TestAppContext) {
     });
     cx.simulate_keystrokes("enter");
     assert!(view.read_with(cx, |s, _| s.dialog.is_some()));
-    assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
     // Commit IME, then Enter submits through the same handler as the confirm button.
     cx.update(|w, cx| name.update(cx, |i, cx| i.replace_text_in_range(None, "한글", w, cx)));
     // IME selection offsets are relative to the composition, including after a multibyte prefix.
@@ -372,7 +572,7 @@ fn prompt_ime_enter_and_background_terminal_input(cx: &mut TestAppContext) {
         modifiers: Modifiers::default(),
         touch_phase: TouchPhase::Moved,
     });
-    assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
     assert_eq!(
         input(&view, cx).read_with(cx, |i, _| i.content.to_string()),
         "secret"
@@ -381,7 +581,7 @@ fn prompt_ime_enter_and_background_terminal_input(cx: &mut TestAppContext) {
     redraw(cx);
     cx.simulate_keystrokes("tab");
     assert_eq!(
-        terminal.read_with(cx, |t, _| t.sent.clone()),
+        terminal.read_with(cx, |t, cx| t.captured_inputs(cx).clone()),
         vec![vec![b'\t']]
     );
 }
@@ -509,8 +709,8 @@ fn pane_toolbars_stay_above_each_terminal_and_disable_unavailable_actions(cx: &m
         assert!(view.read_with(cx, |s, _| s.dialog.is_none() && s.error.is_none()));
     }
     assert_eq!(view.read_with(cx, |s, _| s.tabs.len()), 2);
-    assert!(first.read_with(cx, |t, _| t.sent.is_empty()));
-    assert!(second.read_with(cx, |t, _| t.sent.is_empty()));
+    assert!(first.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
+    assert!(second.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
 }
 
 #[gpui::test]
@@ -545,16 +745,22 @@ fn shortcut_buttons_are_spaced_and_send_modified_keys_to_selected_terminal(
             cx.simulate_click(bounds.center(), Modifiers::default());
             redraw(cx);
             expected.push(bytes.to_vec());
-            assert_eq!(second.read_with(cx, |t, _| t.sent.clone()), expected);
-            assert!(first.read_with(cx, |t, _| t.sent.is_empty()));
+            assert_eq!(
+                second.read_with(cx, |t, cx| t.captured_inputs(cx).clone()),
+                expected
+            );
+            assert!(first.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
             assert!(cx.update(|w, cx| second.focus_handle(cx).is_focused(w)));
         }
     }
     // On-screen modifiers encode the same events as the physical keyboard.
     cx.simulate_keystrokes("shift-tab shift-left");
     expected.extend([b"\x1b[Z".to_vec(), b"\x1b[1;2D".to_vec()]);
-    assert_eq!(second.read_with(cx, |t, _| t.sent.clone()), expected);
-    assert!(first.read_with(cx, |t, _| t.sent.is_empty()));
+    assert_eq!(
+        second.read_with(cx, |t, cx| t.captured_inputs(cx).clone()),
+        expected
+    );
+    assert!(first.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
 }
 
 #[gpui::test]
@@ -600,7 +806,7 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
     assert_eq!(first.left(), bar.left());
     cx.simulate_click(first.center(), Modifiers::default());
     assert_eq!(
-        terminal.read_with(cx, |t, _| t.sent.clone()),
+        terminal.read_with(cx, |t, cx| t.captured_inputs(cx).clone()),
         vec![b"\x03".to_vec()]
     );
     view.update(cx, |s, cx| {
@@ -620,7 +826,10 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
             TerminalKey::DEFAULT_SHORTCUTS
         );
     });
-    assert_eq!(terminal.read_with(cx, |t, _| t.sent.len()), 1);
+    assert_eq!(
+        terminal.read_with(cx, |t, cx| t.captured_inputs(cx).len()),
+        1
+    );
 }
 
 fn begin_tab_drag(cx: &mut VisualTestContext) {
@@ -684,7 +893,7 @@ fn tab_drag_splits_at_each_edge_and_preview_matches_result(cx: &mut TestAppConte
             assert!(s.dragging_tab.is_none());
         });
         assert!(!cx.update(|_, cx| cx.has_active_drag()));
-        assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+        assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
     }
 }
 
@@ -728,7 +937,7 @@ fn tab_drag_moves_into_occupied_group_and_reorders_in_header(cx: &mut TestAppCon
         view.read_with(cx, |s, _| s.active_tab().unwrap().terminal.entity_id()),
         first.entity_id()
     );
-    assert!(first.read_with(cx, |t, _| t.sent.is_empty()));
+    assert!(first.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
 }
 
 #[gpui::test]
@@ -771,7 +980,7 @@ fn tab_drag_cancel_outside_and_small_groups_do_not_split(cx: &mut TestAppContext
         view.read_with(cx, |s, _| s.workspace.groups[&1].tabs.clone()),
         vec![1, 2]
     );
-    assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
 }
 
 #[gpui::test]
@@ -843,13 +1052,13 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
             );
             cx.simulate_click(normal.center(), Modifiers::default());
             cx.simulate_click(bypass.center(), Modifiers::default());
-            assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+            assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
             assert!(view.read_with(cx, |s, _| s.launcher.opened.is_some()));
         }
         cx.simulate_keystrokes("escape");
         redraw(cx);
         assert!(view.read_with(cx, |s, _| s.launcher.opened.is_none()));
-        assert!(terminal.read_with(cx, |t, _| t.sent.is_empty()));
+        assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
         assert!(cx.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
         cx.simulate_click(trigger.center(), Modifiers::default());
         redraw(cx);

@@ -1,7 +1,17 @@
 html, body { margin: 0; overflow: hidden; background: #11151b; }
 /* AndroidView can load WebView before its first nonzero layout. Percentage
    heights then collapse; anchor the terminal to the actual visual viewport. */
-#terminal { position: fixed; inset: 0; box-sizing: border-box; padding: 4px; }
+#terminal { position: fixed; inset: 0; box-sizing: border-box; padding: 0; overflow: auto; }
+#window { position: relative; min-width: 100%; min-height: 100%; }
+#shell { position: absolute; inset: 0; width: 100vw; height: 100vh; }
+.pane { position: absolute; overflow: hidden; }
+.pane.active { outline: 1px solid #8acdd0; outline-offset: -1px; }
+/* Keep history scrolling without covering the final tmux character column. */
+.pane .xterm-viewport { scrollbar-width: none; }
+.pane .xterm-viewport::-webkit-scrollbar { display: none; }
+.boundary { position: absolute; background: #39434f; touch-action: none; z-index: 5; }
+.boundary.vertical { cursor: col-resize; }
+.boundary.horizontal { cursor: row-resize; }
 .xterm { height: 100%; }
 .terminal-cache {
   position: absolute; inset: 0; z-index: 4; overflow: hidden;
