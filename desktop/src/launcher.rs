@@ -161,7 +161,7 @@ impl Desktop {
         self.dismiss_launcher(window, cx);
     }
     pub fn launcher_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        self.button("cli-launcher", "…", cx, |s, window, cx| {
+        self.input_button("cli-launcher", "…", cx, |s, window, cx| {
             if s.launcher.opened.is_some() {
                 s.dismiss_launcher(window, cx);
             } else {
@@ -174,8 +174,6 @@ impl Desktop {
         .w(px(44.))
         .h(px(32.))
         .rounded_md()
-        .border_color(rgb(self.palette.line))
-        .bg(rgb(self.palette.bg))
         .flex()
         .items_center()
         .justify_center()

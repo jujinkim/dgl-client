@@ -9,6 +9,8 @@ use gpui::{
     point, prelude::*, px, relative, rgb, rgba, size,
 };
 use unicode_segmentation::*;
+mod multiline;
+use multiline::{Multiline, MultilineElement};
 
 actions!(
     text_input,
@@ -27,10 +29,17 @@ actions!(
         Cut,
         Copy,
         Quit,
+        Newline,
+        Up,
+        Down,
+        SelectUp,
+        SelectDown,
     ]
 );
 
 pub struct TextInput {
+    multiline: Option<Multiline>,
+    pub read_only: bool,
     secret: bool,
     secret_visible: bool,
     pub palette: crate::theme::Palette,
@@ -48,6 +57,8 @@ pub struct TextInput {
 impl TextInput {
     pub fn new(value: &str, placeholder: &str, secret: bool, cx: &mut Context<Self>) -> Self {
         Self {
+            multiline: None,
+            read_only: false,
             secret,
             secret_visible: false,
             palette: crate::theme::Palette::new(true),
@@ -63,16 +74,28 @@ impl TextInput {
         }
     }
 
+    pub fn multiline(cx: &mut Context<Self>) -> Self {
+        let mut input = Self::new("", "전송할 텍스트", false, cx);
+        input.multiline = Some(Multiline::default());
+        input
+    }
+
     pub fn set_content(&mut self, value: &str, cx: &mut Context<Self>) {
         self.content = value.to_string().into();
         self.selected_range = value.len()..value.len();
         self.selection_reversed = false;
         self.marked_range = None;
+        self.reveal_cursor();
         cx.notify();
     }
 
     pub fn is_composing(&self) -> bool {
         self.marked_range.is_some()
+    }
+
+    pub fn end_composition(&mut self, cx: &mut Context<Self>) {
+        self.marked_range = None;
+        cx.notify();
     }
 
     pub fn secret_visible(&self) -> bool {
@@ -118,14 +141,32 @@ impl TextInput {
     }
 
     fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(0, cx);
+        let start = if self.multiline.is_some() {
+            self.content[..self.cursor_offset()]
+                .rfind('\n')
+                .map_or(0, |i| i + 1)
+        } else {
+            0
+        };
+        self.move_to(start, cx);
     }
 
     fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(self.content.len(), cx);
+        let cursor = self.cursor_offset();
+        let end = if self.multiline.is_some() {
+            self.content[cursor..]
+                .find('\n')
+                .map_or(self.content.len(), |i| cursor + i)
+        } else {
+            self.content.len()
+        };
+        self.move_to(end, cx);
     }
 
     fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
         if self.selected_range.is_empty() {
             self.select_to(self.previous_boundary(self.cursor_offset()), cx)
         }
@@ -133,6 +174,9 @@ impl TextInput {
     }
 
     fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
         if self.selected_range.is_empty() {
             self.select_to(self.next_boundary(self.cursor_offset()), cx)
         }
@@ -176,7 +220,12 @@ impl TextInput {
 
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-            self.replace_text_in_range(None, &text.replace("\n", " "), window, cx);
+            let text = if self.multiline.is_some() {
+                text.replace("\r\n", "\n").replace('\r', "\n")
+            } else {
+                text.replace("\n", " ")
+            };
+            self.replace_text_in_range(None, &text, window, cx);
         }
     }
 
@@ -188,6 +237,9 @@ impl TextInput {
         }
     }
     fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
         if !self.secret && !self.selected_range.is_empty() {
             cx.write_to_clipboard(ClipboardItem::new_string(
                 self.content[self.selected_range.clone()].to_string(),
@@ -198,6 +250,8 @@ impl TextInput {
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         self.selected_range = offset..offset;
+        self.selection_reversed = false;
+        self.reveal_cursor();
         cx.notify()
     }
 
@@ -210,6 +264,9 @@ impl TextInput {
     }
 
     fn index_for_mouse_position(&self, position: Point<Pixels>) -> usize {
+        if let Some(multiline) = &self.multiline {
+            return multiline.index_at(position, self.content.len());
+        }
         if self.content.is_empty() {
             return 0;
         }
@@ -259,6 +316,7 @@ impl TextInput {
             self.selection_reversed = !self.selection_reversed;
             self.selected_range = self.selected_range.end..self.selected_range.start;
         }
+        self.reveal_cursor();
         cx.notify()
     }
 
@@ -367,7 +425,7 @@ impl EntityInputHandler for TextInput {
         cx: &mut Context<Self>,
     ) {
         // Single-line editors must not insert the Enter used to commit an IME.
-        if new_text == "\n" || new_text == "\r" {
+        if self.read_only || (self.multiline.is_none() && (new_text == "\n" || new_text == "\r")) {
             return;
         }
         let range = range_utf16
@@ -381,6 +439,8 @@ impl EntityInputHandler for TextInput {
                 .into();
         self.selected_range = range.start + new_text.len()..range.start + new_text.len();
         self.marked_range.take();
+        self.selection_reversed = false;
+        self.reveal_cursor();
         cx.notify();
     }
 
@@ -392,6 +452,9 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.read_only {
+            return;
+        }
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -413,7 +476,8 @@ impl EntityInputHandler for TextInput {
                     ..range.start + Self::utf8_offset(new_text, selection.end)
             })
             .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
-
+        self.selection_reversed = false;
+        self.reveal_cursor();
         cx.notify();
     }
 
@@ -424,6 +488,10 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
+        if let Some(multiline) = &self.multiline {
+            let range = self.range_from_utf16(&range_utf16);
+            return multiline.bounds_for_range(range);
+        }
         let last_layout = self.last_layout.as_ref()?;
         let range = self.range_from_utf16(&range_utf16);
         Some(Bounds::from_corners(
@@ -444,6 +512,9 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<usize> {
+        if let Some(multiline) = &self.multiline {
+            return Some(self.offset_to_utf16(multiline.index_at(point, self.content.len())));
+        }
         let line_point = self.last_bounds?.localize(&point)?;
         let last_layout = self.last_layout.as_ref()?;
 
@@ -640,10 +711,16 @@ impl Element for TextElement {
 }
 
 impl Render for TextInput {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let multiline = self.multiline.is_some();
         div()
             .flex()
-            .key_context("TextInput")
+            .min_w_0()
+            .key_context(if multiline {
+                "MultilineInput"
+            } else {
+                "TextInput"
+            })
             .track_focus(&self.focus_handle(cx))
             .cursor(CursorStyle::IBeam)
             .on_action(cx.listener(Self::backspace))
@@ -659,6 +736,12 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::cut))
             .on_action(cx.listener(Self::copy))
+            .on_action(cx.listener(Self::newline))
+            .on_action(cx.listener(Self::up))
+            .on_action(cx.listener(Self::down))
+            .on_action(cx.listener(Self::select_up))
+            .on_action(cx.listener(Self::select_down))
+            .on_scroll_wheel(cx.listener(Self::scroll_multiline))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
@@ -672,11 +755,20 @@ impl Render for TextInput {
             .text_size(px(14.))
             .child(
                 div()
-                    .h(px(30. + 4. * 2.))
+                    .h(px(if multiline {
+                        (f32::from(window.viewport_size().height) - 300.).clamp(72., 192.)
+                    } else {
+                        30. + 4. * 2.
+                    }))
                     .w_full()
                     .p(px(4.))
                     .bg(rgb(self.palette.input))
-                    .child(TextElement { input: cx.entity() }),
+                    .overflow_hidden()
+                    .child(if multiline {
+                        MultilineElement { input: cx.entity() }.into_any_element()
+                    } else {
+                        TextElement { input: cx.entity() }.into_any_element()
+                    }),
             )
     }
 }
@@ -688,35 +780,44 @@ impl Focusable for TextInput {
 }
 
 pub fn bind_keys(cx: &mut App) {
+    for context in ["TextInput", "MultilineInput"] {
+        cx.bind_keys([
+            KeyBinding::new("backspace", Backspace, Some(context)),
+            KeyBinding::new("delete", Delete, Some(context)),
+            KeyBinding::new("left", Left, Some(context)),
+            KeyBinding::new("right", Right, Some(context)),
+            KeyBinding::new("shift-left", SelectLeft, Some(context)),
+            KeyBinding::new("shift-right", SelectRight, Some(context)),
+            KeyBinding::new(
+                &format!("{}-a", crate::platform::EDIT_MODIFIER),
+                SelectAll,
+                Some(context),
+            ),
+            KeyBinding::new(
+                &format!("{}-v", crate::platform::EDIT_MODIFIER),
+                Paste,
+                Some(context),
+            ),
+            KeyBinding::new(
+                &format!("{}-c", crate::platform::EDIT_MODIFIER),
+                Copy,
+                Some(context),
+            ),
+            KeyBinding::new(
+                &format!("{}-x", crate::platform::EDIT_MODIFIER),
+                Cut,
+                Some(context),
+            ),
+            KeyBinding::new("home", Home, Some(context)),
+            KeyBinding::new("end", End, Some(context)),
+        ]);
+    }
     cx.bind_keys([
-        KeyBinding::new("backspace", Backspace, Some("TextInput")),
-        KeyBinding::new("delete", Delete, Some("TextInput")),
-        KeyBinding::new("left", Left, Some("TextInput")),
-        KeyBinding::new("right", Right, Some("TextInput")),
-        KeyBinding::new("shift-left", SelectLeft, Some("TextInput")),
-        KeyBinding::new("shift-right", SelectRight, Some("TextInput")),
-        KeyBinding::new(
-            &format!("{}-a", crate::platform::EDIT_MODIFIER),
-            SelectAll,
-            Some("TextInput"),
-        ),
-        KeyBinding::new(
-            &format!("{}-v", crate::platform::EDIT_MODIFIER),
-            Paste,
-            Some("TextInput"),
-        ),
-        KeyBinding::new(
-            &format!("{}-c", crate::platform::EDIT_MODIFIER),
-            Copy,
-            Some("TextInput"),
-        ),
-        KeyBinding::new(
-            &format!("{}-x", crate::platform::EDIT_MODIFIER),
-            Cut,
-            Some("TextInput"),
-        ),
-        KeyBinding::new("home", Home, Some("TextInput")),
-        KeyBinding::new("end", End, Some("TextInput")),
+        KeyBinding::new("enter", Newline, Some("MultilineInput")),
+        KeyBinding::new("up", Up, Some("MultilineInput")),
+        KeyBinding::new("down", Down, Some("MultilineInput")),
+        KeyBinding::new("shift-up", SelectUp, Some("MultilineInput")),
+        KeyBinding::new("shift-down", SelectDown, Some("MultilineInput")),
     ]);
 }
 

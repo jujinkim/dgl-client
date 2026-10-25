@@ -72,7 +72,7 @@ class AndroidMobileInputTest {
                     it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 }
                 waitOrientation(scenario, false)
-                awaitNode("텍스트 입력 열기")
+                awaitNode("텍스트 작성 열기")
                 withTimeout(10000) { while (first.surface == null) delay(20) }
                 first.surface!!.write("MOBILE INPUT\r\n한글 😀 여러 줄 작성".encodeToByteArray())
                 stage = "toolbar preference"
@@ -92,12 +92,12 @@ class AndroidMobileInputTest {
                 stage = "fixed geometry"
                 delay(300)
                 checkBar()
-                val fixedBeforeScroll = bounds(awaitNode("텍스트 입력 열기"))
+                val fixedBeforeScroll = bounds(awaitNode("텍스트 작성 열기"))
                 val shortcuts = find(awaitNode("터미널 입력 도구")) { it.isScrollable }
                 assertNotNull(shortcuts)
                 assertTrue(shortcuts!!.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
                 delay(200)
-                assertEquals(fixedBeforeScroll, bounds(awaitNode("텍스트 입력 열기")))
+                assertEquals(fixedBeforeScroll, bounds(awaitNode("텍스트 작성 열기")))
                 checkBar()
                 var web: WebView? = null
                 scenario.onActivity { web = webView(it.window.decorView) }
@@ -118,12 +118,12 @@ class AndroidMobileInputTest {
                     activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 }
                 waitOrientation(scenario, true)
-                awaitNode("텍스트 입력 열기"); checkBar()
+                awaitNode("텍스트 작성 열기"); checkBar()
                 screenshot("mobile-dark-landscape")
                 scenario.onActivity { assertSame(web, webView(it.window.decorView)); it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
                 waitOrientation(scenario, false)
                 stage = "native composition"
-                click("텍스트 입력 열기"); awaitNode("전송할 텍스트")
+                click("텍스트 작성 열기"); awaitNode("전송할 텍스트")
                 withTimeout(5000) {
                     var committed = false
                     while (!committed) {
@@ -178,14 +178,14 @@ class AndroidMobileInputTest {
                 assertTrue("Send must remain above the landscape IME", bounds(awaitNode("전송")).bottom <= dialogImeTop + 2)
                 assertTrue("Enter option must remain above the landscape IME", bounds(awaitNode("Enter 함께 보내기")).bottom <= dialogImeTop + 2)
                 screenshot("mobile-composer-landscape")
-                click("취소"); awaitNode("텍스트 입력 열기")
+                click("취소"); awaitNode("텍스트 작성 열기")
                 scenario.onActivity { app.selected.value = second }
-                click("텍스트 입력 열기"); awaitNode("전송할 텍스트")
+                click("텍스트 작성 열기"); awaitNode("전송할 텍스트")
                 assertTrue(app.composer(second).value.value.text.isEmpty())
                 click("취소")
                 scenario.onActivity { app.selected.value = first; it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
                 waitOrientation(scenario, false)
-                click("텍스트 입력 열기"); awaitNode("전송할 텍스트")
+                click("텍스트 작성 열기"); awaitNode("전송할 텍스트")
                 assertEquals(draft, app.composer(first).value.value.text)
                 stage = "target rejection"
                 first.pane.value = "%2"
@@ -193,7 +193,7 @@ class AndroidMobileInputTest {
                 withTimeout(5000) { while (app.composer(first).error.value == null) delay(20) }
                 assertEquals(count, first.writes.size)
                 stage = "reopen after target rejection"
-                click("취소"); click("텍스트 입력 열기"); awaitNode("전송할 텍스트")
+                click("취소"); click("텍스트 작성 열기"); awaitNode("전송할 텍스트")
                 stage = "completion failure and duplicate guard"
                 // The label is intentionally a separate checkbox row; find its native checkable node.
                 val check = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isCheckable }!!
@@ -212,7 +212,7 @@ class AndroidMobileInputTest {
                 click("전송")
                 withTimeout(5000) { while (first.writes.size < count + 2) delay(20) }
                 first.completion.complete(InputCompletion())
-                awaitNode("텍스트 입력 열기")
+                awaitNode("텍스트 작성 열기")
                 assertTrue(app.composer(first).value.value.text.isEmpty())
                 assertEquals(0, first.connects)
                 stage = "memory cleanup"
@@ -240,7 +240,7 @@ class AndroidMobileInputTest {
     private suspend fun checkBar() {
         val bar = bounds(awaitNode("터미널 입력 도구"))
         val keyboard = bounds(awaitNode(if (node("키보드 닫기") != null) "키보드 닫기" else "키보드 열기"))
-        val text = bounds(awaitNode("텍스트 입력 열기")); val menu = bounds(awaitNode("CLI 실행 메뉴"))
+        val text = bounds(awaitNode("텍스트 작성 열기")); val menu = bounds(awaitNode("CLI 실행 메뉴"))
         val density = instrumentation.targetContext.resources.displayMetrics.density
         fun near(actual: Int, dp: Int) = assertTrue("$actual px != $dp dp", kotlin.math.abs(actual - dp * density) <= 2)
         near(keyboard.height(), 40); near(menu.height(), 40)

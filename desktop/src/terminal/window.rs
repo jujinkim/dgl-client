@@ -139,6 +139,30 @@ impl WindowTerminal {
             self.notice = Some(format!("입력을 보내지 못했습니다: {e}"));
         }
     }
+    pub fn prepare_paste(
+        &self,
+        target: &PaneTarget,
+        text: &str,
+        enter: bool,
+        cx: &App,
+    ) -> Result<Vec<u8>, String> {
+        let pane = self
+            .panes
+            .get(&target.pane_id)
+            .ok_or("현재 패널의 입력 모드를 확인하지 못했습니다. 잠시 후 다시 시도하세요.")?;
+        let bracketed = pane
+            .read(cx)
+            .term
+            .mode()
+            .contains(TermMode::BRACKETED_PASTE);
+        let bytes = input::paste_bytes(text, bracketed, enter);
+        if bytes.is_empty() || bytes.len() > 65536 {
+            return Err(
+                "입력은 붙여넣기 제어 문자와 Enter를 포함하여 UTF-8 64 KiB 이하여야 합니다.".into(),
+            );
+        }
+        Ok(bytes)
+    }
     pub fn complete(&mut self, id: u64, cx: &mut App) -> bool {
         if self.resize_request == Some(id) {
             self.resize_request = None;
@@ -393,6 +417,72 @@ mod tests {
             t.tick(cx);
             assert_ne!(t.resize_request, Some(request));
             assert_eq!(t.sent_size, Some(Size::new(149, 31).unwrap()));
+        });
+        connection.close();
+        runtime.block_on(connection.join());
+    }
+    #[gpui::test]
+    fn composer_uses_current_pane_mode_and_counts_control_bytes_in_limit(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _enter = runtime.enter();
+        let host: HostProfile = serde_json::from_value(serde_json::json!({
+            "id":"fixture", "alias":"fixture", "hostname":"127.0.0.1", "port":1,
+            "username":"test", "credentialRef":"fixture"
+        }))
+        .unwrap();
+        let connection = Connection::start(host, Credential::default(), None);
+        let terminal = cx.new(|cx| WindowTerminal::new(connection.clone(), 14, 5000, cx));
+        terminal.update(cx, |t, cx| {
+            let target = dgl_core::flow::PaneTarget {
+                connection: 0,
+                pane_id: "shell".into(),
+                generation: dgl_core::flow::Generation {
+                    connection: 0,
+                    pane: 0,
+                    size: 0,
+                },
+            };
+            assert_eq!(
+                t.prepare_paste(&target, "한글\r\n둘\n끝", true, cx)
+                    .unwrap(),
+                "한글\r둘\r끝\r".as_bytes()
+            );
+            assert_eq!(
+                t.prepare_paste(&target, &"a".repeat(65536), false, cx)
+                    .unwrap()
+                    .len(),
+                65536
+            );
+            assert!(
+                t.prepare_paste(&target, &"a".repeat(65536), true, cx)
+                    .is_err()
+            );
+            let pane = t.panes["shell"].clone();
+            pane.update(cx, |pane, _| {
+                pane.parser.advance(&mut pane.term, b"\x1b[?2004h")
+            });
+            assert_eq!(
+                t.prepare_paste(&target, "한\n\x1b끝", true, cx).unwrap(),
+                "\x1b[200~한\r끝\x1b[201~\r".as_bytes()
+            );
+            assert_eq!(
+                t.prepare_paste(&target, &"a".repeat(65523), true, cx)
+                    .unwrap()
+                    .len(),
+                65536
+            );
+            assert!(
+                t.prepare_paste(&target, &"a".repeat(65524), true, cx)
+                    .is_err()
+            );
+            let mut missing = target.clone();
+            missing.pane_id = "%99".into();
+            assert!(t.prepare_paste(&missing, "hello", false, cx).is_err());
         });
         connection.close();
         runtime.block_on(connection.join());

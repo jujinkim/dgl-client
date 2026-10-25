@@ -201,12 +201,11 @@ impl Terminal {
         }
         if crate::platform::app_shortcut(&k.modifiers) && k.key == "v" {
             if let Some(text) = cx.read_from_clipboard().and_then(|i| i.text()) {
-                let text = text.replace("\r\n", "\n").replace('\n', "\r");
-                let bytes = if self.term.mode().contains(TermMode::BRACKETED_PASTE) {
-                    format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', "")).into_bytes()
-                } else {
-                    text.into_bytes()
-                };
+                let bytes = input::paste_bytes(
+                    &text,
+                    self.term.mode().contains(TermMode::BRACKETED_PASTE),
+                    false,
+                );
                 self.send(bytes);
             }
             cx.stop_propagation();

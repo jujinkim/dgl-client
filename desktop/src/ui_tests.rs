@@ -1073,3 +1073,250 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
         assert!(view.read_with(cx, |s, _| s.launcher.opened.is_none()));
     }
 }
+
+#[gpui::test]
+fn input_tools_stay_under_terminals_with_fixed_ends_in_narrow_and_split_windows(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = setup(cx);
+    add_terminal(&view, cx);
+    view.update(cx, |s, cx| {
+        s.local.preferences.terminal_shortcuts = dgl_core::input::TerminalKey::ALL.to_vec();
+        cx.notify();
+    });
+    for width in [640., 1200.] {
+        cx.simulate_resize(gpui::size(px(width), px(800.)));
+        for theme in ["light", "dark"] {
+            view.update(cx, |s, cx| {
+                s.local.preferences.theme = theme.into();
+                cx.notify();
+            });
+            redraw(cx);
+            let sidebar = cx.debug_bounds("session-sidebar").unwrap();
+            let tools = cx.debug_bounds("terminal-input-tools").unwrap();
+            let compose = cx.debug_bounds("open-composer").unwrap();
+            let shortcuts = cx.debug_bounds("shortcut-bar").unwrap();
+            let cli = cx.debug_bounds("cli-launcher").unwrap();
+            assert!(tools.left() >= sidebar.right());
+            assert!(tools.bottom() <= sidebar.bottom());
+            assert!(compose.right() <= shortcuts.left());
+            assert!(shortcuts.right() <= cli.left());
+            assert!(cli.right() <= px(width));
+            cx.simulate_event(ScrollWheelEvent {
+                position: shortcuts.center(),
+                delta: ScrollDelta::Pixels(point(px(10000.), px(0.))),
+                modifiers: Modifiers::default(),
+                touch_phase: TouchPhase::Moved,
+            });
+            redraw(cx);
+            let key_before = cx.debug_bounds("key-Ctrl+A").unwrap();
+            cx.simulate_event(ScrollWheelEvent {
+                position: shortcuts.center(),
+                delta: ScrollDelta::Pixels(point(px(-400.), px(0.))),
+                modifiers: Modifiers::default(),
+                touch_phase: TouchPhase::Moved,
+            });
+            redraw(cx);
+            assert_eq!(compose, cx.debug_bounds("open-composer").unwrap());
+            assert_eq!(cli, cx.debug_bounds("cli-launcher").unwrap());
+            let key_after = cx.debug_bounds("key-Ctrl+A").unwrap();
+            assert!(key_after.left() < key_before.left());
+        }
+    }
+    view.update(cx, |s, cx| {
+        assert!(
+            s.workspace
+                .split(1, super::workspace::Axis::Horizontal, 1200., 800.)
+        );
+        cx.notify();
+    });
+    add_terminal(&view, cx);
+    redraw(cx);
+    let compose = cx.debug_bounds("open-composer").unwrap();
+    cx.simulate_click(compose.center(), Modifiers::default());
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| matches!(s.dialog, Some(Dialog::Compose(2)))));
+    cx.simulate_keystrokes("escape");
+    view.update(cx, |s, cx| {
+        s.workspace.active = 1;
+        cx.notify();
+    });
+    redraw(cx);
+    cx.simulate_click(compose.center(), Modifiers::default());
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| matches!(s.dialog, Some(Dialog::Compose(1)))));
+}
+
+#[gpui::test]
+fn composer_restores_focus_draft_selection_and_enter_option_and_blocks_terminal(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = setup(cx);
+    let terminal = add_terminal(&view, cx);
+    redraw(cx);
+    cx.update(|w, cx| w.focus(&terminal.focus_handle(cx)));
+    view.update(cx, |s, cx| {
+        s.open_composer(cx);
+        cx.notify();
+    });
+    redraw(cx);
+    let input = view.read_with(cx, |s, _| s.composers[&1].input.clone());
+    assert!(!view.read_with(cx, |s, _| s.composers[&1].include_enter));
+    assert!(cx.update(|w, cx| input.focus_handle(cx).is_focused(w)));
+    cx.simulate_input("첫 줄 😀");
+    cx.simulate_keystrokes("enter");
+    cx.simulate_input("둘째 줄");
+    assert_eq!(
+        input.read_with(cx, |i, _| i.content.to_string()),
+        "첫 줄 😀\n둘째 줄"
+    );
+    cx.simulate_keystrokes("shift-left shift-left");
+    let selection =
+        cx.update(|w, cx| input.update(cx, |i, cx| i.selected_text_range(false, w, cx).unwrap()));
+    let option = cx.debug_bounds("composer-enter").unwrap();
+    cx.simulate_click(option.center(), Modifiers::default());
+    assert!(view.read_with(cx, |s, _| s.composers[&1].include_enter));
+    cx.simulate_keystrokes("escape");
+    redraw(cx);
+    assert!(cx.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+    view.update(cx, |s, cx| {
+        s.open_composer(cx);
+        cx.notify();
+    });
+    redraw(cx);
+    assert_eq!(
+        input.entity_id(),
+        view.read_with(cx, |s, _| s.composers[&1].input.entity_id())
+    );
+    let restored =
+        cx.update(|w, cx| input.update(cx, |i, cx| i.selected_text_range(false, w, cx).unwrap()));
+    assert_eq!(selection.range, restored.range);
+    assert!(view.read_with(cx, |s, _| s.composers[&1].include_enter));
+    cx.update(|w, cx| {
+        input.update(cx, |i, cx| {
+            i.replace_and_mark_text_in_range(None, "ㅎ", Some(1..1), w, cx);
+        })
+    });
+    cx.simulate_keystrokes("escape");
+    redraw(cx);
+    assert!(!input.read_with(cx, |i, _| i.is_composing()));
+    view.update(cx, |s, cx| {
+        s.open_composer(cx);
+        cx.notify();
+    });
+    redraw(cx);
+    let cancel = cx.debug_bounds("cancel-dialog").unwrap();
+    // Even a directly focused background terminal cannot forward keys or an IME commit.
+    cx.update(|w, cx| w.focus(&terminal.focus_handle(cx)));
+    cx.simulate_keystrokes("ctrl-c enter");
+    cx.simulate_input("blocked");
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
+    cx.simulate_click(cancel.center(), Modifiers::default());
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| s.dialog.is_none()));
+    view.update(cx, |s, cx| {
+        s.close_tab(1);
+        cx.notify();
+    });
+    assert!(view.read_with(cx, |s, _| s.composers.is_empty()));
+}
+
+#[gpui::test]
+fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
+    cx: &mut TestAppContext,
+) {
+    use dgl_core::connection::{Completion, CompletionOutcome};
+    let (view, cx) = setup(cx);
+    add_terminal(&view, cx);
+    let second = add_terminal(&view, cx);
+    redraw(cx);
+    cx.update(|w, cx| w.focus(&second.focus_handle(cx)));
+    view.update(cx, |s, cx| {
+        s.open_composer(cx);
+        cx.notify();
+    });
+    redraw(cx);
+    let input = view.read_with(cx, |s, _| s.composers[&2].input.clone());
+    cx.simulate_input("second draft");
+    view.update(cx, |s, cx| {
+        let composer = s.composers.get_mut(&2).unwrap();
+        composer.pending = Some(700);
+        composer.input.update(cx, |i, _| i.read_only = true);
+        cx.notify();
+    });
+    redraw(cx);
+    cx.simulate_input("blocked");
+    let send = cx.debug_bounds("send-composer").unwrap();
+    cx.simulate_click(send.center(), Modifiers::default());
+    cx.simulate_click(send.center(), Modifiers::default());
+    assert_eq!(
+        input.read_with(cx, |i, _| i.content.to_string()),
+        "second draft"
+    );
+    assert_eq!(
+        view.read_with(cx, |s, _| s.composers[&2].pending),
+        Some(700)
+    );
+    cx.simulate_keystrokes("escape");
+    redraw(cx);
+    view.update(cx, |s, cx| {
+        s.workspace.select(1, 1);
+        s.open_composer(cx);
+        cx.notify();
+    });
+    redraw(cx);
+    cx.simulate_input("first draft");
+    view.update(cx, |s, cx| {
+        assert!(super::composer::complete(
+            &mut s.composers,
+            &mut s.dialog,
+            2,
+            &Completion {
+                request_id: 700,
+                outcome: CompletionOutcome::Sent,
+                error: None
+            },
+            cx
+        ));
+        assert!(matches!(s.dialog, Some(Dialog::Compose(1))));
+        assert!(!s.composers.contains_key(&2));
+        let composer = s.composers.get_mut(&1).unwrap();
+        composer.pending = Some(701);
+        assert!(super::composer::complete(
+            &mut s.composers,
+            &mut s.dialog,
+            1,
+            &Completion {
+                request_id: 701,
+                outcome: CompletionOutcome::Failed,
+                error: Some(dgl_core::Error::Network)
+            },
+            cx
+        ));
+        assert!(s.composers[&1].error.is_some());
+        assert_eq!(
+            s.composers[&1].input.read(cx).content.as_ref(),
+            "first draft"
+        );
+        let failure = s.composers[&1].error.clone();
+        s.dismiss_dialog(cx);
+        s.open_composer(cx);
+        assert_eq!(s.composers[&1].error, failure);
+        s.composers.get_mut(&1).unwrap().pending = Some(702);
+        assert!(super::composer::complete(
+            &mut s.composers,
+            &mut s.dialog,
+            1,
+            &Completion {
+                request_id: 702,
+                outcome: CompletionOutcome::Sent,
+                error: None
+            },
+            cx
+        ));
+        cx.notify();
+    });
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| s.dialog.is_none() && s.composers.is_empty()));
+    assert!(cx.update(|w, cx| second.focus_handle(cx).is_focused(w)));
+}

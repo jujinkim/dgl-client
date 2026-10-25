@@ -76,7 +76,7 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
             Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                 Column(Modifier.heightIn(max = minOf(maxHeight, 420.dp)).padding(if (compact) 4.dp else 16.dp),
                     verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 8.dp)) {
-                    if (!compact) Text("텍스트 입력", style = MaterialTheme.typography.titleLarge)
+                    if (!compact) Text("텍스트 작성", style = MaterialTheme.typography.titleLarge)
                     val field = Modifier.weight(1f, fill = false).fillMaxWidth().focusRequester(requester)
                         .semantics { contentDescription = "전송할 텍스트" }
                     // Keep one editor/input session when rotation or IME insets change the layout.

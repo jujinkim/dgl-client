@@ -1,6 +1,7 @@
 package kim.jujin.rovessh.ui
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -12,6 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -80,9 +84,6 @@ private object AboveLauncher : PopupPositionProvider {
     // A target/phase/dialog change discards the request before painting or handling another click.
     var request by remember(client, status.phase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
     val dismiss = { request = null; terminalFocus.request() }
-    val buttonShape = RoundedCornerShape(6.dp)
-    val buttonBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    val buttonColors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     val buttonHeight = if (mobile) 40.dp else 48.dp
     val imeVisible = terminalFocus.imeVisible
     val viewConfiguration = LocalViewConfiguration.current
@@ -95,26 +96,25 @@ private object AboveLauncher : PopupPositionProvider {
             .padding(horizontal = 4.dp, vertical = if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (mobile) {
-                OutlinedButton({ terminalFocus.keyboard() }, enabled = available,
-                    shape = buttonShape, border = buttonBorder, colors = buttonColors, contentPadding = PaddingValues(0.dp),
+                TerminalToolButton({ terminalFocus.keyboard() }, enabled = available,
+                    contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics {
                         contentDescription = if (imeVisible) "키보드 닫기" else "키보드 열기"
                         stateDescription = if (imeVisible) "표시됨" else "숨김"
                     }) { KeyboardIcon() }
-                OutlinedButton(openComposer, enabled = available, shape = buttonShape, border = buttonBorder,
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.height(buttonHeight).widthIn(min = 40.dp).semantics { contentDescription = "텍스트 입력 열기" },
-                    contentPadding = PaddingValues(horizontal = 8.dp)) { Text("텍스트 입력", fontSize = 11.sp, maxLines = 1) }
+                TerminalToolButton(openComposer, enabled = available, containerColor = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.height(buttonHeight).widthIn(min = 40.dp).semantics { contentDescription = "텍스트 작성 열기" },
+                    contentPadding = PaddingValues(horizontal = 8.dp)) { Text("텍스트 작성", fontSize = 11.sp, maxLines = 1) }
             }
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 shortcuts.distinct().forEach { shortcut ->
-                    OutlinedButton({
+                    TerminalToolButton({
                         if (allowed() && client.status.value.acceptsInput) {
                             client.input(shortcut.bytes())
                             terminalFocus.request()
                         }
-                    }, enabled = available && status.acceptsInput, shape = buttonShape, border = buttonBorder, colors = buttonColors,
+                    }, enabled = available && status.acceptsInput,
                         modifier = Modifier.height(buttonHeight).widthIn(min = if (mobile) 46.dp else 58.dp),
                         contentPadding = PaddingValues(horizontal = if (mobile) 8.dp else 10.dp)) {
                         Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
@@ -122,8 +122,8 @@ private object AboveLauncher : PopupPositionProvider {
                 }
             }
             Box {
-                OutlinedButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
-                    shape = buttonShape, border = buttonBorder, colors = buttonColors, contentPadding = PaddingValues(0.dp),
+                TerminalToolButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
+                    contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics { contentDescription = "CLI 실행 메뉴" }) { Text("…", fontSize = if (mobile) 18.sp else 22.sp) }
                 val opened = request
                 if (opened != null) Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
@@ -153,6 +153,28 @@ private object AboveLauncher : PopupPositionProvider {
                     }
                 }
             }
+        }
+    }
+}
+
+/** Paint the whole button, including its border, with the same interaction color. */
+@Composable private fun TerminalToolButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceVariant, contentPadding: PaddingValues,
+    content: @Composable RowScope.() -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val focused by interaction.collectIsFocusedAsState()
+    val pressed by interaction.collectIsPressedAsState()
+    val foreground = MaterialTheme.colorScheme.onSurface
+    val alpha = if (!enabled) 0f else if (pressed || focused) .12f else if (hovered) .08f else 0f
+    val fill = foreground.copy(alpha = alpha).compositeOver(containerColor)
+    val shape = RoundedCornerShape(6.dp)
+    CompositionLocalProvider(LocalContentColor provides foreground.copy(alpha = if (enabled) 1f else .38f)) {
+        ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+            Row(modifier.clip(shape).background(fill).border(1.dp, fill, shape)
+                .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+                .padding(contentPadding), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center, content = content)
         }
     }
 }

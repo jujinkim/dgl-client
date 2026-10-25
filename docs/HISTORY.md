@@ -64,6 +64,11 @@ README는 소개·시작 안내, 상세 조작은 USAGE, 빌드·검사는 DEVEL
 폐기된 JVM MSI/EXE 검사, Temurin 소스 수집, 두 사용자 JVM DPAPI harness와 관련 검증 코드를 제거했습니다.
 현재 Windows Rust 패키저·단위 검사·빌드 메뉴·수동 CI와 공통 JVM 회귀 검사는 유지합니다.
 
+당시 정리 검사는 Python 98개, Rust 63개(환경 ignore 6), Kotlin 45개(예상 skip 9), 웹 8개를 통과했습니다.
+선택 runtime 121개 버전의 inventory·고지, 로컬 Markdown 링크 106개·구문·무결성·대시보드·비밀정보 검사도 수행했습니다.
+JVM 54개·Android 15개 이름 목록과 선택 계측 결과 파서의 누락·중복·실패·skip 거절을 확인했으며,
+앱 배포 파일 재생성·실제 SSH·Android 계측·Windows 네이티브 검사는 재실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

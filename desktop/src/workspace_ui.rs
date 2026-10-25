@@ -185,6 +185,7 @@ impl Desktop {
         });
         let p = self.palette;
         let mut sidebar = div()
+            .debug_selector(|| "session-sidebar".into())
             .w(px(272.))
             .flex_shrink_0()
             .h_full()
@@ -370,7 +371,7 @@ impl Desktop {
                 let label = key.label();
                 let t = terminal.clone();
                 shortcuts = shortcuts.child(
-                    self.button(format!("key-{label}"), label, cx, move |_, w, cx| {
+                    self.input_button(format!("key-{label}"), label, cx, move |_, w, cx| {
                         t.update(cx, |t, _| t.send(key.bytes().to_vec()));
                         w.focus(&t.focus_handle(cx));
                     })
@@ -378,9 +379,7 @@ impl Desktop {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded_md()
-                    .border_color(rgb(p.line))
-                    .bg(rgb(p.bg)),
+                    .rounded_md(),
                 );
             }
         }
@@ -414,7 +413,7 @@ impl Desktop {
                             w.prevent_default();
                         }
                         "escape" => {
-                            s.dialog = None;
+                            s.dismiss_dialog(cx);
                             cx.stop_propagation();
                             w.prevent_default();
                         }
@@ -536,24 +535,42 @@ impl Desktop {
                     .flex()
                     .flex_col()
                     .child(
-                        div()
-                            .flex_1()
-                            .min_h_0()
-                            .flex()
-                            .child(sidebar)
-                            .child(div().flex_1().min_w_0().child(workspace)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .h(px(40.))
-                            .px_1()
-                            .gap_1()
-                            .flex_shrink_0()
-                            .bg(rgb(p.panel))
-                            .child(shortcuts)
-                            .child(self.launcher_button(cx)),
+                        div().flex_1().min_h_0().flex().child(sidebar).child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .child(div().flex_1().min_h_0().child(workspace))
+                                .child(
+                                    div()
+                                        .debug_selector(|| "terminal-input-tools".into())
+                                        .flex()
+                                        .items_center()
+                                        .h(px(40.))
+                                        .px_1()
+                                        .gap_1()
+                                        .flex_shrink_0()
+                                        .bg(rgb(p.panel))
+                                        .child(
+                                            self.input_button(
+                                                "open-composer",
+                                                "텍스트 작성",
+                                                cx,
+                                                |s, _, cx| s.open_composer(cx),
+                                            )
+                                            .h(px(32.))
+                                            .flex()
+                                            .items_center()
+                                            .rounded_md()
+                                            .when(self.active_tab().is_none(), |d| {
+                                                d.opacity(0.35).cursor_default()
+                                            }),
+                                        )
+                                        .child(shortcuts)
+                                        .child(self.launcher_button(cx)),
+                                ),
+                        ),
                     )
                     .child(
                         div()

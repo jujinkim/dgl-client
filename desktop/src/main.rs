@@ -5,6 +5,7 @@
 
 mod agent_ui;
 mod cloud_sync;
+mod composer;
 mod file_picker;
 mod hierarchy;
 mod host_dialog;
@@ -86,6 +87,7 @@ enum Dialog {
     Settings,
     Agents(Arc<Connection>, String, Option<String>),
     Notifications,
+    Compose(TabId),
 }
 struct Desktop {
     runtime: Arc<tokio::runtime::Runtime>,
@@ -103,6 +105,7 @@ struct Desktop {
     resizing: Option<Vec<bool>>,
     dragging_tab: Option<TabId>,
     dialog: Option<Dialog>,
+    composers: HashMap<TabId, composer::Composer>,
     error: Option<String>,
     focus: FocusHandle,
     inbox: dgl_core::agent::Inbox,
@@ -163,6 +166,7 @@ impl Desktop {
             resizing: None,
             dragging_tab: None,
             dialog: None,
+            composers: HashMap::new(),
             error,
             focus: cx.focus_handle(),
             inbox: Default::default(),
@@ -230,6 +234,10 @@ impl Desktop {
                 }
             }
             for result in tab.connection.completions() {
+                if composer::complete(&mut self.composers, &mut self.dialog, tab.id, &result, cx) {
+                    changed = true;
+                    continue;
+                }
                 if tab.refresh == Some(result.request_id) {
                     tab.refresh = None;
                     changed = true;
@@ -322,6 +330,10 @@ impl Desktop {
         self.tabs.iter().find(|t| t.id == id)
     }
     fn close_tab(&mut self, id: TabId) {
+        self.composers.remove(&id);
+        if matches!(self.dialog, Some(Dialog::Compose(tab)) if tab == id) {
+            self.dialog = None;
+        }
         if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
             let tab = self.tabs.remove(index);
             self.workspace.close(id);
@@ -416,6 +428,15 @@ impl Desktop {
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
+        self.styled_button(id, cx, action, false)
+    }
+    fn styled_button(
+        &self,
+        id: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+        bottom: bool,
+    ) -> Stateful<Div> {
         let id = id.into();
         let palette = self.palette;
         let focus = self.modal.building.then(|| self.modal.button(&id, cx));
@@ -432,19 +453,44 @@ impl Desktop {
             .py_1()
             .flex_shrink_0()
             .cursor_pointer()
-            .hover(move |s| s.bg(rgb(palette.selection)))
+            .hover(move |s| {
+                let s = s.bg(rgb(palette.selection));
+                if bottom {
+                    s.border_color(rgb(palette.selection))
+                } else {
+                    s
+                }
+            })
             .when_some(focus, |d, focus| d.track_focus(&focus))
+            .when(bottom, |d| d.focusable())
             .focus(move |s| {
-                s.bg(rgb(palette.selection))
-                    .border_color(rgb(palette.accent))
+                s.bg(rgb(palette.selection)).border_color(rgb(if bottom {
+                    palette.selection
+                } else {
+                    palette.accent
+                }))
             })
             .border_1()
-            .border_color(gpui::transparent_black())
+            .border_color(if bottom {
+                rgb(palette.bg).into()
+            } else {
+                gpui::transparent_black()
+            })
+            .when(bottom, |d| d.bg(rgb(palette.bg)))
             .on_click(cx.listener(move |v, _, w, cx| {
                 action(v, w, cx);
                 cx.stop_propagation();
                 cx.notify();
             }))
+    }
+    fn input_button(
+        &self,
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Stateful<Div> {
+        self.styled_button(id, cx, action, true).child(label.into())
     }
     fn accept_name(&mut self, cx: &mut Context<Self>) {
         let Some(Dialog::Prompt {
@@ -535,6 +581,7 @@ impl Render for Desktop {
                 Dialog::Settings => ("settings", vec![]),
                 Dialog::Agents(..) => ("agents", vec![]),
                 Dialog::Notifications => ("notifications", vec![]),
+                Dialog::Compose(id) => ("compose", vec![self.composers[id].input.clone()]),
             };
             for input in &inputs {
                 input.update(cx, |i, _| i.palette = self.palette);
@@ -558,9 +605,13 @@ impl Render for Desktop {
                 .gap_3();
             let mut footer = div().flex().gap_2().justify_end().child(self.button(
                 "cancel-dialog",
-                "취소 / 닫기",
+                if matches!(&dialog, Dialog::Compose(_)) {
+                    "취소"
+                } else {
+                    "취소 / 닫기"
+                },
                 cx,
-                |s, _, _| s.dialog = None,
+                |s, _, cx| s.dismiss_dialog(cx),
             ));
             match dialog {
                 dialog @ Dialog::Host { .. } => {
@@ -595,6 +646,25 @@ impl Render for Desktop {
                 }
                 Dialog::Notifications => {
                     body = body.child(self.recent_agents(cx));
+                }
+                Dialog::Compose(id) => {
+                    body = body.child(self.render_composer(id, cx));
+                    let composer = &self.composers[&id];
+                    let enabled =
+                        composer.pending.is_none() && !composer.input.read(cx).content.is_empty();
+                    footer = footer.child(
+                        self.button(
+                            "send-composer",
+                            if composer.pending.is_some() {
+                                "전송 중…"
+                            } else {
+                                "전송"
+                            },
+                            cx,
+                            |s, _, cx| s.send_composer(cx),
+                        )
+                        .when(!enabled, |d| d.opacity(0.35).cursor_default()),
+                    );
                 }
                 Dialog::Settings => {
                     body = body
