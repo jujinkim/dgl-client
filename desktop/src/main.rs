@@ -5,7 +5,10 @@
 
 mod agent_ui;
 mod cloud_sync;
+mod file_picker;
 mod hierarchy;
+mod host_dialog;
+mod key_file;
 mod launcher;
 mod modal;
 mod notifications;
@@ -30,7 +33,6 @@ use dgl_core::{
 use gpui::{prelude::*, *};
 use std::collections::{HashMap, HashSet};
 use std::{
-    io::Read,
     path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -68,6 +70,7 @@ enum Dialog {
         private_key: String,
         key_auth: bool,
         favorite: bool,
+        feedback: host_dialog::Feedback,
     },
     Prompt {
         title: String,
@@ -358,143 +361,6 @@ impl Desktop {
             }
         }
     }
-    fn edit(&mut self, original: Option<HostProfile>, cx: &mut Context<Self>) {
-        let values = original
-            .as_ref()
-            .map(|h| {
-                vec![
-                    h.alias.clone(),
-                    h.hostname.clone(),
-                    h.port.to_string(),
-                    h.username.clone(),
-                    String::new(),
-                    String::new(),
-                    String::new(),
-                ]
-            })
-            .unwrap_or_else(|| {
-                vec![
-                    String::new(),
-                    String::new(),
-                    "22".into(),
-                    String::new(),
-                    String::new(),
-                    String::new(),
-                    String::new(),
-                ]
-            });
-        let ssh_directory = platform::ssh_directory_placeholder();
-        let labels = [
-            "별칭",
-            "호스트 / IP",
-            "포트",
-            "사용자 이름",
-            "비밀번호 (비우면 기존 유지)",
-            "키 암호",
-            &ssh_directory,
-        ];
-        let fields = values
-            .iter()
-            .zip(labels)
-            .enumerate()
-            .map(|(i, (v, l))| cx.new(|cx| TextInput::new(v, l, i == 4 || i == 5, cx)))
-            .collect();
-        let key_auth = original
-            .as_ref()
-            .is_some_and(|h| h.auth == AuthKind::PrivateKey);
-        let favorite = original.as_ref().is_some_and(|h| h.favorite);
-        self.dialog = Some(Dialog::Host {
-            original,
-            fields,
-            private_key: String::new(),
-            key_auth,
-            favorite,
-        });
-    }
-    fn save_host(&mut self, cx: &mut Context<Self>) {
-        let Some(Dialog::Host {
-            original,
-            fields,
-            private_key,
-            key_auth,
-            favorite,
-        }) = self.dialog.clone()
-        else {
-            return;
-        };
-        let values: Vec<_> = fields
-            .iter()
-            .map(|f| f.read(cx).content.to_string())
-            .collect();
-        let id = original.as_ref().map(|h| h.id.clone()).unwrap_or_else(|| {
-            format!(
-                "host-{}",
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            )
-        });
-        let host = HostProfile {
-            id: id.clone(),
-            alias: values[0].trim().into(),
-            hostname: values[1].trim().into(),
-            port: values[2].parse().unwrap_or(0),
-            username: values[3].trim().into(),
-            auth: if key_auth {
-                AuthKind::PrivateKey
-            } else {
-                AuthKind::Password
-            },
-            credential_ref: original
-                .as_ref()
-                .map(|h| h.credential_ref.clone())
-                .unwrap_or(id),
-            favorite,
-            last_connected: original.as_ref().map(|h| h.last_connected).unwrap_or(0),
-            last_session: original.as_ref().and_then(|h| h.last_session.clone()),
-            last_pane: original.as_ref().and_then(|h| h.last_pane.clone()),
-        };
-        let result = (|| {
-            host.validate()?;
-            let mut credential = storage::read_optional(&host.credential_ref)?.unwrap_or_default();
-            if key_auth {
-                if !private_key.is_empty() {
-                    credential.private_key = private_key;
-                    credential.passphrase = values[5].clone();
-                }
-                if !values[5].is_empty() {
-                    credential.passphrase = values[5].clone();
-                }
-                if credential.private_key.is_empty() {
-                    return Err(dgl_core::Error::InvalidArgument);
-                }
-                ssh::public_key(&credential)?;
-            } else {
-                if !values[4].is_empty() {
-                    credential.password = values[4].clone();
-                }
-                if credential.password.is_empty() {
-                    return Err(dgl_core::Error::InvalidArgument);
-                }
-            }
-            storage::write(&host.credential_ref, &credential)?;
-            let mut next = self.local.clone();
-            next.hosts.retain(|h| h.id != host.id);
-            next.hosts.push(host);
-            next.save(&self.path)?;
-            self.local = next;
-            Ok::<_, dgl_core::Error>(())
-        })();
-        match result {
-            Ok(()) => self.dialog = None,
-            Err(e) => {
-                self.error = Some(format!(
-                    "저장을 중단했습니다: {e}. 호스트·포트·자격 증명을 확인하세요."
-                ))
-            }
-        }
-    }
     fn prompt(&mut self, title: &str, operation: PromptOp, cx: &mut Context<Self>) {
         if let Some(tab) = self.active_tab() {
             self.dialog = Some(Dialog::Prompt {
@@ -551,7 +417,14 @@ impl Desktop {
     ) -> Stateful<Div> {
         let id = id.into();
         let palette = self.palette;
+        let focus = self.modal.building.then(|| self.modal.button(&id, cx));
+        let reveal = focus
+            .clone()
+            .filter(|_| id != "cancel-dialog" && id != "save-host");
         div()
+            .when_some(reveal, |d, focus| {
+                d.on_children_prepainted(self.modal.reveal_on_focus(focus))
+            })
             .id(ElementId::Name(id.clone()))
             .debug_selector(|| id.to_string())
             .px_2()
@@ -559,9 +432,7 @@ impl Desktop {
             .flex_shrink_0()
             .cursor_pointer()
             .hover(move |s| s.bg(rgb(palette.selection)))
-            .when(self.modal.building, |d| {
-                d.track_focus(&self.modal.button(&id, cx))
-            })
+            .when_some(focus, |d, focus| d.track_focus(&focus))
             .focus(move |s| {
                 s.bg(rgb(palette.selection))
                     .border_color(rgb(palette.accent))
@@ -647,17 +518,15 @@ impl Render for Desktop {
                 Dialog::Host {
                     fields, key_auth, ..
                 } => (
+                    "host",
                     if *key_auth {
-                        "host-key"
+                        vec![0, 1, 2, 3, 6, 5]
                     } else {
-                        "host-password"
-                    },
-                    fields
-                        .iter()
-                        .enumerate()
-                        .filter(|(i, _)| !(*i == 4 && *key_auth || *i >= 5 && !*key_auth))
-                        .map(|(_, f)| f.clone())
-                        .collect::<Vec<_>>(),
+                        vec![0, 1, 2, 3, 4]
+                    }
+                    .into_iter()
+                    .map(|i| fields[i].clone())
+                    .collect::<Vec<_>>(),
                 ),
                 Dialog::Prompt { input, .. } => ("prompt", vec![input.clone()]),
                 Dialog::Delete { .. } => ("delete", vec![]),
@@ -676,6 +545,8 @@ impl Render for Desktop {
             );
             let mut body = div()
                 .id("dialog-body")
+                .debug_selector(|| "dialog-body".into())
+                .track_scroll(&self.modal.scroll)
                 .overflow_y_scroll()
                 .max_h(px(
                     (f32::from(window.viewport_size().height) - 180.).clamp(100., 620.)
@@ -690,173 +561,8 @@ impl Render for Desktop {
                 |s, _, _| s.dialog = None,
             ));
             match dialog {
-                Dialog::Host {
-                    original,
-                    fields,
-                    key_auth,
-                    favorite,
-                    ..
-                } => {
-                    body = body.child(div().text_xl().child(if original.is_some() {
-                        "호스트 편집"
-                    } else {
-                        "SSH 호스트 추가"
-                    }));
-                    let labels = [
-                        "별칭",
-                        "호스트 / IP",
-                        "포트",
-                        "사용자 이름",
-                        "비밀번호",
-                        "키 암호",
-                        "개인키 파일 경로",
-                    ];
-                    for (i, f) in fields.iter().enumerate() {
-                        if (i == 4 && key_auth) || (i >= 5 && !key_auth) {
-                            continue;
-                        }
-                        body = body
-                            .child(div().text_sm().child(labels[i]))
-                            .child(f.clone());
-                        if i == 4 || i == 5 {
-                            let input = f.clone();
-                            body = body.child(self.button(
-                                format!("show-secret-{i}"),
-                                if f.read(cx).secret_visible() {
-                                    "☑ 비밀번호 표시"
-                                } else {
-                                    "☐ 비밀번호 표시"
-                                },
-                                cx,
-                                move |_, _, cx| {
-                                    input
-                                        .update(cx, |input, cx| input.toggle_secret_visibility(cx));
-                                },
-                            ));
-                        }
-                    }
-                    body = body
-                        .child(self.button(
-                            "auth",
-                            if key_auth {
-                                "인증: 개인키"
-                            } else {
-                                "인증: 비밀번호"
-                            },
-                            cx,
-                            |s, _, _| {
-                                if let Some(Dialog::Host { key_auth, .. }) = s.dialog.as_mut() {
-                                    *key_auth = !*key_auth
-                                }
-                            },
-                        ))
-                        .child(self.button(
-                            "favorite",
-                            if favorite {
-                                "★ 즐겨찾기"
-                            } else {
-                                "☆ 즐겨찾기"
-                            },
-                            cx,
-                            |s, _, _| {
-                                if let Some(Dialog::Host { favorite, .. }) = s.dialog.as_mut() {
-                                    *favorite = !*favorite
-                                }
-                            },
-                        ));
-                    if key_auth {
-                        body = body
-                            .child(self.button(
-                                "import",
-                                "개인키 가져오기",
-                                cx,
-                                |s, _, cx| {
-                                    if let Some(Dialog::Host {
-                                        fields,
-                                        private_key,
-                                        ..
-                                    }) = s.dialog.as_mut()
-                                    {
-                                        let path = fields[6].read(cx).content.to_string();
-                                        let bytes = std::fs::File::open(path).and_then(|file| {
-                                            let mut bytes = Vec::new();
-                                            file.take(131073).read_to_end(&mut bytes)?;
-                                            Ok(bytes)
-                                        });
-                                        match bytes {
-                                            Ok(b) if b.len() <= 131072 => {
-                                                match String::from_utf8(b) {
-                                                    Ok(k) => *private_key = k,
-                                                    Err(_) => {
-                                                        s.error = Some("키 파일 인코딩 오류".into())
-                                                    }
-                                                }
-                                            }
-                                            _ => {
-                                                s.error = Some(
-                                                    "개인키를 읽지 못했습니다 (최대 128 KiB)."
-                                                        .into(),
-                                                )
-                                            }
-                                        }
-                                    }
-                                },
-                            ))
-                            .child(self.button("generate", "Ed25519 생성", cx, |s, _, _| {
-                                match ssh::generate_key() {
-                                    Ok(k) => {
-                                        if let Some(Dialog::Host { private_key, .. }) =
-                                            s.dialog.as_mut()
-                                        {
-                                            *private_key = k.private_key.clone();
-                                        }
-                                    }
-                                    Err(e) => s.error = Some(e.to_string()),
-                                }
-                            }))
-                            .child(self.button(
-                                "public-key",
-                                "공개키 복사",
-                                cx,
-                                |s, _, cx| {
-                                    if let Some(Dialog::Host {
-                                        original,
-                                        private_key,
-                                        fields,
-                                        ..
-                                    }) = &s.dialog
-                                    {
-                                        let result = (|| {
-                                            let mut c = if private_key.is_empty() {
-                                                storage::read(
-                                                    &original
-                                                        .as_ref()
-                                                        .ok_or(dgl_core::Error::InvalidArgument)?
-                                                        .credential_ref,
-                                                )?
-                                            } else {
-                                                Credential {
-                                                    private_key: private_key.clone(),
-                                                    password: String::new(),
-                                                    passphrase: String::new(),
-                                                }
-                                            };
-                                            let passphrase = fields[5].read(cx).content.to_string();
-                                            if !passphrase.is_empty() {
-                                                c.passphrase = passphrase;
-                                            }
-                                            ssh::public_key(&c)
-                                        })();
-                                        match result {
-                                            Ok(k) => {
-                                                cx.write_to_clipboard(ClipboardItem::new_string(k))
-                                            }
-                                            Err(e) => s.error = Some(e.to_string()),
-                                        }
-                                    }
-                                },
-                            ));
-                    }
+                dialog @ Dialog::Host { .. } => {
+                    body = body.child(self.render_host_dialog(dialog, cx));
                     footer = footer
                         .child(self.button("save-host", "저장", cx, |s, _, cx| s.save_host(cx)));
                 }

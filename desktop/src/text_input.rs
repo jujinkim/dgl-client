@@ -63,6 +63,14 @@ impl TextInput {
         }
     }
 
+    pub fn set_content(&mut self, value: &str, cx: &mut Context<Self>) {
+        self.content = value.to_string().into();
+        self.selected_range = value.len()..value.len();
+        self.selection_reversed = false;
+        self.marked_range = None;
+        cx.notify();
+    }
+
     pub fn is_composing(&self) -> bool {
         self.marked_range.is_some()
     }

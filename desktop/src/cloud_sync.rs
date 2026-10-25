@@ -1,6 +1,7 @@
 use super::*;
 use dgl_core::sync::{self, Cache, Conflict, Document, Resolution};
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::{fs::OpenOptions, io::Write, sync::mpsc, time::Instant};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

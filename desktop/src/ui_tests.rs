@@ -11,7 +11,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-fn setup(cx: &mut TestAppContext) -> (Entity<Desktop>, &mut VisualTestContext) {
+pub(super) fn setup(cx: &mut TestAppContext) -> (Entity<Desktop>, &mut VisualTestContext) {
     cx.update(text_input::bind_keys);
     let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let path = std::env::temp_dir()
@@ -26,7 +26,7 @@ fn setup(cx: &mut TestAppContext) -> (Entity<Desktop>, &mut VisualTestContext) {
         .join("settings.json");
     cx.add_window_view(|_, cx| Desktop::new(runtime, path, cx))
 }
-fn redraw(cx: &mut VisualTestContext) {
+pub(super) fn redraw(cx: &mut VisualTestContext) {
     cx.update(|w, _| w.refresh());
     cx.run_until_parked();
 }

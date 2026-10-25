@@ -273,17 +273,14 @@ impl Desktop {
                     })
                     .tooltip(move |_, cx| {
                         cx.new(|_| {
-                            workspace_ui::Tip(
-                                format!(
-                                    "{service} {suffix} 실행{}",
-                                    if experimental {
-                                        " · 실험 지원"
-                                    } else {
-                                        ""
-                                    }
-                                )
-                                .into(),
-                            )
+                            workspace_ui::Tip(format!(
+                                "{service} {suffix} 실행{}",
+                                if experimental {
+                                    " · 실험 지원"
+                                } else {
+                                    ""
+                                }
+                            ))
                         })
                         .into()
                     })

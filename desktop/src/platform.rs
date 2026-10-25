@@ -18,6 +18,16 @@ pub fn data_dir() -> Result<PathBuf> {
         .ok_or(Error::Storage)
 }
 
+pub fn user_home() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let variable = "HOME";
+    #[cfg(target_os = "windows")]
+    let variable = "USERPROFILE";
+    std::env::var_os(variable)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
 pub fn ssh_directory_placeholder() -> String {
     #[cfg(target_os = "macos")]
     let (variable, fallback) = ("HOME", "~/.ssh/");

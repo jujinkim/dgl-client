@@ -125,6 +125,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 
 
 - 앱 창 열기·닫기, 배율/폰트, 한글·일본어 IME, 복사·붙여넣기.
 - 최초 호스트키 확인, 비밀번호/키 인증, 저장 후 앱 재시작, 키 변경 시 차단.
+- 개인키 파일 선택창의 `.ssh`/사용자 폴더 시작, 폴더·확장자 없는 파일·한글/공백 경로,
+  취소 후 키 유지, 암호화 키·오류 수정 후 저장. [상세 검사](HOST_AUTH.md#windows-실기-확인-미실행).
 - tmux 세션·창·패널 관리, 연결 종료 후 같은 원격 작업으로 복귀, 연결 복구.
 - 다른 Windows 사용자에서 암호문 복호화 거부, 실제 프로필/DPAPI 키 손실 처리.
 

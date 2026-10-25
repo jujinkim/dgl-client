@@ -697,3 +697,34 @@ APK: `artifacts/rust-candidate/android/dgl-rust-debug.apk`.
 변경한 Rust 파일의 `rustfmt --check`는 통과했다. workspace 전체 `cargo fmt --check`는 이번에
 수정하지 않은 `password_shell.rs`, `ssh_integration.rs`의 기존 포맷 차이를 보고한다
 (`artifacts/mobile-input/rust-format.log`).
+
+## 2026-10-25 Windows 개인키 가져오기·데스크톱 호스트 입력
+
+`main`에서 호스트 입력을 연결 정보·인증 영역으로 나누고 인증 방식을 명시적으로 선택하도록
+수정했다. 빈 경로·폴더는 네이티브 파일 선택창으로, 파일 경로는 제한된 읽기로 처리한다.
+Windows는 기존 `windows` 의존성의 Common Item Dialog, macOS는 AppKit NSOpenPanel을
+사용한다. 인증 전환과 선택 취소 시 초안을 유지하고, 파일 읽기·키 검증·입력·보호 저장소
+오류를 구분한다. 작은 창에서는 키보드 포커스 이동과 창 크기 변경에 맞춰 스크롤한다.
+공개 API와 저장 형식, Windows MSVC x64 빌드·ZIP·수동 CI 진입점은 유지했다.
+[사용 방법과 Windows 실기 검사](HOST_AUTH.md)를 따른다.
+
+- macOS `cargo test --workspace`: **56개 통과·5개 예상 ignore**. 데스크톱은 36개 통과와
+  대화형 Keychain 검사 1개 ignore, 코어 SSH 통합 4개는 별도 환경이 필요해 ignore이다.
+- 새 회귀 7개는 빈 경로·기본 `.ssh`/사용자 폴더·폴더/상대 경로·확장자 없는 한글/공백 파일,
+  파일 없음·128 KiB 경계·빈 파일·인코딩·권한 오류 매핑, 취소/읽기 실패 시 기존 키 보존을 검사한다.
+  잘못된 키·암호화 키의 암호 누락/오류/수정 후 저장, 인증 전환 시 초안 유지, 기존 키 편집 저장,
+  저장소 읽기/쓰기·설정 파일 오류 구분과 수정 후 성공도 검사한다. 저장소 호출은 테스트 대역으로 격리했다.
+- GPUI 검사는 밝은/어두운 테마, 420×440 및 420×340 창의 섹션 경계·고정 저장 버튼,
+  Tab 이동과 창 크기 변경 후 포커스 입력란의 가시성을 확인했다. 기존 모달·터미널 검사도 통과했다.
+- macOS `cargo build -p dgl-desktop`, `cargo clippy --workspace --all-targets -- -D warnings`,
+  변경 Rust 파일의 `rustfmt --check` 통과. Clippy가 지적한 기존 launcher의 불필요한 문자열 변환도 제거했다.
+- Windows 선택창 어댑터를 별도 최소 crate에서 `x86_64-pc-windows-gnu` 대상으로 타입 검사했다.
+  **전체 Windows MSVC 빌드나 실행 검증은 아니다.**
+- 비밀정보 검사·대시보드 검증·Git 제외 확인·`git diff --check` 통과.
+  `.dashboard-props.json`의 기능 설명을 갱신하고 Git 제외를 유지했다.
+
+macOS 실제 네이티브 선택창·Keychain 저장/재실행, Windows 네이티브 빌드·파일 선택창·DPAPI·
+GUI·저장 후 재실행은 이번에 실행하지 않았다. 배포용 APK/.app/ZIP은 생성하지 않았다.
+자동화에서 보호 저장소 대역을 사용한 결과를 실제 Keychain/DPAPI 통과로 계산하지 않는다.
+최종 로그는 Git 제외된 `artifacts/host-auth/`의 `rust-final.log`, `clippy-final.log`,
+`macos-build.log`, `windows-typecheck.log`, `secrets-final.log`에 있다.
