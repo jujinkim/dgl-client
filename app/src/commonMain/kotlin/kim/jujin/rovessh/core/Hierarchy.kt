@@ -7,12 +7,17 @@ fun displayTreeText(value: String): String = value.map { c ->
     if (c.isISOControl() || c in '\u2028'..'\u202e' || c in '\u2066'..'\u2069') ' ' else c
 }.joinToString("").trim()
 private fun named(value: String, fallback: String) = displayTreeText(value).ifEmpty { fallback }
+private fun RemoteState.liveTitle(name: String, fallback: String, window: RemoteWindow?): String {
+    val base = named(name, fallback)
+    val title = window?.let { w -> panes.firstOrNull { it.window == w.id && it.active } }?.title?.let(::displayTreeText).orEmpty()
+    return if (title.isEmpty() || title == base) base else "$base · $title"
+}
 fun RemoteState.sessionLabel(session: RemoteSession): TreeLabel {
     val children = windows.filter { it.session == session.id }
     val count = panes.count { p -> children.any { it.id == p.window } }
-    return TreeLabel(named(session.name, t("이름 없는 세션")), tr("창 {0}개 · 패널 {1}개", children.size, count))
+    return TreeLabel(liveTitle(session.name, t("이름 없는 세션"), children.firstOrNull { it.active }), tr("창 {0}개 · 패널 {1}개", children.size, count))
 }
-fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(named(window.name, t("이름 없는 창")),
+fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(liveTitle(window.name, t("이름 없는 창"), window),
     tr("창 {0} · 패널 {1}개", window.index, panes.count { it.window == window.id }))
 fun RemotePane.treeLabel(): TreeLabel {
     val command = named(command, t("프로세스 미확인"))
@@ -37,7 +42,7 @@ fun RemoteState.hierarchyRows(showAll: Boolean): List<HierarchyRow> = sessions.m
     if (!showAll && children.size == 1) {
         val w = children.single()
         HierarchyRow(TreeKind.Session, s.id, s.id, w.window, null,
-            sessionLabel(s).copy(detail = "${windows.single().index}: ${w.label.title} · ${w.label.detail.substringAfter(" · ")}"), emptyList())
+            sessionLabel(s).copy(detail = "${windows.single().index}: ${named(windows.single().name, t("이름 없는 창"))} · " + tr("패널 {0}개", panes.count { it.window == w.window })), emptyList())
     } else HierarchyRow(TreeKind.Session, s.id, s.id, null, null, sessionLabel(s), children)
 }
 

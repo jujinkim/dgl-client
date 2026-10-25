@@ -5,6 +5,38 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class HierarchyTest {
+    @Test fun liveTitlesFollowActivePanesWithoutChangingIdentity() {
+        val fixture = javaClass.getResourceAsStream("/migration/hierarchy-v2.json")!!.use {
+            Json.parseToJsonElement(it.reader(Charsets.UTF_8).readText()).jsonArray
+        }
+        var remote = RemoteStateDecoder.json(fixture[3].jsonObject.getValue("remote").jsonObject)
+        remote = remote.copy(windows = remote.windows.mapIndexed { i, w -> w.copy(active = i != 1) },
+            panes = remote.panes.mapIndexed { i, p -> p.copy(active = i != 1 && i != 3) })
+        fun keys() = remote.hierarchyRows(true).map { it.key to it.children.map { child -> child.key } }
+        val originalKeys = keys()
+        fun title() = remote.sessionLabel(remote.sessions[0]).title
+        fun pane(index: Int, text: String) { remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i == index) p.copy(title = text) else p }) }
+        assertEquals("개발 · 작업", title())
+        pane(0, "Building 😀\u202e\n")
+        assertEquals("개발 · Building 😀", title())
+        assertEquals("편집 · Building 😀", remote.windowLabel(remote.windows[0]).title)
+        remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i < 2) p.copy(active = i == 1) else p })
+        pane(1, "Review")
+        assertEquals("개발 · Review", title())
+        remote = remote.copy(windows = remote.windows.mapIndexed { i, w -> if (i < 2) w.copy(active = i == 1) else w })
+        pane(2, "Tests")
+        assertEquals("개발 · Tests", title())
+        assertEquals("편집 · Review", remote.windowLabel(remote.windows[0]).title)
+        pane(4, "Other session")
+        assertEquals("개발 · Other session", remote.sessionLabel(remote.sessions[1]).title)
+        pane(2, "")
+        assertEquals("개발", title())
+        pane(2, "개발")
+        assertEquals("개발", title())
+        assertEquals("개발", remote.sessions[0].name)
+        assertEquals("편집", remote.windows[0].name)
+        assertEquals(originalKeys, keys())
+    }
     @Test fun sharedHierarchyProjection() {
         val cases = javaClass.getResourceAsStream("/migration/hierarchy-v2.json")!!.use {
             Json.parseToJsonElement(it.reader(Charsets.UTF_8).readText()).jsonArray

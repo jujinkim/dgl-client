@@ -1335,7 +1335,7 @@ impl Desktop {
                     .when(!browse, |d| d.opacity(0.35)),
                 )
                 .child(
-                    self.button(t("세션 새로고침"), "↻", cx, move |s, _, _| {
+                    self.button("refresh-sessions", "↻", cx, move |s, _, _| {
                         if browse {
                             s.refresh();
                         }

@@ -7,6 +7,14 @@ import kotlin.test.*
 
 class PreferencesTest {
     @Test fun languageChoiceSurvivesRestartAndLegacySettingsUseSystem() {
+        val status = CloudSyncStatus()
+        val previous = I18n.language
+        try {
+            I18n.configure("en", "ko")
+            assertEquals("Disconnected", t(status.message))
+            I18n.configure("ko", "en")
+            assertEquals("연결 안 됨", t(status.message))
+        } finally { I18n.configure(if (previous == UiLanguage.Korean) "ko" else "en", "") }
         val directory = Files.createTempDirectory("dgl-language-").toFile()
         try {
             directory.resolve("settings.json").writeText("""{"preferences":{"fontSize":19}}""")

@@ -60,7 +60,7 @@ impl Desktop {
         ) {
             if !notifications::show(&notice) {
                 self.notification_status =
-                    t("OS 알림을 요청하지 못했습니다. 앱 내 알림은 유지됩니다.").into();
+                    "OS 알림을 요청하지 못했습니다. 앱 내 알림은 유지됩니다.".into();
             }
         }
         for id in notifications::take_clicks() {
@@ -481,12 +481,12 @@ impl Desktop {
                 let settings = &mut s.local.preferences.agent_notifications;
                 match i { 0 => settings.questions = !settings.questions, 1 => settings.responses = !settings.responses, 2 => settings.errors = !settings.errors, _ => {
                     settings.os = !settings.os;
-                    if settings.os && !notifications::authorize() { s.notification_status = t("OS 알림 등록 실패: 패키지 실행과 시스템 알림 설정을 확인하세요.").into(); }
+                    if settings.os && !notifications::authorize() { s.notification_status = "OS 알림 등록 실패: 패키지 실행과 시스템 알림 설정을 확인하세요.".into(); }
                 } }
                 s.save();
             }));
         }
         body.child(t("OS 권한·집중 모드와 관계없이 앱 내 알림은 유지됩니다."))
-            .child(self.notification_status.clone())
+            .child(t(&self.notification_status).to_owned())
     }
 }

@@ -49,7 +49,7 @@ class AndroidAppFlowTest {
                     previous = app.local.value
                     app.credentials.write(profile.id, credential)
                     app.update(previous.copy(hosts = previous.hosts + profile, trust = previous.trust + (profile.endpoint to fixture.getString("fingerprint"))))
-                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(volumeKeysEnabled = true, smoothTerminalTransitions = false, mobilePaneToolbarVisible = true, showAllHierarchy = true,
+                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(language = "ko", volumeKeysEnabled = true, smoothTerminalTransitions = false, mobilePaneToolbarVisible = true, showAllHierarchy = true,
                         volumeUp = VolumeBinding(VolumeAction.Macro, listOf(
                             MacroStep.Text("dgl_volume_count=\$((\${dgl_volume_count:-0}+1)); tmux set-option -p -t \"\$TMUX_PANE\" @dgl-volume-count \"\$dgl_volume_count\""),
                             MacroStep.Key(TerminalKey.Enter))))))

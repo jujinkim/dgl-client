@@ -839,15 +839,21 @@ impl Render for Desktop {
                         self.local.preferences.font_size
                     ));
                     for (delta, label) in [(-1, t("작게")), (1, t("크게"))] {
-                        body = body.child(self.button(label, label, cx, move |s, _, cx| {
-                            s.local.preferences.font_size =
-                                (s.local.preferences.font_size + delta).clamp(10, 28);
-                            for t in &s.tabs {
-                                t.terminal
-                                    .update(cx, |t, _| t.set_font(s.local.preferences.font_size));
-                            }
-                            s.save();
-                        }));
+                        body = body.child(self.button(
+                            format!("font-size-{delta}"),
+                            label,
+                            cx,
+                            move |s, _, cx| {
+                                s.local.preferences.font_size =
+                                    (s.local.preferences.font_size + delta).clamp(10, 28);
+                                for t in &s.tabs {
+                                    t.terminal.update(cx, |t, _| {
+                                        t.set_font(s.local.preferences.font_size)
+                                    });
+                                }
+                                s.save();
+                            },
+                        ));
                     }
                     body = body
                         .child(platform::STORAGE_LABEL)

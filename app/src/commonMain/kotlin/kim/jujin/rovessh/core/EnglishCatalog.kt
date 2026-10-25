@@ -499,5 +499,6 @@ internal object EnglishCatalog {
         "확인된 버전: {0}" to "Detected version: {0}",
         "언어" to "Language",
         "현재 패널의 입력 모드를 확인하지 못했습니다. 잠시 후 다시 시도하세요." to "Could not determine the current pane input mode. Try again shortly.",
+        "패널 {0}개" to "{0} panes",
     )
 }

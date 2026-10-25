@@ -365,6 +365,18 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
         cx.notify();
     });
     redraw(ui);
+    preview.read_with(ui, |p, _| {
+        assert!(
+            super::hierarchy::session_label(&p.state.remote, &p.state.remote.sessions[0])
+                .title
+                .contains("메타데이터 갱신 🚀")
+        );
+        assert!(
+            super::hierarchy::window_label(&p.state.remote, &p.state.remote.windows[0])
+                .title
+                .contains("메타데이터 갱신 🚀")
+        );
+    });
     assert!(ui.update(|w, _| focus.is_focused(w)));
     assert_eq!(desktop.read_with(ui, |s, _| s.expanded.clone()), expanded);
     let title = ui.debug_bounds("window-$1-@1").unwrap();

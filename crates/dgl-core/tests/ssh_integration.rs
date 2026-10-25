@@ -1046,7 +1046,7 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
     std::fs::write(
         &script,
         format!(
-            "printf '\\033]2;%s\\007' {}\nstty -echo\nwhile IFS= read -r line; do printf '%s\\n' \"$line\" >> {}; done\n",
+            "printf '\\033]2;%s\\007' {}\nstty -echo\nwhile IFS= read -r line; do case \"$line\" in title:*) printf '\\033]2;%s\\007' \"${{line#title:}}\";; *) printf '%s\\n' \"$line\" >> {};; esac; done\n",
             dgl_core::command::quote(&long).unwrap(),
             dgl_core::command::quote(received.to_str().unwrap()).unwrap()
         ),
@@ -1161,6 +1161,18 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
         c.input(target.clone(), b"exactly-once\r".to_vec()).unwrap(),
     )
     .await;
+    // A running program changes the OSC title without a tmux rename command.
+    // The format subscription must update metadata without changing the input target.
+    tmux(&["send-keys", "-t", pane, "-l", "title:OSC live title 🚀"]);
+    tmux(&["send-keys", "-t", pane, "Enter"]);
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == pane && p.title == "OSC live title 🚀")
+    })
+    .await;
+    assert_eq!(c.target().unwrap(), target);
     title(pane, "제목 변경 🚀 | ' #(");
     until(&c, |s| {
         s.remote
@@ -1326,6 +1338,20 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
         std::fs::read_to_string(&received).unwrap(),
         "exactly-once\n"
     );
+    // A hidden/background renderer has no output consumer. Title events still
+    // reach the metadata listener for every session and window.
+    c.output().unsubscribe(sub);
+    let before = c.target().unwrap();
+    tmux(&["send-keys", "-t", pane, "-l", "title:OSC while hidden"]);
+    tmux(&["send-keys", "-t", pane, "Enter"]);
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == pane && p.title == "OSC while hidden")
+    })
+    .await;
+    assert_eq!(c.target().unwrap(), before);
     c.close();
     c.join().await;
     tmux(&["kill-session", "-t", session]);

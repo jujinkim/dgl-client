@@ -494,5 +494,6 @@
   "확인 후 호스트에 다시 연결하면 tmux를 다시 탐지합니다.": "Reconnect to the host after checking to detect tmux again.",
   "확인된 버전: {0}": "Detected version: {0}",
   "언어": "Language",
-  "현재 패널의 입력 모드를 확인하지 못했습니다. 잠시 후 다시 시도하세요.": "Could not determine the current pane input mode. Try again shortly."
+  "현재 패널의 입력 모드를 확인하지 못했습니다. 잠시 후 다시 시도하세요.": "Could not determine the current pane input mode. Try again shortly.",
+  "패널 {0}개": "{0} panes"
 }

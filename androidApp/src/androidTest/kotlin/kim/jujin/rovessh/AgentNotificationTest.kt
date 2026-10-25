@@ -53,7 +53,7 @@ class AgentNotificationTest {
             assertEquals(AgentNotifications.CHANNEL, sent.notification.channelId)
             assertNotNull(sent.notification.contentIntent)
             assertEquals(notice.key, sent.tag)
-            assertTrue(sent.notification.extras.getCharSequence("android.text").toString().contains("발생"))
+            assertEquals(agentMessage(notice.event.kind), sent.notification.extras.getCharSequence("android.text").toString())
             notifications.show(notice)
             assertEquals(1, manager.activeNotifications.size)
             for (agent in listOf("Agy", "Grok")) {
@@ -75,7 +75,7 @@ class AgentNotificationTest {
                 while (!delivered && System.currentTimeMillis() < clickDeadline) {
                     scenario.onActivity { activity ->
                         val model = ViewModelProvider(activity)[ClientViewModel::class.java].app
-                        delivered = model.agentNavigationError.value?.contains("종료") == true
+                        delivered = model.agentNavigationError.value == t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.")
                         assertTrue(model.connections.value.isEmpty())
                     }
                     if (!delivered) Thread.sleep(50)

@@ -66,7 +66,7 @@ class AndroidMobileInputTest {
                 scenario.onActivity {
                     app = ViewModelProvider(it)[ClientViewModel::class.java].app
                     previous = app.local.value; oldConnections = app.connections.value; oldSelected = app.selected.value
-                    app.modify { state -> state.copy(preferences = state.preferences.copy(theme = "light", mobilePaneToolbarVisible = true,
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", mobilePaneToolbarVisible = true,
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
                     app.connections.value = listOf(first, second); app.selected.value = first
                     it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT

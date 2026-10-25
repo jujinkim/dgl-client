@@ -36,6 +36,23 @@ fn named(text: &str, fallback: &str) -> String {
         text
     }
 }
+fn live_title(
+    state: &RemoteState,
+    name: &str,
+    fallback: &str,
+    window: Option<&RemoteWindow>,
+) -> String {
+    let name = named(name, fallback);
+    let title = window
+        .and_then(|w| state.panes.iter().find(|p| p.window == w.id && p.active))
+        .map(|p| display_text(&p.title))
+        .unwrap_or_default();
+    if title.is_empty() || title == name {
+        name
+    } else {
+        format!("{name} · {title}")
+    }
+}
 pub fn session_label(state: &RemoteState, session: &RemoteSession) -> Label {
     let windows: Vec<_> = state
         .windows
@@ -48,14 +65,19 @@ pub fn session_label(state: &RemoteState, session: &RemoteSession) -> Label {
         .filter(|p| windows.iter().any(|w| w.id == p.window))
         .count();
     Label {
-        title: named(&session.name, t("이름 없는 세션")),
+        title: live_title(
+            state,
+            &session.name,
+            t("이름 없는 세션"),
+            windows.iter().find(|w| w.active).copied(),
+        ),
         detail: tr!("창 {0}개 · 패널 {1}개", windows.len(), panes),
     }
 }
 pub fn window_label(state: &RemoteState, window: &RemoteWindow) -> Label {
     let count = state.panes.iter().filter(|p| p.window == window.id).count();
     Label {
-        title: named(&window.name, t("이름 없는 창")),
+        title: live_title(state, &window.name, t("이름 없는 창"), Some(window)),
         detail: tr!("창 {0} · 패널 {1}개", window.index, count),
     }
 }
@@ -142,13 +164,15 @@ pub fn rows(state: &RemoteState, show_all: bool) -> Vec<Row> {
                 row.label.detail = format!(
                     "{}: {} · {}",
                     windows[0].index,
-                    window.label.title,
-                    window
-                        .label
-                        .detail
-                        .split(" · ")
-                        .nth(1)
-                        .unwrap_or(t("패널 0개"))
+                    named(&windows[0].name, t("이름 없는 창")),
+                    tr!(
+                        "패널 {0}개",
+                        state
+                            .panes
+                            .iter()
+                            .filter(|p| p.window == windows[0].id)
+                            .count()
+                    )
                 );
                 row.children = window.children;
             }
@@ -196,6 +220,77 @@ pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&st
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_titles_follow_active_panes_without_changing_identity() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v2.json"))
+                .unwrap();
+        let mut state: RemoteState = serde_json::from_value(fixture[3]["remote"].clone()).unwrap();
+        state.windows[1].active = false;
+        state.panes[1].active = false;
+        state.panes[3].active = false;
+        let keys: Vec<_> = rows(&state, true)
+            .into_iter()
+            .map(|r| {
+                (
+                    r.key,
+                    r.children.into_iter().map(|c| c.key).collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            session_label(&state, &state.sessions[0]).title,
+            "개발 · 작업"
+        );
+        state.panes[0].title = "Building 😀\u{202e}\n".into();
+        assert_eq!(
+            session_label(&state, &state.sessions[0]).title,
+            "개발 · Building 😀"
+        );
+        assert_eq!(
+            window_label(&state, &state.windows[0]).title,
+            "편집 · Building 😀"
+        );
+        state.panes[0].active = false;
+        state.panes[1].active = true;
+        state.panes[1].title = "Review".into();
+        assert_eq!(
+            session_label(&state, &state.sessions[0]).title,
+            "개발 · Review"
+        );
+        state.windows[0].active = false;
+        state.windows[1].active = true;
+        state.panes[2].title = "Tests".into();
+        assert_eq!(
+            session_label(&state, &state.sessions[0]).title,
+            "개발 · Tests"
+        );
+        assert_eq!(
+            window_label(&state, &state.windows[0]).title,
+            "편집 · Review"
+        );
+        state.panes[4].title = "Other session".into();
+        assert_eq!(
+            session_label(&state, &state.sessions[1]).title,
+            "개발 · Other session"
+        );
+        state.panes[2].title.clear();
+        assert_eq!(session_label(&state, &state.sessions[0]).title, "개발");
+        state.panes[2].title = "개발".into();
+        assert_eq!(session_label(&state, &state.sessions[0]).title, "개발");
+        assert_eq!(state.sessions[0].name, "개발");
+        assert_eq!(state.windows[0].name, "편집");
+        assert_eq!(
+            rows(&state, true)
+                .into_iter()
+                .map(|r| (
+                    r.key,
+                    r.children.into_iter().map(|c| c.key).collect::<Vec<_>>()
+                ))
+                .collect::<Vec<_>>(),
+            keys
+        );
+    }
     #[test]
     fn shared_hierarchy_projection() {
         let fixture: serde_json::Value =

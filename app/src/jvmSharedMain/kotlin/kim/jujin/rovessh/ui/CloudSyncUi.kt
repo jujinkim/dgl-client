@@ -29,7 +29,7 @@ import kim.jujin.rovessh.*
                 TextButton({ sync.disconnect() }, enabled = !state.busy) { Text(t("연결 해제")) }
             }
         }
-        Text(state.message, style = MaterialTheme.typography.bodySmall)
+        Text(t(state.message), style = MaterialTheme.typography.bodySmall)
         state.conflicts.forEach { conflict ->
             Text(t("동시 수정 · 유지할 값을 선택하세요"), style = MaterialTheme.typography.titleSmall)
             conflict.choices.forEach { choice ->

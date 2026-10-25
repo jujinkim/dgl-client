@@ -105,7 +105,7 @@ class AndroidVolumeKeyTest {
                     first = ClientModel(host, store, app.local, app::modify) { firstWire }
                     second = ClientModel(host.copy(alias = "Second"), store, app.local, app::modify) { secondWire }
                     app.connections.value = listOf(first, second); app.selected.value = first
-                    app.update(previous.copy(hosts = listOf(host), preferences = Preferences(volumeKeysEnabled = true,
+                    app.update(previous.copy(hosts = listOf(host), preferences = Preferences(language = "ko", volumeKeysEnabled = true,
                         volumeUp = VolumeBinding(VolumeAction.Macro, listOf(MacroStep.Text("한글\\n"), MacroStep.Key(TerminalKey.Enter))),
                         volumeDown = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.CtrlB))))))
                     first.connect(); second.connect()
@@ -198,7 +198,7 @@ class AndroidVolumeKeyTest {
     @Test fun editorSaveCancelValidationAndStepOrdering() = runBlocking<Unit> {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             lateinit var app: AppModel; lateinit var previous: LocalState
-            scenario.onMainActivity { app = ViewModelProvider(it)[ClientViewModel::class.java].app; previous = app.local.value; app.update(previous.copy(preferences = Preferences())) }
+            scenario.onMainActivity { app = ViewModelProvider(it)[ClientViewModel::class.java].app; previous = app.local.value; app.update(previous.copy(preferences = Preferences(language = "ko"))) }
             try {
                 click("설정")
                 click("볼륨 키로 단축키 실행")
@@ -239,7 +239,7 @@ class AndroidVolumeKeyTest {
                 first = ClientModel(host, store, app.local, app::modify) { firstWire }
                 second = ClientModel(host.copy(alias = "Second CLI"), store, app.local, app::modify) { secondWire }
                 app.connections.value = listOf(first, second); app.selected.value = first
-                app.update(previous.copy(preferences = Preferences()))
+                app.update(previous.copy(preferences = Preferences(language = "ko")))
                 first.connect(); second.connect()
             }
             try {
@@ -266,7 +266,7 @@ class AndroidVolumeKeyTest {
                 val actions = listOf("Claude Code 실행" to "claude\r", "Claude Code Bypass 실행" to "claude --dangerously-skip-permissions\r",
                     "Codex 실행" to "codex\r", "Codex Bypass 실행" to "codex --yolo\r")
                 for (theme in listOf("light", "dark")) {
-                    scenario.onMainActivity { app.update(app.local.value.copy(preferences = Preferences(theme = theme))) }
+                    scenario.onMainActivity { app.update(app.local.value.copy(preferences = Preferences(language = "ko", theme = theme))) }
                     for ((label, command) in actions) {
                         val trigger = android.graphics.Rect().also { waitForText("CLI 실행 메뉴").getBoundsInScreen(it) }
                         assertTrue(trigger.width() > 0)
