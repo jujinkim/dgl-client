@@ -1,0 +1,33 @@
+{
+  "sources": {
+    "Agy": "https://antigravity.google/docs/hooks/",
+    "Grok": "https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/10-hooks.md",
+    "Codex": "https://learn.chatgpt.com/docs/hooks"
+  },
+  "cases": [
+    {"agent":"Agy","event":"SessionStart","payload":{"conversationId":"root","transcriptPath":"/fixture/.gemini/antigravity-cli/brain/root/.system_generated/logs/transcript.jsonl"},"kind":"Activity","output":{}},
+    {"agent":"Agy","event":"PreToolUse","payload":{"toolCall":{"name":"ask_question","args":{}},"stepIdx":2},"kind":"Question","output":{"decision":"allow"}},
+    {"agent":"Agy","event":"PreToolUse","payload":{"toolCall":{"name":"ask_permission","args":{}},"stepIdx":3},"kind":"Approval","output":{"decision":"allow"}},
+    {"agent":"Agy","event":"PreToolUse","payload":{"toolCall":{"name":"run_command","args":{}}},"kind":"Activity","output":{"decision":"allow"}},
+    {"agent":"Agy","event":"PostToolUse","payload":{"toolCall":{"name":"run_command","args":{}},"error":"fixture error"},"kind":"Error","output":{}},
+    {"agent":"Agy","event":"PostToolUse","payload":{"toolCall":{"name":"run_command","args":{}},"error":""},"kind":"Activity","output":{}},
+    {"agent":"Agy","event":"PreInvocation","payload":{"invocationNum":1,"initialNumSteps":4},"kind":"Activity","output":{}},
+    {"agent":"Agy","event":"PostInvocation","payload":{"invocationNum":1,"initialNumSteps":4},"kind":"Activity","output":{}},
+    {"agent":"Agy","event":"Stop","payload":{"executionNum":1,"terminationReason":"model_stop","error":"","fullyIdle":true},"kind":"Response","output":{"decision":""}},
+    {"agent":"Agy","event":"Stop","payload":{"executionNum":2,"terminationReason":"error","error":"fixture error","fullyIdle":true},"kind":"Error","output":{"decision":""}},
+    {"agent":"Agy","event":"Stop","payload":{"executionNum":3,"terminationReason":"max_steps_exceeded","fullyIdle":true},"kind":"Ended","output":{"decision":""}},
+    {"agent":"Grok","event":"PreToolUse","payload":{"hookEventName":"pre_tool_use","hook_event_name":"PreToolUse","sessionId":"root","toolName":"ask_user_question","toolUseId":"tool-1"},"kind":"Question","output":{}},
+    {"agent":"Grok","event":"Notification","payload":{"hookEventName":"notification","notificationType":"permission_prompt"},"kind":"Approval","output":{}},
+    {"agent":"Grok","event":"Notification","payload":{"notificationType":"idle_prompt"},"kind":null,"output":{}},
+    {"agent":"Grok","event":"Notification","payload":{"notificationType":"task_complete"},"kind":null,"output":{}},
+    {"agent":"Grok","event":"PermissionDenied","payload":{"toolName":"run_terminal_command"},"kind":"Activity","output":{}},
+    {"agent":"Grok","event":"PostToolUseFailure","payload":{"toolName":"fixture__tool","error":"fixture error"},"kind":"Error","output":{}},
+    {"agent":"Grok","event":"StopFailure","payload":{"errorType":"rate_limit","errorDetails":"fixture error"},"kind":"Error","output":{}},
+    {"agent":"Grok","event":"Stop","payload":{"hookEventName":"stop","hook_event_name":"Stop","sessionId":"root","promptId":"turn-1","stopHookActive":false,"backgroundTasks":[],"sessionCrons":[]},"kind":"Response","output":{}},
+    {"agent":"Grok","event":"StopCancelled","payload":{"reason":"user_interrupt","sessionId":"root","promptId":"turn-2"},"kind":"Ended","output":{}},
+    {"agent":"Grok","event":"SessionEnd","payload":{"reason":"other","subagentType":"explore","sessionId":"child"},"kind":"Ended","output":{}},
+    {"agent":"Codex","event":"PermissionRequest","payload":{"hook_event_name":"PermissionRequest","session_id":"root","turn_id":"turn-1","tool_name":"Bash","tool_input":{"command":"fixture"}},"kind":"Approval","output":{}},
+    {"agent":"Codex","event":"Stop","payload":{"hook_event_name":"Stop","session_id":"root","turn_id":"turn-1","stop_hook_active":false},"kind":"Response","output":{}},
+    {"agent":"Codex","event":"Interrupt","payload":{"hook_event_name":"Interrupt","session_id":"root","turn_id":"turn-2"},"kind":"Ended","output":{}}
+  ]
+}

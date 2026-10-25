@@ -9,6 +9,8 @@ import kotlin.test.*
 class CliLauncherTest {
     private class RecordingConnection : ClientConnection {
         val writes = mutableListOf<ByteArray>()
+        var inputTarget = InputTarget(1, "\$1", "connection:1:pane:1")
+        override fun captureInputTarget() = inputTarget
         override val host = HostProfile("launcher", "launcher", "example.test", username = "test")
         override val refreshing = MutableStateFlow(false)
         override val status = MutableStateFlow(ConnectionStatus(Phase.Ready))
@@ -36,7 +38,9 @@ class CliLauncherTest {
     }
 
     @Test fun exactCommandsOnceForActiveShellAndPane() {
-        val expected = listOf("claude\r", "claude --dangerously-skip-permissions\r", "codex\r", "codex --yolo\r")
+        val expected = listOf("claude\r", "claude --dangerously-skip-permissions\r", "codex\r", "codex --yolo\r",
+            "agy\r", "agy --dangerously-skip-permissions\r", "grok\r", "grok --always-approve\r")
+        assertEquals(expected.size, CliCommand.entries.size)
         for (phase in listOf(Phase.Ready, Phase.Shell)) {
             val first = RecordingConnection()
             val second = RecordingConnection().apply { status.value = ConnectionStatus(phase) }
@@ -46,7 +50,7 @@ class CliLauncherTest {
                 assertFalse(request.send(command, second, true))
                 assertContentEquals(wire.encodeToByteArray(), second.writes.last())
             }
-            assertEquals(4, second.writes.size)
+            assertEquals(expected.size, second.writes.size)
             assertTrue(first.writes.isEmpty())
         }
     }
@@ -61,7 +65,7 @@ class CliLauncherTest {
                 assertFalse(request.send(command, client, true))
                 assertTrue(client.writes.isEmpty())
             }
-            for (change in 0..4) {
+            for (change in 0..6) {
                 val first = RecordingConnection()
                 val second = RecordingConnection()
                 val request = CliLaunchRequest(first)
@@ -69,6 +73,8 @@ class CliLauncherTest {
                     0 -> first.pane.value = "%2"
                     1 -> first.session.value = "\$2"
                     2 -> first.status.value = ConnectionStatus(Phase.Restoring)
+                    5 -> first.inputTarget = first.inputTarget.copy(epoch = 2)
+                    6 -> first.inputTarget = first.inputTarget.copy(identity = "connection:1:pane:2")
                 }
                 assertFalse(request.send(command, if (change == 3) second else first, change != 4))
                 assertTrue(first.writes.isEmpty())

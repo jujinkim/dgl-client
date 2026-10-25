@@ -1,6 +1,7 @@
 package kim.jujin.rovessh.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
@@ -30,7 +31,9 @@ import kim.jujin.rovessh.core.TerminalKey
 
 internal enum class CliCommand(val wire: String) {
     Claude("claude\r"), ClaudeBypass("claude --dangerously-skip-permissions\r"),
-    Codex("codex\r"), CodexBypass("codex --yolo\r")
+    Codex("codex\r"), CodexBypass("codex --yolo\r"),
+    Agy("agy\r"), AgyBypass("agy --dangerously-skip-permissions\r"),
+    Grok("grok\r"), GrokBypass("grok --always-approve\r")
 }
 
 /** One selection can send once, only to the connection/pane on which it opened. */
@@ -38,13 +41,15 @@ internal class CliLaunchRequest(private val client: ClientConnection) {
     private val phase = client.status.value.phase
     private val session = client.session.value
     private val pane = client.pane.value
+    private val target = client.captureInputTarget()
     private var consumed = false
 
     fun send(command: CliCommand, current: ClientConnection, allowed: Boolean): Boolean {
         if (consumed) return false
         consumed = true
         if (!allowed || current !== client || !client.status.value.acceptsInput ||
-            client.status.value.phase != phase || client.session.value != session || client.pane.value != pane) return false
+            client.status.value.phase != phase || client.session.value != session || client.pane.value != pane ||
+            client.captureInputTarget() != target) return false
         client.input(command.wire.encodeToByteArray())
         return true
     }
@@ -140,6 +145,10 @@ private object AboveLauncher : PopupPositionProvider {
                                 { launch(CliCommand.Claude) }, { launch(CliCommand.ClaudeBypass) })
                             LauncherRow("Codex", LauncherIcons.openai, available && status.acceptsInput,
                                 { launch(CliCommand.Codex) }, { launch(CliCommand.CodexBypass) })
+                            LauncherRow("AGY", LauncherIcons.agy, available && status.acceptsInput,
+                                { launch(CliCommand.Agy) }, { launch(CliCommand.AgyBypass) }, experimental = true)
+                            LauncherRow("Grok Build", LauncherIcons.grok, available && status.acceptsInput,
+                                { launch(CliCommand.Grok) }, { launch(CliCommand.GrokBypass) }, experimental = true)
                         }
                     }
                 }
@@ -148,19 +157,22 @@ private object AboveLauncher : PopupPositionProvider {
     }
 }
 
-@Composable private fun LauncherRow(service: String, icon: ImageVector, enabled: Boolean, normal: () -> Unit, bypass: () -> Unit) {
+@Composable private fun LauncherRow(service: String, icon: ImageVector, enabled: Boolean, normal: () -> Unit, bypass: () -> Unit, experimental: Boolean = false) {
+    val support = if (experimental) " · 실험 지원" else ""
     Row(Modifier.fillMaxWidth().height(48.dp)) {
-        LauncherItem(service, "$service 실행", icon, enabled, Modifier.weight(0.6f), normal)
-        LauncherItem("Bypass", "$service Bypass 실행", LauncherIcons.bolt, enabled, Modifier.weight(0.4f), bypass)
+        LauncherItem(service, "$service 실행$support", icon, enabled, Modifier.weight(0.6f), normal, experimental)
+        LauncherItem("Bypass", "$service Bypass 실행$support", LauncherIcons.bolt, enabled, Modifier.weight(0.4f), bypass)
     }
 }
 
-@Composable private fun LauncherItem(label: String, description: String, icon: ImageVector, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
+@Composable private fun LauncherItem(label: String, description: String, icon: ImageVector, enabled: Boolean, modifier: Modifier, action: () -> Unit, experimental: Boolean = false) {
     val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
     Row(modifier.fillMaxHeight().clickable(enabled = enabled, role = Role.Button, onClick = action)
         .semantics(mergeDescendants = true) { contentDescription = description }.padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = color)
         Text(label, color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        if (experimental) Text("test", color = color, fontSize = 9.sp, lineHeight = 12.sp,
+            modifier = Modifier.border(1.dp, color, RoundedCornerShape(2.dp)).padding(horizontal = 3.dp))
     }
 }

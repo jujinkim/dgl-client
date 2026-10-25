@@ -20,8 +20,8 @@ SSH와 표준 tmux를 사용하는 Windows·Mac·Android 터미널 클라이언�
 - 화면 캡처·실시간 출력 순서화, 연결·패널·크기 세대 검사, bounded output / scrollback
 - Android xterm.js/WebView, Mac GPUI/alacritty_terminal, 단축키 바, 앱 테마·폰트 크기
 - Android 키보드 크기 변경 통합 처리, 화면 캐시와 fade, 선택형 크기·크로스페이드·블러 전환
-- 하단 `…` 메뉴에서 Claude Code·Codex 일반 실행 또는 Bypass 실행
-- 모든 tmux 창·패널의 Codex·Claude 프로세스 아이콘, 선택적 공식 훅 연동, 읽지 않은 사건 배지·앱 내 알림·OS 알림·대상 패널 이동
+- 하단 `…` 메뉴에서 Claude Code·Codex·AGY·Grok Build 일반 실행 또는 Bypass 실행 (AGY·Grok Build는 `test`)
+- 모든 tmux 창·패널의 네 CLI 프로세스 아이콘, 선택적 공식 훅 연동, 읽지 않은 사건 배지·앱 내 알림·OS 알림·대상 패널 이동
 - Android 볼륨 위·아래 키별 단축키·텍스트/키 매크로 설정 (기본 꺼짐)
 - tmux 미설치/버전 미지원 시 일반 SSH 셸. **일반 셸의 작업은 연결 종료 후 보존되지 않을 수 있습니다.**
 
@@ -140,6 +140,8 @@ Mac·Windows·Android의 하단 단축키 바 오른쪽 `…`는 위쪽으로 CL
 |---|---|---|
 | Claude Code | `claude` | `claude --dangerously-skip-permissions` |
 | Codex | `codex` | `codex --yolo` |
+| AGY `test` | `agy` | `agy --dangerously-skip-permissions` |
+| Grok Build `test` | `grok` | `grok --always-approve` |
 
 선택한 명령과 Enter를 현재 활성 터미널에 한 번 보내고 메뉴를 닫아 터미널 입력으로 돌아갑니다.
 현재 원격 셸의 작업 디렉터리·환경을 그대로 사용하며, CLI는 원격 환경에 미리 설치·로그인되어 있어야 합니다.
@@ -148,12 +150,18 @@ Mac·Windows·Android의 하단 단축키 바 오른쪽 `…`는 위쪽으로 CL
 Esc 또는 Android 뒤로가기로 메뉴가 닫힙니다.
 Bypass의 의미는 [Claude Code CLI 문서](https://code.claude.com/docs/en/cli-reference)와
 [Codex CLI 문서](https://learn.chatgpt.com/docs/developer-commands?surface=cli)를 따릅니다.
+AGY는 [권한 문서](https://antigravity.google/docs/permissions/), Grok Build는
+[권한 문서](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/22-permissions-and-safety.md)를 따릅니다.
+새 두 서비스의 실행명 오른쪽 `test` 배지는 실험 지원을 뜻합니다. 실제 로그인·유료 호출은 미검증입니다.
 서비스·번개 아이콘은 앱에 번들되며 네트워크 다운로드 없이 테마 색상으로 표시됩니다.
 데스크톱 패키지는 아이콘의 `simple-icons-LICENSE.md`도 포함합니다.
 
 호스트 메뉴의 `에이전트 상태 연동`에서 변경 내용을 검사한 뒤 선택적으로 도우미와 사용자 훅을 설치합니다.
-Python 3.9 이상, Codex 0.163.0·Claude Code 2.1.310이 현재 설치 검사 대상입니다. 기존 훅은 보존하며
+Python 3.9 이상, Codex 0.163.0/0.164.0·Claude Code 2.1.310이 현재 설치 검사 대상입니다.
+설치된 AGY·Grok Build는 실험 지원으로 훅 설치를 허용합니다. 각 CLI의 미설치·비정상 설정은 개별 표시하고 정상인 다른 CLI는 설치할 수 있습니다. 기존 훅은 보존하며
 Codex의 `/hooks` 신뢰 검토는 사용자가 수행합니다. 별도 설치 없이도 확인된 프로세스 아이콘을 표시합니다.
+AGY 승인은 명시적 `ask_permission`만 수집하며 일반 권한 팝업은 감지하지 않습니다.
+Grok의 `idle_prompt`·`task_complete`는 응답 종료로 알리지 않습니다. 설치 검사의 수집 가능 사건과 실행별 실제 **수신 확인 사건**은 구분합니다.
 질문·승인 요청·응답 종료·오류는 **발생 사실**이며 현재 대기나 작업 성공을 뜻하지 않습니다.
 OS 알림은 설정에서 켜며 Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신합니다.
 설치·해제·저장 범위와 플랫폼별 검증은 [에이전트 상태·알림 안내](docs/AGENT_STATUS.md)를 따릅니다.

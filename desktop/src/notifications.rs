@@ -59,8 +59,8 @@ pub fn show(notice: &Notice) -> bool {
     let values = [
         notice.id(),
         format!(
-            "{:?} · {}{}",
-            notice.event.agent,
+            "{} · {}{}",
+            notice.event.agent.label(),
             notice.event.pane,
             if notice.event.actor != "parent" {
                 " · 서브에이전트"

@@ -71,6 +71,17 @@ async fn completion(c: &Connection, id: u64) {
 #[tokio::test]
 #[ignore = "requires scripts/integration.py --agent-home; simulated hook producer, real SSH/tmux"]
 async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
+    for (service, executable) in [
+        (dgl_core::agent::Agent::Codex, "codex"),
+        (dgl_core::agent::Agent::Claude, "claude"),
+        (dgl_core::agent::Agent::Agy, "agy"),
+        (dgl_core::agent::Agent::Grok, "grok"),
+    ] {
+        agent_hidden_pane_case(service, executable).await;
+    }
+}
+
+async fn agent_hidden_pane_case(service: dgl_core::agent::Agent, executable: &str) {
     use dgl_core::agent::{self, Kind};
     let root = std::path::PathBuf::from(std::env::var("DGL_TEST_ROOT").unwrap());
     // Refuse to write an observer database into the real home in ordinary SSH tests.
@@ -81,15 +92,29 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
     std::fs::write(&helper, agent::HELPER).unwrap();
     let trigger = root.join("emit-stop");
     let wrapper = std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap();
+    let payload = match service {
+        agent::Agent::Agy => {
+            serde_json::json!({"conversationId":"root", "transcriptPath":"/fixture/.gemini/antigravity-cli/brain/root/logs/transcript.jsonl", "terminationReason":"model_stop", "fullyIdle":true})
+        }
+        agent::Agent::Grok => serde_json::json!({"sessionId":"root", "hookEventName":"stop"}),
+        _ => serde_json::json!({"session_id":"fixture", "hook_event_name":"Stop"}),
+    };
     let command = format!(
-        "printf '%s' '{{\"hook_event_name\":\"Stop\",\"session_id\":\"fixture\"}}' | python3 {} record --agent Codex --tmux {}",
+        "printf '%s' {} | python3 {} record --agent {service:?} --event Stop --tmux {}",
+        dgl_core::command::quote(&payload.to_string()).unwrap(),
         dgl_core::command::quote(helper.to_str().unwrap()).unwrap(),
         dgl_core::command::quote(&wrapper).unwrap()
     );
+    let first_command = if service == agent::Agent::Agy {
+        command.replace("--event Stop", "--event SessionStart")
+    } else {
+        command.clone()
+    };
     let source = format!(
-        "#include <unistd.h>\n#include <stdlib.h>\nint main(void){{ for(;;){{ if(access({},F_OK)==0){{system({});unlink({});}} usleep(100000); }} }}",
+        "#include <unistd.h>\n#include <stdlib.h>\nint main(void){{ int started=0; for(;;){{ if(access({},F_OK)==0){{system(started?{}:{});started=1;unlink({});}} usleep(100000); }} }}",
         serde_json::to_string(trigger.to_str().unwrap()).unwrap(),
         serde_json::to_string(&command).unwrap(),
+        serde_json::to_string(&first_command).unwrap(),
         serde_json::to_string(trigger.to_str().unwrap()).unwrap()
     );
     std::fs::write(root.join("producer.c"), source).unwrap();
@@ -98,7 +123,7 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
             .args([
                 root.join("producer.c").to_str().unwrap(),
                 "-o",
-                root.join("codex").to_str().unwrap()
+                root.join(executable).to_str().unwrap()
             ])
             .status()
             .unwrap()
@@ -140,7 +165,7 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
             "{} new-window -t {} -P -F '#{{pane_id}}' {}",
             dgl_core::command::quote(&wrapper).unwrap(),
             dgl_core::command::target(ids[0], '$').unwrap(),
-            dgl_core::command::quote(root.join("codex").to_str().unwrap()).unwrap()
+            dgl_core::command::quote(root.join(executable).to_str().unwrap()).unwrap()
         ))
         .await
         .unwrap();
@@ -172,7 +197,7 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
         basic
             .observations
             .iter()
-            .any(|o| o.pane == hidden && o.agent == agent::Agent::Codex)
+            .any(|o| o.pane == hidden && o.agent == service)
     );
     assert!(
         basic
@@ -181,7 +206,10 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
             .all(|o| o.last.is_none() && o.supported.is_empty())
     );
     assert!(basic.events.is_empty());
-    // Create the DB and synchronize its epoch without producing a replay notification.
+    // The first service creates the DB; later services use its existing epoch.
+    let had_database = root
+        .join("home/.local/share/dgl-agent/v1/events.sqlite")
+        .exists();
     std::fs::write(&trigger, b"1").unwrap();
     tokio::time::timeout(Duration::from_secs(15), async {
         loop {
@@ -198,11 +226,20 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
     })
     .await
     .unwrap();
-    assert!(c.state().agents.events.is_empty());
+    if !had_database {
+        assert!(c.state().agents.events.is_empty(), "{service:?}");
+    }
+    let first_cursor = c.state().agents.cursor;
     std::fs::write(&trigger, b"2").unwrap();
     let event = tokio::time::timeout(Duration::from_secs(15), async {
         loop {
-            if let Some(e) = c.state().agents.events.first() {
+            if let Some(e) = c
+                .state()
+                .agents
+                .events
+                .iter()
+                .find(|e| e.seq > first_cursor)
+            {
                 break e.clone();
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -211,6 +248,7 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
     .await
     .unwrap();
     assert_eq!(event.kind, Kind::Response);
+    assert_eq!(event.agent, service);
     assert_eq!(event.pane, hidden);
     assert_ne!(c.state().pane.as_ref(), Some(&hidden));
     completion(
@@ -228,6 +266,28 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
     phase(&restored, Phase::Ready).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert!(restored.state().agents.events.is_empty());
+    let (code, _) = inspector
+        .execute(&format!(
+            "{} respawn-pane -k -t {} {}",
+            dgl_core::command::quote(&wrapper).unwrap(),
+            dgl_core::command::target(&hidden, '%').unwrap(),
+            dgl_core::command::quote(root.join(executable).to_str().unwrap()).unwrap()
+        ))
+        .await
+        .unwrap();
+    assert_eq!(code, 0);
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            if c.state().agents.observations.iter().any(|o| {
+                o.pane == hidden && o.run != event.run && o.last.is_none() && o.supported.is_empty()
+            }) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .unwrap();
     inspector
         .execute_tmux(
             &dgl_core::command::Command::new(&Operation::KillPane {

@@ -23,9 +23,9 @@ import kotlinx.serialization.json.*
     val latestUnread = unread.minByOrNull { agentPriority(it.event.kind) }
     val label = if (snapshot.current(System.currentTimeMillis()) && latestUnread != null) "${agentMessage(latestUnread.event.kind)} · 읽지 않은 사건 ${unread.size}건" else if (!snapshot.current(System.currentTimeMillis()) || representative == null) "상태 미확인"
         else agentMessage(representative.kind) + " ${events.count { agentPriority(it.kind) == agentPriority(representative.kind) }}"
-    Row(Modifier.clickable(enabled = onDetails != null) { onDetails?.invoke() }.semantics { contentDescription = observations.map { it.agent }.distinct().joinToString() + " · " + label }, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(Modifier.clickable(enabled = onDetails != null) { onDetails?.invoke() }.semantics { contentDescription = observations.map { agentName(it.agent) }.distinct().joinToString() + " · " + label }, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         observations.map { it.agent }.distinct().forEach { agent ->
-            Icon(if (agent == "Claude") LauncherIcons.claude else LauncherIcons.openai, agent, Modifier.size(16.dp))
+            Icon(LauncherIcons.agent(agent), agentName(agent), Modifier.size(16.dp))
         }
         if (observations.isEmpty()) Text("▣", style = MaterialTheme.typography.labelSmall)
         Text(label, style = MaterialTheme.typography.labelSmall, maxLines = if (compact) 1 else 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
@@ -43,7 +43,7 @@ import kotlinx.serialization.json.*
             Text("마지막으로 관측된 사건입니다. 현재 입력·승인 대기나 작업 성공을 뜻하지 않습니다.")
             AgentBadge(client)
             snapshot.observations.forEach { o ->
-                Text("${o.agent} · ${o.session}/${o.window}/${o.pane}" + if (o.actor != "parent") " · 서브에이전트" else "")
+                Text("${agentName(o.agent)} · ${o.session}/${o.window}/${o.pane}" + if (o.actor != "parent") " · 서브에이전트" else "")
                 Text(o.last?.let { "${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}" } ?: "미연동 · 상태 미확인")
                 Text("수신 확인 사건: ${o.supported.joinToString().ifEmpty { "미확인" }}", style = MaterialTheme.typography.labelSmall)
                 TextButton({
@@ -63,6 +63,10 @@ import kotlinx.serialization.json.*
                     Text("${c["agent"]?.jsonPrimitive?.content}: ${c["version"]?.jsonPrimitive?.content}\n${c["path"]?.jsonPrimitive?.content}")
                     Text(if (c["installed"]?.jsonPrimitive?.boolean == true) "설치됨 · 활성화 확인 필요 (실제 사건은 위에서 확인)" else "설치되지 않음")
                     Text(if (c["supported"]?.jsonPrimitive?.boolean == true) "추가 훅: ${c["events"]?.jsonArray?.joinToString { it.jsonPrimitive.content }}" else "지원 확인되지 않은 CLI 버전 · 설치 제외")
+                    if (c["experimental"]?.jsonPrimitive?.boolean == true) Text("실험 지원 · 실제 CLI 수신 미검증")
+                    c["error"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Text("수집 가능 사건: ${c["capabilities"]?.jsonArray?.joinToString { it.jsonPrimitive.content }}")
+                    c["limitations"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() }?.let { Text(it) }
                 }
                 Text("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 다음 실제 이벤트 수신 후 확인됩니다. 기존 CLI는 종료하지 않습니다.")
                 TextButton({ client.configureAgents("install", token) }) { Text("연동 설치") }
@@ -79,7 +83,7 @@ import kotlinx.serialization.json.*
             Text("이번 앱 실행 중 최대 100건. 읽음은 질문 응답·승인 처리를 뜻하지 않습니다.")
             if (notices.isEmpty()) Text("수신한 알림이 없습니다.")
             notices.forEach { n ->
-                Text("${if (n.read) "" else "● "}${n.event.agent} · ${n.endpoint}\n${n.event.session}/${n.event.window}/${n.event.pane}" + if (n.event.actor != "parent") " · 서브에이전트" else "")
+                Text("${if (n.read) "" else "● "}${agentName(n.event.agent)} · ${n.endpoint}\n${n.event.session}/${n.event.window}/${n.event.pane}" + if (n.event.actor != "parent") " · 서브에이전트" else "")
                 Text(agentMessage(n.event.kind))
                 Text("${n.event.event} · ${java.util.Date(n.event.at)}", style = MaterialTheme.typography.labelSmall)
                 TextButton({ model.openAgentNotice(n.id); dismiss() }) { Text("패널로 이동 · 읽음") }

@@ -8,6 +8,8 @@
 The OpenAI mark identifies Codex. The paths are CC0-1.0; the full license is
 `licenses/simple-icons-LICENSE.md`. Brand names and marks remain their owners'
 trademarks. `bolt.svg` is a project-authored geometric lightning symbol.
+`agy.svg` and `grok.svg` are project-authored monochrome identification symbols,
+not official vendor marks. They identify experimental AGY and Grok Build support.
 
 GPUI embeds these SVGs with `include_bytes!`; no runtime asset directory is needed
 on Mac or Windows. Compose embeds the same 24 × 24 path data in

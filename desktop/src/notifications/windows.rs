@@ -175,8 +175,8 @@ pub fn show(notice: &Notice) -> bool {
     let result = (|| -> ::windows::core::Result<()> {
         let doc = XmlDocument::new()?;
         let title = format!(
-            "{:?} · {}{}",
-            notice.event.agent,
+            "{} · {}{}",
+            notice.event.agent.label(),
             notice.event.pane,
             if notice.event.actor != "parent" {
                 " · 서브에이전트"

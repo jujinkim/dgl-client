@@ -15,6 +15,27 @@ pub fn now_ms() -> u64 {
 pub enum Agent {
     Codex,
     Claude,
+    Agy,
+    Grok,
+}
+impl Agent {
+    pub const ALL: [Self; 4] = [Self::Codex, Self::Claude, Self::Agy, Self::Grok];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Codex => "Codex",
+            Self::Claude => "Claude",
+            Self::Agy => "AGY",
+            Self::Grok => "Grok Build",
+        }
+    }
+    pub fn icon(self) -> &'static str {
+        match self {
+            Self::Codex => "launcher/openai.svg",
+            Self::Claude => "launcher/claude.svg",
+            Self::Agy => "launcher/agy.svg",
+            Self::Grok => "launcher/grok.svg",
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Kind {
@@ -110,10 +131,10 @@ impl Snapshot {
             .iter()
             .filter(|o| pane.is_none_or(|p| p == o.pane))
             .collect();
-        let agents = [Agent::Codex, Agent::Claude]
+        let agents = Agent::ALL
             .into_iter()
             .filter(|a| observations.iter().any(|o| o.agent == *a))
-            .map(|a| format!("{a:?}"))
+            .map(|a| a.label())
             .collect::<Vec<_>>()
             .join(" · ");
         if observations.is_empty() {
@@ -233,6 +254,8 @@ pub async fn basic_snapshot(ssh: &Ssh, session: &str) -> Result<Snapshot> {
             let agent = match p[7].rsplit('/').next()? {
                 "codex" => Some(Agent::Codex),
                 "claude" => Some(Agent::Claude),
+                "agy" => Some(Agent::Agy),
+                "grok" => Some(Agent::Grok),
                 _ => None,
             };
             Some((
@@ -534,5 +557,43 @@ mod tests {
                 .ready(6000, &HashSet::new(), &HashSet::new(), &settings)
                 .is_empty()
         );
+    }
+    #[test]
+    fn all_agents_keep_wire_identity_and_share_notification_routes() {
+        for (agent, wire) in Agent::ALL
+            .into_iter()
+            .zip(["Codex", "Claude", "Agy", "Grok"])
+        {
+            assert_eq!(
+                serde_json::to_string(&agent).unwrap(),
+                format!("\"{wire}\"")
+            );
+            for kind in [Kind::Question, Kind::Approval, Kind::Response, Kind::Error] {
+                let mut e = event(wire, kind);
+                e.agent = agent;
+                let snapshot = Snapshot {
+                    valid: true,
+                    events: vec![e],
+                    ..Default::default()
+                };
+                let settings = NotificationSettings {
+                    os: true,
+                    ..Default::default()
+                };
+                let mut inbox = Inbox::default();
+                inbox.ingest("host", &snapshot, &settings, 1);
+                inbox.ingest("host", &snapshot, &settings, 2);
+                assert_eq!(inbox.recent.len(), 1);
+                let deliver = inbox.ready(
+                    2100,
+                    &HashSet::new(),
+                    &HashSet::from(["host:server:run".into()]),
+                    &settings,
+                );
+                assert_eq!(deliver.len(), 1);
+                assert_eq!(deliver[0].event.agent, agent);
+                assert_eq!(deliver[0].event.kind, kind);
+            }
+        }
     }
 }

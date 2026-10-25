@@ -17,6 +17,7 @@ import kotlinx.serialization.Serializable
 }
 @Serializable data class AgentInboxResult(val recent: List<AgentNotice> = emptyList(), val deliver: List<AgentNotice> = emptyList())
 fun agentPriority(kind: String) = when (kind) { "Question", "Approval" -> 0; "Error" -> 1; "Response" -> 2; "Activity" -> 3; else -> 4 }
+fun agentName(agent: String) = when (agent) { "Agy" -> "AGY"; "Grok" -> "Grok Build"; else -> agent }
 fun agentMessage(kind: String) = when (kind) {
     "Question" -> "? 질문이 발생했습니다"; "Approval" -> "◇ 승인 요청이 발생했습니다"; "Response" -> "○ 응답 종료 신호를 받았습니다"
     "Error" -> "! 명시적 오류를 받았습니다"; "Activity" -> "↻ 작업 사건을 받았습니다"; else -> "— 실행 종료/중단 신호를 받았습니다"

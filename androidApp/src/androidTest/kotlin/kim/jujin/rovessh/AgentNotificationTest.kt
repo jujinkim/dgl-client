@@ -15,19 +15,23 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AgentNotificationTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
-    private fun event(id: String) = AgentEvent(id, 1, "server", "run", "parent", "$0", "@0", "%0", "Claude", "Approval", "PermissionRequest", System.currentTimeMillis())
+    private fun event(id: String, agent: String = "Claude") = AgentEvent(id, 1, "server", "run", "parent", "$0", "@0", "%0", agent, "Approval", "PermissionRequest", System.currentTimeMillis())
     @Test fun nativeInboxDeduplicatesVisibleReadAndDoesNotResolveObservation() {
         val inbox = RustAgentInbox()
         try {
-            val e = event("duplicate")
-            val snapshot = AgentSnapshot(server = "server", valid = true, observed_at = System.currentTimeMillis(), events = listOf(e))
-            val sources = listOf("host" to snapshot, "host" to snapshot)
-            val result = inbox.tick(sources, setOf("host:server:%0"), AgentNotificationSettings(os = true))
-            assertEquals(1, result.recent.size)
-            assertTrue(result.recent.single().read)
-            assertEquals("Approval", result.recent.single().event.kind)
-            assertTrue(result.deliver.isEmpty())
-            assertEquals("Approval", snapshot.events.single().kind)
+            for (agent in listOf("Claude", "Codex", "Agy", "Grok")) {
+                val e = event("duplicate-$agent", agent)
+                val snapshot = AgentSnapshot(server = "server", valid = true, observed_at = System.currentTimeMillis(), events = listOf(e))
+                val sources = listOf("host" to snapshot, "host" to snapshot)
+                val result = inbox.tick(sources, setOf("host:server:%0"), AgentNotificationSettings(os = true))
+                val notice = result.recent.single { it.event.id == e.id }
+                assertEquals(1, result.recent.count { it.event.id == e.id })
+                assertTrue(notice.read)
+                assertEquals(agent, notice.event.agent)
+                assertEquals("Approval", notice.event.kind)
+                assertTrue(result.deliver.isEmpty())
+                assertEquals("Approval", snapshot.events.single().kind)
+            }
         } finally { inbox.close() }
     }
     @Test fun channelPermissionAndClickIntentRetainOnlyEventId() {
@@ -52,6 +56,14 @@ class AgentNotificationTest {
             assertTrue(sent.notification.extras.getCharSequence("android.text").toString().contains("발생"))
             notifications.show(notice)
             assertEquals(1, manager.activeNotifications.size)
+            for (agent in listOf("Agy", "Grok")) {
+                notifications.show(AgentNotice("host", event("permission-$agent", agent)))
+                val updateDeadline = System.currentTimeMillis() + 5000
+                fun updated() = manager.activeNotifications.singleOrNull()?.notification?.extras?.getCharSequence("android.title")?.toString()?.startsWith(agentName(agent)) == true
+                while (!updated() && System.currentTimeMillis() < updateDeadline) Thread.sleep(50)
+                assertEquals(1, manager.activeNotifications.size)
+                assertTrue("notification title must update for $agent", updated())
+            }
             // Exercise the real PendingIntent and Activity callback. An expired
             // in-memory target must produce an explanation without connecting.
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->

@@ -8,6 +8,10 @@ pub enum LaunchCommand {
     ClaudeBypass,
     Codex,
     CodexBypass,
+    Agy,
+    AgyBypass,
+    Grok,
+    GrokBypass,
 }
 impl LaunchCommand {
     pub fn bytes(self) -> Vec<u8> {
@@ -16,6 +20,10 @@ impl LaunchCommand {
             Self::ClaudeBypass => b"claude --dangerously-skip-permissions\r",
             Self::Codex => b"codex\r",
             Self::CodexBypass => b"codex --yolo\r",
+            Self::Agy => b"agy\r",
+            Self::AgyBypass => b"agy --dangerously-skip-permissions\r",
+            Self::Grok => b"grok\r",
+            Self::GrokBypass => b"grok --always-approve\r",
         }
         .to_vec()
     }
@@ -95,6 +103,12 @@ impl AssetSource for Assets {
             "launcher/bolt.svg" => Some(Cow::Borrowed(include_bytes!(
                 "../../assets/launcher/bolt.svg"
             ))),
+            "launcher/agy.svg" => Some(Cow::Borrowed(include_bytes!(
+                "../../assets/launcher/agy.svg"
+            ))),
+            "launcher/grok.svg" => Some(Cow::Borrowed(include_bytes!(
+                "../../assets/launcher/grok.svg"
+            ))),
             _ => None,
         })
     }
@@ -103,6 +117,8 @@ impl AssetSource for Assets {
             "launcher/claude.svg".into(),
             "launcher/openai.svg".into(),
             "launcher/bolt.svg".into(),
+            "launcher/agy.svg".into(),
+            "launcher/grok.svg".into(),
         ])
     }
 }
@@ -195,6 +211,18 @@ impl Desktop {
                 LaunchCommand::Codex,
                 LaunchCommand::CodexBypass,
             ),
+            (
+                "AGY",
+                "launcher/agy.svg",
+                LaunchCommand::Agy,
+                LaunchCommand::AgyBypass,
+            ),
+            (
+                "Grok Build",
+                "launcher/grok.svg",
+                LaunchCommand::Grok,
+                LaunchCommand::GrokBypass,
+            ),
         ] {
             let mut row = div().flex().w_full().h(px(44.));
             for (label, icon, fraction, command, suffix) in [
@@ -202,6 +230,7 @@ impl Desktop {
                 ("Bypass", "launcher/bolt.svg", 0.4, bypass, "bypass"),
             ] {
                 let id = format!("launch-{service}-{suffix}");
+                let experimental = matches!(normal, LaunchCommand::Agy | LaunchCommand::Grok);
                 let item = div()
                     .id(ElementId::Name(id.clone().into()))
                     .debug_selector(move || id.clone())
@@ -228,6 +257,36 @@ impl Desktop {
                         })),
                     ))
                     .child(label)
+                    .when(experimental && suffix == "normal", |d| {
+                        d.child(
+                            div()
+                                .id(ElementId::Name(format!("launch-{service}-test").into()))
+                                .debug_selector(move || format!("launch-{service}-test"))
+                                .text_size(px(9.))
+                                .line_height(px(12.))
+                                .px_1()
+                                .border_1()
+                                .border_color(rgb(p.muted))
+                                .rounded_sm()
+                                .child("test"),
+                        )
+                    })
+                    .tooltip(move |_, cx| {
+                        cx.new(|_| {
+                            workspace_ui::Tip(
+                                format!(
+                                    "{service} {suffix} 실행{}",
+                                    if experimental {
+                                        " · 실험 지원"
+                                    } else {
+                                        ""
+                                    }
+                                )
+                                .into(),
+                            )
+                        })
+                        .into()
+                    })
                     .on_click(cx.listener(move |s, _, w, cx| {
                         if enabled {
                             s.launch(command, w, cx);
@@ -288,6 +347,13 @@ mod tests {
             ),
             (LaunchCommand::Codex, "codex\r"),
             (LaunchCommand::CodexBypass, "codex --yolo\r"),
+            (LaunchCommand::Agy, "agy\r"),
+            (
+                LaunchCommand::AgyBypass,
+                "agy --dangerously-skip-permissions\r",
+            ),
+            (LaunchCommand::Grok, "grok\r"),
+            (LaunchCommand::GrokBypass, "grok --always-approve\r"),
         ] {
             let context = target();
             let mut menu = LaunchMenu {

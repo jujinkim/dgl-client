@@ -817,9 +817,24 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
         redraw(cx);
         let menu = cx.debug_bounds("cli-launcher-menu").unwrap();
         assert!(menu.bottom() <= trigger.top());
+        assert_eq!(menu.size.width, px(300.));
+        assert!(cx.debug_bounds("launch-Claude Code-test").is_none());
+        assert!(cx.debug_bounds("launch-Codex-test").is_none());
+        for (badge, normal) in [
+            ("launch-AGY-test", "launch-AGY-normal"),
+            ("launch-Grok Build-test", "launch-Grok Build-normal"),
+        ] {
+            let badge = cx.debug_bounds(badge).unwrap();
+            let normal = cx.debug_bounds(normal).unwrap();
+            assert!(badge.left() > normal.left());
+            assert!(badge.right() <= normal.right());
+            assert!(badge.size.height < px(20.));
+        }
         for (normal, bypass) in [
             ("launch-Claude Code-normal", "launch-Claude Code-bypass"),
             ("launch-Codex-normal", "launch-Codex-bypass"),
+            ("launch-AGY-normal", "launch-AGY-bypass"),
+            ("launch-Grok Build-normal", "launch-Grok Build-bypass"),
         ] {
             let normal = cx.debug_bounds(normal).unwrap();
             let bypass = cx.debug_bounds(bypass).unwrap();

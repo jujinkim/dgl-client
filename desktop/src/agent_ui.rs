@@ -190,7 +190,7 @@ impl Desktop {
             .gap_1()
             .text_xs()
             .tooltip(move |_, cx| cx.new(|_| workspace_ui::Tip(tip.clone())).into());
-        for a in [Agent::Codex, Agent::Claude] {
+        for a in Agent::ALL {
             if snapshot
                 .observations
                 .iter()
@@ -198,11 +198,7 @@ impl Desktop {
             {
                 badge = badge.child(
                     svg()
-                        .path(if a == Agent::Codex {
-                            "launcher/openai.svg"
-                        } else {
-                            "launcher/claude.svg"
-                        })
+                        .path(a.icon())
                         .size(px(15.))
                         .text_color(rgb(self.palette.fg)),
                 );
@@ -227,8 +223,8 @@ impl Desktop {
             .child(state.agents.label(None, agent::now_ms()));
         for o in &state.agents.observations {
             body = body.child(format!(
-                "{:?} · {}/{}/{}{}",
-                o.agent,
+                "{} · {}/{}/{}{}",
+                o.agent.label(),
                 o.session,
                 o.window,
                 o.pane,
@@ -343,6 +339,18 @@ impl Desktop {
                             },
                             c["events"]
                         ));
+                        if c["experimental"].as_bool() == Some(true) {
+                            body = body.child("실험 지원 · 실제 CLI 수신 미검증");
+                        }
+                        body = body.child(format!("수집 가능 사건: {}", c["capabilities"]));
+                        if let Some(limitations) =
+                            c["limitations"].as_str().filter(|s| !s.is_empty())
+                        {
+                            body = body.child(limitations.to_owned());
+                        }
+                        if let Some(error) = c["error"].as_str().filter(|s| !s.is_empty()) {
+                            body = body.child(error.to_owned());
+                        }
                     }
                 }
                 body = body.child("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 실제 훅 수신으로 확인됩니다. 기존 실행은 종료하지 않습니다.");
@@ -380,9 +388,9 @@ impl Desktop {
             let id = n.id();
             body = body
                 .child(format!(
-                    "{}{:?} · {} · {}/{}/{}{} · {} · {}초 전",
+                    "{}{} · {} · {}/{}/{}{} · {} · {}초 전",
                     if n.read { "" } else { "● " },
-                    n.event.agent,
+                    n.event.agent.label(),
                     n.endpoint,
                     n.event.session,
                     n.event.window,

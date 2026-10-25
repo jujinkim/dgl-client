@@ -31,9 +31,23 @@ EVENTS = {
     'Claude': ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse',
                'PermissionRequest', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd',
                'PostToolUseFailure', 'StopFailure'],
+    'Agy': ['SessionStart', 'PreToolUse', 'PostToolUse', 'PreInvocation', 'PostInvocation', 'Stop'],
+    'Grok': ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse',
+             'PostToolUseFailure', 'PermissionDenied', 'Stop', 'StopFailure', 'StopCancelled',
+             'Notification', 'SubagentStart', 'SubagentStop', 'SessionEnd'],
 }
 # Conservative release gate: unknown releases need revalidation, not optimistic support.
-VERSIONS = {'Codex': '0.163.0', 'Claude': '2.1.310'}
+VERSIONS = {'Codex': ('0.163.0', '0.164.0'), 'Claude': ('2.1.310',)}
+CAPABILITIES = {a: ['Activity', 'Approval', 'Response', 'Ended'] for a in EVENTS}
+CAPABILITIES['Claude'] += ['Question', 'Error']
+CAPABILITIES['Agy'] += ['Question', 'Error']
+CAPABILITIES['Grok'] += ['Question', 'Error']
+LIMITATIONS = {
+    'Codex': '질문·일반 오류는 수집하지 않습니다. /hooks 신뢰 검토와 실제 수신은 별도입니다.',
+    'Claude': '',
+    'Agy': '승인은 ask_permission만 수집하며 일반 권한 팝업은 감지하지 않습니다. 새 실행의 SessionStart가 필요합니다.',
+    'Grok': 'idle_prompt와 task_complete는 응답 종료 알림으로 수집하지 않습니다.',
+}
 
 
 def digest(value):
@@ -62,8 +76,8 @@ def processes():
         args = arguments.get(pid, '')
         agent = None
         name = Path(exe).name
-        if name in ('codex', 'claude'):
-            agent = 'Codex' if name == 'codex' else 'Claude'
+        if name in ('codex', 'claude', 'agy', 'grok'):
+            agent = {'codex': 'Codex', 'claude': 'Claude', 'agy': 'Agy', 'grok': 'Grok'}[name]
         elif name in ('node', 'nodejs'):
             try:
                 argv = shlex.split(args)
@@ -75,7 +89,8 @@ def processes():
                     agent = 'Codex'
                 elif argv[1].endswith('/@anthropic-ai/claude-code/cli.js'):
                     agent = 'Claude'
-        result[pid] = {'parent': parent, 'token': digest(f'{pid}:{start}:{exe}'), 'agent': agent}
+        result[pid] = {'parent': parent, 'token': digest(f'{pid}:{start}:{exe}'), 'agent': agent,
+                       'launcher': bool(agent and name in ('node', 'nodejs'))}
     return result
 
 
@@ -112,16 +127,18 @@ def run_id(server, pane, token):
 
 
 def kind(agent, event, payload):
+    return ADAPTERS[agent].kind(event, payload)
+
+
+def common_kind(event):
     if event == 'PermissionRequest':
         return 'Approval'
-    if event == 'PreToolUse' and agent == 'Claude' and payload.get('tool_name') == 'AskUserQuestion':
-        return 'Question'
     # Codex questions are deliberately not inferred from generic tools without a verified route.
     if event == 'Stop':
         return 'Response'
     if event in ('PostToolUseFailure', 'StopFailure'):
         return 'Error'
-    if event in ('SessionEnd', 'Interrupt', 'SubagentStop'):
+    if event in ('SessionEnd', 'Interrupt', 'SubagentStop', 'StopCancelled'):
         return 'Ended'
     return 'Activity'
 
@@ -134,19 +151,44 @@ def database():
     db.execute('CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, server TEXT, run TEXT, actor TEXT, data TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS latest (run TEXT, actor TEXT, data TEXT, PRIMARY KEY(run,actor))')
     db.execute('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)')
+    db.execute('CREATE TABLE IF NOT EXISTS conversations (run TEXT PRIMARY KEY, conversation TEXT)')
     db.execute('INSERT OR IGNORE INTO meta VALUES (?, ?)', ('epoch', uuid.uuid4().hex))
     return db
 
 
-def record(agent, tmux):
+def record(agent, tmux, explicit_event=None):
     # Fail-open: hooks must not approve, block, continue or otherwise control the CLI.
     raw = sys.stdin.buffer.read(1024 * 1024 + 1)
     if len(raw) > 1024 * 1024:
         return
     payload = json.loads(raw)
-    event = payload.get('hook_event_name')
+    if not isinstance(payload, dict) or agent not in EVENTS:
+        return
+    event = explicit_event or payload.get('hook_event_name')
+    if agent == 'Grok' and not event:
+        event = next((e for e in EVENTS[agent] if re.sub(r'(?<!^)(?=[A-Z])', '_', e).lower() == payload.get('hookEventName')), None)
+    if explicit_event and payload.get('hook_event_name', explicit_event) != explicit_event:
+        return explicit_event
+    try:
+        record_payload(agent, tmux, event, payload)
+    except Exception:
+        pass  # Preserve the event-specific neutral response even if observation fails.
+    return event
+
+
+def record_payload(agent, tmux, event, payload):
     if event not in EVENTS[agent] or not os.environ.get('TMUX'):
         return
+    event_kind = kind(agent, event, payload)
+    if event_kind is None:
+        return
+    # The global AGY file is shared with its App/IDE, which must not report into a CLI.
+    if agent in ('Agy', 'Grok'):
+        identity = payload.get('conversationId' if agent == 'Agy' else 'sessionId')
+        if not isinstance(identity, str) or not identity:
+            return
+        if agent == 'Agy' and '/antigravity-cli/brain/' not in payload.get('transcriptPath', ''):
+            return
     server, panes, procs = topology(tmux)
     pane = next((p for p in panes if p['pane'] == os.environ.get('TMUX_PANE')), None)
     if pane is None:
@@ -155,21 +197,45 @@ def record(agent, tmux):
     seen = set()
     while pid in procs and pid not in seen:
         seen.add(pid)
-        if procs[pid]['agent'] == agent and descendant(pid, pane['pid'], procs):
+        if procs[pid]['agent']:
+            # Stop at the nearest identified CLI, including a different vendor's CLI.
+            if procs[pid]['agent'] != agent or not descendant(pid, pane['pid'], procs):
+                return
             break
         pid = procs[pid]['parent']
     else:
         return
     run_key = run_id(server, pane['pane'], procs[pid]['token'])
-    child = payload.get('agent_id')
+    child = payload.get('agent_id') or payload.get('subagentType')
     actor = digest(str(child)) if child else 'parent'
     if event.startswith('Subagent') and actor == 'parent':
         actor = 'unidentified-child'
     data = {k: pane[k] for k in ('session', 'window', 'pane')}
     data.update(id=uuid.uuid4().hex, server=server, run=run_key, actor=actor,
-                agent=agent, kind=kind(agent, event, payload), event=event,
+                agent=agent, kind=event_kind, event=event,
                 at=int(time.time() * 1000))
     with database() as db:
+        conversation = payload.get('conversationId') if agent == 'Agy' else payload.get('sessionId') if agent == 'Grok' else payload.get('session_id')
+        if conversation:
+            conversation = digest(str(conversation))
+            primary = db.execute('SELECT conversation FROM conversations WHERE run=?', (run_key,)).fetchone()
+            if primary is None and actor == 'parent':
+                # AGY supplies no parent ID. Establish its root at SessionStart only.
+                if agent == 'Agy' and event != 'SessionStart':
+                    return
+                db.execute('INSERT INTO conversations VALUES(?,?)', (run_key, conversation))
+            elif primary and conversation != primary[0]:
+                actor = digest('conversation:' + conversation)
+                data['actor'] = actor
+        if agent == 'Grok' and payload.get('subagentType'):
+            data['actor'] = actor = digest('child:' + str(payload.get('sessionId', child)))
+        # Official stable event IDs allow replay deduplication without keeping content.
+        identity = (payload.get('toolUseId') if event.startswith(('PreTool', 'PostTool')) else
+                    payload.get('promptId') if event in ('Stop', 'StopFailure', 'StopCancelled') else None)
+        if agent == 'Grok' and identity:
+            data['id'] = digest(':'.join([run_key, actor, event, str(identity)]))
+            if db.execute('SELECT 1 FROM events WHERE id=?', (data['id'],)).fetchone():
+                return
         db.execute('INSERT INTO events(id,server,run,actor,data) VALUES(?,?,?,?,?)',
                    (data['id'], server, run_key, actor, json.dumps(data)))
         seq = db.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -179,6 +245,7 @@ def record(agent, tmux):
         db.execute('INSERT OR REPLACE INTO latest VALUES(?,?,?)', (run_key, actor, encoded))
         db.execute('DELETE FROM events WHERE seq <= ?', (seq - LIMIT,))
         db.execute('DELETE FROM latest WHERE (run,actor) NOT IN (SELECT run,actor FROM events)')
+        db.execute('DELETE FROM conversations WHERE run NOT IN (SELECT run FROM events)')
 
 
 def poll(tmux, session, after, epoch):
@@ -188,7 +255,7 @@ def poll(tmux, session, after, epoch):
         for pid, proc in procs.items():
             if proc['agent'] and descendant(pid, pane['pid'], procs):
                 # npm launcher + native executable represent one CLI. Prefer deepest process.
-                if any(other != pid and p['agent'] == proc['agent'] and descendant(other, pid, procs)
+                if proc.get('launcher') and any(other != pid and p['agent'] == proc['agent'] and descendant(other, pid, procs)
                        for other, p in procs.items()):
                     continue
                 observations.append(dict(session=pane['session'], window=pane['window'], pane=pane['pane'],
@@ -206,7 +273,8 @@ def poll(tmux, session, after, epoch):
             received = {}
             for run_key, encoded in db.execute('SELECT run,data FROM events WHERE server=?', (server,)):
                 if run_key in runs:
-                    received.setdefault(run_key, set()).add(json.loads(encoded)['kind'])
+                    data = json.loads(encoded)
+                    received.setdefault((run_key, data['actor']), set()).add(data['kind'])
             for run_key, actor, encoded in db.execute('SELECT run,actor,data FROM latest'):
                 if run_key not in runs:
                     continue
@@ -214,7 +282,7 @@ def poll(tmux, session, after, epoch):
                 obs = runs[run_key] if actor == 'parent' else dict(runs[run_key], actor=actor)
                 obs['last'] = data
                 # Only show routes actually received for this process, not every configured hook.
-                obs['supported'] = sorted(received.get(run_key, set()))
+                obs['supported'] = sorted(received.get((run_key, actor), set()))
                 if actor != 'parent':
                     observations.append(obs)
             if epoch == result['epoch'] and not result['gap']:
@@ -227,7 +295,9 @@ def poll(tmux, session, after, epoch):
 def config_paths():
     # Honor the CLI's documented custom user-config directories.
     return {'Codex': Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))) / 'hooks.json',
-            'Claude': Path(os.environ.get('CLAUDE_CONFIG_DIR', str(Path.home() / '.claude'))) / 'settings.json'}
+            'Claude': Path(os.environ.get('CLAUDE_CONFIG_DIR', str(Path.home() / '.claude'))) / 'settings.json',
+            'Agy': Path.home() / '.gemini/config/hooks.json',
+            'Grok': Path(os.environ.get('GROK_HOME', str(Path.home() / '.grok'))) / 'hooks/dgl-observer-v1.json'}
 
 
 def load_config(path):
@@ -242,21 +312,25 @@ def load_config(path):
     return raw, data
 
 
-def hook_command(agent, tmux):
-    return ' '.join(shlex.quote(v) for v in [sys.executable, str(HELPER), 'record', '--agent', agent, '--tmux', tmux])
+def hook_command(agent, tmux, event=None):
+    args = [sys.executable, str(HELPER), 'record', '--agent', agent, '--tmux', tmux]
+    if event:
+        args += ['--event', event]
+    return ' '.join(shlex.quote(v) for v in args)
 
 
 def owned(handler):
     # Stable full helper path and command structure, not a substring of a user's command.
     try:
         args = shlex.split(handler.get('command', ''))
-        return (handler.get('type') == 'command' and len(args) == 7 and
-                args[1:4] == [str(HELPER), 'record', '--agent'] and args[4] in EVENTS and args[5] == '--tmux')
+        return (handler.get('type') == 'command' and len(args) in (7, 9) and
+                args[1:4] == [str(HELPER), 'record', '--agent'] and args[4] in EVENTS and args[5] == '--tmux' and
+                (len(args) == 7 or (args[7] == '--event' and args[8] in EVENTS[args[4]])))
     except (ValueError, AttributeError):
         return False
 
 
-def transformed(data, agent, tmux, install):
+def standard_transform(data, agent, tmux, install):
     result = copy.deepcopy(data)
     hooks = result.setdefault('hooks', {})
     for event, groups in list(hooks.items()):
@@ -281,23 +355,159 @@ def transformed(data, agent, tmux, install):
     return result
 
 
+class HookAdapter:
+    experimental = False
+
+    def load(self, path):
+        return load_config(path)
+
+    def transform(self, data, agent, tmux, install):
+        return standard_transform(data, agent, tmux, install)
+
+    def handlers(self, data):
+        return [h for groups in data.get('hooks', {}).values() for g in groups for h in g['hooks']]
+
+    def neutral(self, event):
+        return {}
+
+    def kind(self, event, payload):
+        return common_kind(event)
+
+
+class CodexAdapter(HookAdapter):
+    pass
+
+
+class ClaudeAdapter(HookAdapter):
+    def kind(self, event, payload):
+        if event == 'PreToolUse' and payload.get('tool_name') == 'AskUserQuestion':
+            return 'Question'
+        return common_kind(event)
+
+
+class AgyAdapter(HookAdapter):
+    experimental = True
+    namespace = 'dgl-observer-v1'
+
+    def kind(self, event, payload):
+        tool = payload.get('toolCall', {}).get('name')
+        if event == 'PreToolUse' and tool in ('ask_question', 'ask_permission'):
+            return 'Question' if tool == 'ask_question' else 'Approval'
+        if event in ('PostToolUse', 'Stop') and payload.get('error'):
+            return 'Error'
+        if event == 'Stop':
+            if payload.get('terminationReason') == 'error':
+                return 'Error'
+            return 'Response' if payload.get('terminationReason') == 'model_stop' else 'Ended'
+        return common_kind(event)
+
+    def transform(self, data, agent, tmux, install):
+        result = copy.deepcopy(data)
+        definition = result.get(self.namespace, {})
+        if not isinstance(definition, dict):
+            raise ValueError('invalid AGY hook definition')
+        has_owned = any(owned(h) for h in self.handlers(data))
+        # Refuse a name collision instead of claiming a user's named hook.
+        if install and definition and not has_owned:
+            raise ValueError('AGY hook name collision')
+        for event, groups in list(definition.items()):
+            if event == 'enabled':
+                if not isinstance(groups, bool):
+                    raise ValueError('invalid AGY enabled flag')
+                continue
+            if event not in EVENTS['Agy'] or not isinstance(groups, list):
+                raise ValueError('invalid AGY hook event')
+            cleaned = []
+            for group in groups:
+                if not isinstance(group, dict):
+                    raise ValueError('invalid AGY handler')
+                if event in ('PreToolUse', 'PostToolUse'):
+                    if not isinstance(group.get('hooks'), list):
+                        raise ValueError('invalid AGY matcher')
+                    remaining = [h for h in group['hooks'] if not owned(h)]
+                    if remaining or not group['hooks']:
+                        cleaned.append(dict(group, hooks=remaining))
+                elif not owned(group):
+                    cleaned.append(group)
+            if cleaned:
+                definition[event] = cleaned
+            else:
+                definition.pop(event)
+        if not install and not has_owned:
+            return copy.deepcopy(data)
+        if install:
+            for event in EVENTS[agent]:
+                handler = {'type': 'command', 'command': hook_command(agent, tmux, event), 'timeout': 3}
+                entry = {'hooks': [handler]} if event in ('PreToolUse', 'PostToolUse') else handler
+                definition.setdefault(event, []).append(entry)
+        if any(k != 'enabled' for k in definition):
+            result[self.namespace] = definition
+        else:
+            result.pop(self.namespace, None)
+        return result
+
+    def handlers(self, data):
+        definition = data.get(self.namespace, {})
+        if not isinstance(definition, dict):
+            return []
+        return [h for event, groups in definition.items() if event != 'enabled' and isinstance(groups, list)
+                for g in groups if isinstance(g, dict)
+                for h in (g.get('hooks', []) if event in ('PreToolUse', 'PostToolUse') else [g])]
+
+    def neutral(self, event):
+        # AGY's allow delegates to the remaining hooks/default policy; auto_approve would bypass it.
+        # Stop requires a decision string; empty leaves the original stop unchanged.
+        return {'decision': 'allow'} if event == 'PreToolUse' else {'decision': ''} if event == 'Stop' else {}
+
+
+class GrokAdapter(HookAdapter):
+    experimental = True
+
+    def kind(self, event, payload):
+        if event == 'Notification':
+            # idle_prompt also follows failures/cancellations; task_complete duplicates Stop.
+            return 'Approval' if payload.get('notificationType') == 'permission_prompt' else None
+        if event == 'PreToolUse' and payload.get('toolName') == 'ask_user_question':
+            return 'Question'
+        return common_kind(event)
+
+
+ADAPTERS = {'Codex': CodexAdapter(), 'Claude': ClaudeAdapter(), 'Agy': AgyAdapter(), 'Grok': GrokAdapter()}
+
+
+def transformed(data, agent, tmux, install):
+    return ADAPTERS[agent].transform(data, agent, tmux, install)
+
+
 def inspect(tmux):
     if sys.version_info < (3, 9):
         raise ValueError('Python 3.9 or newer required')
     configs = []
     token_parts = []
     for agent, path in config_paths().items():
-        raw, data = load_config(path)
-        executable = shutil.which(agent.lower())
-        version = run([executable, '--version']) if executable else 'not installed'
-        supported = bool(re.search(r'(?<![\d.])' + re.escape(VERSIONS[agent]) + r'(?![\d.])', version))
-        installed = any(owned(h) for groups in data.get('hooks', {}).values()
-                        for g in groups if isinstance(g, dict) for h in g.get('hooks', []))
+        adapter = ADAPTERS[agent]
+        error, version, installed, supported = '', 'not installed', False, False
+        try:
+            raw, data = adapter.load(path)
+            executable = shutil.which(agent.lower())
+            version = run([executable, '--version']) if executable else 'not installed'
+            supported = bool(executable) and (adapter.experimental or any(
+                re.search(r'(?<![\w.])' + re.escape(v) + r'(?![\w.+-])', version) for v in VERSIONS[agent]))
+            transformed(data, agent, tmux, supported)
+            installed = any(owned(h) for h in adapter.handlers(data))
+        except Exception:
+            supported = False
+            error = '설정 형식·경로 또는 CLI 버전 조회 실패 · 설치 제외'
+            # Keep the conflict token sensitive to malformed-file changes too.
+            try:
+                raw = path.read_bytes() if path.is_file() and not path.is_symlink() else b''
+            except OSError:
+                raw = b''
         configs.append(dict(agent=agent, path=str(path), version=version, supported=supported,
-                            installed=installed, events=EVENTS[agent] if supported else []))
+                            installed=installed, experimental=adapter.experimental, error=error,
+                            capabilities=CAPABILITIES[agent], limitations=LIMITATIONS[agent],
+                            events=EVENTS[agent] if supported else []))
         token_parts.append(str(path) + ':' + digest(raw.hex()))
-        # Validate before any file is modified, even if the other CLI is absent.
-        transformed(data, agent, tmux, supported)
     helper_hash = digest(HELPER.read_bytes().hex()) if HELPER.exists() else ''
     token = digest('|'.join(token_parts) + helper_hash + str(configs))
     return dict(token=token, configs=configs, python=sys.version.split()[0], tmux=run([tmux, '-V']),
@@ -344,8 +554,10 @@ def configure(tmux, token, install, source):
             raise ValueError('unsupported CLI version')
         changes = []
         for c in preview['configs']:
+            if c['error'] or (install and not c['supported']):
+                continue
             path = Path(c['path'])
-            raw, data = load_config(path)
+            raw, data = ADAPTERS[c['agent']].load(path)
             new = transformed(data, c['agent'], tmux, install and c['supported'])
             if data != new:
                 changes.append((path, raw, (json.dumps(new, ensure_ascii=False, indent=2) + '\n').encode()))
@@ -377,14 +589,15 @@ def main(source=''):
     p.add_argument('--tmux', required=True)
     p.add_argument('--session')
     p.add_argument('--agent', choices=list(EVENTS))
+    p.add_argument('--event')
     p.add_argument('--after', type=int, default=0)
     p.add_argument('--epoch', default='')
     p.add_argument('--token', default='')
     args = p.parse_args()
     try:
         if args.action == 'record':
-            record(args.agent, args.tmux)
-            print('{}')
+            event = record(args.agent, args.tmux, args.event)
+            print(json.dumps(ADAPTERS[args.agent].neutral(event if isinstance(event, str) else args.event)))
             return
         if args.action == 'poll':
             result = poll(args.tmux, args.session, args.after, args.epoch)
@@ -395,7 +608,7 @@ def main(source=''):
         print(json.dumps(result, ensure_ascii=False))
     except Exception:
         if args.action == 'record':
-            print('{}')
+            print(json.dumps(ADAPTERS[args.agent].neutral(args.event)) if args.agent in ADAPTERS else '{}')
         else:
             # Never echo configuration contents, payloads, commands or secret-bearing exceptions.
             print(json.dumps({'error': '연동 조회/설정 실패: Python·tmux·CLI 버전·설정 형식 또는 외부 변경을 확인한 뒤 다시 검사하세요.'}))

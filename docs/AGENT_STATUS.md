@@ -1,4 +1,4 @@
-# Codex·Claude 관측과 알림
+# Claude Code·Codex·AGY·Grok Build 관측과 알림
 
 2026-10-25 구현. Mac·Windows·Android는 같은 Rust 관측 모델과 알림 큐를 사용한다.
 SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH 셸에는 세부 관측을 제공하지 않는다.
@@ -7,7 +7,7 @@ SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH �
 
 1. 호스트에 연결한 뒤 호스트 메뉴의 **에이전트 상태 연동** 또는 탭/연결의 상태 배지를 연다.
 2. **설치 전 검사 · 변경 내용 보기**에서 Python, tmux, CLI 버전, 수정할 파일과 추가 훅을 확인한다.
-3. **연동 설치**를 누른다. 현재 설치 검사를 통과하는 버전은 Codex **0.163.0**, Claude Code **2.1.310**이다. 다른 버전은 미검증으로 표시하고 설치에서 제외한다.
+3. **연동 설치**를 누른다. 현재 버전 검증 대상은 Codex **0.163.0 / 0.164.0**, Claude Code **2.1.310**이다. 이 두 CLI의 다른 버전은 설치에서 제외한다. AGY·Grok Build는 설치된 CLI에 실험 지원으로 설치를 허용하며 실행 메뉴의 작은 `test` 배지를 유지한다. 미설치·설정 오류는 CLI별로 표시하며 다른 정상 CLI의 설치를 막지 않는다.
 4. Codex에서는 `/hooks`에서 추가된 도우미 명령을 직접 검토·신뢰한다. 앱은 훅 신뢰를 우회하거나 CLI를 재시작하지 않는다.
 5. **설치됨 / 활성화 확인 필요**와 **수신 확인 사건**을 구분한다. 후자는 해당 실행에서 실제 받은 사건 종류만 표시한다. 새 실행 또는 다음 실제 훅 수신 전에는 기존 실행의 상태를 복원하지 않는다.
 6. 앱 설정에서 종류별 알림과 **OS 알림**을 설정한다. 종류별 알림은 기본 켜짐, OS 알림은 기본 꺼짐이다.
@@ -32,7 +32,24 @@ SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH �
 탭의 대표 사건은 질문·승인 → 오류 → 응답 확인 → 활동 순이다. 읽지 않은 사건과 관측은 별개다.
 다른 작업이 진행되어도 읽지 않은 질문은 알림에 남는다. 읽음 처리나 알림 클릭은 원격 입력·승인을 전송하지 않는다.
 서브에이전트 사건은 별도 실행 주체로 표시하며 `SubagentStop`을 부모의 Stop으로 올리지 않는다.
+같은 CLI 프로세스의 다른 대화도 별도 주체로 구분한다. AGY는 새 실행의 `SessionStart`로 주 대화를 연결하므로 이미 실행 중인 CLI에 설치한 것만으로 상태를 복원하지 않는다.
 배지 상세와 알림에서 세션·창·패널로 이동할 수 있다. 종료·재생성된 대상은 이동을 거부하고 재접속하지 않는다.
+
+## 서비스별 수집 계약
+
+아래는 공식 계약에 맞춰 **수집 가능한 사건**이다. 설치 검사의 `capabilities`와 훅 목록 `events`는 실제 수신 증거가 아니다. 관측의 `supported`는 해당 실행 주체가 실제 받은 종류만 포함한다.
+
+| 서비스 | 활동 | 질문·승인 | 오류 | 응답 종료·중단 |
+|---|---|---|---|---|
+| Claude Code | 세션 시작·요청·도구 전후 | `AskUserQuestion`, `PermissionRequest` | `PostToolUseFailure`, `StopFailure` | `Stop`은 응답, `SessionEnd`·`SubagentStop`은 종료 |
+| Codex | 세션 시작·요청·도구 전후 | `PermissionRequest`만 지원; 질문 미지원 | 일반 오류 미지원 | `Stop`은 응답, `Interrupt`·`SessionEnd`·`SubagentStop`은 종료 |
+| AGY (`test`) | 세션 시작·모델 호출 전후·도구 전후 | `ask_question`, 명시적 `ask_permission` | `PostToolUse.error`, `Stop.error` 또는 오류 종료 사유 | `Stop.terminationReason=model_stop`만 응답; 다른 사유는 종료 |
+| Grok Build (`test`) | 세션 시작·요청·도구 전후·권한 거절 | `ask_user_question`, `Notification.permission_prompt` | `PostToolUseFailure`, `StopFailure` | 정상 `Stop`만 응답; `StopCancelled`·`SessionEnd`·`SubagentStop`은 종료 |
+
+AGY의 일반 권한 팝업 감지는 지원하지 않는다. Grok의 `idle_prompt`는 오류·중단 뒤에도 발생하므로 무시하고, `task_complete`도 Stop과 중복 알림을 만들지 않는다.
+Grok의 `subagentType`·대화 ID와 AGY의 `conversationId`를 분리하며, 다른 CLI 안에서 실행된 호환 훅을 가까운 CLI 프로세스와 대조해 거부한다. AGY App·IDE의 공유 훅은 CLI 경로와 맞지 않으면 수집하지 않는다. 대화 경로는 확인에만 사용하고 파일을 읽거나 경로·본문을 저장하지 않는다.
+
+관측 도우미는 CLI별 설정·사건 어댑터를 사용한다. 출력은 기본 `{}`이며 AGY PreToolUse의 `allow`는 다음 훅/기본 정책에 판단을 맡긴다 (`auto_approve`가 아님). AGY Stop의 빈 decision은 원래 종료를 변경하지 않는다. 승인·거절·계속 실행을 요청하는 출력을 만들지 않는다.
 
 ## 수집·저장
 
@@ -41,6 +58,8 @@ SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH �
 - 선택 설치 위치: `~/.local/share/dgl-agent/v1/observer.py`, 관측 DB: 같은 폴더의 `events.sqlite`.
 - 사용자 설정: `$CODEX_HOME/hooks.json`(기본 `~/.codex/hooks.json`), `$CLAUDE_CONFIG_DIR/settings.json`(기본 `~/.claude/settings.json`). 기존 inline Codex 설정을 덮어쓰지 않는다.
   Codex의 같은 계층에 inline `[hooks]`가 있으면 CLI가 두 소스를 병합하고 시작 시 경고할 수 있다.
+- AGY: `~/.gemini/config/hooks.json`의 `dgl-observer-v1` 이름 아래에만 추가한다. 같은 이름의 사용자 훅과 충돌하면 덮어쓰지 않는다. 도구 사건은 matcher 그룹, 나머지는 직접 handler 형식을 사용하고 사건명 없는 입력을 위해 `record --event`를 사용한다. 기존 사건명이 포함된 `record` 명령 형식도 유지한다.
+- Grok: `$GROK_HOME/hooks/dgl-observer-v1.json`(기본 `~/.grok/hooks/dgl-observer-v1.json`). 다른 JSON·TOML·Claude 호환 설정은 변경하지 않는다. Claude 호환 소스의 dgl 훅은 Grok 프로세스에서 Claude 사건으로 수집하지 않는다.
 - 설치 잠금, 설정 내용 토큰 재검사, 같은 폴더 임시 파일 교체, 권한 0600의 `.dgl-backup-*` 백업을 사용한다. 기존 훅과 함께 들어 있는 사용자 handler도 해제 시 보존한다.
 - SQLite는 최대 2,048개 사건과 실행 주체별 최신 관측을 보관한다. 프롬프트·응답·도구 입력·명령·대화 파일은 기록하거나 읽지 않는다. 프로세스 명령줄은 CLI 진입점 식별 중 메모리에서만 사용한다.
 - 서버 소켓·서버 프로세스 시작 정보·패널·CLI PID/시작 정보로 실행을 구분한다. macOS `ps`의 경로 열 잘림을 피한다.
@@ -65,15 +84,17 @@ Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다
 
 | 검사 | 결과 |
 |---|---|
-| Python 도우미 5개 검사 | 기존 훅 보존, 반복 설치/해제, 외부 변경, 백업, 지원하지 않는 버전, symlink 거부, Node 오인 방지, 본문 미저장, 실행 재시작, 제한 기록/누락 통과 |
-| Rust·UniFFI | 관측/읽음 분리, 중복, 묶음, 가시성, 종료 대상, 설정 fixture 회귀 통과 |
-| GPUI | 최근 알림 이동 실패 시 읽음 처리·재접속/입력 미전송, 기존 UI 회귀 통과 |
-| 격리 SSH/tmux | 숨겨진 창, 출력 미구독 수집, 최초 DB 동기화, 새 사건, 패널 이동, 재연결 재알림 방지, 프로세스 종료 확인. 이 검사의 생산자는 C로 만든 합성 CLI이며 실제 CLI 검사는 아래와 별개 |
+| Python 도우미 10개 검사 | 기존 5개 회귀와 공식 형식 24개 fixture, 중립 출력·실패 출력, AGY/Grok 설정·사용자 훅 보존, 반복 설치/해제, CLI별 오류 격리, 버전·호환 훅 오인·대화/자식 분리·중복·본문 미저장 통과 |
+| Rust·UniFFI | 관측 3개 검사: 기존 2개 및 네 서비스 wire ID·질문/승인/응답/오류의 공통 알림 경로. 전체 Rust 코어·UniFFI 회귀 통과 |
+| GPUI·Kotlin 실행/이동 | GPUI 29개 검사와 Kotlin 전체 JVM 회귀 통과. 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단, 메뉴 폭·60:40 비율·새 서비스만 작은 test 배지·닫힘·포커스 복귀, 종료 알림 대상 이동 거부 확인 |
+| 격리 SSH/tmux 3.3a·3.7c | 네 합성 CLI 각각 숨겨진 창, 출력 미구독 수집, 최초 DB 동기화, 새 사건, 패널 이동, 재연결 재알림 방지, 같은 패널의 프로세스 재시작·종료 확인. 생산자는 C로 만든 합성 CLI이며 실제 CLI 검사는 아래와 별개 |
 | 실제 Codex 0.163.0 | 임시 HOME·독립 tmux에서 정상 신뢰 UI로 훅을 검토하고 SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SubagentStart/Stop 수신 확인 |
 | 실제 Claude Code 2.1.310 | 같은 격리 방식으로 SessionStart, UserPromptSubmit, 도구 전후, AskUserQuestion, PermissionRequest, PostToolUseFailure, Stop, SubagentStart/Stop, SessionEnd 수신 확인 |
-| Android API 36 | 네 ABI Debug APK, JVM 회귀, lint, 알림 계측 2개 통과: 권한 거부/허용·채널·중복, 실제 PendingIntent 클릭의 종료 대상 처리, 네이티브 공통 Inbox·읽음/관측 분리 |
+| Android API 36 | 네 ABI Debug APK, JVM 회귀, lint, 알림 계측 2개 통과: 네 서비스의 네이티브 Inbox·중복·읽음/관측 분리, 권한 거부/허용·채널, AGY/Grok OS 알림 제목 갱신, 실제 PendingIntent 클릭의 종료 대상 처리 |
 | macOS | GPUI 빌드·ad-hoc 패키징·단위 UI 검사 통과. 테스트 알림 요청은 발생했으나 CUA가 `cgWindowNotFound`로 창을 찾지 못해 OS 배너·클릭 실기 확인은 미완료 |
 | Windows | 토스트 어댑터의 Windows GNU 대상 독립 타입 검사와 ZIP 패키저 단위 검사 통과. Windows MSVC 전체 빌드·실행·COM/토스트·DPAPI 실기는 사용자 담당이며 미수행 |
+
+2026-10-25 AGY·Grok 확장 검증은 `fixtures/agent-hooks/contracts.json`의 합성 입력과 격리 SSH/tmux 생산자를 사용한다. 로컬 `--version` 조회는 AGY **1.4.7**, Codex **0.164.0**이며 로그인·모델 호출을 실행하지 않았다. Codex 0.164.0은 설치 버전 처리·공식 형식 fixture 회귀 범위이며, 위의 실제 수신 기록은 0.163.0에 대한 기존 기록이다. AGY·Grok의 인증된 실제 훅 수신은 미검증이다.
 
 Codex PermissionRequest 실검증은 현재 실행 정책의 자동 승인 검토가 테스트용 sandbox 승인 요청을 거부하여
 완료하지 못했다. Codex 질문 도구와 일반 오류는 수집 지원으로 표시하지 않는다.
