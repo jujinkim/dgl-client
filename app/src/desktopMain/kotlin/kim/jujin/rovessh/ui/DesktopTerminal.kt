@@ -23,6 +23,8 @@ import java.awt.datatransfer.StringSelection
 import java.io.*
 import javax.swing.SwingUtilities
 
+internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+
 @Composable actual fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier) {
     val connector = remember(client, preferences.fontSize, preferences.scrollback) { DesktopConnector(client::input, client::resize) }
     val widget = remember(connector) {

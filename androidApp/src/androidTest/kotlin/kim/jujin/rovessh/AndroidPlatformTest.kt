@@ -65,6 +65,16 @@ class AndroidPlatformTest {
                     delay(150)
                     assertTrue("IME commit must not be duplicated", input.tryReceive().isFailure)
                 }
+                terminal.setInputEnabled(false)
+                terminal.write("\u001b[?2004h".encodeToByteArray())
+                assertEquals("\u001b[200~한글😀\r두 줄\u001b[201~", terminal.preparePaste("한글😀\n두 줄", false).decodeToString())
+                assertEquals("\u001b[200~붙여넣기\u001b[201~\r", terminal.preparePaste("붙여넣기", true).decodeToString())
+                assertTrue("Preparing paste must never emit bridge input", input.tryReceive().isFailure)
+                terminal.write("\u001b[?2004l".encodeToByteArray())
+                assertEquals("한글😀\r두 줄\r", terminal.preparePaste("한글😀\r\n두 줄", true).decodeToString())
+                assertEquals(65536, terminal.preparePaste("a".repeat(65536), false).size)
+                try { terminal.preparePaste("a".repeat(65536), true); fail("Oversized paste accepted") } catch (_: IllegalStateException) { }
+                terminal.setInputEnabled(true)
                 js(terminal, "window.dgl.postMessage(JSON.stringify({type:'resize',columns:-100,rows:999999})); window.dgl.postMessage('{broken'); true")
                 js(terminal, "window.location.href='https://example.invalid/'; true")
                 delay(100)

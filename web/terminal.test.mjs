@@ -36,6 +36,43 @@ test('terminal bridge forwards text and raw mouse input through distinct channel
   assert.deepEqual(messages, []);
 });
 
+test('composer captures the renderer paste once, blocks background input and enforces encoded size', () => {
+  const messages = [], listeners = {};
+  let bracketed = false, focused = 0;
+  class Terminal {
+    parser = { registerOscHandler() {} };
+    loadAddon() {} open() {} onResize() {}
+    focus() { focused++; }
+    onData(callback) { listeners.data = callback; }
+    onBinary(callback) { listeners.binary = callback; }
+    paste(text) {
+      // xterm's current paste mode, independently changed between requests.
+      const normalized = text.replace(/\r?\n/g, '\r');
+      listeners.data(bracketed ? '\x1b[200~' + normalized + '\x1b[201~' : normalized);
+    }
+  }
+  const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) } };
+  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
+    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} }, ResizeObserver: class { observe() {} },
+    document: { getElementById: () => ({ addEventListener() {} }) },
+  });
+  messages.length = 0;
+  window.setInputEnabled(false);
+  listeners.data('background'); listeners.binary('\x1b[M');
+  assert.equal(window.preparePaste('한글😀\n둘', false), '한글😀\r둘');
+  bracketed = true;
+  assert.equal(window.preparePaste('한글😀\n둘', true), '\x1b[200~한글😀\r둘\x1b[201~\r');
+  assert.deepEqual(messages, []);
+  assert.throws(() => window.preparePaste('', false));
+  assert.throws(() => window.preparePaste('한'.repeat(21846), false));
+  assert.equal(window.preparePaste('a'.repeat(65524), false).length, 65536);
+  assert.throws(() => window.preparePaste('a'.repeat(65524), true));
+  window.setInputEnabled(true); listeners.data('after');
+  assert.deepEqual(messages, [{ type: 'input', data: 'after' }]);
+  window.focusTerminal(); window.focusTerminal();
+  assert.equal(focused, 2);
+});
+
 function cachedRenderer() {
   const messages = [], frames = [], timers = new Map(), animations = [];
   let render, nextTimer = 0;

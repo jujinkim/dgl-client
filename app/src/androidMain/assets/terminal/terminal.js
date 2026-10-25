@@ -97,9 +97,27 @@
   };
   // Remote escape sequences cannot access the clipboard.
   term.parser.registerOscHandler(52, () => true);
-  term.onData(data => { if (new TextEncoder().encode(data).length <= 65536) post({ type: 'input', data }); });
+  let inputEnabled = true;
+  let pasteCapture = null;
+  term.onData(data => {
+    if (pasteCapture !== null) { pasteCapture.push(data); return; }
+    if (inputEnabled && new TextEncoder().encode(data).length <= 65536) post({ type: 'input', data });
+  });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
-  term.onBinary(data => { if (data.length <= 65536) post({ type: 'input-binary', data }); });
+  term.onBinary(data => { if (inputEnabled && data.length <= 65536) post({ type: 'input-binary', data }); });
+  window.setInputEnabled = enabled => { inputEnabled = enabled === true; };
+  // Capture xterm's own paste transformation (including current bracketed-paste mode)
+  // without emitting input. Kotlin validates the target and submits one acknowledged request.
+  window.preparePaste = (text, enter) => {
+    if (typeof text !== 'string' || text.length === 0) throw new Error('Empty paste');
+    pasteCapture = [];
+    try {
+      term.paste(text);
+      const data = pasteCapture.join('') + (enter === true ? '\r' : '');
+      if (new TextEncoder().encode(data).length > 65536) throw new Error('Paste exceeds 64 KiB');
+      return data;
+    } finally { pasteCapture = null; }
+  };
   let resizingRemote = false;
   term.onResize(({ cols, rows }) => { if (!resizingRemote) post({ type: 'resize', columns: cols, rows }); });
   window.resizePane = (columns, rows) => {

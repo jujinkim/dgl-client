@@ -82,22 +82,27 @@ expect fun copyPublicKey(value: String)
         extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(0.dp))) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = if (mobileLayout) 4.dp else 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("dgl", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.width(8.dp))
-                    Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                    TextButton({ explorer = !explorer }) { Text(if (explorer) "터미널" else "호스트") }
-                    TextButton({ notifications = true }) { Text("알림 ${agentNotices.count { !it.read }}") }
-                    TextButton({ settings = true }) { Text("설정") }
-                }
-                if (mobileLayout && connections.isNotEmpty()) {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                        TextButton({ switching = true }) { Column { Text((selected?.host?.alias ?: "연결 선택") + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis); selected?.let { c -> AgentBadge(c, notices = agentNotices) { agentDetails = c } } } }
+                    Spacer(Modifier.width(if (mobileLayout) 4.dp else 8.dp))
+                    if (mobileLayout) Box(Modifier.weight(1f)) {
+                        TextButton({ switching = true }, enabled = connections.isNotEmpty(), modifier = Modifier.fillMaxWidth()
+                            .semantics { contentDescription = "서버 선택" }, contentPadding = PaddingValues(4.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(selected?.host?.alias ?: "연결 선택", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                selected?.let { c -> AgentBadge(c, notices = agentNotices, compact = true) { agentDetails = c } }
+                            }
+                            Text(" ▾")
+                        }
                         DropdownMenu(switching, { switching = false }) {
                             connections.forEach { connection -> DropdownMenuItem(text = { Column { Text(connection.host.alias, maxLines = 2, overflow = TextOverflow.Ellipsis); AgentBadge(connection, notices = agentNotices) { switching = false; agentDetails = connection } } }, onClick = { model.selected.value = connection; explorer = false; switching = false }) }
                         }
-                    }
-                } else if (connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
+                    } else Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 40.dp)) { Text(if (explorer) "터미널" else "호스트") }
+                    TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 40.dp)) { Text("알림 ${agentNotices.count { !it.read }}") }
+                    TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 40.dp)) { Text("설정") }
+                }
+                if (!mobileLayout && connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                     connections.forEach { connection ->
                         FilterChip(selected == connection, { model.selected.value = connection; explorer = false }, label = { Column { Text(connection.host.alias); AgentBadge(connection, notices = agentNotices) { agentDetails = connection } } })
                         TextButton({ model.removeConnection(connection) }) { Text("×") }
@@ -201,10 +206,14 @@ expect fun copyPublicKey(value: String)
         }
     }
     val terminalFocus = remember(client) { TerminalFocus() }
+    val composer = remember(client, model) { model.composer(client) }
+    val composerOpen by composer.opened.collectAsState()
     val terminalInputAllowed = {
-        inputAllowed() && !(mobileLayout && navigation) && !tmuxDetails && namePrompt == null && deletion == null &&
+        // Observe Compose state for button/bridge updates; the flow also closes the pre-recomposition input race.
+        inputAllowed() && !composerOpen && !composer.opened.value && !(mobileLayout && navigation) && !tmuxDetails && namePrompt == null && deletion == null &&
             client.trustRequest.value == null && client.notice.value == null
     }
+    terminalFocus.inputAllowed = terminalInputAllowed
     SideEffect { model.visibleConnection = client.takeIf { terminalInputAllowed() } }
     DisposableEffect(client) { onDispose { if (model.visibleConnection === client) model.visibleConnection = null } }
     PlatformInputRegistration(client, preferences, terminalInputAllowed)
@@ -257,14 +266,36 @@ expect fun copyPublicKey(value: String)
         }
     }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text(status.message, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f, fill = false),
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
+        if (mobileLayout) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("현재 세션: $sessionLabel", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton({ navigation = !navigation }, contentPadding = PaddingValues(0.dp)) { Text("tmux 관리", maxLines = 1) }
             }
-            if (!status.canRetryNow && (status.phase == Phase.Disconnected || status.phase == Phase.Failed || status.phase == Phase.MissingSession)) TextButton({ client.connect() }) { Text("재연결") }
-            else TextButton({ client.disconnect() }) { Text("연결 종료") }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(status.message, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
+                }
+                if (!status.canRetryNow && status.phase in setOf(Phase.Disconnected, Phase.Failed, Phase.MissingSession))
+                    TextButton({ client.connect() }, contentPadding = PaddingValues(0.dp)) { Text("재연결") }
+                else TextButton({ client.disconnect() }, contentPadding = PaddingValues(0.dp)) { Text("연결 종료") }
+            }
+            PaneToolbarToggle(preferences.mobilePaneToolbarVisible) {
+                model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(status.message, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f, fill = false),
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
+                }
+                if (!status.canRetryNow && (status.phase == Phase.Disconnected || status.phase == Phase.Failed || status.phase == Phase.MissingSession)) TextButton({ client.connect() }) { Text("재연결") }
+                else TextButton({ client.disconnect() }) { Text("연결 종료") }
+            }
+        }
+        if (mobileLayout && preferences.mobilePaneToolbarVisible) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
+            deletion = "패널 $target" to { client.manage(TmuxCommand.killPane(target)) }
         }
         if (status.canRetryNow || status.canStopRetrying) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
@@ -275,14 +306,14 @@ expect fun copyPublicKey(value: String)
         Box(Modifier.fillMaxWidth().height(4.dp)) {
             if (status.showsConnectionProgress) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!mobileLayout) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("현재 세션: $sessionLabel", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             TextButton({ navigation = !navigation }) { Text(if (navigation) "tmux 접기" else "tmux 관리") }
         }
         if (navigation && !mobileLayout) navigationContent(Modifier)
         if (currentPane?.mode?.isNotBlank() == true) Text("tmux ${currentPane.mode} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
-        TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
+        if (!mobileLayout) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
             deletion = "패널 $target" to { client.manage(TmuxCommand.killPane(target)) }
         }
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
@@ -290,7 +321,11 @@ expect fun copyPublicKey(value: String)
                 PlatformTerminal(client, preferences, Modifier.fillMaxSize())
             }
         }
-        TerminalShortcutBar(client, preferences.terminalShortcuts, terminalInputAllowed, terminalFocus)
+        TerminalShortcutBar(client, preferences.terminalShortcuts, terminalInputAllowed, terminalFocus, mobileLayout, composer::open)
+    }
+    if (mobileLayout && composerOpen) {
+        DisposableEffect(composer) { onDispose { if (model.selected.value === client && inputAllowed()) terminalFocus.request() } }
+        TextInputDialog(composer, terminalFocus, { model.selected.value === client && inputAllowed() }, status.acceptsInput)
     }
     if (mobileLayout && navigation) ModalBottomSheet(onDismissRequest = { navigation = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Text("tmux 세션 · 창 · 패널", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)

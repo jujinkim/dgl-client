@@ -654,7 +654,8 @@
             "Home",
             "End"
           ],
-          "smoothTerminalTransitions": false
+          "smoothTerminalTransitions": false,
+          "mobilePaneToolbarVisible": true
         }
       }
     },
@@ -704,7 +705,8 @@
             "Home",
             "End"
           ],
-          "smoothTerminalTransitions": false
+          "smoothTerminalTransitions": false,
+          "mobilePaneToolbarVisible": true
         }
       }
     },
@@ -820,7 +822,8 @@
             "Home",
             "End"
           ],
-          "smoothTerminalTransitions": false
+          "smoothTerminalTransitions": false,
+          "mobilePaneToolbarVisible": true
         }
       }
     },
@@ -894,7 +897,8 @@
             "Home",
             "End"
           ],
-          "smoothTerminalTransitions": false
+          "smoothTerminalTransitions": false,
+          "mobilePaneToolbarVisible": true
         }
       }
     },
@@ -995,7 +999,8 @@
             "ShiftTab",
             "CtrlB"
           ],
-          "smoothTerminalTransitions": false
+          "smoothTerminalTransitions": false,
+          "mobilePaneToolbarVisible": true
         }
       }
     },
@@ -1029,7 +1034,58 @@
             "os": false
           },
           "terminalShortcuts": [],
-          "smoothTerminalTransitions": false
+          "smoothTerminalTransitions": false,
+          "mobilePaneToolbarVisible": true
+        }
+      }
+    },
+    {
+      "id": "mobile-pane-toolbar-hidden",
+      "source": {
+        "preferences": {
+          "mobilePaneToolbarVisible": false
+        }
+      },
+      "expected": {
+        "hosts": [],
+        "trust": {},
+        "preferences": {
+          "theme": "system",
+          "fontSize": 14,
+          "scrollback": 5000,
+          "volumeKeysEnabled": false,
+          "volumeUp": {
+            "action": "Default",
+            "steps": []
+          },
+          "volumeDown": {
+            "action": "Default",
+            "steps": []
+          },
+          "agentNotifications": {
+            "questions": true,
+            "responses": true,
+            "errors": true,
+            "os": false
+          },
+          "terminalShortcuts": [
+            "Escape",
+            "Tab",
+            "Enter",
+            "ShiftTab",
+            "ShiftLeft",
+            "CtrlC",
+            "CtrlD",
+            "CtrlL",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Home",
+            "End"
+          ],
+          "smoothTerminalTransitions": false,
+          "mobilePaneToolbarVisible": false
         }
       }
     }

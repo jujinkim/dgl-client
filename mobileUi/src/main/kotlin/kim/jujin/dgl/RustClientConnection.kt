@@ -1,6 +1,9 @@
 package kim.jujin.dgl
 
 import kim.jujin.rovessh.ClientConnection
+import kim.jujin.rovessh.InputTarget
+import kim.jujin.rovessh.InputCompletion
+import kim.jujin.rovessh.inputTargetIdentity
 import kim.jujin.rovessh.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -42,6 +45,7 @@ class RustClientConnection(
     private var lastPane = host.lastPane
     private val resizes = TerminalResizeQueue()
     private val inputRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<ULong>()
+    private val inputCompletions = mutableMapOf<ULong, CompletableDeferred<InputCompletion>>()
     @Volatile private var closed = false
     private val cleanup = mutableListOf<Job>()
     private fun trustRef() = "trust-" + MessageDigest.getInstance("SHA-256").digest(host.endpoint.toByteArray()).joinToString("") { "%02x".format(it) }
@@ -81,11 +85,12 @@ class RustClientConnection(
                                 val id = record["request_id"]?.jsonPrimitive?.content?.toULongOrNull()
                                 if (id != null) resizes.complete(id, record["error"] == null || record["error"] is JsonNull)
                                 if (id == refreshRequest) { refreshRequest = null; refreshing.value = false }
+                                val code = record["error"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+                                val completion = inputCompletions.remove(id)
+                                val input = id?.let { inputRequests.remove(it) } == true
+                                if (completion != null) completion.complete(InputCompletion(code?.let(::message)))
+                                else if (code != null && (input || code !in setOf("Cancelled", "StaleGeneration"))) notice.value = message(code)
                             }
-                        }
-                        val input = record["request_id"]?.jsonPrimitive?.content?.toULongOrNull()?.let { inputRequests.remove(it) } == true
-                        record["error"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content?.let { code ->
-                            if (input || code !in setOf("Cancelled", "StaleGeneration")) notice.value = message(code)
                         }
                     }
                     synchronized(this@RustClientConnection) {
@@ -94,7 +99,7 @@ class RustClientConnection(
                     delay(16)
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { if (current == epoch) { agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, "보호 저장소 또는 네이티브 연결을 열지 못했습니다."); native?.stop() } }
+            catch (_: Exception) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, "보호 저장소 또는 네이티브 연결을 열지 못했습니다."); native?.stop() } } }
         }
     }
     private fun applyState(s: JsonObject) {
@@ -276,8 +281,33 @@ class RustClientConnection(
             notice.value = "화면 크기 변경을 전송하지 못했습니다. 잠시 후 다시 시도합니다."
         }
     }
-    override fun input(bytes: ByteArray) { val c = native ?: return; if (!status.value.acceptsInput) return; try { c.targetJson()?.let { inputRequests.add(c.submitInput(it, bytes)) } } catch (_: Exception) { notice.value = "입력을 전송하지 않았습니다. 대기열 또는 연결 상태를 확인하세요." } }
+    @Synchronized override fun input(bytes: ByteArray) { val c = native ?: return; if (!status.value.acceptsInput) return; try { c.targetJson()?.let { inputRequests.add(c.submitInput(it, bytes)) } } catch (_: Exception) { notice.value = "입력을 전송하지 않았습니다. 대기열 또는 연결 상태를 확인하세요." } }
+    @Synchronized override fun captureInputTarget(): InputTarget? = native?.targetJson()?.let {
+        InputTarget(epoch, session.value, inputTargetIdentity(it))
+    }
+    override suspend fun sendInput(target: InputTarget, bytes: ByteArray): InputCompletion = submitText(target, bytes).await()
+    @Synchronized private fun submitText(target: InputTarget, bytes: ByteArray): CompletableDeferred<InputCompletion> {
+        val completion = CompletableDeferred<InputCompletion>()
+        val c = native
+        val raw = c?.targetJson()
+        when {
+            c == null || raw == null || target != InputTarget(epoch, session.value, inputTargetIdentity(raw)) ->
+                completion.complete(InputCompletion("연결·세션·패널이 변경되어 입력을 취소했습니다."))
+            !status.value.acceptsInput -> completion.complete(InputCompletion("연결이 입력 가능한 상태가 아닙니다. 초안을 보존했습니다."))
+            bytes.isEmpty() || bytes.size > TerminalInput.MAX_BYTES -> completion.complete(InputCompletion("입력은 1바이트 이상, 64 KiB 이하여야 합니다."))
+            else -> try {
+                // Use the latest size generation, then let the core validate again at dequeue.
+                inputCompletions[c.submitInput(raw, bytes)] = completion
+            } catch (_: Exception) { completion.complete(InputCompletion("입력을 전송하지 않았습니다. 대기열 또는 연결 상태를 확인하세요.")) }
+        }
+        return completion
+    }
+    private fun failInputs() {
+        inputCompletions.values.forEach { it.complete(InputCompletion("연결이 종료되어 전송 결과를 확인하지 못했습니다. 자동 재전송하지 않습니다.")) }
+        inputCompletions.clear(); inputRequests.clear()
+    }
     @Synchronized private fun detach() {
+        failInputs()
         resizes.reset()
         refreshRequest = null; refreshing.value = false
         cleanup.removeAll { it.isCompleted }

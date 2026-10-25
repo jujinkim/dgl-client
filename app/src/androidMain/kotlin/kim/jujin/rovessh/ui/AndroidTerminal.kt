@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.view.inputmethod.InputMethodManager
+import android.view.WindowInsets as AndroidInsets
 import android.webkit.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +15,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
@@ -27,19 +30,54 @@ import java.io.ByteArrayInputStream
 import java.util.Base64
 import java.lang.ref.WeakReference
 
+internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.DialogProperties(
+    usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+
 @Composable actual fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier) {
     val context = LocalContext.current
-    val terminal = remember(client, preferences.fontSize, preferences.scrollback) { AndroidTerminal(context, preferences, client::input, client::resize) }
+    val composeView = LocalView.current
+    val focus = LocalTerminalFocus.current
+    val terminal = remember(client, preferences.fontSize, preferences.scrollback) {
+        AndroidTerminal(context, preferences, { if (focus.inputAllowed()) client.input(it) }, client::resize)
+    }
+    val allowed = focus.inputAllowed()
+    LaunchedEffect(terminal, allowed) { terminal.setInputEnabled(allowed) }
     LaunchedEffect(terminal, preferences.smoothTerminalTransitions) {
         terminal.setSmoothTransitions(preferences.smoothTerminalTransitions)
     }
-    val focus = LocalTerminalFocus.current
-    DisposableEffect(terminal, focus) {
-        focus.request = { terminal.view.post {
-            terminal.view.requestFocus()
-            terminal.view.evaluateJavascript("window.focusTerminal && window.focusTerminal()", null)
-        }; Unit }
-        onDispose { focus.request = {} }
+    DisposableEffect(terminal, focus, composeView) {
+        // Read the same native insets used at click time. Compose's target IME visibility
+        // can lag a cancelled show/hide animation while the WebView owns input focus.
+        var observing = true
+        val updateIme = { if (observing) {
+            val next = terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) == true
+            focus.imeVisible = next
+        } }
+        val observer = android.view.ViewTreeObserver.OnPreDrawListener { updateIme(); true }
+        val treeObserver = composeView.viewTreeObserver
+        treeObserver.addOnPreDrawListener(observer)
+        terminal.view.setOnApplyWindowInsetsListener { view, insets ->
+            view.post { updateIme() }
+            view.onApplyWindowInsets(insets)
+        }
+        terminal.view.setWindowInsetsAnimationCallback(object : android.view.WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+            override fun onProgress(insets: AndroidInsets, animations: MutableList<android.view.WindowInsetsAnimation>): AndroidInsets {
+                updateIme(); return insets
+            }
+            override fun onEnd(animation: android.view.WindowInsetsAnimation) { terminal.view.post { updateIme() } }
+        })
+        terminal.view.post { updateIme() }
+        focus.request = { terminal.focus() }
+        focus.keyboard = { terminal.keyboard(terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) != true, focus.inputAllowed) }
+        focus.preparePaste = terminal::preparePaste
+        onDispose {
+            observing = false
+            if (treeObserver.isAlive) treeObserver.removeOnPreDrawListener(observer)
+            terminal.view.setOnApplyWindowInsetsListener(null)
+            terminal.view.setWindowInsetsAnimationCallback(null)
+            focus.request = {}; focus.keyboard = {}; focus.imeVisible = false
+            focus.preparePaste = { _, _ -> error("터미널이 닫혔습니다.") }
+        }
     }
     DisposableEffect(terminal) {
         client.bindSurface(terminal)
@@ -113,6 +151,45 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
     override suspend fun write(bytes: ByteArray) { deliver(bytes, false) }
     override suspend fun reset(bytes: ByteArray) { deliver(bytes, true) }
+    fun focus() { view.post {
+        if (!closed) { view.requestFocus(); view.evaluateJavascript("window.focusTerminal && window.focusTerminal()", null) }
+    } }
+    fun keyboard(show: Boolean, allowed: () -> Boolean = { true }) {
+        if (closed) return
+        val ime = view.context.getSystemService(InputMethodManager::class.java)
+        if (!show) {
+            view.windowInsetsController?.hide(AndroidInsets.Type.ime()) ?: ime.hideSoftInputFromWindow(view.windowToken, 0)
+        }
+        else scope.launch {
+            // A freshly bound WebView may still be loading its textarea.
+            withTimeoutOrNull(15_000) { ready.await() } ?: return@launch
+            if (closed || !allowed()) return@launch
+            view.requestFocus()
+            view.evaluateJavascript("window.focusTerminal && window.focusTerminal()") {
+                view.post { if (!closed && allowed()) {
+                    view.windowInsetsController?.show(AndroidInsets.Type.ime()) ?: ime.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                } }
+            }
+        }
+    }
+    suspend fun setInputEnabled(enabled: Boolean) {
+        withTimeout(15_000) { ready.await() }
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setInputEnabled($enabled)", null) }
+    }
+    suspend fun preparePaste(text: String, enter: Boolean): ByteArray = withTimeout(15_000) {
+        ready.await()
+        withContext(Dispatchers.Main.immediate) {
+            check(!closed) { "터미널이 닫혔습니다." }
+            val result = CompletableDeferred<ByteArray>()
+            view.evaluateJavascript("window.preparePaste(${JSONObject.quote(text)},$enter)") { raw ->
+                runCatching {
+                    check(raw != null && raw != "null") { "입력은 붙여넣기 제어 문자와 Enter를 포함하여 UTF-8 64 KiB 이하여야 합니다." }
+                    org.json.JSONTokener(raw).nextValue().let { it as String }.toByteArray(Charsets.UTF_8)
+                }.fold({ result.complete(it) }, { result.completeExceptionally(it) })
+            }
+            result.await()
+        }
+    }
     suspend fun setSmoothTransitions(enabled: Boolean) {
         withTimeout(15_000) { ready.await() }
         withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setSmoothTransitions($enabled)", null) }

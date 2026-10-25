@@ -647,3 +647,53 @@ Windows MSVC x64 빌드·ZIP·수동 CI 경로는 유지했으며, 이번 변경
 
 최종 로그: Git 제외된 `artifacts/hierarchy/`의 `rust-final.log`, `android-final.log`,
 `tmux-3.3a-final.log`, `tmux-3.7c-verified.log`, `clippy-final.log`, `secrets-final.log`.
+
+## 2026-10-25 모바일 상단·텍스트 작성·단축키
+
+`main`에서 서버 선택기를 최상단으로 이동하고 세션·연결 행을 통합했다. 패널 도구 표시
+설정은 모든 모바일 탭에서 공유하고 저장한다. 하단에 키보드 토글과 텍스트 작성 진입점을
+고정했으며 단축키 높이 40dp·사방 여백 4dp를 적용했다. 텍스트 초안은 연결별 메모리에만
+유지하고, xterm 붙여넣기 변환 후 기존 Rust 입력 큐의 완료 결과를 기다린다.
+[동작·제한](TERMINAL_INPUT.md#android-텍스트-작성)을 따른다.
+
+- JVM **53개 중 44개 통과·9개 예상 skip**. 새 초안 검사 5개는 한글·이모지·줄바꿈·선택
+  보존, 중복 제출, 성공 후 삭제, 실패 후 보존, 대상 변경, 크기 세대 제외, 64 KiB 경계를 검사한다.
+- Rust 계약 **3개 통과**, 공통 fixture **126개**. 기존 설정의 기본 `true`, 명시적 `false`,
+  Kotlin/Rust 저장·재읽기를 확인했다. macOS에서 `cargo check --workspace`도 통과했다.
+- 웹 브리지 **7개 통과**. 붙여넣기 포착 중 자동 전송 없음, 현재 모드·Enter·UTF-8 크기 제한,
+  배경 입력 차단과 기존 화면 복원을 검사했다.
+- Android 네 ABI Debug APK·계측 APK·lint 빌드 통과. lint는 기존 검토 경고 **12개**이며
+  `verify_lint.py`를 통과했다. 앱 ID·SDK·네 ABI·debug 서명 검증 후 전달용 APK를 갱신했다.
+- API36 ARM64, 320dp 화면의 모바일·플랫폼 계측 **3개 통과**. 실제 Compose/WebView/IME,
+  밝은/어두운 테마, 고정 버튼·스크롤·40dp/4dp 좌표, IME 반복 토글, 회전, 설정의 탭 공유·새
+  앱 모델 재읽기, 네이티브 InputConnection 한글 조합·이모지·여러 줄과 복사·붙여넣기를 검사했다.
+  초안 복원, Enter 기본 꺼짐, 전송 중 중복/편집 차단, 실패 보존, 대상 변경과 배경·볼륨 입력
+  차단도 포함한다. 가로 다이얼로그의 전송·Enter 옵션이 IME 위에 있는지 좌표로 확인했다.
+- 별도 격리 OpenSSH + tmux **3.7c**에서 Android 기존 계측 **8개 통과**. 위 플랫폼 2개와
+  중복되므로 두 실행을 합쳐 서로 다른 11개 검사라고 세지 않는다. 실제 Rust 어댑터의 입력 완료,
+  키보드 resize 전후 동일 입력 대상, 패널 변경 후 이전 대상 거부, 동일 연결/PID, CLI·볼륨
+  단축키 회귀를 확인했다. 최종 작성창 배치와 입력 활성 상태 변경은 위 모바일 계측으로 재검증했다.
+
+초기 검증에서 IME 제어·다이얼로그 초기 포커스·가로 IME 겹침을 수정했다. 회전 시에도 동일 입력
+필드를 유지하여 IME 연결을 보존하고, 회전 계측은 IME와 다이얼로그 좌표가 안정된 뒤 비교한다.
+대상 변경 후 다이얼로그를 닫아도 입력 버튼이 비활성 상태로 남던 관찰 상태 갱신도 수정했다. 새 모델의 빠른 종료에서
+알림 큐 tick과 native close가 경쟁하는 문제도 발견하여 취소 확인과 같은 잠금을 적용했다.
+계측은 접근성 캐시를 갱신하고 편집 가능한 자식 노드를 사용하도록 보완했으며, 기존 CLI 검사는
+화면 밖 단축키를 먼저 스크롤하도록 수정했다. 스크린샷은 회전 완료 후 캡처하고 전용 에뮬레이터의
+창 전환 애니메이션만 잠시 끈 뒤 복원한다. 실제 Gboard 한국어 키 배열 조작을 대신한 것은 아니다.
+
+재현: JDK·Android SDK를 구성하고 `./gradlew :app:desktopTest :androidApp:assembleDebug
+:androidApp:assembleDebugAndroidTest :androidApp:lintDebug`, `cargo test -p dgl-core --test contract`,
+`npm test --prefix web`를 실행한다. 전용 API36 에뮬레이터에서
+`python3 scripts/mobile_input_android.py`, 격리 SSH 검사에는
+`python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command python3 scripts/rust_android_integration.py`를 사용한다.
+
+증거: Git 제외된 `artifacts/mobile-input/`의 `build-final.log`, `mobile-final.log`,
+`ssh-android-final.log`, `apk-verification.log`, `mobile-*.png`. 초기 실패 로그도 함께 보관한다.
+APK: `artifacts/rust-candidate/android/dgl-rust-debug.apk`.
+대시보드 설명·문서·산출물 정보를 정합화하고 스키마 검증과 Git 제외를 확인했다.
+비밀정보 검사와 `git diff --check`도 통과했다. 물리 Android 기기·API34/35 및 Windows 네이티브
+빌드·DPAPI·GUI는 이번에 실행하지 않았다. Windows MSVC x64 빌드·ZIP·수동 CI 경로는 유지한다.
+변경한 Rust 파일의 `rustfmt --check`는 통과했다. workspace 전체 `cargo fmt --check`는 이번에
+수정하지 않은 `password_shell.rs`, `ssh_integration.rs`의 기존 포맷 차이를 보고한다
+(`artifacts/mobile-input/rust-format.log`).

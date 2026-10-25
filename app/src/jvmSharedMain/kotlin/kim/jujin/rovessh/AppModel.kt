@@ -23,6 +23,8 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     val local = MutableStateFlow(repository.read())
     val connections = MutableStateFlow<List<ClientConnection>>(emptyList())
     val selected = MutableStateFlow<ClientConnection?>(null)
+    private val composers = java.util.IdentityHashMap<ClientConnection, TextComposer>()
+    fun composer(connection: ClientConnection): TextComposer = composers.getOrPut(connection) { TextComposer(connection, agentScope) }
     var cloudSync: CloudSyncController? = null
     var chooseSyncFile: (Boolean) -> Unit = {}
     init {
@@ -30,7 +32,10 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             while (isActive) {
                 val visible = visibleConnection?.takeIf { foreground && it.status.value.phase == Phase.Ready }
                 val keys = visible?.pane?.value?.let { setOf("${visible.agentEndpoint}:${visible.agents.value.server}:$it") } ?: emptySet()
-                val result = agentInbox.tick(connections.value.map { it.agentEndpoint to if (it.status.value.phase in setOf(Phase.Ready, Phase.Restoring, Phase.Selecting)) it.agents.value else AgentSnapshot() }, keys, local.value.preferences.agentNotifications)
+                val result = synchronized(agentInbox) {
+                    if (!isActive) return@launch
+                    agentInbox.tick(connections.value.map { it.agentEndpoint to if (it.status.value.phase in setOf(Phase.Ready, Phase.Restoring, Phase.Selecting)) it.agents.value else AgentSnapshot() }, keys, local.value.preferences.agentNotifications)
+                }
                 agentNotifications.value = result.recent
                 result.deliver.forEach { runCatching { sendAgentNotification(it) } }
                 delay(250)
@@ -69,8 +74,9 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         connections.value += connection; selected.value = connection; connection.connect()
     }
     fun removeConnection(connection: ClientConnection) {
+        composers.remove(connection)?.close()
         connection.close(); connections.value -= connection
         if (selected.value == connection) selected.value = connections.value.lastOrNull()
     }
-    fun close() { cloudSync?.close(); agentScope.cancel(); connections.value.forEach { it.close() }; agentInbox.close() }
+    fun close() { composers.values.forEach { it.close() }; composers.clear(); cloudSync?.close(); agentScope.cancel(); connections.value.forEach { it.close() }; synchronized(agentInbox) { agentInbox.close() } }
 }

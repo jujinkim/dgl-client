@@ -49,7 +49,7 @@ class AndroidAppFlowTest {
                     previous = app.local.value
                     app.credentials.write(profile.id, credential)
                     app.update(previous.copy(hosts = previous.hosts + profile, trust = previous.trust + (profile.endpoint to fixture.getString("fingerprint"))))
-                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(volumeKeysEnabled = true, smoothTerminalTransitions = false,
+                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(volumeKeysEnabled = true, smoothTerminalTransitions = false, mobilePaneToolbarVisible = true,
                         volumeUp = VolumeBinding(VolumeAction.Macro, listOf(
                             MacroStep.Text("dgl_volume_count=\$((\${dgl_volume_count:-0}+1)); tmux set-option -p -t \"\$TMUX_PANE\" @dgl-volume-count \"\$dgl_volume_count\""),
                             MacroStep.Key(TerminalKey.Enter))))))
@@ -96,6 +96,7 @@ class AndroidAppFlowTest {
                 instrumentation.waitForIdleSync()
                 delay(350) // The modal window must finish its IME-control handoff before a new tap.
                 val clientsBeforeKeyboard = admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString().trim()
+                val targetBeforeKeyboard = connection.captureInputTarget()!!
                 val keyboardStates = java.util.Collections.synchronizedList(mutableListOf<ConnectionStatus>())
                 val keyboardObserver = launch(start = CoroutineStart.UNDISPATCHED) {
                     connection.status.collect { keyboardStates.add(it) }
@@ -162,6 +163,12 @@ class AndroidAppFlowTest {
                 })
                 assertEquals(clientsBeforeKeyboard, admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString().trim())
                 scenario.onActivity { assertSame(keyboardView, findWebView(it.window.decorView)) }
+                assertEquals(targetBeforeKeyboard, connection.captureInputTarget())
+                val acknowledged = connection.sendInput(targetBeforeKeyboard, "printf 'DGL_COMPOSER_ACK\\n'\r".encodeToByteArray())
+                assertNull(acknowledged.error)
+                withTimeout(5000) {
+                    while (!admin.execute("tmux capture-pane -p -t '$pane'").decodeToString().contains("DGL_COMPOSER_ACK")) delay(50)
+                }
                 stage = "GUI pane split"
                 val originalPaneIds = connection.remote.value.panes.map { it.id }.toSet()
                 clickText("tmux 패널 분할 ↔")
@@ -170,6 +177,7 @@ class AndroidAppFlowTest {
                 // The list is published before the split's target selection and snapshot finish.
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                assertNotNull(connection.sendInput(targetBeforeKeyboard, "must-not-send".encodeToByteArray()).error)
                 stage = "GUI tree expansion"
                 // Expansion must not change the selected target; selecting a row is separate.
                 val beforeExpand = connection.pane.value

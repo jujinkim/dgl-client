@@ -11,6 +11,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -18,6 +20,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -47,7 +50,13 @@ internal class CliLaunchRequest(private val client: ClientConnection) {
     }
 }
 
-internal class TerminalFocus { var request: () -> Unit = {} }
+internal class TerminalFocus {
+    var request: () -> Unit = {}
+    var keyboard: () -> Unit = {}
+    var imeVisible by mutableStateOf(false)
+    var preparePaste: suspend (String, Boolean) -> ByteArray = { _, _ -> error("터미널이 아직 준비되지 않았습니다.") }
+    var inputAllowed: () -> Boolean = { true }
+}
 internal val LocalTerminalFocus = staticCompositionLocalOf { TerminalFocus() }
 
 private object AboveLauncher : PopupPositionProvider {
@@ -56,7 +65,9 @@ private object AboveLauncher : PopupPositionProvider {
             (anchorBounds.top - popupContentSize.height).coerceAtLeast(0))
 }
 
-@Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalKey>, allowed: () -> Boolean, terminalFocus: TerminalFocus) {
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalKey>, allowed: () -> Boolean, terminalFocus: TerminalFocus,
+    mobile: Boolean = false, openComposer: () -> Unit = {}) {
     val status by client.status.collectAsState()
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
@@ -67,44 +78,69 @@ private object AboveLauncher : PopupPositionProvider {
     val buttonShape = RoundedCornerShape(6.dp)
     val buttonBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     val buttonColors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
+    val buttonHeight = if (mobile) 40.dp else 48.dp
+    val imeVisible = terminalFocus.imeVisible
+    val viewConfiguration = LocalViewConfiguration.current
+    val compactConfiguration = remember(viewConfiguration) { object : ViewConfiguration by viewConfiguration {
+        override val minimumTouchTargetSize = DpSize(40.dp, 40.dp)
+    } }
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (mobile) 0.dp else LocalMinimumInteractiveComponentSize.current,
+        LocalViewConfiguration provides if (mobile) compactConfiguration else viewConfiguration) {
+        Row(Modifier.fillMaxWidth().semantics { contentDescription = "터미널 입력 도구" }
+            .padding(horizontal = 4.dp, vertical = if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            shortcuts.distinct().forEach { shortcut ->
-                OutlinedButton({
-                    if (allowed() && client.status.value.acceptsInput) {
-                        client.input(shortcut.bytes())
-                        terminalFocus.request()
-                    }
-                }, enabled = available && status.acceptsInput, shape = buttonShape, border = buttonBorder, colors = buttonColors,
-                    modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 10.dp)) { Text(shortcut.label, maxLines = 1) }
+            if (mobile) {
+                OutlinedButton({ terminalFocus.keyboard() }, enabled = available,
+                    shape = buttonShape, border = buttonBorder, colors = buttonColors, contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.size(buttonHeight).semantics {
+                        contentDescription = if (imeVisible) "키보드 닫기" else "키보드 열기"
+                        stateDescription = if (imeVisible) "표시됨" else "숨김"
+                    }) { KeyboardIcon() }
+                OutlinedButton(openComposer, enabled = available, shape = buttonShape, border = buttonBorder,
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.height(buttonHeight).widthIn(min = 40.dp).semantics { contentDescription = "텍스트 입력 열기" },
+                    contentPadding = PaddingValues(horizontal = 8.dp)) { Text("텍스트 입력", fontSize = 11.sp, maxLines = 1) }
             }
-        }
-        Box {
-            OutlinedButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
-                shape = buttonShape, border = buttonBorder, colors = buttonColors, contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.size(48.dp).semantics { contentDescription = "CLI 실행 메뉴" }) { Text("…", style = MaterialTheme.typography.titleLarge) }
-            val opened = request
-            if (opened != null) Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
-                properties = PopupProperties(focusable = true)) {
-                val menuFocus = remember { FocusRequester() }
-                LaunchedEffect(Unit) { menuFocus.requestFocus() }
-                Surface(shadowElevation = 8.dp, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                    Column(Modifier.width(300.dp).onPreviewKeyEvent {
-                        if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { dismiss(); true } else false
-                    }.focusRequester(menuFocus).focusable()) {
-                        val launch: (CliCommand) -> Unit = { command ->
-                            if (request === opened) {
-                                request = null
-                                opened.send(command, client, allowed())
-                                terminalFocus.request()
-                            }
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                shortcuts.distinct().forEach { shortcut ->
+                    OutlinedButton({
+                        if (allowed() && client.status.value.acceptsInput) {
+                            client.input(shortcut.bytes())
+                            terminalFocus.request()
                         }
-                        LauncherRow("Claude Code", LauncherIcons.claude, available && status.acceptsInput,
-                            { launch(CliCommand.Claude) }, { launch(CliCommand.ClaudeBypass) })
-                        LauncherRow("Codex", LauncherIcons.openai, available && status.acceptsInput,
-                            { launch(CliCommand.Codex) }, { launch(CliCommand.CodexBypass) })
+                    }, enabled = available && status.acceptsInput, shape = buttonShape, border = buttonBorder, colors = buttonColors,
+                        modifier = Modifier.height(buttonHeight).widthIn(min = if (mobile) 46.dp else 58.dp),
+                        contentPadding = PaddingValues(horizontal = if (mobile) 8.dp else 10.dp)) {
+                        Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
+                    }
+                }
+            }
+            Box {
+                OutlinedButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
+                    shape = buttonShape, border = buttonBorder, colors = buttonColors, contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = "CLI 실행 메뉴" }) { Text("…", fontSize = if (mobile) 18.sp else 22.sp) }
+                val opened = request
+                if (opened != null) Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
+                    properties = PopupProperties(focusable = true)) {
+                    val menuFocus = remember { FocusRequester() }
+                    LaunchedEffect(Unit) { menuFocus.requestFocus() }
+                    Surface(shadowElevation = 8.dp, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                        Column(Modifier.width(300.dp).onPreviewKeyEvent {
+                            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { dismiss(); true } else false
+                        }.focusRequester(menuFocus).focusable()) {
+                            val launch: (CliCommand) -> Unit = { command ->
+                                if (request === opened) {
+                                    request = null
+                                    opened.send(command, client, allowed())
+                                    terminalFocus.request()
+                                }
+                            }
+                            LauncherRow("Claude Code", LauncherIcons.claude, available && status.acceptsInput,
+                                { launch(CliCommand.Claude) }, { launch(CliCommand.ClaudeBypass) })
+                            LauncherRow("Codex", LauncherIcons.openai, available && status.acceptsInput,
+                                { launch(CliCommand.Codex) }, { launch(CliCommand.CodexBypass) })
+                        }
                     }
                 }
             }

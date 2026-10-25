@@ -14,7 +14,7 @@ import kim.jujin.rovessh.*
 import kim.jujin.rovessh.core.*
 import kotlinx.serialization.json.*
 
-@Composable internal fun AgentBadge(client: ClientConnection, pane: String? = null, notices: List<AgentNotice> = emptyList(), onDetails: (() -> Unit)? = null) {
+@Composable internal fun AgentBadge(client: ClientConnection, pane: String? = null, notices: List<AgentNotice> = emptyList(), compact: Boolean = false, onDetails: (() -> Unit)? = null) {
     val snapshot by client.agents.collectAsState()
     val observations = snapshot.observations.filter { pane == null || it.pane == pane }
     val events = observations.mapNotNull { it.last }.filter { it.kind != "Ended" }
@@ -28,7 +28,7 @@ import kotlinx.serialization.json.*
             Icon(if (agent == "Claude") LauncherIcons.claude else LauncherIcons.openai, agent, Modifier.size(16.dp))
         }
         if (observations.isEmpty()) Text("▣", style = MaterialTheme.typography.labelSmall)
-        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = if (compact) 1 else 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 

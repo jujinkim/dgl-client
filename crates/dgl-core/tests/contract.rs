@@ -40,7 +40,7 @@ fn event(e: Event) -> Value {
     }
 }
 #[test]
-fn contract_125_cases() {
+fn contract_126_cases() {
     let f = fixtures();
     let mut count = 0;
     for c in f["protocol"].as_array().unwrap() {
@@ -179,7 +179,7 @@ fn contract_125_cases() {
             assert_eq!(result.unwrap(), c["expected"], "{}", c["id"]);
         }
     }
-    assert_eq!(count, 125);
+    assert_eq!(count, 126);
 }
 
 #[test]
@@ -201,10 +201,23 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
         }
     }
     let mut state = model::LocalState::default();
+    assert!(state.preferences.mobile_pane_toolbar_visible);
+    state.preferences.mobile_pane_toolbar_visible = false;
     assert!(!state.preferences.smooth_terminal_transitions);
     state.preferences.smooth_terminal_transitions = true;
     state.save(&path).unwrap();
-    assert!(model::LocalState::read(&path).unwrap().preferences.smooth_terminal_transitions);
+    assert!(
+        !model::LocalState::read(&path)
+            .unwrap()
+            .preferences
+            .mobile_pane_toolbar_visible
+    );
+    assert!(
+        model::LocalState::read(&path)
+            .unwrap()
+            .preferences
+            .smooth_terminal_transitions
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }
 

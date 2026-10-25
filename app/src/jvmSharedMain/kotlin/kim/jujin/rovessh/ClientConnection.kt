@@ -27,6 +27,11 @@ interface ClientConnection {
     fun manage(command: TmuxCommand)
     fun refresh()
     fun input(bytes: ByteArray)
+    /** Identity excludes the size generation: opening the IME must not change the destination. */
+    fun captureInputTarget(): InputTarget? = null
+    /** Completes only when the existing input queue reports its result. Never retries. */
+    suspend fun sendInput(target: InputTarget, bytes: ByteArray): InputCompletion =
+        InputCompletion("이 연결은 텍스트 전송을 지원하지 않습니다.")
     fun bindSurface(value: TerminalSurface?)
     fun unbindSurface(expected: TerminalSurface)
     fun resize(value: Size)
@@ -34,3 +39,6 @@ interface ClientConnection {
     fun disconnect()
     fun close()
 }
+
+data class InputTarget(val epoch: Long, val session: String?, val identity: String)
+data class InputCompletion(val error: String? = null)

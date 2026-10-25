@@ -247,6 +247,16 @@ class AndroidVolumeKeyTest {
                 waitForText("CLI 실행 메뉴")
                 for ((label, wire) in listOf("Esc" to "\u001b", "Tab" to "\t", "Enter" to "\r",
                     "Shift+Tab" to "\u001b[Z", "Shift+←" to "\u001b[1;2D")) {
+                    awaitUi("scroll to shortcut $label") {
+                        while (true) {
+                            automation.clearCache()
+                            if (find(automation.rootInActiveWindow) { it.text?.toString() == label } != null) break
+                            val bar = find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "터미널 입력 도구" }
+                            val scroll = find(bar) { it.isScrollable }
+                            check(scroll?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) == true)
+                            delay(100)
+                        }
+                    }
                     waitForText(label).performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
                     click(label)
                     assertArrayEquals(wire.encodeToByteArray(), withTimeout(3000) { firstWire.writes.receive() })

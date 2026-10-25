@@ -81,6 +81,7 @@ impl std::fmt::Debug for Credential {
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
     pub theme: String,
+    pub mobile_pane_toolbar_visible: bool,
     pub font_size: i32,
     pub scrollback: i32,
     pub terminal_shortcuts: Vec<crate::input::TerminalKey>,
@@ -94,6 +95,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             theme: "system".into(),
+            mobile_pane_toolbar_visible: true,
             font_size: 14,
             scrollback: 5000,
             terminal_shortcuts: crate::input::TerminalKey::DEFAULT_SHORTCUTS.to_vec(),
