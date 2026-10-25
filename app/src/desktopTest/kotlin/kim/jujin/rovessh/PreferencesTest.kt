@@ -12,7 +12,7 @@ class PreferencesTest {
             directory.resolve("settings.json").writeText("""{"preferences":{"fontSize":19}}""")
             val legacy = LocalRepository(directory).read()
             assertEquals(Preferences(fontSize = 19), legacy.preferences)
-            val state = legacy.copy(preferences = legacy.preferences.copy(volumeKeysEnabled = true,
+            val state = legacy.copy(preferences = legacy.preferences.copy(volumeKeysEnabled = true, smoothTerminalTransitions = true,
                 volumeUp = VolumeBinding(VolumeAction.Macro, List(65536) { MacroStep.Key(TerminalKey.Enter) }),
                 volumeDown = VolumeBinding(VolumeAction.Macro, listOf(MacroStep.Text("한".repeat(21845)), MacroStep.Key(TerminalKey.Enter)))))
             LocalRepository(directory).save(state)

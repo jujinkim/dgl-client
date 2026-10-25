@@ -784,6 +784,9 @@ async fn workspace_focus_tree_and_independent_connections() {
     .await;
     assert_eq!(c.state().session.as_ref(), Some(&other));
     assert_eq!(c.target().unwrap().pane_id, other_pane);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let before_resize = c.target().unwrap();
+    events.lock().unwrap().clear();
     completion(
         &c,
         c.action(Action::Resize {
@@ -793,8 +796,15 @@ async fn workspace_focus_tree_and_independent_connections() {
         .unwrap(),
     )
     .await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
     let target = c.target().unwrap();
+    assert_eq!(target.connection, before_resize.connection);
+    assert_eq!(target.generation.connection, before_resize.generation.connection);
+    assert_eq!(target.generation.pane, before_resize.generation.pane);
+    assert_eq!(target.generation.size, before_resize.generation.size + 1);
+    assert!(!c.state().resizing);
+    assert_eq!(events.lock().unwrap().iter().filter(|e| e.kind == OutputKind::ResetBegin).count(), 1,
+        "one resize must not be captured again for its layout notification");
     assert!(
         events
             .lock()
@@ -814,6 +824,38 @@ async fn workspace_focus_tree_and_independent_connections() {
     );
     assert_eq!(second.state().session.as_ref(), Some(&first));
     assert_eq!(second.state().pane.as_ref(), Some(&left));
+    events.lock().unwrap().clear();
+    completion(&c, c.action(Action::Resize { columns: 101, rows: 37 }).unwrap()).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(c.target().unwrap(), target, "identical dimensions keep the output generation");
+    assert!(!events.lock().unwrap().iter().any(|e| matches!(e.kind, OutputKind::ResetBegin | OutputKind::Resize)));
+    // Another client can constrain the actual pane while Android's viewport changes.
+    let (mut constrained_host, constrained_credential, constrained_fingerprint) = fixture("DGL_TEST_KEY_FILE");
+    constrained_host.last_session = Some(other.clone());
+    constrained_host.last_pane = Some(other_pane.clone());
+    let constrained = Connection::start(constrained_host, constrained_credential, Some(constrained_fingerprint));
+    phase(&constrained, Phase::Ready).await;
+    let result = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
+        .args(["set-option", "-w", "-t", &other, "window-size", "smallest"])
+        .output().unwrap();
+    assert!(result.status.success());
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let s = c.state();
+            if s.phase == Phase::Ready && s.remote.panes.iter().any(|p| p.id == other_pane && p.width == 80 && p.height == 24) { break; }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    events.lock().unwrap().clear();
+    let constrained_target = c.target().unwrap();
+    completion(&c, c.action(Action::Resize { columns: 135, rows: 45 }).unwrap()).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(c.target().unwrap(), constrained_target);
+    assert!(!events.lock().unwrap().iter().any(|e| e.kind == OutputKind::ResetBegin));
+    assert!(events.lock().unwrap().iter().any(|e| e.kind == OutputKind::Resize && e.size.columns == 80 && e.size.rows == 24));
+    constrained.close();
+    constrained.join().await;
     c.close();
     c.join().await;
     second.close();

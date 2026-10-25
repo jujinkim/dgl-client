@@ -34,6 +34,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val agentNotifications: AgentNotificationSettings = AgentNotificationSettings(),
     val volumeUp: VolumeBinding = VolumeBinding(),
     val volumeDown: VolumeBinding = VolumeBinding(),
+    val smoothTerminalTransitions: Boolean = false,
 )
 @Serializable data class LocalState(val hosts: List<HostProfile> = emptyList(), val trust: Map<String, String> = emptyMap(), val preferences: Preferences = Preferences())
 
@@ -53,8 +54,11 @@ data class ConnectionStatus(
     val attempt: Int = 0,
     val canRetryNow: Boolean = false,
     val canStopRetrying: Boolean = false,
+    val resizing: Boolean = false,
 ) {
     val acceptsInput get() = phase == Phase.Ready || phase == Phase.Shell
+    val showsConnectionProgress get() = phase == Phase.Connecting || phase == Phase.Reconnecting ||
+        (phase == Phase.Restoring && !resizing)
 }
 object RetryPolicy {
     fun retryable(failure: Failure) = failure == Failure.Network
@@ -107,6 +111,9 @@ interface TerminalSurface {
     suspend fun write(bytes: ByteArray)
     suspend fun reset(bytes: ByteArray)
     suspend fun resizeRemote(size: Size) {}
+    suspend fun beginSnapshot() {}
+    suspend fun endSnapshot() {}
+    suspend fun cancelSnapshot() {}
     fun close()
 }
 

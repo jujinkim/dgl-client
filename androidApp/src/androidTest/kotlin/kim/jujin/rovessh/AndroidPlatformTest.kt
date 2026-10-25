@@ -72,6 +72,43 @@ class AndroidPlatformTest {
                 withTimeout(5000) { terminal.write("\u001b[?1049h\u001b[2Jalternate\u001b[?1049l".toByteArray()) }
                 scenario.onActivity { terminal.view.layoutParams = terminal.view.layoutParams.apply { height = 500 } }
                 withTimeout(5000) { terminal.write("resize test".toByteArray()) }
+                withTimeout(5000) { terminal.reset("CACHE_BEFORE".encodeToByteArray()) }
+                withTimeout(5000) {
+                    while (!js(terminal, "document.querySelector('.xterm-screen').textContent").contains("CACHE_BEFORE")) delay(20)
+                }
+                terminal.beginSnapshot()
+                terminal.reset("CACHE_AFTER".encodeToByteArray())
+                delay(200)
+                assertTrue(js(terminal, "document.querySelector('.terminal-cache').textContent").contains("CACHE_BEFORE"))
+                assertFalse(js(terminal, "document.querySelector('.terminal-cache').textContent").contains("CACHE_AFTER"))
+                assertTrue(js(terminal, "getComputedStyle(document.querySelector('.terminal-cache'),'::after').opacity").contains("1"))
+                assertTrue(js(terminal, "getComputedStyle(document.querySelector('.terminal-cache')).pointerEvents").contains("none"))
+                instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+                    File(instrumentation.targetContext.cacheDir, "resize-cache.png").outputStream().use {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    bitmap.recycle()
+                }
+                withTimeout(5000) { terminal.endSnapshot() }
+                withTimeout(5000) {
+                    while (!js(terminal, "document.querySelector('.terminal-cache') === null").contains("true")) delay(20)
+                }
+                assertTrue(js(terminal, "document.querySelector('.xterm-screen').textContent").contains("CACHE_AFTER"))
+                terminal.beginSnapshot()
+                terminal.cancelSnapshot()
+                assertTrue(js(terminal, "document.querySelector('.terminal-cache') === null").contains("true"))
+                terminal.setSmoothTransitions(true)
+                js(terminal, """window.__motion=[]; window.__animate=Element.prototype.animate;
+                    Element.prototype.animate=function(frames,options){window.__motion.push({frames,options});return window.__animate.call(this,frames,options);}; true""")
+                terminal.beginSnapshot()
+                terminal.resizeRemote(Size(60, 12))
+                terminal.reset("SMOOTH_AFTER".encodeToByteArray())
+                withTimeout(5000) { terminal.endSnapshot() }
+                assertTrue(js(terminal, "window.matchMedia('(prefers-reduced-motion: reduce)').matches || (window.__motion.length === 2 && window.__motion.every(a => a.options.duration === 240))").contains("true"))
+                js(terminal, "Element.prototype.animate=window.__animate; true")
+                terminal.setSmoothTransitions(false)
+                terminal.cancelSnapshot()
+                assertTrue(js(terminal, "document.querySelector('.xterm-screen').getAnimations().length === 0").contains("true"))
             } finally { instrumentation.runOnMainSync { terminal.close() } }
         }
     }

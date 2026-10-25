@@ -88,6 +88,7 @@ pub struct Preferences {
     pub agent_notifications: crate::agent::NotificationSettings,
     pub volume_up: crate::input::VolumeBinding,
     pub volume_down: crate::input::VolumeBinding,
+    pub smooth_terminal_transitions: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -100,6 +101,7 @@ impl Default for Preferences {
             agent_notifications: Default::default(),
             volume_up: Default::default(),
             volume_down: Default::default(),
+            smooth_terminal_transitions: false,
         }
     }
 }

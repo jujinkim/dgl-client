@@ -40,7 +40,7 @@ class RustClientConnection(
     @Volatile private var epoch = 0L
     private var lastSession = host.lastSession
     private var lastPane = host.lastPane
-    private var size = Size()
+    private val resizes = TerminalResizeQueue()
     private val inputRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<ULong>()
     @Volatile private var closed = false
     private val cleanup = mutableListOf<Job>()
@@ -62,7 +62,8 @@ class RustClientConnection(
                 synchronized(this@RustClientConnection) {
                     if (current != epoch || closed) { connection.stop(); scope.launch { connection.shutdown(); connection.close() }; return@launch }
                     native = connection
-                    connection.submitAction(buildJsonObject { put("action", "resize"); put("columns", size.columns); put("rows", size.rows) }.toString())
+                    resizes.reset()
+                    submitResize(connection)
                     bindOutput()
                 }
                 var sequence = -1L
@@ -76,14 +77,19 @@ class RustClientConnection(
                     json.parseToJsonElement(connection.completionsJson()).jsonArray.forEach { result ->
                         val record = result.jsonObject
                         synchronized(this@RustClientConnection) {
-                            if (current == epoch && record["request_id"]?.jsonPrimitive?.content?.toULongOrNull() == refreshRequest) {
-                                refreshRequest = null; refreshing.value = false
+                            if (current == epoch) {
+                                val id = record["request_id"]?.jsonPrimitive?.content?.toULongOrNull()
+                                if (id != null) resizes.complete(id, record["error"] == null || record["error"] is JsonNull)
+                                if (id == refreshRequest) { refreshRequest = null; refreshing.value = false }
                             }
                         }
                         val input = record["request_id"]?.jsonPrimitive?.content?.toULongOrNull()?.let { inputRequests.remove(it) } == true
                         record["error"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content?.let { code ->
                             if (input || code !in setOf("Cancelled", "StaleGeneration")) notice.value = message(code)
                         }
+                    }
+                    synchronized(this@RustClientConnection) {
+                        if (current == epoch && !closed && status.value.phase in setOf(Phase.Ready, Phase.Shell, Phase.Selecting, Phase.MissingSession)) submitResize(connection)
                     }
                     delay(16)
                 }
@@ -101,6 +107,9 @@ class RustClientConnection(
         val attempt = retry?.get("attempt")?.jsonPrimitive?.int ?: 0
         val wait = retry?.get("wait_seconds")?.takeUnless { it is JsonNull }?.jsonPrimitive?.int
         val stopped = retry?.get("stopped")?.jsonPrimitive?.boolean == true
+        val resizing = phase == Phase.Restoring && error == null &&
+            retry?.get("connecting")?.jsonPrimitive?.boolean != true &&
+            s["resizing"]?.jsonPrimitive?.boolean == true
         val canStopRetrying = phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting) ||
             (phase == Phase.Restoring && retry?.get("connecting")?.jsonPrimitive?.boolean == true)
         val canRetryNow = canStopRetrying || (phase == Phase.Failed && (error == "Network" || stopped))
@@ -113,10 +122,10 @@ class RustClientConnection(
         }
         val nextStatus = ConnectionStatus(phase, retryMessage ?: error?.let(::message) ?: when (phase) {
             Phase.Connecting -> "SSH 연결 중…"; Phase.Authenticating -> "서버 확인 중…"; Phase.TrustRequired -> "호스트키 지문을 확인하세요."
-            Phase.Selecting -> "tmux 세션을 선택하거나 만드세요."; Phase.Restoring -> "터미널 복원 중…"; Phase.Ready -> "연결됨 · tmux"
+            Phase.Selecting -> "tmux 세션을 선택하거나 만드세요."; Phase.Restoring -> if (resizing) "연결됨 · tmux" else "터미널 복원 중…"; Phase.Ready -> "연결됨 · tmux"
             Phase.Shell -> "일반 SSH · tmux 탐지 실패"; Phase.Reconnecting -> "연결 복구 중…"; Phase.MissingSession -> "이전 세션이 삭제되었습니다. 직접 선택하세요."
             else -> "연결 종료"
-        }, attempt, canRetryNow, canStopRetrying)
+        }, attempt, canRetryNow, canStopRetrying, resizing)
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         val r = s.getValue("remote").jsonObject
         fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
@@ -153,15 +162,59 @@ class RustClientConnection(
         val id = c.subscribe(); subscription = id
         val current = epoch
         outputJob = scope.launch {
+            var displayedTarget: List<JsonElement?>? = null
+            var displayedOutputTarget: String? = null
+            var snapshotTarget: String? = null
+            fun identity(target: String): List<JsonElement?> {
+                val t = json.parseToJsonElement(target).jsonObject
+                val generation = t.getValue("generation").jsonObject
+                return listOf(t["connection"], t["pane_id"], generation["connection"], generation["pane"])
+            }
             try {
+                terminal.cancelSnapshot()
                 while (isActive && current == epoch) {
                     val event = c.pollOutput(id)
+                    val target = c.targetJson()
+                    if (displayedTarget != null && status.value.phase !in setOf(Phase.Ready, Phase.Restoring, Phase.Shell)) {
+                        terminal.cancelSnapshot()
+                        displayedTarget = null
+                        displayedOutputTarget = null
+                        snapshotTarget = null
+                    }
+                    if (snapshotTarget != null && (target != snapshotTarget || status.value.phase in setOf(Phase.Reconnecting, Phase.Failed, Phase.Disconnected))) {
+                        terminal.cancelSnapshot()
+                        snapshotTarget = null
+                    }
                     if (event == null) { delay(8); continue }
-                    if (surface === terminal && c.targetJson() == event.targetJson) {
+                    if (surface === terminal && target == event.targetJson) {
                         when (event.kind) {
-                            "Resize" -> terminal.resizeRemote(Size(event.columns.toInt(), event.rows.toInt()))
-                            "ResetBegin" -> terminal.reset(event.bytes)
+                            "Resize" -> {
+                                val next = identity(event.targetJson)
+                                if (next != displayedTarget) terminal.cancelSnapshot()
+                                if (next == displayedTarget && next[1]?.jsonPrimitive?.content != "shell" &&
+                                    event.targetJson != displayedOutputTarget) {
+                                    // Capture before xterm changes its grid and clears DOM rows.
+                                    terminal.beginSnapshot()
+                                    snapshotTarget = event.targetJson
+                                }
+                                terminal.resizeRemote(Size(event.columns.toInt(), event.rows.toInt()))
+                            }
+                            "ResetBegin" -> {
+                                val next = identity(event.targetJson)
+                                // Never display an old pane/connection over a newly selected one.
+                                if (snapshotTarget != event.targetJson) {
+                                    if (displayedTarget == next) terminal.beginSnapshot() else terminal.cancelSnapshot()
+                                }
+                                displayedTarget = next
+                                snapshotTarget = event.targetJson
+                                terminal.reset(event.bytes)
+                            }
                             "ResetChunk", "Live" -> terminal.write(event.bytes)
+                            "ResetEnd" -> {
+                                terminal.endSnapshot()
+                                displayedOutputTarget = event.targetJson
+                                snapshotTarget = null
+                            }
                         }
                     }
                     // AndroidTerminal.write/reset return only after xterm's write callback.
@@ -169,6 +222,11 @@ class RustClientConnection(
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { if (current == epoch && surface === terminal) notice.value = "터미널 출력 구독이 종료되었습니다. 재연결하세요." }
+            finally {
+                withContext(NonCancellable) {
+                    if (surface !== terminal || (current == epoch && subscription == id)) terminal.cancelSnapshot()
+                }
+            }
         }
         action(buildJsonObject { put("action", "snapshot") })
     }
@@ -201,9 +259,26 @@ class RustClientConnection(
         catch (_: Exception) { refreshing.value = false; notice.value = "세션 목록을 조회하지 못했습니다." }
     }
     override fun restore() = action(buildJsonObject { put("action", "snapshot") })
-    override fun resize(value: Size) { if (value == size) return; size = value; action(buildJsonObject { put("action", "resize"); put("columns", value.columns); put("rows", value.rows) }) }
+    @Synchronized override fun resize(value: Size) { if (!closed) resizes.resize(value, System.nanoTime() / 1_000_000) }
+    // Called only by the current connection's polling loop while holding the owner lock.
+    // No timer can outlive detach(), and native completions bound us to one request in flight.
+    private fun submitResize(connection: NativeConnection) {
+        val now = System.nanoTime() / 1_000_000
+        val value = resizes.next(now) ?: return
+        try {
+            val id = connection.submitAction(buildJsonObject {
+                put("action", "resize"); put("columns", value.columns); put("rows", value.rows)
+            }.toString())
+            resizes.submitted(id, value)
+        } catch (_: Exception) {
+            // A full request queue must not tear down a healthy SSH connection.
+            resizes.defer(now)
+            notice.value = "화면 크기 변경을 전송하지 못했습니다. 잠시 후 다시 시도합니다."
+        }
+    }
     override fun input(bytes: ByteArray) { val c = native ?: return; if (!status.value.acceptsInput) return; try { c.targetJson()?.let { inputRequests.add(c.submitInput(it, bytes)) } } catch (_: Exception) { notice.value = "입력을 전송하지 않았습니다. 대기열 또는 연결 상태를 확인하세요." } }
     @Synchronized private fun detach() {
+        resizes.reset()
         refreshRequest = null; refreshing.value = false
         cleanup.removeAll { it.isCompleted }
         val old = native; native = null; val state = stateJob; stateJob = null; val output = outputJob; outputJob = null

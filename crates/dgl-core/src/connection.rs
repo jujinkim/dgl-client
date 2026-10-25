@@ -45,6 +45,8 @@ pub struct State {
     pub sequence: u64,
     pub handle: u64,
     pub phase: Phase,
+    #[serde(default)]
+    pub resizing: bool,
     pub generation: Generation,
     pub session: Option<String>,
     pub pane: Option<String>,
@@ -165,6 +167,9 @@ impl Shared {
     fn update(&self, f: impl FnOnce(&mut State)) {
         let mut s = self.state.lock().unwrap();
         f(&mut s);
+        if s.phase != Phase::Restoring || s.error.is_some() {
+            s.resizing = false;
+        }
         s.sequence = s.sequence.checked_add(1).expect("state sequence exhausted");
     }
     fn phase(&self, p: Phase) {
@@ -173,6 +178,7 @@ impl Shared {
                 s.retry = RetryState::default();
             }
             s.phase = p;
+            s.resizing = false;
         });
     }
     fn target(&self) -> Option<PaneTarget> {
@@ -224,6 +230,7 @@ impl Connection {
                 sequence: 0,
                 handle,
                 phase: Phase::Connecting,
+                resizing: false,
                 generation: Generation {
                     connection: 1,
                     pane: 0,
@@ -576,7 +583,7 @@ impl Control {
         });
         Ok(())
     }
-    async fn refresh_screen_if_needed(&mut self) -> Result<()> {
+    async fn refresh_screen_if_needed(&mut self, resizing: bool) -> Result<()> {
         let before = self.shared.state.lock().unwrap().clone();
         self.refresh().await?;
         let after = self.shared.state.lock().unwrap().clone();
@@ -592,7 +599,7 @@ impl Control {
             // Names, titles, process names and another client's active pane do
             // not change this connection's displayed screen or PaneTarget.
             if screen(&before) != screen(&after) {
-                self.snapshot().await?;
+                self.snapshot(resizing).await?;
             }
         }
         Ok(())
@@ -616,6 +623,7 @@ impl Control {
         self.live = false;
         self.shared.update(|s| {
             s.phase = Phase::Restoring;
+            s.resizing = false;
             s.pane = Some(id.clone());
             s.generation.pane = s
                 .generation
@@ -628,14 +636,17 @@ impl Control {
         })
         .await?;
         self.command(Operation::SelectPane { target: id }).await?;
-        self.snapshot().await
+        self.snapshot(false).await
     }
-    async fn snapshot(&mut self) -> Result<()> {
+    async fn snapshot(&mut self, resizing: bool) -> Result<()> {
         let Some(t) = self.shared.target() else {
             return Ok(());
         };
         self.live = false;
-        self.shared.phase(Phase::Restoring);
+        self.shared.update(|s| {
+            s.phase = Phase::Restoring;
+            s.resizing = resizing;
+        });
         let id = t.pane_id;
         let commands = [
             Operation::Pause { target: id.clone() },
@@ -643,7 +654,7 @@ impl Control {
             Operation::CaptureMain { target: id.clone() },
             Operation::Capture { target: id.clone() },
             Operation::Pending { target: id.clone() },
-            Operation::Resume { target: id },
+            Operation::Resume { target: id.clone() },
         ];
         let wire = commands
             .iter()
@@ -680,7 +691,13 @@ impl Control {
         }
         self.size = Size::new(fields[15], fields[16]).map_err(|_| Error::Protocol)?;
         self.shared.update(|s| {
-            s.generation.size = s.generation.size.checked_add(1).expect("size exhausted")
+            s.generation.size = s.generation.size.checked_add(1).expect("size exhausted");
+            // The capture may observe a newer layout than the preceding list query.
+            // Keep that baseline so its queued layout notification cannot recapture it.
+            if let Some(pane) = s.remote.panes.iter_mut().find(|p| p.id == id) {
+                pane.width = self.size.columns;
+                pane.height = self.size.rows;
+            }
         });
         self.shared.emit(OutputKind::Resize, self.size, &[]).await?;
         self.shared
@@ -842,6 +859,7 @@ async fn attach(
     let stream = ssh.control(&id).await?;
     shared.update(|s| {
         s.phase = Phase::Restoring;
+        s.resizing = false;
         s.error = None;
         s.session = Some(id.clone());
         s.pane = None;
@@ -1218,10 +1236,10 @@ async fn connected(
             let result = async {
                 let c = control.as_mut().unwrap();
                 if c.dirty {
-                    c.refresh_screen_if_needed().await?;
+                    c.refresh_screen_if_needed(false).await?;
                 }
                 if c.paused {
-                    c.snapshot().await?;
+                    c.snapshot(false).await?;
                 }
                 Ok(())
             }
@@ -1401,7 +1419,7 @@ async fn connected(
                                         c.select_pane(target.clone()).await?;
                                     } else {
                                         c.command(operation.clone()).await?;
-                                        c.refresh_screen_if_needed().await?;
+                                        c.refresh_screen_if_needed(false).await?;
                                         if let Some(window) = selected_window {
                                             let remote =
                                                 shared.state.lock().unwrap().remote.clone();
@@ -1448,7 +1466,7 @@ async fn connected(
                             }
                             Action::Refresh => {
                                 if let Some(c) = control.as_mut() {
-                                    c.refresh_screen_if_needed().await?;
+                                    c.refresh_screen_if_needed(false).await?;
                                 } else if tmux {
                                     let remote = list(ssh).await?;
                                     shared.update(|s| s.remote = remote);
@@ -1456,25 +1474,40 @@ async fn connected(
                             }
                             Action::Snapshot => {
                                 if let Some(c) = control.as_mut() {
-                                    c.snapshot().await?;
+                                    c.snapshot(false).await?;
                                 }
                             }
                             Action::Resize { columns, rows } => {
-                                *size = Size::new(*columns, *rows)?;
-                                shared.update(|s| s.generation.size += 1);
+                                let next = Size::new(*columns, *rows)?;
+                                if next == *size {
+                                    return Ok(());
+                                }
+                                // Retain the requested viewport even if transport fails below;
+                                // the next attachment must start at the latest dimensions.
+                                *size = next;
                                 if let Some(sh) = &shell {
                                     sh.window_change((*columns).into(), (*rows).into(), 0, 0)
                                         .await
                                         .map_err(|_| Error::Network)?;
-                                    shared.emit(OutputKind::Resize, *size, &[]).await?;
+                                    shared.update(|s| s.generation.size += 1);
+                                    shared.emit(OutputKind::Resize, next, &[]).await?;
                                 }
                                 if let Some(c) = control.as_mut() {
+                                    let generation = shared.state.lock().unwrap().generation.size;
                                     c.command(Operation::ClientSize {
                                         columns: *columns,
                                         rows: *rows,
                                     })
                                     .await?;
-                                    c.snapshot().await?;
+                                    // Refresh the layout before capturing it. If another client
+                                    // constrains this pane, the requested viewport may not change
+                                    // its actual size at all. Keep live output and its generation.
+                                    c.refresh_screen_if_needed(true).await?;
+                                    if shared.state.lock().unwrap().generation.size == generation {
+                                        // fit() resized the local grid even if another client's
+                                        // smaller viewport kept this pane's dimensions unchanged.
+                                        shared.emit(OutputKind::Resize, c.size, &[]).await?;
+                                    }
                                 }
                             }
                         },
@@ -1483,6 +1516,9 @@ async fn connected(
                 }
                 .await;
                 let error = result.err();
+                if error.is_some() {
+                    shared.update(|s| s.resizing = false);
+                }
                 shared.complete(r, error);
                 if error == Some(Error::MissingSession) {
                     missing_session(ssh, &shared, &mut control).await?;

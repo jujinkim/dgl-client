@@ -273,7 +273,7 @@ expect fun copyPublicKey(value: String)
             }
         }
         Box(Modifier.fillMaxWidth().height(4.dp)) {
-            if (status.phase == Phase.Connecting || status.phase == Phase.Restoring || status.phase == Phase.Reconnecting) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (status.showsConnectionProgress) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("현재 세션: $sessionLabel", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
@@ -440,6 +440,17 @@ expect fun copyPublicKey(value: String)
                 TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize + 1).coerceAtMost(28)))) }) { Text("크게") }
             }
             Text("스크롤백: ${local.preferences.scrollback}줄 · 터미널에서 스크롤·선택·복사")
+            if (mobileLayout) {
+                Row(Modifier.fillMaxWidth().toggleable(local.preferences.smoothTerminalTransitions, role = Role.Switch, onValueChange = { enabled ->
+                        model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) }
+                    }), verticalAlignment = Alignment.CenterVertically) {
+                    Switch(local.preferences.smoothTerminalTransitions, null)
+                    Column(Modifier.padding(start = 8.dp)) {
+                        Text("부드러운 터미널 화면 전환")
+                        Text("화면 크기가 바뀔 때 크기·페이드·블러 효과 적용", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
             TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
                 model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
             }

@@ -49,7 +49,7 @@ class AndroidAppFlowTest {
                     previous = app.local.value
                     app.credentials.write(profile.id, credential)
                     app.update(previous.copy(hosts = previous.hosts + profile, trust = previous.trust + (profile.endpoint to fixture.getString("fingerprint"))))
-                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(volumeKeysEnabled = true,
+                    app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(volumeKeysEnabled = true, smoothTerminalTransitions = false,
                         volumeUp = VolumeBinding(VolumeAction.Macro, listOf(
                             MacroStep.Text("dgl_volume_count=\$((\${dgl_volume_count:-0}+1)); tmux set-option -p -t \"\$TMUX_PANE\" @dgl-volume-count \"\$dgl_volume_count\""),
                             MacroStep.Key(TerminalKey.Enter))))))
@@ -95,9 +95,16 @@ class AndroidAppFlowTest {
                 }
                 instrumentation.waitForIdleSync()
                 delay(350) // The modal window must finish its IME-control handoff before a new tap.
+                val clientsBeforeKeyboard = admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString().trim()
+                val keyboardStates = java.util.Collections.synchronizedList(mutableListOf<ConnectionStatus>())
+                val keyboardObserver = launch(start = CoroutineStart.UNDISPATCHED) {
+                    connection.status.collect { keyboardStates.add(it) }
+                }
+                var keyboardView: WebView? = null
                 var tapX = 0f; var tapY = 0f
                 scenario.onActivity { activity ->
                     val web = findWebView(activity.window.decorView)!!
+                    keyboardView = web
                     val position = IntArray(2); web.getLocationOnScreen(position)
                     tapX = position[0] + web.width / 2f; tapY = position[1] + web.height / 2f
                 }
@@ -136,19 +143,42 @@ class AndroidAppFlowTest {
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 delay(400) // Wait for IME insets animation and the debounced remote resize.
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                repeat(2) {
+                    tapTerminal(scenario)
+                    waitForIme(scenario, true)
+                    delay(500)
+                    withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                    instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                    waitForIme(scenario, false)
+                    delay(500)
+                    withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                }
+                keyboardObserver.cancelAndJoin()
+                assertFalse("Keyboard resize must not reconnect", keyboardStates.any {
+                    it.phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting, Phase.Failed, Phase.Disconnected)
+                })
+                assertTrue("Resize restoration keeps the connected label and hides connection progress", keyboardStates.filter { it.resizing }.all {
+                    it.message == "연결됨 · tmux" && !it.showsConnectionProgress && !it.acceptsInput
+                })
+                assertEquals(clientsBeforeKeyboard, admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString().trim())
+                scenario.onActivity { assertSame(keyboardView, findWebView(it.window.decorView)) }
                 stage = "GUI pane split"
                 val originalPaneIds = connection.remote.value.panes.map { it.id }.toSet()
                 clickText("tmux 패널 분할 ↔")
                 stage = "GUI split remote update"
                 val splitPane = withTimeout(10000) { connection.remote.first { state -> state.panes.any { it.id !in originalPaneIds } } }.panes.single { it.id !in originalPaneIds }
+                // The list is published before the split's target selection and snapshot finish.
+                withTimeout(10000) { connection.pane.first { it == splitPane.id } }
+                withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
+                stage = "GUI tree expansion"
                 // Expansion must not change the selected target; selecting a row is separate.
                 val beforeExpand = connection.pane.value
                 clickText("tmux 관리")
-                clickText("$name 펼치기")
+                clickMatching { it.contentDescription?.toString()?.let { text -> text.startsWith("$name\n") && text.endsWith(" 펼치기") } == true }
                 val window = connection.remote.value.windows.first { it.id == splitPane.window && it.session == session }
-                clickText("${window.name} 펼치기")
+                clickMatching { it.contentDescription?.toString()?.let { text -> text.contains("$name · ${window.index}: ") && text.endsWith(" 펼치기") } == true }
                 assertEquals(beforeExpand, connection.pane.value)
-                clickMatching { it.text?.toString()?.startsWith(splitPane.id + " ") == true }
+                clickMatching { it.contentDescription?.toString()?.let { text -> text.contains("\n${splitPane.id} · ") && !text.endsWith(" 메뉴") } == true }
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 clickText("터미널로 돌아가기")
@@ -177,7 +207,7 @@ class AndroidAppFlowTest {
                 runVolumeMacro(scenario, admin, splitPane.id)
                 assertEquals("1", admin.execute("tmux show-options -pv -t '$pane' @dgl-volume-count").decodeToString().trim())
                 clickText("tmux 관리")
-                clickText("$name 메뉴")
+                clickMatching { it.contentDescription?.toString()?.let { text -> text.startsWith("$name\n") && text.endsWith(" 메뉴") } == true }
                 clickText("+ 창")
                 stage = "GUI name editor"
                 // Wait for the dialog window; the terminal itself also exposes an
@@ -201,6 +231,9 @@ class AndroidAppFlowTest {
                 stage = "font setting and renderer replacement"
                 var previousView: WebView? = null
                 scenario.onActivity { previousView = findWebView(it.window.decorView) }
+                clickText("설정"); clickText("부드러운 터미널 화면 전환"); clickText("닫기")
+                assertTrue(app.local.value.preferences.smoothTerminalTransitions)
+                scenario.onActivity { assertSame("Animation settings must not replace the WebView", previousView, findWebView(it.window.decorView)) }
                 clickText("설정"); clickText("크게"); clickText("닫기")
                 withTimeout(10000) {
                     while (true) {
@@ -310,6 +343,26 @@ class AndroidAppFlowTest {
                 }
                 delay(100)
             }
+        }
+    }
+    private fun tapTerminal(scenario: ActivityScenario<MainActivity>) {
+        var x = 0f; var y = 0f
+        scenario.onActivity { activity ->
+            val web = findWebView(activity.window.decorView)!!
+            val position = IntArray(2); web.getLocationOnScreen(position)
+            x = position[0] + web.width / 2f; y = position[1] + web.height / 2f
+        }
+        val now = android.os.SystemClock.uptimeMillis()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.sendPointerSync(android.view.MotionEvent.obtain(now, now, android.view.MotionEvent.ACTION_DOWN, x, y, 0))
+        instrumentation.sendPointerSync(android.view.MotionEvent.obtain(now, now + 80, android.view.MotionEvent.ACTION_UP, x, y, 0))
+    }
+    private suspend fun waitForIme(scenario: ActivityScenario<MainActivity>, visible: Boolean) = withTimeout(5000) {
+        while (true) {
+            var matches = false
+            scenario.onActivity { matches = it.window.decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == visible }
+            if (matches) break
+            delay(20)
         }
     }
     private suspend fun runVolumeMacro(scenario: ActivityScenario<MainActivity>, admin: SshjTransport, pane: String) {

@@ -30,6 +30,9 @@ import java.lang.ref.WeakReference
 @Composable actual fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier) {
     val context = LocalContext.current
     val terminal = remember(client, preferences.fontSize, preferences.scrollback) { AndroidTerminal(context, preferences, client::input, client::resize) }
+    LaunchedEffect(terminal, preferences.smoothTerminalTransitions) {
+        terminal.setSmoothTransitions(preferences.smoothTerminalTransitions)
+    }
     val focus = LocalTerminalFocus.current
     DisposableEffect(terminal, focus) {
         focus.request = { terminal.view.post {
@@ -110,6 +113,27 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
     override suspend fun write(bytes: ByteArray) { deliver(bytes, false) }
     override suspend fun reset(bytes: ByteArray) { deliver(bytes, true) }
+    suspend fun setSmoothTransitions(enabled: Boolean) {
+        withTimeout(15_000) { ready.await() }
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setSmoothTransitions($enabled)", null) }
+    }
+    override suspend fun beginSnapshot() {
+        withTimeout(15_000) { ready.await() }
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.beginSnapshot()", null) }
+    }
+    override suspend fun endSnapshot() = mutex.withLock {
+        if (closed) return@withLock
+        val ack = CompletableDeferred<Unit>()
+        val id = ++serial
+        withContext(Dispatchers.Main.immediate) {
+            awaiting = id to ack
+            view.evaluateJavascript("window.endSnapshot($id)", null)
+        }
+        withTimeout(15_000) { ack.await() }
+    }
+    override suspend fun cancelSnapshot() {
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.cancelSnapshot && window.cancelSnapshot()", null) }
+    }
     override suspend fun resizeRemote(size: Size) {
         withTimeout(15_000) { ready.await() }
         withContext(Dispatchers.Main.immediate) { view.evaluateJavascript("window.resizePane(${size.columns},${size.rows})", null) }

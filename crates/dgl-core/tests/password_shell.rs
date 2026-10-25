@@ -12,11 +12,13 @@ use std::{
     time::Duration,
 };
 #[derive(Clone)]
-struct Fixture;
+struct Fixture {
+    sizes: Arc<Mutex<Vec<(u32, u32)>>>,
+}
 impl server::Server for Fixture {
     type Handler = Self;
     fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
-        Self
+        self.clone()
     }
 }
 impl server::Handler for Fixture {
@@ -85,6 +87,18 @@ impl server::Handler for Fixture {
         s.data(ch, data.to_vec())?;
         Ok(())
     }
+    async fn window_change_request(
+        &mut self,
+        _: ChannelId,
+        columns: u32,
+        rows: u32,
+        _: u32,
+        _: u32,
+        _: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        self.sizes.lock().unwrap().push((columns, rows));
+        Ok(())
+    }
 }
 #[tokio::test]
 async fn password_failure_and_plain_shell_diagnostics() {
@@ -104,8 +118,10 @@ async fn password_failure_and_plain_shell_diagnostics() {
         ..Default::default()
     });
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+    let sizes = Arc::new(Mutex::new(Vec::new()));
+    let server_sizes = sizes.clone();
     let task = tokio::spawn(async move {
-        let mut server = Fixture;
+        let mut server = Fixture { sizes: server_sizes };
         let running = server.run_on_socket(config, &socket);
         let stop = running.handle();
         tokio::select! {r=running=>r.unwrap(),_=stop_rx=>stop.shutdown("test complete".into())}
@@ -140,7 +156,7 @@ async fn password_failure_and_plain_shell_diagnostics() {
     let mut ssh = ssh::connect(
         &host,
         &credential,
-        Some(fingerprint),
+        Some(fingerprint.clone()),
         Arc::new(Mutex::new(None)),
     )
     .await
@@ -162,6 +178,52 @@ async fn password_failure_and_plain_shell_diagnostics() {
     assert_eq!(&bytes[..], b"plain-shell\r");
     shell.close().await.unwrap();
     ssh.close().await;
+    use dgl_core::{connection::{Action, Connection, Phase}, flow::OutputKind};
+    let connection = Connection::start(host, credential, Some(fingerprint));
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while connection.state().phase != Phase::Shell {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.unwrap();
+    let before = connection.target().unwrap();
+    let subscription = connection.output().subscribe().unwrap();
+    for _ in 0..2 {
+        let request = connection.action(Action::Resize { columns: 97, rows: 19 }).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if let Some(result) = connection.completions().into_iter().find(|r| r.request_id == request) {
+                    assert_eq!(result.error, None);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.unwrap();
+    }
+    let after = connection.target().unwrap();
+    assert_eq!(before.generation.connection, after.generation.connection);
+    assert_eq!(before.generation.pane, after.generation.pane);
+    assert_eq!(before.generation.size + 1, after.generation.size);
+    assert_eq!(connection.state().phase, Phase::Shell);
+    assert!(!connection.state().resizing);
+    let event = connection.output().poll(subscription).unwrap().unwrap();
+    assert_eq!(event.kind, OutputKind::Resize);
+    assert_eq!(event.size, Size::new(97, 19).unwrap());
+    connection.output().ack(subscription, event.sequence).unwrap();
+    connection.input(after, b"after-resize".to_vec()).unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(event) = connection.output().poll(subscription).unwrap() {
+                assert_eq!(event.kind, OutputKind::Live);
+                assert_eq!(event.bytes, b"after-resize");
+                connection.output().ack(subscription, event.sequence).unwrap();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.unwrap();
+    assert_eq!(*sizes.lock().unwrap(), vec![(97, 19)]);
+    connection.close();
+    connection.join().await;
     let _ = stop_tx.send(());
     task.await.unwrap();
 }

@@ -200,6 +200,11 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
             assert_eq!(model::LocalState::read(&path).unwrap(), state);
         }
     }
+    let mut state = model::LocalState::default();
+    assert!(!state.preferences.smooth_terminal_transitions);
+    state.preferences.smooth_terminal_transitions = true;
+    state.save(&path).unwrap();
+    assert!(model::LocalState::read(&path).unwrap().preferences.smooth_terminal_transitions);
     std::fs::remove_dir_all(dir).unwrap();
 }
 

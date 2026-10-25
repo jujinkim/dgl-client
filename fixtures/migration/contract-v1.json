@@ -653,7 +653,8 @@
             "Right",
             "Home",
             "End"
-          ]
+          ],
+          "smoothTerminalTransitions": false
         }
       }
     },
@@ -702,7 +703,8 @@
             "Right",
             "Home",
             "End"
-          ]
+          ],
+          "smoothTerminalTransitions": false
         }
       }
     },
@@ -817,7 +819,8 @@
             "Right",
             "Home",
             "End"
-          ]
+          ],
+          "smoothTerminalTransitions": false
         }
       }
     },
@@ -890,7 +893,8 @@
             "Right",
             "Home",
             "End"
-          ]
+          ],
+          "smoothTerminalTransitions": false
         }
       }
     },
@@ -990,7 +994,8 @@
             "ShiftLeft",
             "ShiftTab",
             "CtrlB"
-          ]
+          ],
+          "smoothTerminalTransitions": false
         }
       }
     },
@@ -1023,7 +1028,8 @@
             "errors": true,
             "os": false
           },
-          "terminalShortcuts": []
+          "terminalShortcuts": [],
+          "smoothTerminalTransitions": false
         }
       }
     }
