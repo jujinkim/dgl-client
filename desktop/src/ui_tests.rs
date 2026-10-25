@@ -31,6 +31,244 @@ pub(super) fn redraw(cx: &mut VisualTestContext) {
     cx.run_until_parked();
 }
 
+fn ordered_host(id: &str, session: Option<&str>) -> HostProfile {
+    serde_json::from_value(serde_json::json!({
+        "id":id, "alias":id, "hostname":"127.0.0.1", "port":1,
+        "username":"fixture", "credentialRef":"fixture", "lastSession":session
+    }))
+    .unwrap()
+}
+
+#[gpui::test]
+fn host_drag_commits_order_and_cancel_preserves_it_across_reload(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    view.update(ui, |s, cx| {
+        s.local.hosts = vec![
+            ordered_host("a", None),
+            ordered_host("b", None),
+            ordered_host("c", None),
+        ];
+        s.reconcile_hosts();
+        cx.notify();
+    });
+    redraw(ui);
+    let from = ui.debug_bounds("host-c").unwrap().center();
+    let row = ui.debug_bounds("host-row-a").unwrap();
+    let to = point(row.center().x, row.top() + px(3.));
+    ui.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());
+    ui.simulate_mouse_move(
+        point(from.x + px(20.), from.y),
+        gpui::MouseButton::Left,
+        Modifiers::default(),
+    );
+    ui.simulate_mouse_move(to, gpui::MouseButton::Left, Modifiers::default());
+    redraw(ui);
+    assert!(ui.debug_bounds("host-drop-indicator").is_some());
+    // Preview has not changed or persisted the order.
+    view.read_with(ui, |s, _| assert_eq!(s.host_order.ids(), ["a", "b", "c"]));
+    ui.simulate_mouse_up(to, gpui::MouseButton::Left, Modifiers::default());
+    redraw(ui);
+    view.update(ui, |s, _| {
+        assert_eq!(s.host_order.ids(), ["c", "a", "b"]);
+        s.local.hosts.reverse();
+        s.local.hosts[0].favorite = true;
+        s.local.hosts[0].last_connected = i64::MAX;
+        s.reconcile_hosts();
+        assert!(!s.host_order.connection_started("a"));
+        assert_eq!(
+            super::host_order::HostOrder::load(
+                &s.path.with_file_name("host-order.json"),
+                &s.local.hosts
+            ),
+            s.host_order
+        );
+    });
+    redraw(ui);
+    assert!(
+        ui.debug_bounds("host-row-c").unwrap().top() < ui.debug_bounds("host-row-a").unwrap().top()
+    );
+    let focus = view.read_with(ui, |s, _| s.focus.clone());
+    ui.update(|w, _| w.focus(&focus));
+    let from = ui.debug_bounds("host-b").unwrap().center();
+    let row = ui.debug_bounds("host-row-c").unwrap();
+    let to = point(row.left() + px(40.), row.top() + px(3.));
+    ui.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());
+    ui.simulate_mouse_move(
+        point(from.x + px(20.), from.y),
+        gpui::MouseButton::Left,
+        Modifiers::default(),
+    );
+    ui.simulate_mouse_move(to, gpui::MouseButton::Left, Modifiers::default());
+    redraw(ui);
+    ui.simulate_keystrokes("escape");
+    ui.simulate_mouse_up(to, gpui::MouseButton::Left, Modifiers::default());
+    redraw(ui);
+    view.read_with(ui, |s, _| assert_eq!(s.host_order.ids(), ["c", "a", "b"]));
+    // An outside drop also leaves both memory and disk unchanged.
+    let from = ui.debug_bounds("host-b").unwrap().center();
+    ui.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());
+    ui.simulate_mouse_move(
+        point(from.x + px(20.), from.y),
+        gpui::MouseButton::Left,
+        Modifiers::default(),
+    );
+    let outside = point(px(600.), px(200.));
+    ui.simulate_mouse_move(outside, gpui::MouseButton::Left, Modifiers::default());
+    ui.simulate_mouse_up(outside, gpui::MouseButton::Left, Modifiers::default());
+    redraw(ui);
+    view.read_with(ui, |s, _| {
+        assert_eq!(s.host_order.ids(), ["c", "a", "b"]);
+        assert_eq!(
+            super::host_order::HostOrder::load(
+                &s.path.with_file_name("host-order.json"),
+                &s.local.hosts
+            ),
+            s.host_order
+        );
+    });
+}
+
+#[gpui::test]
+fn session_clicks_reuse_tabs_across_groups_keep_entities_and_host_history(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    let (a1, a2, b1, terminal, connection) = view.update(ui, |s, cx| {
+        // Hold the real actors in Connecting; identity must exist before any async work.
+        s.runtime = Arc::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        );
+        let a = ordered_host("a", Some("$1"));
+        let a_other = ordered_host("a", Some("$2"));
+        let b = ordered_host("b", Some("$1"));
+        s.local.hosts = vec![a.clone(), b.clone()];
+        s.reconcile_hosts();
+        let a1 = s.create_tab(a, Credential::default(), None, cx);
+        let terminal = s.active_tab().unwrap().terminal.clone();
+        let connection = s.active_tab().unwrap().connection.clone();
+        let a2 = s.create_tab(a_other, Credential::default(), None, cx);
+        let b1 = s.create_tab(b, Credential::default(), None, cx);
+        assert!(
+            s.workspace
+                .split(1, super::workspace::Axis::Horizontal, 1200., 800.)
+        );
+        s.workspace.move_tab(a1, s.workspace.active, None);
+        s.activate_tab(a2);
+        (a1, a2, b1, terminal, connection)
+    });
+    let mut state = view.read_with(ui, |s, _| s.active_tab().unwrap().connection.state());
+    state.remote = serde_json::from_value(serde_json::json!({
+        "sessions":[{"id":"$1","name":"one","attached":0},{"id":"$2","name":"two","attached":0}],
+        "windows":[],"panes":[]
+    }))
+    .unwrap();
+    let owner = view.clone();
+    let (preview, ui) = cx.add_window_view(|_, _| HierarchyPreview {
+        desktop: owner,
+        state,
+        width: 272.,
+        scroll: None,
+    });
+    for _ in 0..4 {
+        for (selector, expected) in [("session-$1", a1), ("session-$2", a2)] {
+            redraw(ui);
+            let bounds = ui.debug_bounds(selector).unwrap();
+            ui.simulate_click(bounds.center(), Modifiers::default());
+            view.read_with(ui, |s, _| {
+                assert_eq!(s.workspace.selected(), Some(expected));
+                assert_eq!(s.workspace.active, s.workspace.group_for(expected).unwrap());
+                assert_eq!(s.tabs.len(), 3);
+            });
+        }
+    }
+    view.update(ui, |s, cx| {
+        s.open(ordered_host("a", None), cx);
+        assert_eq!(s.workspace.selected(), Some(a2));
+        s.activate_tab(a1);
+        s.open(ordered_host("a", None), cx);
+        assert_eq!(s.workspace.selected(), Some(a1));
+        assert!(Arc::ptr_eq(
+            &s.active_tab().unwrap().connection,
+            &connection
+        ));
+        assert_eq!(
+            s.active_tab().unwrap().terminal.entity_id(),
+            terminal.entity_id()
+        );
+        let generation = connection.state().generation.connection;
+        assert_eq!(
+            s.select_session_tab(&connection, generation + 1, "$2", None, None, cx),
+            None
+        );
+        s.activate_tab(b1);
+    });
+    redraw(ui);
+    let bounds = ui.debug_bounds("session-$1").unwrap();
+    ui.simulate_click(bounds.center(), Modifiers::default());
+    view.read_with(ui, |s, _| assert_eq!(s.workspace.selected(), Some(b1)));
+    preview.update(ui, |p, cx| {
+        p.state.remote.sessions[0].name = "renamed".into();
+        p.state.phase = dgl_core::connection::Phase::Failed;
+        cx.notify();
+    });
+    redraw(ui);
+    let bounds = ui.debug_bounds("session-$1").unwrap();
+    ui.simulate_click(bounds.center(), Modifiers::default());
+    let renamed = preview.read_with(ui, |p, _| p.state.clone());
+    view.update(ui, |s, cx| {
+        s.tabs
+            .iter_mut()
+            .find(|t| t.id == b1)
+            .unwrap()
+            .update_session(&renamed);
+        assert_eq!(s.session_tab("a", "$1"), Some(a1));
+        assert_eq!(s.session_tab("b", "$1"), Some(b1));
+        assert_eq!(s.active_tab().unwrap().label(), "b · renamed");
+        assert_eq!(s.tabs.len(), 3);
+        let mut missing = renamed.clone();
+        missing.phase = dgl_core::connection::Phase::MissingSession;
+        missing.remote.sessions.clear();
+        s.tabs
+            .iter_mut()
+            .find(|t| t.id == b1)
+            .unwrap()
+            .update_session(&missing);
+        assert_eq!(s.session_tab("b", "$1"), Some(b1));
+        assert_eq!(s.active_tab().unwrap().label(), "b · renamed");
+        let notice: dgl_core::agent::Notice = serde_json::from_value(serde_json::json!({
+            "endpoint":"fixture@127.0.0.1:1", "read":false,
+            "event":{"id":"reuse", "seq":1, "server":"old", "run":"old", "actor":"parent",
+                "session":"$1", "window":"@1", "pane":"%1", "agent":"Codex", "kind":"Approval",
+                "event":"test", "at":0}
+        }))
+        .unwrap();
+        let notice_id = notice.id();
+        s.inbox.recent.push_back(notice);
+        s.open_agent_notice(&notice_id, cx);
+        assert_eq!(s.workspace.selected(), Some(a1));
+        assert_eq!(s.tabs.len(), 3);
+        assert!(s.inbox.recent.back().unwrap().read);
+        s.close_tab(a1);
+        s.open(ordered_host("a", None), cx);
+        assert_eq!(s.workspace.selected(), Some(a2));
+        assert_eq!(s.session_tab("a", "$1"), None);
+        let reopened = s.create_tab(
+            ordered_host("a", Some("$1")),
+            Credential::default(),
+            None,
+            cx,
+        );
+        assert_ne!(reopened, a1);
+        assert_ne!(
+            s.active_tab().unwrap().terminal.entity_id(),
+            terminal.entity_id()
+        );
+        assert_eq!(s.tabs.len(), 3);
+    });
+    assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
+}
+
 struct HierarchyPreview {
     desktop: Entity<Desktop>,
     state: dgl_core::connection::State,
@@ -556,6 +794,7 @@ fn host_disconnect_only_closes_the_selected_connection(cx: &mut TestAppContext) 
     let second_terminal = add_terminal(&desktop, ui);
     let (first_id, first_handle, second_id) = desktop.update(ui, |s, _| {
         s.local.hosts.push(s.tabs[0].host.clone());
+        s.reconcile_hosts();
         (
             s.tabs[0].id,
             s.tabs[0].connection.state().handle,
@@ -762,6 +1001,9 @@ fn add_terminal(view: &Entity<Desktop>, cx: &mut VisualTestContext) -> Entity<Te
             connection,
             terminal: terminal.clone(),
             last_sequence: 0,
+            session: None,
+            session_name: None,
+            pending_target: None,
         });
         cx.notify();
         terminal

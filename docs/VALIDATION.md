@@ -6,34 +6,24 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-데스크톱 세션 목록의 복원 중 위치 유지와 상태줄 알림·설정 버튼 이동의 검사입니다.
-Android는 제품 UI를 유지하고 기존 계층 fixture의 상태 전환 검사를 보강했습니다.
-이전 앱 아이콘·강조 색상·동기화 검사 요약은 [HISTORY.md](HISTORY.md)에 있습니다.
+Windows·macOS 공통 데스크톱의 호스트 순서 고정·기기별 드래그 정렬 저장과 세션 탭 재사용 검사입니다.
+Android·코어·UniFFI·클라우드 공유 형식은 변경하지 않았습니다.
+이전 세션 목록·상태줄 검사 요약은 [HISTORY.md](HISTORY.md)에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 세션 목록 GPUI fixture | `Ready → Restoring → Ready`와 재접속·연결·인증 전환에서 행 좌표·펼침·비영점 스크롤·포커스 유지. 전체/간략 계층과 빈 목록 대기 안내 검사 |
-| 상태줄 GPUI fixture | 폭 420/640/1200px, 밝게/어둡게, 단일/분할 그룹, 긴 상태 문구와 미확인 0/1/12/100개 전환에서 26px 높이·오른쪽 버튼 위치·배지 영역 유지 |
-| 대화상자 GPUI fixture | 알림·설정 클릭, Esc·닫기 후 터미널 포커스 복원, 모달 중 키·텍스트 입력 차단, 기존 설정 단축키 검사 |
-| Rust | `cargo test --locked --workspace`: 데스크톱 54 통과/Keychain 1 ignore, 코어·UniFFI 27 통과/SSH 통합 5 ignore. ignore는 미실행이며 통과에 포함하지 않음 |
-| macOS 빌드 | `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo build --locked -p dgl-desktop` 성공. 실제 GUI·번들 패키징은 이번에 실행하지 않음 |
-| Android | `:androidApp:assembleDebugAndroidTest` 성공. 기존 `compactRowsExpansionPanelDetailsAndSelectedHostActions` 이름을 유지하고 복원 전후 펼친 행·터미널 영역 좌표 검사 추가. 계측 실행은 연결 기기가 없어 미검증 |
-| JVM 참조 검사 | `:app:desktopTest`는 UP-TO-DATE. 기존 결과를 `verify_test_results.py --mode linux`로 검증: 46 통과/예상 skip 9. 신규 실행으로 계산하지 않음 |
-| Python | 테스트 이름 명시 목록 검사와 Windows 패키징을 포함한 98개 단위 검사 통과 |
-| 문서·메타데이터 | 작업 공간 사용 문서와 로컬 대시보드 문서 등록 갱신, 대시보드 검증기 통과·Git 제외 유지 |
+| 호스트 순서 단위 검사 | 최초 연결 시작 A→B와 반복 시작의 순서 유지, 수동 정렬 우선순위, 메타데이터/저장 배열 변경·재로드·추가/삭제, 누락/잘못된 JSON/중복 ID/잘못된 시작 구간의 fallback 검사 |
+| 세션 경로 단위 검사 | 호스트 ID·세션 ID 구분, 미선택 탭 예약, 반복 선택·복구 중 기존 탭 검색, 신규 생성 차단, 닫힌 탭 재생성 경로 검사 |
+| GPUI 이벤트 검사 | 호스트 드래그 삽입 표시·드롭 전 불변·드롭 확정·Esc/목록 밖 취소·순서 파일 재로드. 세션 A/B 반복 선택·다른 그룹 이동·호스트의 최근 활성 탭 선택·탭/SSH/터미널 Entity 유지·이름 변경/세션 소멸 시 ID 유지·닫은 뒤 새 Entity·복구 중 알림 이동 검사 |
+| Rust 데스크톱 | `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo test --locked -p dgl-desktop`: 59 통과, 대화형 Keychain 1 ignore. ignore는 미실행이며 통과에 포함하지 않음 |
+| 문서·메타데이터 | 사용 안내·작업 공간·동기화/저장 설명 갱신, 기존 로컬 대시보드 등록 검증기 통과·Git 제외 유지 |
 | 무결성 | 변경 Rust 파일 서식·문서 로컬 링크·`git diff --check`·원문 요구사항 SHA-256 검사 통과 |
 
-첫 GPUI 검사에서 버튼 클릭이 이전 터미널 포커스를 루트로 옮기는 문제를 발견해
-상태줄 버튼 영역의 기본 마우스 포커스 이동을 막고 재검사했습니다.
-GPUI가 제거된 요소의 디버그 좌표를 보관하므로 안내·배지 제거는 현재 컨테이너 높이와 아이콘 위치로 검사합니다.
-
-Windows MSVC 네이티브 빌드·DPAPI·GUI, macOS 실제 GUI·Keychain,
-Android 계측·전체 API별 검사·SSH 통합은 이번에 실행하지 않았습니다.
+GPUI 검사는 합성 상태와 실제 이벤트 디스패치를 사용합니다. 실제 서버의 창·pane 전환이나 네트워크 복구 인수를 대신하지 않습니다.
+Windows MSVC 네이티브 빌드·DPAPI·GUI와 macOS 실제 GUI·Keychain·OS 알림,
+실제 SSH/tmux 통합·Android 빌드/계측은 이번에 실행하지 않았습니다.
 Windows 기본 빌드·ZIP·수동 CI 경로는 유지합니다.
-
-Gradle 10 대비 deprecated 기능, 기존 Android 테스트의 `isChecked` deprecated 사용과
-Rust 의존성 `block`/`proc-macro-error2`의 향후 호환성 경고는 남아 있습니다.
-실행 로그는 Git 제외 로컬 `/tmp/dgl-session-*.log`입니다.
+기존 Rust 의존성 `block`/`proc-macro-error2`의 향후 호환성 경고는 남아 있습니다.
 
 ## 남은 한계
 

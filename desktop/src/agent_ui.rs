@@ -73,7 +73,7 @@ impl Desktop {
             cx.notify();
         }
     }
-    fn open_agent_notice(&mut self, id: &str, cx: &mut Context<Self>) {
+    pub(super) fn open_agent_notice(&mut self, id: &str, cx: &mut Context<Self>) {
         #[cfg(debug_assertions)]
         if id == "native-probe:native-probe" {
             eprintln!("DGL_NOTIFICATION_PROBE_CLICKED");
@@ -84,38 +84,49 @@ impl Desktop {
             self.error = Some("대상 연결이 종료되었습니다.".into());
             return;
         };
-        let tab = self.tabs.iter().find(|t| {
-            let state = t.connection.state();
-            endpoint(&t.host) == n.endpoint
-                && state.phase == Phase::Ready
-                && state.agents.current(agent::now_ms())
-                && state.agents.server == n.event.server
-                && state
-                    .agents
-                    .observations
-                    .iter()
-                    .any(|o| o.run == n.event.run && o.pane == n.event.pane)
-        });
-        if let Some(tab) = tab {
-            if let Some(group) = self
-                .workspace
-                .groups
-                .iter()
-                .find(|(_, g)| g.tabs.contains(&tab.id))
-                .map(|(id, _)| *id)
-            {
-                self.workspace.select(group, tab.id);
-            }
+        let tab = self
+            .tabs
+            .iter()
+            .filter_map(|t| {
+                let state = t.connection.state();
+                let valid = endpoint(&t.host) == n.endpoint
+                    && state.phase == Phase::Ready
+                    && state.agents.current(agent::now_ms())
+                    && state.agents.server == n.event.server
+                    && state.agents.observations.iter().any(|o| {
+                        o.run == n.event.run
+                            && o.session == n.event.session
+                            && o.window == n.event.window
+                            && o.pane == n.event.pane
+                    });
+                valid.then_some((t, state.generation.connection))
+            })
+            .min_by_key(|(t, _)| self.session_tab(&t.host.id, &n.event.session) != Some(t.id));
+        if let Some((tab, generation)) = tab {
             let c = tab.connection.clone();
-            self.submit(
+            self.select_session_tab(
                 &c,
-                Action::SelectTarget {
-                    session: n.event.session,
-                    window: Some(n.event.window),
-                    pane: Some(n.event.pane),
-                },
+                generation,
+                &n.event.session,
+                Some(n.event.window),
+                Some(n.event.pane),
+                cx,
             );
+            self.focus_active_terminal(cx);
             self.dialog = None;
+        } else if let Some(id) = self
+            .tabs
+            .iter()
+            .find(|t| {
+                endpoint(&t.host) == n.endpoint && t.session.as_deref() == Some(&n.event.session)
+            })
+            .map(|t| t.id)
+        {
+            // A retained tab remains a navigation destination while it recovers.
+            // No pane operation is queued without fresh server/run evidence.
+            self.activate_tab(id);
+            self.dialog = None;
+            self.focus_active_terminal(cx);
         } else {
             self.error = Some("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.".into());
         }
@@ -313,38 +324,27 @@ impl Desktop {
                 format!("agent-go-{}-{}", o.run, o.actor),
                 "패널로 이동",
                 cx,
-                move |s, _, _| {
+                move |s, w, cx| {
                     let current = c.state();
                     if current.phase == Phase::Ready
+                        && current.generation.connection == state.generation.connection
                         && current.agents.current(agent::now_ms())
-                        && current
-                            .agents
-                            .observations
-                            .iter()
-                            .any(|o| o.run == target.run && o.pane == target.pane)
+                        && current.agents.observations.iter().any(|o| {
+                            o.run == target.run
+                                && o.session == target.session
+                                && o.window == target.window
+                                && o.pane == target.pane
+                        })
                     {
-                        if let Some((group, tab)) = s
-                            .tabs
-                            .iter()
-                            .find(|t| t.connection.state().handle == current.handle)
-                            .and_then(|t| {
-                                s.workspace
-                                    .groups
-                                    .iter()
-                                    .find(|(_, g)| g.tabs.contains(&t.id))
-                                    .map(|(group, _)| (*group, t.id))
-                            })
-                        {
-                            s.workspace.select(group, tab);
-                        }
-                        s.submit(
+                        s.select_session_tab(
                             &c,
-                            Action::SelectTarget {
-                                session: target.session.clone(),
-                                window: Some(target.window.clone()),
-                                pane: Some(target.pane.clone()),
-                            },
+                            current.generation.connection,
+                            &target.session,
+                            Some(target.window.clone()),
+                            Some(target.pane.clone()),
+                            cx,
                         );
+                        s.group_focus(s.workspace.active, w, cx);
                         s.dialog = None;
                     } else {
                         s.error = Some("대상 연결 또는 패널이 종료되었습니다.".into());

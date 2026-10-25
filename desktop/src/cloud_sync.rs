@@ -198,6 +198,7 @@ impl Desktop {
                                             .update(cx, |i, cx| i.set_content(next, cx));
                                     }
                                     self.local = out.local;
+                                    self.reconcile_hosts();
                                     for tab in &self.tabs {
                                         tab.terminal.update(cx, |t, _| {
                                             t.set_font(self.local.preferences.font_size)

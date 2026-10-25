@@ -14,6 +14,11 @@ struct DragTab {
     id: TabId,
     label: String,
 }
+#[derive(Clone)]
+struct DragHost {
+    id: String,
+    label: String,
+}
 pub(super) struct Tip(pub(super) String);
 impl Render for Tip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -98,6 +103,9 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         self.workspace.active = group;
+        if let Some(id) = self.workspace.selected() {
+            self.activate_tab(id);
+        }
         if let Some(t) = self.active_tab() {
             window.focus(&t.terminal.focus_handle(cx));
         } else {
@@ -175,6 +183,8 @@ impl Desktop {
     ) -> Stateful<Div> {
         if !cx.has_active_drag() {
             self.dragging_tab = None;
+            self.dragging_host = None;
+            self.host_drop = None;
         }
         let preview = self.dragging_tab.and_then(|tab| {
             self.tab_drop_target(tab, window.mouse_position())
@@ -211,8 +221,12 @@ impl Desktop {
                     .text_color(rgb(p.muted))
                     .child("호스트"),
             );
-        let mut hosts = self.local.hosts.clone();
-        hosts.sort_by_key(|h| (!h.favorite, std::cmp::Reverse(h.last_connected)));
+        let hosts: Vec<_> = self
+            .host_order
+            .ids()
+            .iter()
+            .filter_map(|id| self.local.hosts.iter().find(|h| &h.id == id).cloned())
+            .collect();
         let mut explorer = div().id("explorer").flex_1().min_h_0().overflow_y_scroll();
         if hosts.is_empty() {
             explorer = explorer.child(
@@ -230,12 +244,68 @@ impl Desktop {
             let setup_host = host.clone();
             let menu_id = format!("host-menu-{id}");
             let toggle = menu_id.clone();
+            let before = id.clone();
+            let drop_id = id.clone();
+            let next = self
+                .host_order
+                .ids()
+                .iter()
+                .position(|i| i == &id)
+                .and_then(|i| self.host_order.ids().get(i + 1))
+                .cloned();
+            let drag_view = cx.entity();
+            let before_line = self.host_drop.as_ref() == Some(&Some(id.clone()));
+            let after_line = next.is_none() && self.host_drop == Some(None);
             explorer = explorer.child(
                 div()
+                    .id(SharedString::from(format!("host-row-{id}")))
+                    .debug_selector({
+                        let id = id.clone();
+                        move || format!("host-row-{id}")
+                    })
+                    .relative()
                     .flex()
                     .items_center()
                     .border_b_1()
                     .border_color(rgb(p.line))
+                    .on_drag_move::<DragHost>(cx.listener(
+                        move |s, e: &DragMoveEvent<DragHost>, _, cx| {
+                            if e.bounds.contains(&e.event.position) {
+                                s.host_drop = Some(if e.event.position.y < e.bounds.center().y {
+                                    Some(before.clone())
+                                } else {
+                                    next.clone()
+                                });
+                                cx.notify();
+                                cx.stop_propagation();
+                            }
+                        },
+                    ))
+                    .on_drop(cx.listener(move |s, dragged: &DragHost, _, cx| {
+                        if s.dragging_host.as_ref() == Some(&dragged.id)
+                            && let Some(before) = s.host_drop.take()
+                            && s.local.hosts.iter().any(|h| h.id == drop_id)
+                            && s.host_order.drop_before(&dragged.id, before.as_deref())
+                        {
+                            s.save_host_order();
+                        }
+                        s.dragging_host = None;
+                        cx.notify();
+                        cx.stop_propagation();
+                    }))
+                    .when(before_line || after_line, |d| {
+                        d.child(
+                            div()
+                                .debug_selector(|| "host-drop-indicator".into())
+                                .absolute()
+                                .left_0()
+                                .right_0()
+                                .h(px(2.))
+                                .bg(rgb(p.accent))
+                                .when(before_line, |d| d.top_0())
+                                .when(after_line, |d| d.bottom_0()),
+                        )
+                    })
                     .when(self.active_tab().is_some_and(|t| t.host.id == id), |d| {
                         d.bg(rgb(p.selection))
                     })
@@ -251,7 +321,23 @@ impl Desktop {
                         )
                         .flex_1()
                         .min_w_0()
-                        .truncate(),
+                        .truncate()
+                        .cursor_move()
+                        .on_drag(
+                            DragHost {
+                                id: id.clone(),
+                                label: host.alias.clone(),
+                            },
+                            move |host, _, _, cx| {
+                                drag_view.update(cx, |s, cx| {
+                                    s.dragging_host = Some(host.id.clone());
+                                    s.host_drop = None;
+                                    s.menu = None;
+                                    cx.notify();
+                                });
+                                cx.new(|_| Tip(host.label.clone()))
+                            },
+                        ),
                     )
                     .child(self.button(menu_id.clone(), "…", cx, move |s, _, _| {
                         s.toggle_menu(toggle.clone())
@@ -379,8 +465,13 @@ impl Desktop {
             .text_color(rgb(p.fg))
             .track_focus(&self.focus)
             .capture_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
-                if e.keystroke.key == "escape" && s.dragging_tab.is_some() && cx.has_active_drag() {
+                if e.keystroke.key == "escape"
+                    && (s.dragging_tab.is_some() || s.dragging_host.is_some())
+                    && cx.has_active_drag()
+                {
                     s.dragging_tab = None;
+                    s.dragging_host = None;
+                    s.host_drop = None;
                     cx.stop_active_drag(w);
                     cx.stop_propagation();
                     w.prevent_default();
@@ -471,6 +562,10 @@ impl Desktop {
             .on_drag_move::<DragTab>(cx.listener(|_, _, _, cx| {
                 cx.notify();
                 cx.stop_propagation();
+            }))
+            .on_drag_move::<DragHost>(cx.listener(|s, _, _, cx| {
+                s.host_drop = None;
+                cx.notify();
             }))
             .on_mouse_move(cx.listener(|s, e: &MouseMoveEvent, _, cx| {
                 if s.dialog.is_some() {
@@ -782,7 +877,7 @@ impl Desktop {
             let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) else {
                 continue;
             };
-            let label = tab.host.alias.clone();
+            let label = tab.label();
             let menu = format!("tab-menu-{tab_id}");
             let toggle = menu.clone();
             let drag_view = cx.entity();
@@ -1282,7 +1377,9 @@ impl Desktop {
         let menu_id = format!("{expand}/menu");
         let menu = menu_id.clone();
         let c = connection.clone();
+        let generation = state.generation.connection;
         let target = row.clone();
+        let session_row = row.kind == hierarchy::Kind::Session;
         let id = match row.kind {
             hierarchy::Kind::Session => format!("session-{}", row.session),
             hierarchy::Kind::Window => {
@@ -1340,16 +1437,26 @@ impl Desktop {
                 row.label.clone(),
                 row.kind == hierarchy::Kind::Pane,
                 cx,
-                move |s, _, _| {
-                    if browse {
-                        s.submit(
-                            &c,
-                            Action::SelectTarget {
-                                session: target.session.clone(),
-                                window: target.window.clone(),
-                                pane: target.pane.clone(),
-                            },
-                        );
+                move |s, w, cx| {
+                    if s.select_session_tab(
+                        &c,
+                        generation,
+                        &target.session,
+                        if session_row {
+                            None
+                        } else {
+                            target.window.clone()
+                        },
+                        if session_row {
+                            None
+                        } else {
+                            target.pane.clone()
+                        },
+                        cx,
+                    )
+                    .is_some()
+                    {
+                        s.group_focus(s.workspace.active, w, cx);
                     }
                 },
             ))
@@ -1465,6 +1572,7 @@ impl Desktop {
                 .map(|p| p.id.clone())
         });
         if let Some(pane) = &active_pane {
+            let generation = connection.state().generation.connection;
             for (horizontal, label) in [(true, "패널 좌우 나누기"), (false, "패널 상하 나누기")]
             {
                 let c = connection.clone();
@@ -1474,25 +1582,32 @@ impl Desktop {
                     format!("split-{pane}-{horizontal}"),
                     label,
                     cx,
-                    move |s, _, _| {
+                    move |s, w, cx| {
                         s.menu = None;
-                        s.submit(
+                        if let Some(id) = s.select_session_tab(
                             &c,
-                            Action::SelectTarget {
-                                session: target.session.clone(),
-                                window: target.window.clone(),
-                                pane: target.pane.clone(),
-                            },
-                        );
-                        s.submit(
-                            &c,
-                            Action::Manage {
-                                operation: Operation::Split {
-                                    target: target.pane.clone().unwrap(),
-                                    horizontal,
-                                },
-                            },
-                        );
+                            generation,
+                            &target.session,
+                            target.window.clone(),
+                            target.pane.clone(),
+                            cx,
+                        ) {
+                            let operation = Operation::Split {
+                                target: target.pane.clone().unwrap(),
+                                horizontal,
+                            };
+                            let tab = s.tabs.iter_mut().find(|t| t.id == id).unwrap();
+                            if let Some(pending) = &mut tab.pending_target {
+                                pending.operation = Some(operation);
+                            } else if matches!(
+                                tab.connection.state().phase,
+                                Phase::Ready | Phase::Selecting | Phase::MissingSession
+                            ) {
+                                let connection = tab.connection.clone();
+                                s.submit(&connection, Action::Manage { operation });
+                            }
+                            s.group_focus(s.workspace.active, w, cx);
+                        }
                     },
                 ));
             }

@@ -94,6 +94,12 @@ Python 98개·아이콘 재생성 일치·로컬 대시보드 스키마 검증�
 Windows 네이티브 빌드·GUI와 macOS Dock/Finder·Android 실제 런처·계측은 실행하지 않았습니다.
 원본·축소·마스크 미리보기와 재생성 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있습니다.
 
+## 2026-10-26: 세션 목록·상태줄
+
+복원 중 세션 행 위치·펼침·스크롤을 유지하고 알림·설정 버튼을 하단 상태줄에 고정했습니다.
+당시 Rust 데스크톱 54·코어/UniFFI 27 통과, Keychain 1·SSH 5 ignore와 Python 98 통과를 기록했습니다.
+Android 계측 APK는 빌드했으나 계측 실행과 Windows·macOS GUI 실기 인수는 남겼습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

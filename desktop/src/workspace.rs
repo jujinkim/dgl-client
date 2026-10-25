@@ -199,6 +199,12 @@ impl Workspace {
     pub fn selected(&self) -> Option<TabId> {
         self.groups.get(&self.active)?.selected
     }
+    pub fn group_for(&self, tab: TabId) -> Option<GroupId> {
+        self.groups
+            .iter()
+            .find(|(_, g)| g.tabs.contains(&tab))
+            .map(|(id, _)| *id)
+    }
     pub fn add_tab(&mut self) -> TabId {
         let id = self.next_tab;
         self.next_tab += 1;

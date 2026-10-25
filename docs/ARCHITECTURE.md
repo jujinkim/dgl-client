@@ -37,6 +37,7 @@ Android Keystore, macOS Keychain, Windows CURRENT_USER DPAPI를 플랫폼 어댑
 Android는 `noBackupFilesDir/rust-candidate-v1`, 데스크톱은
 `desktop/src/platform.rs`가 정한 후보 디렉터리를 사용합니다. 이전 앱의 데이터는 자동 이전하지 않습니다.
 `workspace-layout.json`은 데스크톱 그룹 구조·비율만 저장하고 재실행 시 연결은 비워 둡니다.
+`host-order.json`은 데스크톱 호스트 ID 순서·연결 시작 구간·수동 배치 여부만 기기에 저장하며 동기화하지 않습니다.
 동기화 허용 필드와 민감정보 제외는 [CLOUD_SYNC.md](CLOUD_SYNC.md)를 따릅니다.
 
 ## 참조 코드와 생성 파일

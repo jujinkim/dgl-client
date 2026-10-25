@@ -11,12 +11,14 @@ mod composer;
 mod file_picker;
 mod hierarchy;
 mod host_dialog;
+mod host_order;
 mod key_file;
 mod launcher;
 mod modal;
 mod notifications;
 mod pane_toolbar;
 mod platform;
+mod session_tabs;
 mod storage;
 mod terminal;
 mod text_input;
@@ -51,6 +53,9 @@ struct Tab {
     connection: Arc<Connection>,
     terminal: Entity<Terminal>,
     last_sequence: u64,
+    session: Option<String>,
+    session_name: Option<String>,
+    pending_target: Option<session_tabs::PendingTarget>,
 }
 #[derive(Clone)]
 enum PromptOp {
@@ -97,6 +102,8 @@ struct Desktop {
     local: LocalState,
     tabs: Vec<Tab>,
     workspace: Workspace,
+    host_order: host_order::HostOrder,
+    last_host_tab: HashMap<String, Vec<TabId>>,
     palette: theme::Palette,
     appearance: Option<appearance::Appearance>,
     accent_input: Entity<TextInput>,
@@ -109,6 +116,8 @@ struct Desktop {
     split_bounds: HashMap<Vec<bool>, Bounds<Pixels>>,
     resizing: Option<Vec<bool>>,
     dragging_tab: Option<TabId>,
+    dragging_host: Option<String>,
+    host_drop: Option<Option<String>>,
     dialog: Option<Dialog>,
     composers: HashMap<TabId, composer::Composer>,
     error: Option<String>,
@@ -151,6 +160,8 @@ impl Desktop {
                 dgl_core::agent::now_ms() + 20_000
             });
         let workspace = Workspace::new(Layout::load(&path.with_file_name("workspace-layout.json")));
+        let host_order =
+            host_order::HostOrder::load(&path.with_file_name("host-order.json"), &local.hosts);
         let mut cloud_sync = cloud_sync::CloudSync::load(&path.with_file_name("cloud-sync.json"));
         if error.is_some() {
             cloud_sync.block_invalid_local();
@@ -173,6 +184,8 @@ impl Desktop {
             local,
             tabs: vec![],
             workspace,
+            host_order,
+            last_host_tab: HashMap::new(),
             palette: theme::Palette::new(true),
             appearance: None,
             accent_input,
@@ -185,6 +198,8 @@ impl Desktop {
             split_bounds: HashMap::new(),
             resizing: None,
             dragging_tab: None,
+            dragging_host: None,
+            host_drop: None,
             dialog: None,
             composers: HashMap::new(),
             error,
@@ -236,6 +251,35 @@ impl Desktop {
         for tab in &mut self.tabs {
             tab.terminal.update(cx, |t, cx| t.tick(cx));
             let state = tab.connection.state();
+            tab.update_session(&state);
+            if let Some(target) = tab.pending_target.take() {
+                if target.generation == state.generation.connection {
+                    if matches!(
+                        state.phase,
+                        Phase::Selecting | Phase::Ready | Phase::MissingSession
+                    ) {
+                        match tab.connection.action(target.action()) {
+                            Ok(_) => {
+                                if let Some(operation) = target.operation
+                                    && let Err(e) =
+                                        tab.connection.action(Action::Manage { operation })
+                                {
+                                    self.error = Some(format!("요청 실패: {e}"));
+                                }
+                            }
+                            Err(e) => self.error = Some(format!("대상 선택 실패: {e}")),
+                        }
+                    } else if matches!(
+                        state.phase,
+                        Phase::Connecting
+                            | Phase::TrustRequired
+                            | Phase::Authenticating
+                            | Phase::Restoring
+                    ) {
+                        tab.pending_target = Some(target);
+                    }
+                }
+            }
             if state.sequence != tab.last_sequence {
                 tab.last_sequence = state.sequence;
                 changed = true;
@@ -291,6 +335,7 @@ impl Desktop {
         }
     }
     fn save(&mut self) -> bool {
+        self.reconcile_hosts();
         match self.local.save(&self.path) {
             Ok(()) => true,
             Err(e) => {
@@ -300,11 +345,18 @@ impl Desktop {
         }
     }
     fn open(&mut self, host: HostProfile, cx: &mut Context<Self>) {
+        if let Some(id) = self.host_tab(&host.id) {
+            self.activate_tab(id);
+            return;
+        }
+        self.start_tab(host, cx);
+    }
+    fn start_tab(&mut self, host: HostProfile, cx: &mut Context<Self>) -> Option<TabId> {
         if matches!(storage::read_optional(&host.credential_ref), Ok(None)) {
             self.edit(Some(host), cx);
             self.error = Some("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요.".into());
             cx.notify();
-            return;
+            return None;
         }
         let result = (|| {
             let credential = storage::read(&host.credential_ref)?;
@@ -319,31 +371,15 @@ impl Desktop {
             };
             Ok((credential, trusted))
         })();
-        match result {
-            Ok((credential, trusted)) => {
-                let _enter = self.runtime.enter();
-                let connection = Connection::start(host.clone(), credential, trusted);
-                let terminal = cx.new(|cx| {
-                    Terminal::new(
-                        connection.clone(),
-                        self.local.preferences.font_size,
-                        self.local.preferences.scrollback,
-                        cx,
-                    )
-                });
-                let id = self.workspace.add_tab();
-                self.tabs.push(Tab {
-                    id,
-                    refresh: None,
-                    host,
-                    connection,
-                    terminal,
-                    last_sequence: 0,
-                });
+        let id = match result {
+            Ok((credential, trusted)) => Some(self.create_tab(host, credential, trusted, cx)),
+            Err(e) => {
+                self.error = Some(format!("보호 저장소를 열지 못했습니다: {e}"));
+                None
             }
-            Err(e) => self.error = Some(format!("보호 저장소를 열지 못했습니다: {e}")),
-        }
+        };
         cx.notify();
+        id
     }
     fn active_tab(&self) -> Option<&Tab> {
         let id = self.workspace.selected()?;
@@ -357,21 +393,59 @@ impl Desktop {
         if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
             let tab = self.tabs.remove(index);
             self.workspace.close(id);
+            if let Some(history) = self.last_host_tab.get_mut(&tab.host.id) {
+                history.retain(|t| *t != id);
+            }
             tab.connection.close();
             self.runtime.spawn(async move {
                 tab.connection.join().await;
             });
+            if let Some(selected) = self.workspace.selected() {
+                self.activate_tab(selected);
+            }
         }
     }
     fn reconnect(&mut self, cx: &mut Context<Self>) {
         if let Some(tab) = self.active_tab() {
-            let mut host = tab.host.clone();
+            let mut host = self
+                .local
+                .hosts
+                .iter()
+                .find(|h| h.id == tab.host.id)
+                .cloned()
+                .unwrap_or_else(|| tab.host.clone());
             let state = tab.connection.state();
-            host.last_session = state.session.or(host.last_session);
-            host.last_pane = state.pane.or(host.last_pane);
+            host.last_session = tab.session.clone();
+            host.last_pane = if state.session == tab.session {
+                state.pane.or(host.last_pane)
+            } else {
+                None
+            };
+            let session_name = tab.session_name.clone();
             let id = tab.id;
-            self.close_tab(id);
-            self.open(host, cx);
+            // Keep the slot and its group, even when a manual reconnect replaces SSH.
+            let group = self.workspace.group_for(id).unwrap();
+            let before = self.workspace.groups[&group]
+                .tabs
+                .iter()
+                .position(|t| *t == id)
+                .and_then(|index| self.workspace.groups[&group].tabs.get(index + 1).copied());
+            if let Some(new) = self.start_tab(host, cx) {
+                let mut replacement = self.tabs.pop().unwrap();
+                debug_assert_eq!(replacement.id, new);
+                self.workspace.close(new);
+                for history in self.last_host_tab.values_mut() {
+                    history.retain(|t| *t != new);
+                }
+                self.close_tab(id);
+                replacement.id = id;
+                replacement.session_name = session_name;
+                self.tabs.push(replacement);
+                // Reinsert the original ID in exactly the same group and position.
+                self.workspace.groups.get_mut(&group).unwrap().tabs.push(id);
+                self.workspace.move_tab(id, group, before);
+                self.activate_tab(id);
+            }
         }
     }
     fn save_layout(&mut self) {

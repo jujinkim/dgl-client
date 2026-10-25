@@ -41,6 +41,9 @@ macOS 데스크톱까지 확인할 때:
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo test --locked --workspace
 ```
 
+데스크톱 변경만 검사할 때는 같은 환경에서 `cargo test --locked -p dgl-desktop`을 실행합니다.
+호스트 순서 모델과 GPUI 드래그·세션 탭 재사용 검사를 포함하며 대화형 Keychain 검사는 기본 ignore입니다.
+
 기본은 위 기능·단위 검사이며 전체 Android API 계측과 장시간 자원 측정은 별도 선택입니다.
 검사 결과·남은 한계는 [VALIDATION.md](VALIDATION.md)에 기록합니다.
 

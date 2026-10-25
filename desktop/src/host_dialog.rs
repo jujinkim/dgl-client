@@ -213,8 +213,11 @@ impl Desktop {
                 )
             })?;
             let mut next = self.local.clone();
-            next.hosts.retain(|h| h.id != host.id);
-            next.hosts.push(host);
+            if let Some(existing) = next.hosts.iter_mut().find(|h| h.id == host.id) {
+                *existing = host;
+            } else {
+                next.hosts.push(host);
+            }
             next.save(&self.path).map_err(|_| {
                 (
                     ErrorArea::Storage,
@@ -222,6 +225,7 @@ impl Desktop {
                 )
             })?;
             self.local = next;
+            self.reconcile_hosts();
             Ok(())
         })();
         match result {

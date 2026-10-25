@@ -135,7 +135,7 @@ Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지하되 이전 앱의 
   재사용 컴포넌트를 호출한다. 앱 엔진 선택은 없으며 이전 엔진은 테스트 소스에서만 컴파일한다.
 - 키 생성·공개키 추출은 UniFFI `generate_key`/`public_key`를 통해 Rust에서 수행한다.
   Kotlin `KeyTools`는 UI 경계이며 SSHJ/BC 런타임 의존성은 없다.
-- 데스크톱 그룹 배치만 `workspace-layout.json`에 저장한다. 탭·연결·자격 증명은 저장하지 않으며 재실행 시 그룹을 빈 상태로 만든다.
+- 데스크톱 그룹 배치는 `workspace-layout.json`, 기기별 호스트 ID 순서는 `host-order.json`에 저장한다. 공통 설정·동기화 형식과 공개 API는 유지한다. 탭·연결·자격 증명은 배치 파일에 저장하지 않으며 재실행 시 그룹을 빈 상태로 만든다.
 
 공통 fixture·출력 큐/종료·인증·복구 검사와 미검증 항목은
 [검증 기록](VALIDATION.md)을 따른다. 자동 검사는 실제 IME/모든 VT 상태의 증거가 아니다.
