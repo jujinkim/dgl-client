@@ -49,7 +49,7 @@ impl Desktop {
         let mut modes = div().flex().gap_2();
         for (value, label) in [
             ("system", t("시스템")),
-            ("default", t("DGL 기본")),
+            ("default", t("DaGaLi 기본")),
             ("custom", t("사용자 지정")),
         ] {
             let selected = mode == value;

@@ -164,7 +164,7 @@ ZIP 배포와 기존 빌드 진입점은 유지한다. 추가 빌드 도구는 �
 이후 OS 알림이 켜진 앱 시작에도 등록 경로를 갱신하므로 ZIP 폴더를 옮긴 뒤에는 앱을 직접 실행한다.
 
 - AUMID: `kim.jujin.dglc`
-- 바로가기: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\dgl Rust Candidate.lnk`
+- 바로가기: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\DaGaLi.lnk`
 - `HKCU\Software\Classes\AppUserModelId\kim.jujin.dglc`
 - COM 활성화 CLSID: `{5FD514F1-B83F-4F6D-A85B-156AD0E79E33}`
 - `HKCU\Software\Classes\CLSID\{5FD514F1-B83F-4F6D-A85B-156AD0E79E33}\LocalServer32`

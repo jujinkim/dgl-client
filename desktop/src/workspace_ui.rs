@@ -157,7 +157,7 @@ impl Desktop {
                     .py_2()
                     .flex()
                     .items_center()
-                    .child(div().flex_1().child(t("dgl · 탐색기")))
+                    .child(div().flex_1().child(t("DaGaLi · 탐색기")))
                     .child(self.button("add", "+", cx, |s, _, cx| s.edit(None, cx))),
             )
             .child(

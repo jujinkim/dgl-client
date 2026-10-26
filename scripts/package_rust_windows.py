@@ -46,7 +46,7 @@ def package(binary, output, version):
         shutil.copy2(ROOT / "licenses/simple-icons-LICENSE.md", stage / "simple-icons-LICENSE.md")
         collect("dgl-desktop", stage / "third-party-rust", target=TARGET)
         (stage / "README.txt").write_text(
-            "dgl Rust Candidate - Windows x64\n\n"
+            "DaGaLi - Windows x64\n\n"
             "Extract the entire ZIP, then run dgl-desktop.exe.\n"
             "Unsigned development candidate; Windows runtime acceptance is pending.\n"
             "Requires Windows 10/11 x64 and a Direct3D 11 capable graphics driver.\n"

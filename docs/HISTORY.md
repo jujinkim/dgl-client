@@ -200,6 +200,14 @@ Python 98·문서 링크·대시보드 스키마 검사는 통과했으며 실�
 당시 Rust 데스크톱 64·JVM 77 통과, Keychain ignore 1·JVM 예상 skip 9와 Android Debug/계측 APK 컴파일·lint를 확인했습니다.
 실제 Android 조작·macOS GUI/IME·Windows 네이티브 검사는 수행하지 않았습니다.
 
+## 2026-10-27: tmux 제목 빠른 조회
+
+활성 pane의 OSC 0/2를 감지해 tmux 제목만 즉시 조회하고, 연속 신호를 연결당 500ms·동시 1건으로 묶었습니다.
+숨김·백그라운드는 기존 1초 구독을 사용하며 오래된 연결·pane·표시 revision 응답을 버립니다.
+당시 core·UniFFI 41·데스크톱 65·JVM 78·Python 98 통과, JVM 예상 skip 9·Rust SSH ignore 6·Keychain ignore 1과
+격리 SSH/tmux 3.7c 빠른 제목 조회 1개·Android Debug/계측 APK 컴파일·lint·원본 APK 네 ABI/서명을 확인했습니다.
+Android 계측·macOS GUI/IME·Windows 네이티브 검사는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

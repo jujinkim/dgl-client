@@ -910,7 +910,7 @@ fn main() {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: Some("DGL".into()),
+                        title: Some("DaGaLi".into()),
                         ..Default::default()
                     }),
                     ..Default::default()

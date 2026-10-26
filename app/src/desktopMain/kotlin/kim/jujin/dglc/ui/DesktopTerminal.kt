@@ -63,7 +63,7 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
     override fun write(string: String) { input(string.toByteArray(Charsets.UTF_8)) }
     override fun isConnected() = open
     override fun ready() = reader.ready()
-    override fun getName() = "dgl terminal"
+    override fun getName() = "DaGaLi terminal"
     override fun waitFor(): Int { while (open) Thread.sleep(50); return 0 }
     override fun resize(termSize: TermSize) { if (termSize.columns in 2..500 && termSize.rows in 2..250) resized(Size(termSize.columns, termSize.rows)) }
     // TtyConnector.write is terminal input. Surface output is a separate adapter below.

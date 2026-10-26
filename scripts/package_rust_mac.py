@@ -19,13 +19,13 @@ def main():
     env = dict(os.environ, DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer")
     subprocess.run(["cargo", "build", "--locked", "-p", "dgl-desktop"] + (["--release"] if args.release else []), cwd=ROOT, env=env, check=True)
     output = ROOT / "artifacts/rust-candidate/mac"
-    app = output / "dgl Rust Candidate.app/Contents"
+    app = output / "DaGaLi.app/Contents"
     (app / "MacOS").mkdir(parents=True, exist_ok=True)
     (app / "Resources").mkdir(exist_ok=True)
     binary = app / "MacOS/dgl-desktop"
     shutil.copy2(ROOT / "target" / ("release" if args.release else "debug") / "dgl-desktop", binary)
     shutil.copy2(ROOT / "desktop/resources/dgl.icns", app / "Resources/dgl.icns")
-    (app / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "kim.jujin.dglc", "CFBundleName": "dgl Rust Candidate",
+    (app / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "kim.jujin.dglc", "CFBundleName": "DaGaLi", "CFBundleDisplayName": "DaGaLi",
         "CFBundleExecutable": "dgl-desktop", "CFBundlePackageType": "APPL", "CFBundleVersion": "1", "CFBundleShortVersionString": "0.1.0",
         "NSHighResolutionCapable": True, "CFBundleIconFile": "dgl.icns"}))
     for name in ["NOTICE", "LICENSE-APACHE-GPUI"]:

@@ -1,12 +1,12 @@
-# DGL
+# DaGaLi
 
 **Reconnect less. Resume more.**
 
-Let DGL handle SSH reconnection and tmux reattachment, so you can pick up where you left off.
+Let DaGaLi handle SSH reconnection and tmux reattachment, so you can pick up where you left off.
 
 [Website · ddal.ggak.life](https://ddal.ggak.life)
 
-DGL은 SSH 호스트 관리와 tmux 세션 조회·조작·재접속을 하나로 묶은 GUI 터미널 클라이언트입니다.
+DaGaLi는 SSH 호스트 관리와 tmux 세션 조회·조작·재접속을 하나로 묶은 GUI 터미널 클라이언트입니다.
 네트워크 설정을 바꾸거나 연결이 끊길 때마다 SSH에 다시 접속하고 `tmux attach -t`를
 입력하던 번거로움을 줄입니다. 서버에 남아 있는 tmux 세션으로 돌아가 하던 작업을 이어갑니다.
 별도 원격 데몬 없이 표준 SSH와 tmux를 사용합니다.
@@ -78,7 +78,7 @@ Windows는 `scripts/run_windows.cmd`를 더블클릭하거나 PowerShell에서 �
 | 산출물 | 경로 |
 |---|---|
 | Android Debug | `androidApp/build/outputs/apk/debug/androidApp-debug.apk` |
-| macOS | `artifacts/rust-candidate/mac/dgl Rust Candidate.app` |
+| macOS | `artifacts/rust-candidate/mac/DaGaLi.app` |
 | Windows ZIP | `artifacts/rust-candidate/windows/dgl-rust-windows-x64.zip` |
 
 Android Debug APK는 위 원본 하나만 사용하며 검사·배포 스크립트도 별도 복사본을 만들지 않습니다.

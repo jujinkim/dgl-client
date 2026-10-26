@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
@@ -42,6 +43,11 @@ import kotlinx.coroutines.flow.first
 @Composable expect fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit)
 expect fun copyPublicKey(value: String)
 internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
+
+@Composable private fun MobileAppIcon() {
+    Image(AppIcon, contentDescription = "DaGaLi", modifier = Modifier.size(24.dp)
+        .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)))
+}
 
 @Composable fun App(model: AppModel, androidInput: Boolean = false) {
     val local by model.local.collectAsState()
@@ -125,10 +131,9 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
             }
             Column(Modifier.fillMaxSize()) {
                 if (!workspaceMode) Row(Modifier.fillMaxWidth().padding(horizontal = if (mobileLayout) 4.dp else 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (!mobileLayout || selected == null) {
-                        Text("dgl", style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.width(if (mobileLayout) 4.dp else 8.dp))
-                    }
+                    if (mobileLayout) MobileAppIcon()
+                    else Text("DaGaLi", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.width(if (mobileLayout) 4.dp else 8.dp))
                     if (mobileLayout) Box(Modifier.weight(1f)) {
                         TextButton({ switching = true }, enabled = connections.isNotEmpty(), modifier = Modifier.fillMaxWidth()
                             .semantics { contentDescription = t("서버 선택") }, contentPadding = PaddingValues(4.dp)) {
@@ -164,6 +169,10 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
                         if (wide || selected == null || explorer) {
                             Column(if (wide) Modifier.width(272.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (workspaceMode) {
+                                        MobileAppIcon()
+                                        Spacer(Modifier.width(8.dp))
+                                    }
                                     Text(t("연결"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                     TextButton({ model.hostEditing = true; adding = true }) { Text(t("+ 호스트")) }
                                 }

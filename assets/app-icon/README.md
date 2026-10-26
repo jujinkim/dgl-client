@@ -1,4 +1,4 @@
-# DGL 앱 아이콘
+# DaGaLi 앱 아이콘
 
 dagali의 머리는 위에서 내려다본, 모서리가 둥근 **ㄱ자 엔터 키캡**입니다.
 넓은 윗부분과 오른쪽 아래 돌출부로 윤곽을 만들고 왼쪽 아래는 비워 둡니다.
@@ -26,7 +26,7 @@ dagali의 머리는 위에서 내려다본, 모서리가 둥근 **ㄱ자 엔터 
 
 ## 재생성
 
-일반 빌드는 저장소에 포함된 PNG·ICNS·ICO·Android XML만 사용합니다.
+일반 빌드는 저장소에 포함된 PNG·ICNS·ICO·Android XML·Compose 벡터만 사용합니다.
 이미지 생성 호출이나 Pillow 설치가 필요하지 않습니다. 그래픽을 갱신할 때만:
 
 ```sh
@@ -48,6 +48,8 @@ Python 3.9 이상을 사용합니다. Windows에서는 가상환경 실행 파�
 
 ## 플랫폼 연결
 
+- 모바일 상단: `app/src/jvmSharedMain/kotlin/kim/jujin/dglc/ui/AppIcon.kt`의 컬러 Compose 벡터를
+  같은 공통 도형에서 생성합니다. 좁은 화면과 대화면 탐색기 왼쪽 상단에 24dp로 표시합니다.
 - Android: `androidApp/src/main/res/drawable-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_foreground.png`.
   컬러·단색 모두 108dp 레이어의 중심 64dp 원 안에 같은 크기와 위치로 배치합니다.
   컬러 전경은 원본 alpha를 보존합니다.

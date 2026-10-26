@@ -121,7 +121,7 @@ fn register() -> Option<()> {
     let directory = std::path::PathBuf::from(std::env::var_os("APPDATA")?)
         .join("Microsoft/Windows/Start Menu/Programs");
     std::fs::create_dir_all(&directory).ok()?;
-    let path = directory.join("dgl Rust Candidate.lnk");
+    let path = directory.join("DaGaLi.lnk");
     registry_string(
         &format!("Software\\Classes\\CLSID\\{ACTIVATOR_TEXT}\\LocalServer32"),
         "",
@@ -130,7 +130,7 @@ fn register() -> Option<()> {
     registry_string(
         &format!("Software\\Classes\\AppUserModelId\\{ID}"),
         "DisplayName",
-        "dgl Rust Candidate",
+        "DaGaLi",
     )?;
     registry_string(
         &format!("Software\\Classes\\AppUserModelId\\{ID}"),
@@ -140,7 +140,7 @@ fn register() -> Option<()> {
     unsafe {
         let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
         link.SetPath(&HSTRING::from(exe.as_os_str())).ok()?;
-        link.SetDescription(&HSTRING::from("dgl SSH tmux client"))
+        link.SetDescription(&HSTRING::from("DaGaLi SSH tmux client"))
             .ok()?;
         let props: IPropertyStore = link.cast().ok()?;
         let key = PROPERTYKEY {

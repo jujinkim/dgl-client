@@ -42,7 +42,7 @@ val LocalAccentFill = staticCompositionLocalOf { Color(0xff2468c9) to Color.Whit
     }
     Text(t("강조 색상"), style = MaterialTheme.typography.titleSmall)
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf("system" to t("시스템"), "default" to t("DGL 기본"), "custom" to t("사용자 지정")).forEach { (mode, label) ->
+        listOf("system" to t("시스템"), "default" to t("DaGaLi 기본"), "custom" to t("사용자 지정")).forEach { (mode, label) ->
             FilterChip(settings.mode == mode, { update(settings.copy(mode = mode)) }, label = { Text(label) })
         }
     }

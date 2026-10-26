@@ -204,7 +204,7 @@ class AndroidConnectionLifetimeTest {
             shell("input swipe ${metrics.widthPixels / 2} ${metrics.heightPixels * 9 / 10} ${metrics.widthPixels / 2} ${metrics.heightPixels / 3} 250")
             var icon: android.view.accessibility.AccessibilityNodeInfo? = null
             waitUntil {
-                icon = instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("dgl client")?.firstOrNull { it.isClickable }
+                icon = instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("DaGaLi")?.firstOrNull { it.isClickable }
                 icon != null
             }
             assertTrue(icon!!.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))

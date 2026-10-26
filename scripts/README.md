@@ -17,7 +17,7 @@
 | `build_windows.ps1` | Windows MSVC 환경 구성·빌드. `-CheckOnly`, `-Test`, `-Run` 지원 |
 | `package_rust_windows.py` | x64 PE 검사·고지·해시를 포함한 미서명 ZIP 생성 |
 | `collect_rust_notices.py` | Cargo registry의 고지·manifest·의존성 목록 수집, 패키저에서 사용 |
-| `generate_app_icons.py` | 공통 도형에서 투명 원본·Android 전경/단색 벡터·macOS ICNS·Windows ICO·미리보기 생성. `--check`로 저장 파일 비교; [아이콘 안내](../assets/app-icon/README.md) |
+| `generate_app_icons.py` | 공통 도형에서 투명 원본·Android 전경/단색 벡터·모바일 상단 Compose 벡터·macOS ICNS·Windows ICO·미리보기 생성. `--check`로 저장 파일 비교; [아이콘 안내](../assets/app-icon/README.md) |
 
 `collect_artifacts.py`와 `collect_rust_android.py`는 각각 전체 배포 정책 검사와 Debug 서명·Rust payload 검사를 담당합니다.
 둘 다 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본을 사용하고 APK 복사본을 만들지 않습니다.

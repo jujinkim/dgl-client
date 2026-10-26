@@ -420,7 +420,7 @@ impl Desktop {
                     }
                 }
                 body = body.child(t("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 실제 훅 수신으로 확인됩니다. 기존 실행은 종료하지 않습니다."));
-                for (op, label) in [("install", t("연동 설치")), ("remove", t("dgl 훅만 해제"))]
+                for (op, label) in [("install", t("연동 설치")), ("remove", t("DaGaLi 훅만 해제"))]
                 {
                     let c = connection.clone();
                     let token = token.to_owned();

@@ -89,7 +89,7 @@ python3 scripts/package_rust_mac.py
 python3 scripts/package_rust_mac.py --release
 ```
 
-출력은 `artifacts/rust-candidate/mac/dgl Rust Candidate.app`과 `build.json`입니다.
+출력은 `artifacts/rust-candidate/mac/DaGaLi.app`과 `build.json`입니다.
 스크립트는 Xcode 경로를 설정하고 로컬 ad-hoc 서명·검증을 수행합니다. Developer ID·공증은 하지 않습니다.
 저장된 `desktop/resources/dgl.icns`를 번들 Resources에 넣고 `CFBundleIconFile`로 연결한 뒤 서명합니다.
 Windows는 `scripts/run_windows.cmd` 또는 `scripts/build_windows.ps1`로 빌드·ZIP을 생성합니다.
@@ -99,7 +99,7 @@ Windows는 `scripts/run_windows.cmd` 또는 `scripts/build_windows.ps1`로 빌�
 
 공통 도형·디자인 명세·크기별 미리보기와 변환 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있습니다.
 일반 빌드는 저장된 리소스를 사용합니다. 갱신할 때만 Python 가상환경에 Pillow 11.3.0을 설치하고
-`scripts/generate_app_icons.py`로 원본 PNG부터 플랫폼별 리소스까지 생성합니다. `--check`로 파일 일치를 확인한 뒤
+`scripts/generate_app_icons.py`로 원본 PNG부터 플랫폼별 리소스·모바일 상단 Compose 벡터까지 생성합니다. `--check`로 파일 일치를 확인한 뒤
 Android Debug·lint와 macOS 패키징을 확인합니다. Windows는 기존 SDK `rc.exe`로
 실행 파일의 아이콘 ID `1`을 컴파일하며 네이티브 빌드·GUI 확인은 Windows에서 별도로 수행합니다.
 

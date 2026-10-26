@@ -71,7 +71,7 @@ import kotlinx.serialization.json.*
                 }
                 Text(t("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 다음 실제 이벤트 수신 후 확인됩니다. 기존 CLI는 종료하지 않습니다."))
                 TextButton({ client.configureAgents("install", token) }) { Text(t("연동 설치")) }
-                TextButton({ client.configureAgents("remove", token) }) { Text(t("dgl 훅만 해제")) }
+                TextButton({ client.configureAgents("remove", token) }) { Text(t("DaGaLi 훅만 해제")) }
             }
             }
         }

@@ -1,4 +1,4 @@
-dgl Rust candidate
+DaGaLi
 
 text_input.rs adapts the GPUI 0.2.2 text input example.
 Copyright Zed Industries contributors. Licensed under Apache License 2.0.

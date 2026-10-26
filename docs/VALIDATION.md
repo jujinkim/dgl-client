@@ -6,26 +6,22 @@
 
 ## 현재 변경 검사 (2026-10-27)
 
-활성 pane 출력의 OSC 0/2를 감지해 tmux 제목만 조회하는 빠른 경로를 추가했습니다.
-첫 조회는 즉시, 연속 신호는 연결당 최소 500ms 간격·동시 1건으로 묶고 숨김·백그라운드는 기존 1초 구독을 사용합니다.
-표시 신호는 출력 구독과 분리하며 연결·pane·표시 revision이 바뀐 오래된 응답은 버립니다.
-기존 탭 제목 순서·20글자 제한·호스트 배지와 모바일 상단 세션명은 유지합니다.
+앱의 표시 이름·제목·탐색기·기본 강조 색상·훅 해제 메뉴를 DaGaLi로 통일했습니다.
+Android 왼쪽 상단은 공통 원본 도형에서 생성한 24dp 앱 아이콘만 표시하며 연결 중과 대화면에서도 유지합니다.
+Android 앱 라벨, macOS `DaGaLi.app` 번들 이름과 Windows 알림·시작 메뉴 이름도 갱신했습니다.
 이전 변경의 검증 이력은 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust 코어·UniFFI | `cargo test --locked --workspace` 중 41 통과. 조각난 OSC 0/2·BEL/ST·한글/이모지/빈 제목·다른 OSC/제어 문자열·잘못된 문자열 복구, tmux 인용, 가상 시간 499/500ms·연속 신호 병합·동시 조회 차단·유휴/일반/숨김 출력의 대기 조회 없음, 오래된 응답 거부·제목만 변경 검사 포함. SSH 검사 6개는 기본 ignore |
-| Rust 데스크톱 | 같은 workspace 실행에서 65 통과·Keychain 1 ignore. 전면/백그라운드·각 그룹의 선택 연결 표시 판정과 기존 GPUI·탭 제목/입력/화면 회귀 검사 포함 |
-| 격리 SSH/tmux 3.7c | `hierarchy_titles_all_sessions_without_screen_reset` 1 통과. fixture 클라이언트의 기존 구독을 제거한 상태에서 빠른 제목 조회·빈 제목·숨김 차단·전면 복귀·OSC 원문 전달·입력 대상/화면 보존을 확인. 구독 복원 뒤 숨긴 창/다른 세션 제목·재접속 갱신도 확인 |
-| Kotlin/JVM | `:app:desktopTest` 78 통과·예상 환경 skip 9. 앱 전면/복귀·분할별 표시 집합 전달·출력 surface 없이 표시 상태 변경 검사 포함. `verify_test_results.py --mode linux`의 명시적 목록·skip 검증 통과 |
-| Android 빌드·lint | Debug APK·계측 APK 컴파일·`lintDebug` 통과. 생성 UniFFI/Kotlin·네 ABI Rust 엔진을 다시 빌드. lint 오류 0·기존 진단 12를 `verify_lint.py`로 확인 |
-| Android APK | 원본 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 갱신. `collect_rust_android.py`의 ID·버전·SDK·Rust 네 ABI·서명 검사 통과. APK 복사본 생성 없음 |
-| 스크립트·정적 검사 | Python 98 통과. 명시적 JVM 목록 갱신, 변경 문서의 로컬 링크·diff 공백·원문 요구사항 체크섬·대시보드 스키마 검사 통과. 문서/출력 경로·앱 버전·배포 방식이 같아 등록 정보 변경 없음 |
+| Rust 데스크톱 | `cargo test --locked -p dgl-desktop`: 65 통과·대화형 Keychain 1 ignore. UI·작업 공간·입력·설정 회귀 검사 포함 |
+| Kotlin/JVM | `:app:desktopTest`: 78 통과·예상 환경 skip 9. `verify_test_results.py --mode linux`의 명시적 목록·skip 검증 통과 |
+| Android 빌드·lint | Debug APK·계측 Kotlin 컴파일·`lintDebug` 통과. 네 ABI Rust 엔진·UniFFI 바인딩 갱신. lint 오류 0·기존 진단 12를 `verify_lint.py`로 확인 |
+| Android APK | 원본 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 갱신. aapt의 `DaGaLi` 라벨·앱 ID와 `collect_rust_android.py`의 버전·SDK·네 ABI·서명 검사 통과. APK 복사본 생성 없음 |
+| macOS 패키징 | `artifacts/rust-candidate/mac/DaGaLi.app` 빌드·로컬 ad-hoc 서명·strict 검증 통과. 번들 표시 이름·기존 ID·아이콘 연결 확인 |
+| 스크립트·정적 검사 | Python 98 통과. 번역 목록·생성 Compose 벡터를 포함한 아이콘 재생성 일치, 앱 UI의 이전 브랜드 문구 잔존 검사, 변경 문서의 로컬 링크·diff 공백·원문 요구사항 체크섬·대시보드 스키마 검사 통과 |
 
-연결된 Android 기기가 없어 계측은 실행하지 않았습니다. 네이티브 연결 재생성 시 표시 값 재적용은 구현·컴파일로 확인했으며 Android 수명 중 실제 동작 검증은 남아 있습니다.
-macOS 실제 GUI·IME·Keychain, Windows 네이티브 빌드·DPAPI·GUI와 전체 Android API 계측·장시간 반복은 수행하지 않았습니다.
-삼성 키보드의 한글 조합 위치·최종 문자열과 FAB의 실제 키보드 유지 확인은 남아 있습니다.
-전력 실측을 수행하지 않았으며 배터리 절감률을 주장하지 않습니다.
+실제 Android 화면·런처 조작, macOS GUI·IME·Keychain과 Windows 네이티브 빌드·DPAPI·GUI는 수행하지 않았습니다.
+전체 Android API 계측·장시간 반복은 수행하지 않았으며 예상 skip·ignore를 통과 수에 포함하지 않았습니다.
 
 ## 남은 한계
 
