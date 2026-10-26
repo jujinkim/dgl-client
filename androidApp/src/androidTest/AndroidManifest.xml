@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <!-- Test APK only: isolated document provider, never bundled with dgl. -->
-        <provider android:name="kim.jujin.rovessh.SyncTestProvider"
+        <provider android:name="kim.jujin.dglc.SyncTestProvider"
             android:authorities="kim.jujin.dglc.test.sync"
             android:exported="true" android:grantUriPermissions="true" />
     </application>

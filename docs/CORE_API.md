@@ -115,8 +115,9 @@ macOS Keychain의 저장 실패를 Storage로 전달하며 평문 fallback은 �
 `workspace-layout.json`이며 기존 settings에 혼합하지 않는다.
 
 후보 저장 영역은 기존 앱과 분리하며 사용자 데이터 자동 이전은 구현하지 않는다.
-Android ID는 `kim.jujin.dglc`이며 이전 `kim.jujin.rovessh` 앱과 별도로 설치된다.
-Keystore alias `kim.jujin.rovessh.credentials.v1`은 유지하되 이전 앱의 키·데이터에 접근하지 않는다.
+Android ID와 Kotlin 패키지 루트는 `kim.jujin.dglc`이며 초기 앱과 별도로 설치된다.
+기존 Keystore 키 별칭·Keychain 서비스·DPAPI entropy는 저장된 자격 증명 호환성을 위해 보존한다.
+Kotlin 패키지 변경은 저장 키 교체나 초기 앱 데이터 자동 이전을 수행하지 않는다.
 
 ## 구현 매핑
 

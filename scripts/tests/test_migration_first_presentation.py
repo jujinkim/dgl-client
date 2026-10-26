@@ -49,7 +49,7 @@ def fixture():
             native(f'DGL_R1_{phase}_{i}', ts+lag+n*1_000_000, i)
         r['frames'].extend([
             dict(id=base+30, ts=ts+lag+7_000_000, dur=3_000_000, surface_frame_token=i, display_frame_token=i+1000,
-                 layer_name='kim.jujin.dglc/kim.jujin.rovessh.MainActivity#1', process_name='kim.jujin.dglc', present_type='On-time Present'),
+                 layer_name='kim.jujin.dglc/kim.jujin.dglc.MainActivity#1', process_name='kim.jujin.dglc', present_type='On-time Present'),
             dict(id=base+31, ts=ts+lag+9_000_000, dur=5_000_000, surface_frame_token=0, display_frame_token=i+1000,
                  layer_name=None, process_name='/system/bin/surfaceflinger', present_type='On-time Present')])
     native('DGL_R1_CLOCK_18000000000_18000000000_18000000001', 18000000100)

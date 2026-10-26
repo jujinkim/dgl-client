@@ -126,7 +126,7 @@ python3 -m unittest scripts.tests.test_agent_observer scripts.tests.test_windows
 python3 scripts/integration.py --agent-home --tmux .tools/tmux-3.3a/tmux-3.3a/tmux --command sh -c 'cargo test --locked -p dgl-core --test ssh_integration -- --ignored --test-threads=1'
 python3 scripts/integration.py --agent-home --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command sh -c 'cargo test --locked -p dgl-core --test ssh_integration -- --ignored --test-threads=1'
 ./gradlew :app:desktopTest :androidApp:assembleDebug :androidApp:lintDebug
-./gradlew :androidApp:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=kim.jujin.rovessh.AgentNotificationTest
+./gradlew :androidApp:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=kim.jujin.dglc.AgentNotificationTest
 python3 scripts/verify_agent_cli.py --agent Claude --interactive --report artifacts/agent-status/claude-cli.json
 python3 scripts/verify_agent_cli.py --agent Codex --interactive --report artifacts/agent-status/codex-cli.json
 ```

@@ -1,6 +1,6 @@
 plugins { id("com.android.library") }
 android {
-    namespace = "kim.jujin.dgl.bindings"
+    namespace = "kim.jujin.dglc.bindings"
     compileSdk = 36
     defaultConfig { minSdk = 34; ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

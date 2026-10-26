@@ -48,8 +48,10 @@ tmux가 없거나 지원 버전이 아니면 일반 SSH 셸로 연결되며, 일
 | macOS ARM64 | Rust + GPUI/alacritty_terminal, 로컬 ad-hoc `.app` | 빌드·단위·SSH/tmux 검사. 실제 GUI·Keychain 인수는 남음 |
 | Windows x64 | Rust + GPUI/alacritty_terminal, MSVC 빌드·미서명 ZIP·수동 CI | 네이티브 빌드·DPAPI·GUI 확인은 사용자 담당 |
 | Linux | 후속 대상 | 현재 앱 실행·패키징 경로 없음 |
+| iOS/iPadOS | 미구현 | 이 저장소에 앱 소스·Swift/Xcode 빌드 타깃 없음 |
 
 앱 ID는 Android applicationId / macOS 번들 ID / Windows AUMID 모두 `kim.jujin.dglc`입니다.
+Kotlin 제품·테스트의 패키지와 소스 경로도 `kim.jujin.dglc`로 통일합니다.
 tmux Control Mode 지원 범위는 3.3–3.7이며 실제 서버 검사 기록은 3.3a·3.7c입니다.
 공개 배포용 서명·공증과 전체 플랫폼 인수는 완료되지 않았습니다.
 

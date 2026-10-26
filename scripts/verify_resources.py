@@ -251,7 +251,7 @@ def worker(args):
                     run(adb + ['install', '-r', ROOT / 'androidApp/build/outputs/apk/androidTest/debug/androidApp-debug-androidTest.apk'], timeout=120)
                     run(adb + ['reverse', f'tcp:{port}', f'tcp:{port}'])
                     run(adb + ['shell', 'run-as', PACKAGE, 'sh', '-c', '"mkdir -p cache; rm -f cache/resource-state.json; cat > cache/resource-config.json"'], input=json.dumps(config))
-                    cmd = [str(x) for x in adb] + ['shell', 'am', 'instrument', '-w', PACKAGE + '.test/kim.jujin.rovessh.ResourceInstrumentation']
+                    cmd = [str(x) for x in adb] + ['shell', 'am', 'instrument', '-w', PACKAGE + '.test/kim.jujin.dglc.ResourceInstrumentation']
                     def read_state():
                         result = subprocess.run([str(x) for x in adb] + ['shell', '-T', 'run-as', PACKAGE, 'cat', 'cache/resource-state.json'], capture_output=True, text=True, timeout=10)
                         return result.stdout if result.returncode == 0 else ''
@@ -265,7 +265,7 @@ def worker(args):
                     state_path = fixture / 'resource-state.json'
                     cmd = ['/usr/bin/time', '-l', '-o', str(output / 'os-usage.txt'), str(Path(os.environ['JAVA_HOME']) / 'bin/java'),
                            '-Djava.awt.headless=true', '-Xmx1g', '-cp', str(ROOT / 'app/build/resource-probe') + '/*:' + str(ROOT / 'app/build/resource-probe'),
-                           'kim.jujin.rovessh.DesktopResourceProbe', str(config_path), str(state_path)]
+                           'kim.jujin.dglc.DesktopResourceProbe', str(config_path), str(state_path)]
                     def read_state():
                         return state_path.read_text() if state_path.exists() else ''
                     java = subprocess.run([str(Path(os.environ['JAVA_HOME']) / 'bin/java'), '-version'], capture_output=True, text=True, check=True, timeout=10)

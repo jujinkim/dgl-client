@@ -14,7 +14,7 @@ def fixture():
     def frame(token, ts):
         frames.extend([
             dict(id=token * 2, ts=ts, dur=2_000_000, surface_frame_token=token, display_frame_token=token + 1000,
-                 layer_name='kim.jujin.dglc/kim.jujin.rovessh.MainActivity#1',
+                 layer_name='kim.jujin.dglc/kim.jujin.dglc.MainActivity#1',
                  process_name='kim.jujin.dglc', present_type='On-time Present'),
             dict(id=token * 2 + 1, ts=ts + 2_000_000, dur=5_000_000, surface_frame_token=0, display_frame_token=token + 1000,
                  layer_name='', process_name='/system/bin/surfaceflinger', present_type='On-time Present')])

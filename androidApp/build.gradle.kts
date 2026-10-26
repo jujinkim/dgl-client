@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "kim.jujin.rovessh"
+    namespace = "kim.jujin.dglc"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     defaultConfig {
@@ -17,7 +17,7 @@ android {
         versionName = "0.1.0"
         ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         testInstrumentationRunner = if (providers.gradleProperty("dglResourceProbe").orNull == "true")
-            "kim.jujin.rovessh.ResourceInstrumentation" else "androidx.test.runner.AndroidJUnitRunner"
+            "kim.jujin.dglc.ResourceInstrumentation" else "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }

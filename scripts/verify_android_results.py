@@ -2,22 +2,22 @@
 import re
 
 EXPECTED_ANDROID = {
-    'kim.jujin.rovessh.AndroidConnectionLifetimeTest.imeBackgroundIntentAndTaskRemovalPreserveOnlyRemoteWork',
-    'kim.jujin.rovessh.AgentNotificationTest.channelPermissionAndClickIntentRetainOnlyEventId',
-    'kim.jujin.rovessh.AgentNotificationTest.nativeInboxDeduplicatesVisibleReadAndDoesNotResolveObservation',
-    'kim.jujin.rovessh.AndroidHierarchyTest.compactRowsExpansionPanelDetailsAndSelectedHostActions',
-    'kim.jujin.rovessh.AndroidMobileInputTest.mobileLayoutImeComposerAndSharedPreference',
-    'kim.jujin.rovessh.AndroidPlatformTest.windowPanesKeepIndependentScreensAndOnlyTheContainerRequestsSize',
-    'kim.jujin.rovessh.FileSyncTest.persistedDocumentTransportMergesProtectsSecretsAndRetriesFailedWrites',
-    'kim.jujin.rovessh.AndroidVolumeKeyTest.cliLauncherCommandsLayoutDismissalAndTargetChanges',
-    'kim.jujin.rovessh.AndroidSshTest.sshKeysControlAndReconnectionKeepRemoteProcess',
-    'kim.jujin.rovessh.AndroidPlatformTest.keystoreRoundTripTamperingAndBackupExclusion',
-    'kim.jujin.rovessh.AndroidPlatformTest.bundledRendererImeBridgeResizeAndNavigationIsolation',
-    'kim.jujin.rovessh.AndroidAppFlowTest.composeTerminalKeyboardToolbarRotationAndForegroundRestore',
-    'kim.jujin.rovessh.AndroidVolumeKeyTest.independentKeysConsumeOnlyTheInitialPress',
-    'kim.jujin.rovessh.AndroidVolumeKeyTest.defaultHandlingAndLifecycleNeverReplayHeldKeys',
-    'kim.jujin.rovessh.AndroidVolumeKeyTest.visibleShellDialogsSelectionRecoveryAndRecreation',
-    'kim.jujin.rovessh.AndroidVolumeKeyTest.editorSaveCancelValidationAndStepOrdering',
+    'kim.jujin.dglc.AndroidConnectionLifetimeTest.imeBackgroundIntentAndTaskRemovalPreserveOnlyRemoteWork',
+    'kim.jujin.dglc.AgentNotificationTest.channelPermissionAndClickIntentRetainOnlyEventId',
+    'kim.jujin.dglc.AgentNotificationTest.nativeInboxDeduplicatesVisibleReadAndDoesNotResolveObservation',
+    'kim.jujin.dglc.AndroidHierarchyTest.compactRowsExpansionPanelDetailsAndSelectedHostActions',
+    'kim.jujin.dglc.AndroidMobileInputTest.mobileLayoutImeComposerAndSharedPreference',
+    'kim.jujin.dglc.AndroidPlatformTest.windowPanesKeepIndependentScreensAndOnlyTheContainerRequestsSize',
+    'kim.jujin.dglc.FileSyncTest.persistedDocumentTransportMergesProtectsSecretsAndRetriesFailedWrites',
+    'kim.jujin.dglc.AndroidVolumeKeyTest.cliLauncherCommandsLayoutDismissalAndTargetChanges',
+    'kim.jujin.dglc.AndroidSshTest.sshKeysControlAndReconnectionKeepRemoteProcess',
+    'kim.jujin.dglc.AndroidPlatformTest.keystoreRoundTripTamperingAndBackupExclusion',
+    'kim.jujin.dglc.AndroidPlatformTest.bundledRendererImeBridgeResizeAndNavigationIsolation',
+    'kim.jujin.dglc.AndroidAppFlowTest.composeTerminalKeyboardToolbarRotationAndForegroundRestore',
+    'kim.jujin.dglc.AndroidVolumeKeyTest.independentKeysConsumeOnlyTheInitialPress',
+    'kim.jujin.dglc.AndroidVolumeKeyTest.defaultHandlingAndLifecycleNeverReplayHeldKeys',
+    'kim.jujin.dglc.AndroidVolumeKeyTest.visibleShellDialogsSelectionRecoveryAndRecreation',
+    'kim.jujin.dglc.AndroidVolumeKeyTest.editorSaveCancelValidationAndStepOrdering',
 }
 
 

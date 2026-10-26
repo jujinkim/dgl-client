@@ -33,7 +33,7 @@ def main():
         run(["shell", "settings", "put", "system", "font_scale", "1.3"])
         run(["shell", "settings", "put", "secure", "show_ime_with_hard_keyboard", "1"])
         run(["shell", "run-as", "kim.jujin.dglc", "sh", "-c", '"mkdir -p cache && cat > cache/integration.json"'], input=json.dumps(fixture).encode())
-        classes = os.environ.get("DGL_ANDROID_TEST_CLASSES", "kim.jujin.rovessh.AndroidPlatformTest,kim.jujin.rovessh.AndroidAppFlowTest,kim.jujin.rovessh.AndroidVolumeKeyTest,kim.jujin.rovessh.AndroidHierarchyTest,kim.jujin.rovessh.AndroidMobileInputTest")
+        classes = os.environ.get("DGL_ANDROID_TEST_CLASSES", "kim.jujin.dglc.AndroidPlatformTest,kim.jujin.dglc.AndroidAppFlowTest,kim.jujin.dglc.AndroidVolumeKeyTest,kim.jujin.dglc.AndroidHierarchyTest,kim.jujin.dglc.AndroidMobileInputTest")
         expected = expected_for_selection(classes)
         result = run(["shell", "am", "instrument", "-w", "-r", "-e", "dgl.fixture", "true", "-e", "class", classes,
                       "kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner"], timeout=240)

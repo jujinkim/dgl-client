@@ -28,9 +28,9 @@ SOURCES = [
     'scripts/migration_first_presentation.py',
     'scripts/verify_resources.py', 'scripts/integration.py', 'scripts/resource_workload.py',
     'scripts/evidence.py', 'scripts/migration_performance.py',
-    'app/src/resourceProbe/kotlin/kim/jujin/rovessh/ResourceScenario.kt',
-    'androidApp/src/androidTest/kotlin/kim/jujin/rovessh/MigrationPresentationProbe.kt',
-    'androidApp/src/androidTest/kotlin/kim/jujin/rovessh/ResourceInstrumentation.kt',
+    'app/src/resourceProbe/kotlin/kim/jujin/dglc/ResourceScenario.kt',
+    'androidApp/src/androidTest/kotlin/kim/jujin/dglc/MigrationPresentationProbe.kt',
+    'androidApp/src/androidTest/kotlin/kim/jujin/dglc/ResourceInstrumentation.kt',
 ]
 TRACE_CONFIG = '''buffers { size_kb: 32768 fill_policy: DISCARD }
 duration_ms: 90000
@@ -121,7 +121,7 @@ def analyze_upper_bound(raw):
             # Only an actually referenced positive token may be used below.
             if token > 0:
                 displays.setdefault(token, []).append(row)
-        elif '/kim.jujin.rovessh.MainActivity' in row['layer_name']:
+        elif '/kim.jujin.dglc.MainActivity' in row['layer_name']:
             surfaces.append(row)
     if not surfaces or not displays:
         raise ValueError('Missing app/SurfaceFlinger frame timeline')
@@ -246,7 +246,7 @@ def worker(output, processor, mode="upper-bound"):
                 report['traceConfigSha256'] = sha256(output / 'config.pbtxt')
                 trace_pid = int(run(adb + ['shell', 'perfetto', '--background-wait', '--txt', '-c', '-', '-o', remote], input=active_config).splitlines()[-1])
                 with (output / 'probe.log').open('w') as log:
-                    process = subprocess.Popen([str(a) for a in adb] + ['shell', 'am', 'instrument', '-w', PACKAGE + '.test/kim.jujin.rovessh.ResourceInstrumentation'], stdout=log, stderr=log)
+                    process = subprocess.Popen([str(a) for a in adb] + ['shell', 'am', 'instrument', '-w', PACKAGE + '.test/kim.jujin.dglc.ResourceInstrumentation'], stdout=log, stderr=log)
                     process.wait(timeout=75)
                 final = json.loads(run(adb + ['shell', 'run-as', PACKAGE, 'cat', 'cache/resource-state.json']))
                 report['final'] = final

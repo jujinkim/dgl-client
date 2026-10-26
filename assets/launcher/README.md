@@ -13,6 +13,6 @@ not official vendor marks. They identify experimental AGY and Grok Build support
 
 GPUI embeds these SVGs with `include_bytes!`; no runtime asset directory is needed
 on Mac or Windows. Compose embeds the same 24 × 24 path data in
-`app/src/jvmSharedMain/kotlin/kim/jujin/rovessh/ui/LauncherIcons.kt`.
+`app/src/jvmSharedMain/kotlin/kim/jujin/dglc/ui/LauncherIcons.kt`.
 Keep the SVG and Compose paths in sync. Both renderers tint the paths with the
 current theme's foreground color.

@@ -60,7 +60,7 @@ JVM·Android 테스트를 추가/삭제하면 `verify_test_results.py` / `verify
 `rust_android_integration.py`의 `DGL_ANDROID_TEST_CLASSES`는 `Class` 또는 `Class#method`를 쉼표로 받습니다.
 기대 결과는 공통 이름 목록에서 선택하며 알 수 없는 선택·누락·중복·실패·skip은 거절합니다.
 `DGL_ANDROID_EXPECTED_TESTS` 숫자 override는 사용하지 않습니다.
-`kim.jujin.rovessh.AndroidConnectionLifetimeTest`를 선택하면 실제 Rust SSH 연결 하나로
+`kim.jujin.dglc.AndroidConnectionLifetimeTest`를 선택하면 실제 Rust SSH 연결 하나로
 IME·Activity 재생성·짧은 백그라운드 복귀·알림 인텐트·task 제거와 원격 프로세스 유지만 검사합니다.
 
 ## 선택적 성능·자원 도구

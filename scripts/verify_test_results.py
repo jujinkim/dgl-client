@@ -52,7 +52,7 @@ TESTS = {
     'PerformanceTest': ['loopbackInputLatencyAndSustainedOutput'],
     'WindowsSecurityTest': ['currentUserDpapiRoundTripTamperAndPathValidation'],
 }
-EXPECTED = {'kim.jujin.rovessh.' + cls + '.' + name for cls, names in TESTS.items() for name in names}
+EXPECTED = {'kim.jujin.dglc.' + cls + '.' + name for cls, names in TESTS.items() for name in names}
 
 
 def verify(directory, mode):

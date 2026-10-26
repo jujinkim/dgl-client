@@ -17,8 +17,8 @@ class RustApkTest(unittest.TestCase):
             if foreign_abi:
                 apk.writestr("lib/mips/libjnidispatch.so", b"unsupported fixture")
             apk.writestr("assets/third-party-rust/DEPENDENCIES.json", "[]")
-            apk.writestr("classes.dex", b"Lkim/jujin/dgl/RustClientConnection;\0"
-                         b"Lkim/jujin/dgl/RustKeyTools;\0Luniffi/dgl_core/NativeConnection;"
+            apk.writestr("classes.dex", b"Lkim/jujin/dglc/RustClientConnection;\0"
+                         b"Lkim/jujin/dglc/RustKeyTools;\0Luniffi/dgl_core/NativeConnection;"
                          if rust_dex else b"")
             apk.writestr("classes2.dex", extra_dex)
         return zipfile.ZipFile(data)
@@ -36,7 +36,9 @@ class RustApkTest(unittest.TestCase):
             verify_rust_payload(apk)
 
     def test_test_only_engine_and_dependencies_rejected_in_secondary_dex(self):
-        for descriptor in (b"Lkim/jujin/rovessh/ClientModel;", b"Lnet/schmizz/sshj/SSHClient;",
+        for descriptor in (b"Lkim/jujin/dglc/ClientModel;", b"Lkim/jujin/dglc/ssh/SshjTransport;",
+                           b"Lkim/jujin/rovessh/ClientModel;", b"Lkim/jujin/rovessh/MainActivity;",
+                           b"Lnet/schmizz/sshj/SSHClient;",
                            b"Lorg/bouncycastle/crypto/CipherParameters;"):
             with self.subTest(descriptor=descriptor), self.archive(extra_dex=descriptor) as apk:
                 with self.assertRaisesRegex(ValueError, "Retired engine/dependency"):

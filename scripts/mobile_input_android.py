@@ -38,11 +38,11 @@ def main():
         for key in animations:
             run("shell", "settings", "put", "global", key, "0")
         result = run("shell", "am", "instrument", "-w", "-r", "-e", "class",
-                     "kim.jujin.rovessh.AndroidMobileInputTest,kim.jujin.rovessh.AndroidPlatformTest",
+                     "kim.jujin.dglc.AndroidMobileInputTest,kim.jujin.dglc.AndroidPlatformTest",
                      "kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner", timeout=180).decode()
         (OUT / "instrumentation.txt").write_text(result)
         print(result)
-        verify(result, expected_for_selection("kim.jujin.rovessh.AndroidMobileInputTest,kim.jujin.rovessh.AndroidPlatformTest"))
+        verify(result, expected_for_selection("kim.jujin.dglc.AndroidMobileInputTest,kim.jujin.dglc.AndroidPlatformTest"))
     finally:
         for name in names:
             image = subprocess.run(ADB + ["exec-out", "run-as", "kim.jujin.dglc", "cat", f"cache/{name}.png"], capture_output=True, timeout=10)

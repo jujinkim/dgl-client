@@ -2,6 +2,7 @@
 
 DGL은 공통 Rust SSH/tmux 코어에 Android와 데스크톱 UI를 연결합니다.
 Android는 Compose + WebView/xterm.js, macOS·Windows는 GPUI + alacritty_terminal을 사용합니다.
+iOS/iPadOS 앱·Swift/Xcode 타깃은 이 저장소에 없으며 연결 수명·IME 동작도 구현되어 있지 않습니다.
 이전 JVM 앱은 실행·배포하지 않으며 일부 Kotlin/JVM 구현은 회귀 검사와 격리 SSH fixture에만 남아 있습니다.
 
 | 경로 | 역할 |
@@ -32,7 +33,11 @@ Android는 Compose + WebView/xterm.js, macOS·Windows는 GPUI + alacritty_termin
 
 Android Keystore, macOS Keychain, Windows CURRENT_USER DPAPI를 플랫폼 어댑터로 제공합니다.
 보호 저장 실패 시 평문 저장으로 대체하지 않습니다. Linux 보호 저장과 패키징은 미구현입니다.
-앱 ID는 `kim.jujin.dglc`; 내부 Kotlin namespace·기존 저장 키에 남은 `rovessh`는 앱 ID와 구분합니다.
+앱 ID와 Kotlin 제품·테스트 패키지의 루트는 `kim.jujin.dglc`입니다.
+소스 경로·import·계측 실행명·검증기·생성 번역 목록도 같은 패키지를 사용합니다.
+모듈 리소스 namespace는 `.shared`·`.mobile`·`.bindings` 접미사를 둡니다. UniFFI 생성 패키지는 `uniffi.dgl_core`입니다.
+기존 Keystore 키 별칭·Keychain 서비스·DPAPI entropy의 예전 식별자는 암호화 데이터 호환성을 위해 유지합니다.
+이 저장 식별자를 패키지와 함께 바꾸면 업데이트 후 저장된 자격 증명을 읽지 못합니다.
 
 Android는 `noBackupFilesDir/rust-candidate-v1`, 데스크톱은
 `desktop/src/platform.rs`가 정한 후보 디렉터리를 사용합니다. 이전 앱의 데이터는 자동 이전하지 않습니다.

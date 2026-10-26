@@ -10,7 +10,7 @@ plugins {
 
 kotlin {
     android {
-        namespace = "kim.jujin.rovessh.shared"
+        namespace = "kim.jujin.dglc.shared"
         compileSdk = 36
         minSdk = 34
         buildToolsVersion = "36.0.0"

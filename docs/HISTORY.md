@@ -113,6 +113,14 @@ Android 빌드·실제 SSH/tmux·Windows/macOS 실기 인수는 수행하지 않
 격리 tmux 3.3a·3.7c 제목 검사, Android Debug·lint·계측 컴파일, Mac ad-hoc 패키징을 확인했습니다.
 Android 계측 실행·Windows/macOS 실기 인수는 수행하지 않았습니다. 상세는 해당 Git 이력에서 확인합니다.
 
+## 2026-10-26: Android 연결 수명·IME
+
+프로세스 공유 엔진·SSH 유지 서비스와 기본 켜짐 설정, 최근 앱/task 제거 시 로컬 정리,
+입력 오류 분류·비차단 안내, IME 하단 정렬·최종 resize와 전환 시간 단축을 추가했습니다.
+당시 Rust 코어/UniFFI 30·JVM 57·웹 12·Python 98 통과, 예상 JVM skip 9·기본 SSH ignore 5를 기록했습니다.
+Android Debug·미서명 Release·lint·API36 단일 연결 수명 계측과 격리 tmux 3.7c 재접속 검사를 통과했습니다.
+실제 손가락 swipe·화면 잠금·물리 기기 절전 정책과 Windows/macOS 실기 인수는 남겼습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

@@ -133,11 +133,11 @@ class ResourceResultsTest(unittest.TestCase):
         self.assertEqual(parse_meminfo('TOTAL PSS: 123 TOTAL RSS: 456 TOTAL SWAP PSS: 0'), dict(pssBytes=123*1024, rssBytes=456*1024))
         services = '''* ServiceRecord{a com.webview/SandboxedProcessService0}
  app=ProcessRecord{abc 1234:com.webview:sandboxed_process0/u0i1}
- binding=ProcessRecord{def 5678:kim.jujin.rovessh/u0a1}
+ binding=ProcessRecord{def 5678:kim.jujin.dglc/u0a1}
 * ServiceRecord{b com.webview/SandboxedProcessService1}
  app=ProcessRecord{def 9999:com.webview:sandboxed_process1/u0i2}
  binding=ProcessRecord{gh 5555:other.app/u0a2}'''
-        self.assertEqual(renderer_pids(services, 'kim.jujin.rovessh'), [1234])
+        self.assertEqual(renderer_pids(services, 'kim.jujin.dglc'), [1234])
 
 
 class ResourceCollectorTest(unittest.TestCase):

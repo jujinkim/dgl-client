@@ -1,4 +1,5 @@
 use dgl_core::{Error, Result, model::Credential};
+// Persistent Keychain service identity; keep existing saved credentials readable.
 const SERVICE: &str = "kim.jujin.rovessh.rust-candidate.v1";
 pub fn read(reference: &str) -> Result<Credential> {
     read_optional(reference)?.ok_or(Error::Storage)

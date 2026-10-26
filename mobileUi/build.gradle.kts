@@ -1,6 +1,6 @@
 plugins { id("com.android.library"); kotlin("plugin.compose"); kotlin("plugin.serialization") }
 android {
-    namespace = "kim.jujin.dgl.mobile"
+    namespace = "kim.jujin.dglc.mobile"
     compileSdk = 36
     defaultConfig { minSdk = 34 }
     buildFeatures { compose = true }

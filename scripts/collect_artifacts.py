@@ -28,7 +28,7 @@ def verify_apk(source, aapt, release=False):
     for policy in ['allowBackup', 'fullBackupContent', 'usesCleartextTraffic']:
         if not re.search(r':' + policy + r'\(0x[0-9a-f]+\)=false', manifest):
             raise ValueError('APK policy missing: ' + policy)
-    if 'dataExtractionRules' not in manifest or 'kim.jujin.rovessh.MainActivity' not in manifest:
+    if 'dataExtractionRules' not in manifest or 'kim.jujin.dglc.MainActivity' not in manifest:
         raise ValueError('Missing app entry or backup rules')
     if release and re.search(r':debuggable\(0x[0-9a-f]+\)=true', manifest):
         raise ValueError('Release APK is debuggable')

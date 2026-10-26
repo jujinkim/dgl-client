@@ -110,7 +110,7 @@ tmux 소스 빌드에는 C 컴파일러·make·libevent·ncurses 개발 헤더�
 Android 계측은 전용 에뮬레이터와 명시적인 `ANDROID_SERIAL`을 사용합니다.
 API36 후보 검사는 앱/계측 APK를 먼저 빌드하고 fixture 안에서 실행합니다.
 연결 수명·IME·짧은 복귀·알림 인텐트·task 제거만 짧게 확인할 때는 아래 실행에
-`DGL_ANDROID_TEST_CLASSES=kim.jujin.rovessh.AndroidConnectionLifetimeTest`를 추가합니다.
+`DGL_ANDROID_TEST_CLASSES=kim.jujin.dglc.AndroidConnectionLifetimeTest`를 추가합니다.
 전체 API matrix로 확장하지 않습니다.
 
 ```sh

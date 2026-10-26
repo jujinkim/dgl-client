@@ -106,7 +106,7 @@ class TestInventoryTests(unittest.TestCase):
             self.assertEqual(expected, actual)
 
     def test_selected_instrumentation_requires_each_named_result(self):
-        name = 'kim.jujin.rovessh.AndroidHierarchyTest.compactRowsExpansionPanelDetailsAndSelectedHostActions'
+        name = 'kim.jujin.dglc.AndroidHierarchyTest.compactRowsExpansionPanelDetailsAndSelectedHostActions'
         cls, method = name.rsplit('.', 1)
         self.assertEqual({name}, expected_for_selection(cls))
         self.assertEqual({name}, expected_for_selection(cls + '#' + method))

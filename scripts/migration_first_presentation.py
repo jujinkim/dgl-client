@@ -89,7 +89,7 @@ def drawable_link(ident, native, frames):
     if not token or int(token[1]) <= 0:
         return None, 'missing-draw-surface-token'
     surfaces = [r for r in frames if r['process_name'] == PACKAGE and
-                '/kim.jujin.rovessh.MainActivity' in (r.get('layer_name') or '') and
+                '/kim.jujin.dglc.MainActivity' in (r.get('layer_name') or '') and
                 int(r['surface_frame_token']) == int(token[1])]
     if len(surfaces) != 1:
         return None, 'ambiguous-or-missing-app-surface'

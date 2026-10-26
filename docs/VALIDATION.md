@@ -6,33 +6,27 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-Android 프로세스 공유 엔진·백그라운드 SSH 유지 서비스, 입력 오류 분류와 비차단 안내,
-IME 하단 정렬·최종 resize와 화면 전환 시간 변경 검사입니다.
-이전 언어·실시간 제목 검사 결과는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+iOS 구현 유무 확인과 Kotlin 패키지·소스 경로·계측/검증 도구의 `kim.jujin.dglc` 통일 검사입니다.
+이전 Android 연결 수명·IME 개선 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 연결 수명 단위 | 서비스 시작/중단·복귀/재생성 시 연결 재사용·여러 연결 중 마지막 종료·재시도 소진·설정 해제·시작 실패/서비스 손실·task 제거 후 재시작 차단 확인 |
-| 입력 단위 | NotReady·QueueFull·StaleGeneration·Cancelled/Closed 구분, 같은 복원 주기 안내 합치기, 작성창 실패 이유·초안 유지·무재전송, 같은 대상 재탐색 생략 확인 |
-| 설정·동기화 | Kotlin/Rust 기본 true·예전 설정·저장/재실행, 클라우드 문서와 캐시 제외 확인. 공통 설정 fixture 갱신 |
-| Rust | 코어·공통 계약·UniFFI 30 통과, 기본 SSH 통합 5 ignore는 통과에 포함하지 않음 |
-| 실제 SSH/tmux | 격리 OpenSSH·tmux 3.7c의 `isolated_auth_management_input_reconnect` 1 통과. 인증·관리·입력·단절 후 재접속과 원격 프로세스/세대·실패 입력 무재전송 확인 |
-| JVM | 57 통과·외부 SSH/Windows 환경의 예상 skip 9개. 추가 6개 테스트를 명시적 결과 목록에 등록하고 검증기 통과 |
-| 웹 | 12 통과. IME 표시/숨김·취소/역전의 하단 정렬·최종 resize만 전달·과거 출력 열람 위치, 연속 스냅샷 캐시/ack 정리, dim 80·fade 90·선택형 blur/확대축소 120ms와 동작 줄이기 확인 |
-| Python | 98 통과. JVM/Android 검사 이름 목록 일치 포함 |
-| Android 빌드 | 네 ABI Rust payload·Kotlin 컴파일, Debug·미서명 Release·계측 APK 빌드 통과. lint 기존 검토 진단 12개 일치 |
-| API36 단일 계측 | `AndroidConnectionLifetimeTest` 1 통과(약 12–13초). 실제 Rust SSH 연결에서 IME 표시/숨김·짧은 백그라운드 복귀·Activity 재생성·알림 앱 열기 인텐트 뒤 SSH 대상과 tmux 클라이언트 동일성 확인. `finishAndRemoveTask()` 뒤 연결/알림 정리·입력 거절·서비스 자동 재시작 없음과 원격 pane PID 보존 확인 |
-| 무결성·문서 | 번역 목록·번호 자리표시자·생성 파일, 원문 요구사항 SHA-256·Gradle wrapper·diff 공백 검사 통과. 로컬 대시보드 등록 검증기 통과·Git 제외 유지 |
+| iOS 대상 확인 | Git 관리 소스·Gradle 모듈·플랫폼 경계를 확인. iOS/iPadOS 앱, Swift 소스, Xcode 타깃·submodule이 없어 iOS 연결 수명·IME 수정/실기 검사 대상이 없음. Android 동작을 iOS에서 검증했다고 기록하지 않음 |
+| 패키지 정리 | 제품·JVM/Android 검사와 참조 엔진의 Kotlin/Java 루트·import·디렉터리를 `kim.jujin.dglc`로 이동. 모바일 Rust 어댑터도 같은 루트 사용. Gradle 리소스 namespace는 `.shared`·`.mobile`·`.bindings` |
+| 실행·수집 경로 | Manifest·테스트 provider/runner·CLI main class·계측 선택/이름 검증기·렌더러/Perfetto 레이어 식별·번역 생성 경로·사용 문서 갱신. APK 수집기는 새 Rust 클래스와 이전 Kotlin namespace·참조 엔진 제외를 검사 |
+| 저장 호환성 | applicationId·데이터 경로·설정 형식 유지. 기존 Android Keystore 별칭·macOS Keychain 서비스·Windows DPAPI entropy 바이트는 변경하지 않음. 보존 이유를 소스·아키텍처/코어 문서에 명시 |
+| Rust workspace | 코어·계약·UniFFI 30·데스크톱 60 통과. 기본 SSH 통합 5 ignore·대화형 Keychain 1 ignore는 통과에 포함하지 않음 |
+| JVM | clean 후 57 통과·외부 SSH/Windows 환경의 예상 skip 9개. 새 클래스명으로 명시적 결과 검증기 통과 |
+| Python | 98 통과. 소스와 JVM/Android 결과 이름 목록·새 DEX 클래스 요구·이전 namespace와 참조 엔진 거절·분석 fixture 경로 확인 |
+| Android 빌드 | 네 모듈 clean 후 Debug·미서명 Release·계측 APK 빌드 통과. lint 기존 검토 진단 12개 일치. Debug/Release Manifest·백업/네트워크 정책·assets·네 ABI Rust payload 검사 통과 |
+| API36 선택 계측 | 새 패키지에서 연결 수명·IME·짧은 복귀·Activity 재생성·알림 인텐트·task 제거와 원격 프로세스 보존, Keystore 왕복·변조 거절·백업 제외를 확인하는 2개 선택 검사 통과(약 14초) |
+| 무결성·문서 | 번역 목록/생성 파일·자리표시자, 원문 요구사항 SHA-256·Gradle wrapper·diff 공백 검사. 로컬 대시보드 등록 검증·Git 제외 유지 |
 
-API36 계측의 최초 실행은 새 알림 인텐트 때문에 ActivityScenario 종료 대기에서 실패했습니다.
-테스트가 원래 launch intent를 복원하도록 수정한 뒤 통과했습니다. 실패·skip을 통과로 계산하지 않습니다.
-서비스에는 `specialUse` 용도와 권한을 등록하고 `START_NOT_STICKY`를 사용합니다.
-partial wake lock은 10분 제한·5분 갱신이며 유지 중단/연결 종료/재시도 소진/task 제거 때 갱신 작업과 함께 해제합니다.
-
-API36에서 task 제거 API를 검사했으며 최근 앱 카드의 실제 손가락 swipe·화면 잠금·물리 기기 절전 정책 인수는 하지 않았습니다.
-새 인텐트의 다른 실제 pane 이동은 기존 연결 조작 경로와 단위 검사 범위이며 계측에서는 현재 연결 열기를 확인했습니다.
-전체 Android API matrix·장시간 백그라운드/배터리·실제 한국어/일본어 키보드·Windows 네이티브·macOS GUI는 실행하지 않았습니다.
-Windows 기본 MSVC 빌드·ZIP·수동 CI 경로는 유지합니다.
+보존 원문과 보호 저장 호환 식별자, 이전 APK 차단용 검사 문자열에는 예전 이름을 남깁니다.
+제품 패키지·import·실행 경로에는 예전 Kotlin 패키지를 사용하지 않습니다.
+Windows MSVC 네이티브·DPAPI·GUI와 macOS 실제 GUI·Keychain 접근, 물리 Android의 잠금·절전·최근 앱 swipe는 이번에 실행하지 않았습니다.
+iOS 앱이 이 저장소에 없으므로 iOS의 실제 연결 동작을 평가하거나 수정하지 않았습니다.
+전체 Android API matrix·장시간 계측은 수행하지 않았으며 Windows 빌드·ZIP·수동 CI 경로는 유지합니다.
 
 ## 남은 한계
 

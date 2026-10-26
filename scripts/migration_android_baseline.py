@@ -22,8 +22,8 @@ from verify_resources import emulator, run, stop
 PACKAGE = 'kim.jujin.dglc'
 SOURCES = ['scripts/migration_android_baseline.py', 'scripts/migration_performance.py',
            'scripts/verify_resources.py', 'scripts/integration.py', 'scripts/resource_workload.py',
-           'app/src/resourceProbe/kotlin/kim/jujin/rovessh/ResourceScenario.kt',
-           'androidApp/src/androidTest/kotlin/kim/jujin/rovessh/ResourceInstrumentation.kt']
+           'app/src/resourceProbe/kotlin/kim/jujin/dglc/ResourceScenario.kt',
+           'androidApp/src/androidTest/kotlin/kim/jujin/dglc/ResourceInstrumentation.kt']
 
 
 def proc_stat(value, page_size, ticks, role):
@@ -78,7 +78,7 @@ def worker(output):
             page_size = int(run(adb + ['shell', 'getconf', 'PAGESIZE']))
             report['environment'].update(clockTicksPerSecond=ticks, pageSizeBytes=page_size)
             with (output / 'probe.log').open('w') as log:
-                process = subprocess.Popen([str(x) for x in adb] + ['shell', 'am', 'instrument', '-w', PACKAGE + '.test/kim.jujin.rovessh.ResourceInstrumentation'], stdout=log, stderr=log)
+                process = subprocess.Popen([str(x) for x in adb] + ['shell', 'am', 'instrument', '-w', PACKAGE + '.test/kim.jujin.dglc.ResourceInstrumentation'], stdout=log, stderr=log)
                 deadline = time.monotonic() + 180
                 origin = None; pid = None; initial_output = None; final = {}
                 next_tick = time.monotonic()

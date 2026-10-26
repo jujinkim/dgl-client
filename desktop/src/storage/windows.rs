@@ -13,6 +13,8 @@ use windows_sys::Win32::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
+// Persistent DPAPI entropy namespace, not an application/package identifier.
+// Changing these bytes would prevent decrypting existing credential files.
 const SERVICE: &str = "kim.jujin.rovessh.rust-candidate.v1";
 const MAX_BYTES: usize = 2 * 1024 * 1024;
 

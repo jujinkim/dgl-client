@@ -21,11 +21,13 @@ def verify_rust_payload(archive):
     if native != ABIS or packaged != ABIS:
         raise ValueError(f"Expected four Rust ABIs; Rust: {sorted(native)}, packaged: {sorted(packaged)}")
     dex = b"".join(archive.read(name) for name in names if re.fullmatch(r"classes\d*\.dex", name))
-    for retired in (b"Lkim/jujin/rovessh/ClientModel;", b"Lkim/jujin/rovessh/ssh/SshjTransport;",
+    # Reject both relocated reference classes and any previous Kotlin namespace.
+    for retired in (b"Lkim/jujin/dglc/ClientModel;", b"Lkim/jujin/dglc/ssh/SshjTransport;",
+                    b"Lkim/jujin/rovessh/",
                     b"Lnet/schmizz/sshj/", b"Lorg/bouncycastle/"):
         if retired in dex:
             raise ValueError("Retired engine/dependency in production APK: " + retired.decode())
-    for required in (b"Lkim/jujin/dgl/RustClientConnection;", b"Lkim/jujin/dgl/RustKeyTools;",
+    for required in (b"Lkim/jujin/dglc/RustClientConnection;", b"Lkim/jujin/dglc/RustKeyTools;",
                      b"Luniffi/dgl_core/NativeConnection;"):
         if required not in dex:
             raise ValueError("Rust implementation missing: " + required.decode())
