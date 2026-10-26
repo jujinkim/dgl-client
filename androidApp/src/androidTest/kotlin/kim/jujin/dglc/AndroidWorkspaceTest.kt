@@ -11,6 +11,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** One bounded API36 check, with real Compose, WebViews, pointer gestures and IME. */
 class AndroidWorkspaceTest {
@@ -166,6 +168,134 @@ class AndroidWorkspaceTest {
             }
         }
     } }
+    @Test fun pinchFontAndScrollBoundsStayWithTheSession() = runBlocking<Unit> { withWorkspaceDisplay {
+        // Use phone density and physical pixels: native scale thresholds are
+        // physical distances, unlike WebView's CSS viewport dimensions.
+        shell("wm density 420"); shell("wm size 1080x2400")
+        val first = Connection("font-first", "one"); val second = Connection("font-second", "two")
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            lateinit var model: AppModel
+            lateinit var previous: LocalState
+            lateinit var previousWorkspace: WorkspaceState
+            var oldConnections = emptyList<ClientConnection>()
+            var oldSelected: ClientConnection? = null
+            var stage = "setup"
+            try {
+                scenario.onActivity {
+                    model = (it.application as DglApplication).connections().app
+                    previous = model.local.value; previousWorkspace = model.workspace.value
+                    oldConnections = model.connections.value; oldSelected = model.selected.value
+                    model.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", fontSize = 14, mobilePaneToolbarVisible = false)) }
+                    model.workspace.value = WorkspaceState()
+                    model.connections.value = listOf(first, second); model.selected.value = first; model.reconcileWorkspace()
+                }
+                eventually { first.surface != null }
+                val renderer = first.surface as AndroidTerminal
+                renderer.reset("SHELL_MEASUREMENT".encodeToByteArray())
+                val remote = RemoteState(windows = listOf(RemoteWindow("@1", "\$1", "one", true, "", width = 20, height = 10)),
+                    panes = listOf(RemotePane("%1", "@1", 20, 10, true, "", "sh")))
+                renderer.layout(remote, "@1", "%1", "target")
+                renderer.outputPane("%1", "target"); renderer.resizeRemote(Size(20, 10)); renderer.reset("VISIBLE".encodeToByteArray())
+                stage = "hidden shell overflow reproduction"
+                assertTrue(js(renderer, """(() => {
+                    const r=document.querySelector('#terminal'), c=document.querySelector('#window'), s=document.querySelector('#shell');
+                    c.style.overflow='visible'; s.style.overflow='visible'; s.style.width='100vw';
+                    const reproduced=r.scrollWidth > r.clientWidth + 100;
+                    c.style.removeProperty('overflow'); s.style.removeProperty('overflow'); s.style.removeProperty('width');
+                    return reproduced;
+                })()""").contains("true"))
+                assertTrue(js(renderer, """(() => { const r=document.querySelector('#terminal'); r.scrollLeft=100000;
+                    return r.scrollWidth<=r.clientWidth+1 && r.scrollLeft===0; })()""").contains("true"))
+                stage = "real wider remote grid"
+                renderer.layout(remote.copy(windows = remote.windows.map { it.copy(width = 120) }), "@1", "%1", "target")
+                assertTrue(js(renderer, """(() => { const r=document.querySelector('#terminal'), c=document.querySelector('#window'); r.scrollLeft=100000;
+                    return r.scrollLeft>0 && Math.abs(r.scrollLeft+r.clientWidth-c.getBoundingClientRect().width)<2; })()""").contains("true"))
+                renderer.layout(remote, "@1", "%1", "target")
+                assertEquals("0", js(renderer, "document.querySelector('#terminal').scrollLeft"))
+                val previousWidth = js(renderer, "document.querySelector('.pane .xterm-screen').getBoundingClientRect().width").toDouble()
+                stage = "pinch and reset control"
+                pinch(renderer, .30f, .46f)
+                val zoomed = renderer.fontSizeOverride.value
+                assertTrue("Native pinch must increase the font: $zoomed", zoomed != null && zoomed > 14)
+                eventually { js(renderer, "document.querySelector('.pane .xterm-screen').getBoundingClientRect().width").toDouble() > previousWidth * 1.1 }
+                awaitNode("세션 글자 크기 초기화")
+                assertEquals(14, model.local.value.preferences.fontSize)
+                assertEquals(14, model.repository.read().preferences.fontSize)
+                assertTrue(first.writes.isEmpty())
+                stage = "default font changes do not clear override"
+                scenario.onActivity { model.modify { state -> state.copy(preferences = state.preferences.copy(fontSize = 16)) } }
+                eventually { model.local.value.preferences.fontSize == 16 }
+                assertEquals(zoomed, model.terminalFont(first).effective)
+                stage = "tab isolation and reattachment"
+                scenario.onActivity { model.selectConnection(second) }
+                eventually { second.surface != null && first.surface == null }
+                assertNull(node("세션 글자 크기 초기화"))
+                assertNull(model.terminalFont(second).overrideSize.value)
+                scenario.onActivity { model.selectConnection(first) }
+                eventually { first.surface != null }
+                assertSame(renderer, first.surface)
+                awaitNode("세션 글자 크기 초기화")
+                stage = "Activity recreation retains tab font"
+                scenario.recreate()
+                eventually { first.surface != null && first.surface !== renderer }
+                val recreated = first.surface as AndroidTerminal
+                recreated.reset("RECREATED".encodeToByteArray())
+                awaitNode("세션 글자 크기 초기화")
+                assertEquals(zoomed, model.terminalFont(first).effective)
+                stage = "cancelled shrinking pinch and latest-default reset"
+                pinch(recreated, .46f, .30f, cancel = true)
+                assertTrue(model.terminalFont(first).effective < zoomed!!)
+                click("세션 글자 크기 초기화")
+                eventually { model.terminalFont(first).overrideSize.value == null }
+                assertEquals(16, model.terminalFont(first).effective)
+                assertNull(node("세션 글자 크기 초기화"))
+                assertEquals(16, model.repository.read().preferences.fontSize)
+                assertTrue("Pinch must never send terminal input", first.writes.isEmpty() && second.writes.isEmpty())
+                stage = "keyboard after pinch"
+                click("키보드 열기"); waitIme(scenario, true)
+                click("키보드 닫기"); waitIme(scenario, false)
+            } catch (failure: Throwable) {
+                throw AssertionError("Font/scroll stage: $stage; tree=" + dump(instrumentation.uiAutomation.rootInActiveWindow), failure)
+            } finally {
+                scenario.onActivity {
+                    model.connections.value = oldConnections; model.selected.value = oldSelected
+                    model.workspace.value = previousWorkspace; model.update(previous)
+                }
+            }
+        }
+    } }
+    private suspend fun pinch(renderer: AndroidTerminal, start: Float, end: Float, cancel: Boolean = false) {
+        val time = android.os.SystemClock.uptimeMillis()
+        val view = renderer.view
+        val location = IntArray(2)
+        instrumentation.runOnMainSync { view.getLocationOnScreen(location) }
+        fun dispatch(action: Int, half: Float, count: Int = 2) {
+            val properties = Array(count) { index -> MotionEvent.PointerProperties().apply { id = index; toolType = MotionEvent.TOOL_TYPE_FINGER } }
+            val coords = Array(count) { index -> MotionEvent.PointerCoords().apply {
+                x = location[0] + view.width / 2f + view.width * if (index == 0) -half else half
+                y = location[1] + view.height / 2f; pressure = 1f; size = 1f
+            } }
+            val event = MotionEvent.obtain(time, android.os.SystemClock.uptimeMillis(), action, count, properties, coords,
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
+        }
+        dispatch(MotionEvent.ACTION_DOWN, start, 1)
+        dispatch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), start)
+        repeat(10) { index -> dispatch(MotionEvent.ACTION_MOVE, start + (end - start) * (index + 1) / 10); delay(20) }
+        if (cancel) dispatch(MotionEvent.ACTION_CANCEL, end)
+        else {
+            dispatch(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), end)
+            dispatch(MotionEvent.ACTION_MOVE, end, 1)
+            dispatch(MotionEvent.ACTION_UP, end, 1)
+        }
+        instrumentation.waitForIdleSync()
+    }
+    private fun js(renderer: AndroidTerminal, script: String): String {
+        val latch = CountDownLatch(1); var result = ""
+        instrumentation.runOnMainSync { renderer.view.evaluateJavascript(script) { result = it; latch.countDown() } }
+        check(latch.await(5, TimeUnit.SECONDS))
+        return result
+    }
     private suspend fun withWorkspaceDisplay(test: suspend () -> Unit) {
         fun override(command: String) = shell(command).decodeToString().lineSequence()
             .firstOrNull { it.startsWith("Override") }?.substringAfter(": ") ?: "reset"

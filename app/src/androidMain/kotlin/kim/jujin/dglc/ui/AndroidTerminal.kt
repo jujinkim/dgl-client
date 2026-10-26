@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.inputmethod.InputMethodManager
 import android.view.WindowInsets as AndroidInsets
 import android.webkit.*
@@ -46,7 +48,7 @@ private class TerminalEntry(val terminal: AndroidTerminal) {
     var visible = false
     var restoreIme = false
 }
-private class TerminalResources {
+private class TerminalResources(val model: AppModel) {
     val entries = java.util.IdentityHashMap<ClientConnection, TerminalEntry>()
     fun remove(client: ClientConnection) { entries.remove(client)?.let { client.unbindSurface(it.terminal); it.terminal.close() } }
     fun close() { entries.keys.toList().forEach(::remove) }
@@ -55,7 +57,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
 
 /** Activity-owned renderers, independent of group membership and window width. */
 @Composable fun AndroidTerminalResources(model: AppModel, content: @Composable () -> Unit) {
-    val resources = remember(model) { TerminalResources() }
+    val resources = remember(model) { TerminalResources(model) }
     val clients = model.connections.collectAsState().value
     SideEffect { resources.entries.keys.toList().filter { it !in clients }.forEach(resources::remove) }
     DisposableEffect(resources) { onDispose { resources.close() } }
@@ -75,7 +77,8 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                 { if (entry.visible) client.resize(it) },
                 { pane, target, bytes -> if (entry.visible && entry.focus.inputAllowed()) client.paneInput(pane, target, bytes) },
                 { pane, target -> if (entry.visible) { entry.focus.activate(); if (entry.focus.inputAllowed()) client.focusPane(pane, target) } },
-                { pane, target, size -> if (entry.visible && entry.focus.inputAllowed()) client.resizePane(pane, target, size) }))
+                { pane, target, size -> if (entry.visible && entry.focus.inputAllowed()) client.resizePane(pane, target, size) },
+                resources?.model?.terminalFont(client) ?: TerminalFontSize(preferences.fontSize)))
             return entry
         }
         resources?.entries?.getOrPut(client, ::create) ?: create()
@@ -133,7 +136,10 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         focus.request = { terminal.focus { entry.visible && entry.focus.inputAllowed() } }
         focus.keyboard = { terminal.keyboard(terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) != true, focus.inputAllowed) }
         focus.preparePaste = terminal::preparePaste
+        focus.fontSizeOverride = terminal.fontSizeOverride
+        focus.resetFontSize = terminal::resetFontSize
         onDispose {
+            terminal.finishFontGesture()
             entry.restoreIme = entry.focus.inputAllowed() && focus.imeVisible
             observing = false
             if (treeObserver.isAlive) treeObserver.removeOnPreDrawListener(observer)
@@ -143,6 +149,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             terminal.view.onFocusChangeListener = null
             focus.request = {}; focus.keyboard = {}; focus.imeVisible = false
             focus.preparePaste = { _, _ -> error(t("터미널이 닫혔습니다.")) }
+            focus.fontSizeOverride = null; focus.resetFontSize = {}
         }
     }
     DisposableEffect(terminal) {
@@ -178,8 +185,38 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
 class AndroidTerminal(context: Context, preferences: Preferences, private val input: (ByteArray) -> Unit, private val resize: (Size) -> Unit,
     private val paneInput: ((String, String?, ByteArray) -> Unit)? = null,
     private val focusPane: (String, String?) -> Unit = { _, _ -> },
-    private val resizePane: (String, String?, Size) -> Unit = { _, _, _ -> }) : TerminalSurface {
-    val view = WebView(context)
+    private val resizePane: (String, String?, Size) -> Unit = { _, _, _ -> },
+    private val font: TerminalFontSize = TerminalFontSize(preferences.fontSize)) : TerminalSurface {
+    val fontSizeOverride get() = font.overrideSize
+    private var scrollback = preferences.scrollback.coerceIn(100, 10000)
+    private var consumingPinch = false
+    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean { font.beginGesture(); return true }
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            if (font.scale(detector.scaleFactor.toDouble())) applyConfiguration()
+            return true
+        }
+    }).apply { isQuickScaleEnabled = false; isStylusScaleEnabled = false }
+    val view = object : WebView(context) {
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (closed) return false
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) finishFontGesture()
+            if (event.pointerCount > 1 && !consumingPinch) {
+                consumingPinch = true
+                // Cancel the first finger before xterm can turn the pinch into
+                // scrolling, a click, a mouse report or a pane boundary drag.
+                val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+                try { super.onTouchEvent(cancel) } finally { cancel.recycle() }
+                parent?.requestDisallowInterceptTouchEvent(true)
+                if (ready.isCompleted) evaluateJavascript("window.setFontGesture(true)", null)
+            }
+            scaleDetector.onTouchEvent(event)
+            if (!consumingPinch) return super.onTouchEvent(event)
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) finishFontGesture()
+            return true
+        }
+    }
     private val ready = CompletableDeferred<Unit>()
     private val mutex = Mutex()
     private var serial = 0L
@@ -187,6 +224,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private var closed = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     init {
+        font.configure(preferences.fontSize)
         val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context)).build()
         with(view.settings) {
             javaScriptEnabled = true
@@ -194,6 +232,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             domStorageEnabled = false; databaseEnabled = false
             javaScriptCanOpenWindowsAutomatically = false
             setSupportMultipleWindows(false)
+            setSupportZoom(false)
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             blockNetworkLoads = true
             safeBrowsingEnabled = true
@@ -227,7 +266,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                 }
                 when (json.getString("type")) {
                     "ready" -> {
-                        view.evaluateJavascript("window.configure(${preferences.fontSize.coerceIn(10, 28)},${preferences.scrollback.coerceIn(100, 10000)})", null)
+                        applyConfiguration()
                         ready.complete(Unit)
                     }
                     "input" -> {
@@ -294,7 +333,25 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
     suspend fun configure(preferences: Preferences) {
         withTimeout(15_000) { ready.await() }
-        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.configure(${preferences.fontSize.coerceIn(10, 28)},${preferences.scrollback.coerceIn(100, 10000)})", null) }
+        withContext(Dispatchers.Main.immediate) {
+            font.configure(preferences.fontSize)
+            scrollback = preferences.scrollback.coerceIn(100, 10000)
+            applyConfiguration()
+        }
+    }
+    private fun applyConfiguration() {
+        if (!closed) view.evaluateJavascript("window.configure(${font.effective},$scrollback)", null)
+    }
+    fun finishFontGesture() {
+        if (!consumingPinch) return
+        consumingPinch = false; font.endGesture()
+        view.parent?.requestDisallowInterceptTouchEvent(false)
+        if (!closed && ready.isCompleted) view.evaluateJavascript("window.setFontGesture(false)", null)
+    }
+    fun resetFontSize() {
+        if (closed) return
+        font.reset()
+        applyConfiguration()
     }
     suspend fun preparePaste(text: String, enter: Boolean): ByteArray = withTimeout(15_000) {
         ready.await()
@@ -365,6 +422,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         } while (offset < bytes.size)
     }
     override fun close() {
+        finishFontGesture()
         closed = true; ready.cancel(); awaiting?.second?.cancel()
         scope.launch {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) WebViewCompat.removeWebMessageListener(view, "dgl")

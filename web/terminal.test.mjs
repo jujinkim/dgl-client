@@ -268,30 +268,88 @@ test('cancellation and a stalled renderer release the cache and pending ack', ()
 });
 
 function imeRenderer() {
-  const messages = [], frames = [];
+  const messages = [], frames = [], terminals = [];
   const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
-  const canvas = { style: {} }, host = { addEventListener() {} };
+  const host = () => ({ style: {}, addEventListener() {}, remove() {}, classList: { toggle() {} } });
+  const canvas = { style: {}, appendChild() {} };
   let observe, render, terminal;
   class Terminal {
     cols = 100; rows = 30; options = {}; parser = { registerOscHandler() {} };
     buffer = { active: { viewportY: 10, baseY: 10 } };
-    element = { querySelector: () => ({ getBoundingClientRect: () => ({ width: this.cols * 10, height: this.rows * 20 }) }) };
-    constructor() { terminal = this; }
-    loadAddon() {} open() {} onData() {} onBinary() {}
+    element = { querySelector: () => ({ getBoundingClientRect: () => ({ width: this.cols * 10 * (this.options.fontSize || 14) / 14, height: this.rows * 20 * (this.options.fontSize || 14) / 14 }) }) };
+    constructor() { terminal ||= this; terminals.push(this); }
+    loadAddon() {} open() {} dispose() {}
+    onData(callback) { this.data = callback; } onBinary(callback) { this.binary = callback; }
     onRender(callback) { render = callback; }
     resize(columns, rows) { this.cols = columns; this.rows = rows; }
   }
   const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
     window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} },
-    document: { getElementById: id => id === 'terminal' ? root : id === 'window' ? canvas : host },
+    document: { getElementById: id => id === 'terminal' ? root : id === 'window' ? canvas : host(), createElement: host, hasFocus: () => false },
     ResizeObserver: class { constructor(callback) { observe = callback; } observe() { observe(); } },
     requestAnimationFrame: callback => frames.push(callback),
   });
   messages.length = 0;
-  return { window, root, canvas, messages, terminal, observe: () => observe(), render: () => render(),
+  return { window, root, canvas, messages, terminal, terminals, observe: () => observe(), render: () => render(),
     frame() { frames.splice(0).forEach(callback => callback()); } };
 }
+
+test('outer scrolling follows the remote window, not the hidden measurement shell', () => {
+  const r = imeRenderer();
+  const layout = (columns, rows = 24) => ({ window: '@1', columns, rows, panes: [], active: null });
+  r.root.scrollLeft = 1500; r.root.scrollTop = 700;
+  r.window.setLayout(layout(40));
+  assert.equal(r.canvas.style.width, '1000px'); assert.equal(r.root.scrollLeft, 0);
+  assert.equal(r.canvas.style.height, '600px'); assert.equal(r.root.scrollTop, 0);
+  r.window.resizePane(500, 200);
+  assert.equal(r.canvas.style.width, '1000px', 'a hidden shell with 500 columns must not create blank outer scrolling');
+  assert.equal(r.canvas.style.height, '600px');
+  assert.deepEqual(r.messages, [], 'server geometry must not feed back into the client resize');
+  r.window.setLayout(layout(200, 60));
+  assert.equal(r.canvas.style.width, '2000px'); assert.equal(r.canvas.style.height, '1200px');
+  r.root.scrollLeft = 1000; r.root.scrollTop = 600;
+  r.root.clientWidth = 1600; r.root.clientHeight = 1000; r.observe();
+  assert.equal(r.root.scrollLeft, 400); assert.equal(r.root.scrollTop, 200);
+  r.window.setLayout(layout(20));
+  assert.equal(r.root.scrollLeft, 0); assert.equal(r.root.scrollTop, 0);
+  r.window.setLayout({ window: null, panes: [] });
+  r.window.resizePane(200, 60);
+  assert.equal(r.canvas.style.width, '2000px', 'ordinary SSH keeps access to its real wider grid');
+  r.window.resizePane(40, 12);
+  assert.equal(r.canvas.style.width, '1600px'); assert.equal(r.canvas.style.height, '1000px');
+});
+
+test('pinch updates every pane locally, suppresses input and submits only the final viewport', () => {
+  const r = imeRenderer();
+  r.window.setLayout({ window: '@1', columns: 100, rows: 30, active: '%1', inputTarget: 'current',
+    panes: [{ id: '%1', visible: true, left: 0, top: 0, width: 100, height: 30 }] });
+  r.window.setFontGesture(true);
+  r.window.configure(16, 2000); r.render();
+  r.window.configure(18, 3000); r.render();
+  assert.deepEqual(r.terminals.map(t => t.options.fontSize), [18, 18]);
+  assert.equal(r.canvas.style.width, `${100 * 10 * 18 / 14}px`);
+  r.terminals[1].data('accidental input'); r.terminals[1].binary('\x1b[M');
+  assert.deepEqual(r.messages, [], 'neither remote resize nor terminal input escapes an active pinch');
+  r.window.outputPane('%2', 'new');
+  assert.equal(r.terminals[2].options.fontSize, 18, 'new panes inherit the session font');
+  r.window.setFontGesture(false); r.render(); r.window.setFontGesture(false);
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 77, rows: 23 }]);
+  r.terminals[1].data('after');
+  assert.deepEqual(r.messages.splice(0), [{ type: 'input', data: 'after', pane: '%1', target: 'current' }]);
+  r.window.configure(14, 3000); r.render();
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 30 }]);
+});
+
+test('IME and pinch only submit a final viewport after both gestures have ended', () => {
+  const r = imeRenderer();
+  r.window.setFontGesture(true); r.window.configure(28, 5000);
+  r.window.setImeAnimation(true, 1); r.root.clientHeight = 400; r.observe();
+  r.window.setFontGesture(false); r.render();
+  assert.deepEqual(r.messages, []);
+  r.window.setImeAnimation(false, 1); r.frame(); r.render();
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 50, rows: 10 }]);
+});
 
 test('IME show and hide anchor the existing surface and submit only the final grid', () => {
   const r = imeRenderer();

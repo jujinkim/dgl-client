@@ -5,6 +5,7 @@
   const panes = new Map();
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 14, scrollback = 5000, enabled = true, smooth = false;
+  let fontGesture = false;
   const send = message => window.dgl.postMessage(JSON.stringify(message));
   // One rendered window, independent of pane snapshot timers and changing layouts.
   // Compose draws the 45% black dim and status above this frozen viewport.
@@ -146,10 +147,10 @@
   let pasteCapture = null;
   term.onData(data => {
     if (pasteCapture !== null) { pasteCapture.push(data); return; }
-    if (inputEnabled && new TextEncoder().encode(data).length <= 65536) post({ type: 'input', data });
+    if (inputEnabled && !fontGesture && new TextEncoder().encode(data).length <= 65536) post({ type: 'input', data });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
-  term.onBinary(data => { if (inputEnabled && data.length <= 65536) post({ type: 'input-binary', data }); });
+  term.onBinary(data => { if (inputEnabled && !fontGesture && data.length <= 65536) post({ type: 'input-binary', data }); });
   api.setInputEnabled = enabled => { inputEnabled = enabled === true; };
   // Capture xterm's own paste transformation (including current bracketed-paste mode)
   // without emitting input. Kotlin validates the target and submits one acknowledged request.
@@ -199,7 +200,7 @@
   // pointerdown lets the subsequent default click blur the textarea and hide IME.
   api.focusTerminal = () => term.focus();
   host.addEventListener('click', () => {
-    if (!inputEnabled) return;
+    if (!inputEnabled || fontGesture) return;
     if (pane !== active) send({ type: 'focus', pane, target: inputTarget });
     api.focusTerminal();
   });
@@ -208,7 +209,8 @@
   panes.set('shell', createPane('shell', document.getElementById('shell')));
   const current = () => panes.get(output) || panes.get('shell');
   const focused = () => panes.get(active) || panes.get('shell');
-  for (const method of ['receive', 'resizePane', 'beginSnapshot', 'endSnapshot']) window[method] = (...args) => current()[method](...args);
+  for (const method of ['receive', 'beginSnapshot', 'endSnapshot']) window[method] = (...args) => current()[method](...args);
+  window.resizePane = (...args) => { current().resizePane(...args); resize(); };
   window.cancelSnapshot = () => { for (const p of panes.values()) p.cancelSnapshot(); };
   window.focusTerminal = () => focused().focusTerminal();
   window.preparePaste = (...args) => focused().preparePaste(...args);
@@ -226,6 +228,28 @@
   let lastViewport = '';
   let imeAnimating = false, imeAnchoring = false, imeVersion = 0, preserveReading = false;
   let cell = { width: 8.54, height: 19.6 }, boundaries = [], draggingBoundary = false;
+  function sizeCanvas() {
+    if (!canvas.style || root.clientWidth <= 0 || root.clientHeight <= 0) return;
+    const tmux = layout?.window != null;
+    const shell = panes.get('shell').term;
+    const width = (tmux ? layout.columns : shell.cols) * cell.width;
+    const height = (tmux ? layout.rows : shell.rows) * cell.height;
+    if (!(width > 0 && height > 0)) return;
+    canvas.style.width = `${Math.max(root.clientWidth, width)}px`;
+    canvas.style.height = `${Math.max(root.clientHeight, height)}px`;
+    root.scrollLeft = Math.max(0, Math.min(root.scrollLeft || 0, Math.max(0, width - root.clientWidth)));
+    root.scrollTop = Math.max(0, Math.min(root.scrollTop || 0, Math.max(0, height - root.clientHeight)));
+  }
+  window.setFontGesture = value => {
+    fontGesture = value === true;
+    if (fontGesture) {
+      // Native touch cancellation also cancels pointer capture. Clear a pending
+      // boundary commit now, before any delayed WebView pointer event arrives.
+      for (const b of boundaries) { b.onpointerup = null; b.onpointercancel = null; }
+      draggingBoundary = false;
+    }
+    resize();
+  };
   function alignViewport() {
     if (!canvas.style) return;
     const height = layout?.window != null ? layout.rows * cell.height
@@ -264,9 +288,13 @@
     const rows = Math.max(2, Math.min(250, Math.floor(root.clientHeight / cell.height)));
     const key = `${columns},${rows}`;
     alignViewport();
-    if (imeAnimating) return;
+    if (imeAnimating || fontGesture) {
+      if (changed) arrange(); else sizeCanvas();
+      return;
+    }
     if (key !== lastViewport) { lastViewport = key; send({ type: 'resize', columns, rows }); arrange(); }
     else if (changed) arrange();
+    else sizeCanvas();
   }
 
   window.configure = (font, history) => {
@@ -275,15 +303,15 @@
     resize();
   };
   function arrange() {
-    if (!layout || draggingBoundary) return;
+    if (draggingBoundary) return;
     const shell = panes.get('shell');
     const rect = shell.term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
     if (rect?.width > 0 && rect?.height > 0) cell = { width: rect.width / shell.term.cols, height: rect.height / shell.term.rows };
+    sizeCanvas();
+    if (!layout) return;
     const tmux = layout.window !== null;
     shell.host.style.visibility = tmux ? 'hidden' : 'visible';
     boundaries.forEach(b => b.remove()); boundaries = [];
-    canvas.style.width = tmux ? `${layout.columns * cell.width}px` : '100%';
-    canvas.style.height = tmux ? `${layout.rows * cell.height}px` : '100%';
     if (!imeAnimating && `${layout.columns},${layout.rows}` === lastViewport) imeAnchoring = false;
     alignViewport();
     for (const [id, p] of panes) {
@@ -301,6 +329,7 @@
         Object.assign(b.style, horizontal ? { left: `${edge * cell.width}px`, top: `${spec.top * cell.height}px`, width: `${cell.width}px`, height: `${spec.height * cell.height}px` }
           : { left: `${spec.left * cell.width}px`, top: `${edge * cell.height}px`, width: `${spec.width * cell.width}px`, height: `${cell.height}px` });
         b.addEventListener('pointerdown', e => {
+          if (fontGesture) return;
           e.preventDefault(); b.setPointerCapture(e.pointerId); draggingBoundary = true;
           b.onpointercancel = () => { draggingBoundary = false; arrange(); };
           const start = horizontal ? e.clientX : e.clientY;
@@ -330,7 +359,7 @@
   // The server may keep a smaller grid than this viewport. Tapping the empty
   // container still opens the active pane's IME, just as tapping its cells does.
   root.addEventListener('click', event => {
-    if (enabled && !event.target.closest('.pane, .boundary')) focused().focusTerminal();
+    if (enabled && !fontGesture && !event.target.closest('.pane, .boundary')) focused().focusTerminal();
   });
   panes.get('shell').term.onRender?.(resize);
   new ResizeObserver(resize).observe(root);

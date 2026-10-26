@@ -82,9 +82,13 @@ class WorkspaceTest {
             model.open(host)
             val source = created.single()
             source.session.value = "\$1"; source.status.value = ConnectionStatus(Phase.Ready)
+            val font = model.terminalFont(source)
+            font.beginGesture(); font.scale(1.5); font.endGesture()
+            assertEquals(21, font.effective)
             model.changeWorkspace { it.split(it.activeGroup, SplitAxis.Horizontal, 1200f, 800f) }
             val secondGroup = model.workspace.value.activeGroup
             val second = model.openSession(source, "\$2") as Connection
+            assertNull(model.terminalFont(second).overrideSize.value)
             assertSame(second, model.openSession(source, "\$2"))
             assertEquals(2, created.size, "a pending session must already have a reserved tab")
             assertEquals(secondGroup, model.workspace.value.activeGroup)
@@ -97,10 +101,13 @@ class WorkspaceTest {
             val tab = model.tabId(second)!!
             model.changeWorkspace { it.move(tab, it.root.leaves().first().id) }
             assertSame(second, model.tabClient(tab))
+            assertSame(font, model.terminalFont(source), "tab movement and renderer lookup retain connection-owned font state")
             model.removeConnection(second)
             assertEquals(1, second.closes)
             assertNull(model.tabClient(tab))
             assertEquals(2, model.workspace.value.groups.size)
+            val reopened = model.openSession(source, "\$2")!!
+            assertNull(model.terminalFont(reopened).overrideSize.value)
         }
     }
     @Test fun staleConnectionGenerationsRejectDelayedTargetsAndModalGates() = runBlocking {

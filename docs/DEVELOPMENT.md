@@ -136,7 +136,8 @@ ANDROID_SERIAL=emulator-5554 python3 scripts/workspace_android.py
 ```
 
 839/840dp 경계·넓은 분할·키보드와 높이 부족 시 임시 확대·탭 이동/폭 전환 전후 WebView 동일성·
-활성 그룹 입력·전역 모달 차단·드래그 확정/취소를 검사합니다. 화면 크기·밀도·IME·글꼴·애니메이션 설정은
+활성 그룹 입력·전역 모달 차단·드래그 확정/취소, 세션 폰트 핀치·취소·최신 기본값 초기화·탭/Activity 수명과
+터미널 가로 스크롤 경계도 검사합니다. 화면 크기·밀도·IME·글꼴·애니메이션 설정은
 `finally`에서 복원합니다. 결과는 `artifacts/android-workspace/`에 남기며 명시적 검사 이름 목록과 대조합니다.
 JVM 기본 검사에는 분할·이동·합치기·선택·최소 공간/최대 그룹·배치 저장·세션 예약·오래된 연결 대상 거부가 포함됩니다.
 `--section workspace`, `--section mobile-input`, `--section compact`로 필요한 구간만 재검사할 수 있습니다.

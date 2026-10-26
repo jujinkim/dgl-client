@@ -5,6 +5,8 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'core.TerminalFontSizeTest': ['pinchAccumulatesSmallChangesClampsAndIgnoresInvalidFactors',
+                                'overridesStayIndependentAndResetUsesTheLatestDefault'],
     'core.BackgroundResumeTest': ['backgroundStopKeepsTargetAndResumesOnlyOnce',
                                  'explicitStopsFailuresAndMissingSessionsNeverReserveResume'],
     'core.TerminalRecoveryTest': ['healthyCheckKeepsScreenWhileRecoveryWaitsForEveryCurrentPane',

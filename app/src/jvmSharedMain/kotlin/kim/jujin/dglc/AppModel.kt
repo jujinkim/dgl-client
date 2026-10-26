@@ -65,6 +65,9 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     }
     private val composers = java.util.IdentityHashMap<ClientConnection, TextComposer>()
     fun composer(connection: ClientConnection): TextComposer = composers.getOrPut(connection) { TextComposer(connection, agentScope) }
+    private val terminalFonts = java.util.IdentityHashMap<ClientConnection, TerminalFontSize>()
+    @Synchronized fun terminalFont(connection: ClientConnection): TerminalFontSize =
+        terminalFonts.getOrPut(connection) { TerminalFontSize(local.value.preferences.fontSize) }
     var cloudSync: CloudSyncController? = null
     var chooseSyncFile: (Boolean) -> Unit = {}
     var languageChanged: (String) -> Unit = {}
@@ -207,6 +210,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             if (id != null) { workspace.value = workspace.value.close(id); tabClients.remove(id) }
             connections.value -= connection
             if (selected.value == connection) selected.value = tabClient(workspace.value.activeTab)
+            terminalFonts.remove(connection)
             composers.remove(connection)
         }
         // Native state polling can call modify(); never close a native owner under this lock.
@@ -218,7 +222,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         val (drafts, clients) = synchronized(this) {
             agentScope.cancel()
             val owned = composers.values.toList() to connections.value
-            composers.clear(); connections.value = emptyList(); selected.value = null; visibleConnection = null; visibleConnections = emptySet()
+            composers.clear(); terminalFonts.clear(); connections.value = emptyList(); selected.value = null; visibleConnection = null; visibleConnections = emptySet()
             tabClients.clear(); reservations.clear(); sessionJobs.clear(); inputBlocks.value = emptySet()
             chooseSyncFile = {}; sendAgentNotification = {}; foreground = false
             owned

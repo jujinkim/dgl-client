@@ -525,5 +525,8 @@
   "인접 그룹과 합치기": "Merge with adjacent group",
   "호스트나 세션을 선택하여 여기에 연결하세요.": "Select a host or session to connect here.",
   "분할 경계 조절": "Resize split boundary",
-  "탭 배치 미리보기": "Tab placement preview"
+  "탭 배치 미리보기": "Tab placement preview",
+  "글자 {0} ↺": "Font {0} ↺",
+  "세션 글자 크기 초기화": "Reset session font size",
+  "현재 글자 크기: {0}": "Current font size: {0}"
 }

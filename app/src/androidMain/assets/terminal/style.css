@@ -1,9 +1,11 @@
 html, body { margin: 0; overflow: hidden; background: #11151b; }
 /* AndroidView can load WebView before its first nonzero layout. Percentage
    heights then collapse; anchor the terminal to the actual visual viewport. */
-#terminal { position: fixed; inset: 0; box-sizing: border-box; padding: 0; overflow: auto; }
-#window { position: relative; min-width: 100%; min-height: 100%; }
-#shell { position: absolute; inset: 0; width: 100vw; height: 100vh; }
+#terminal { position: fixed; inset: 0; box-sizing: border-box; padding: 0; overflow: auto; overscroll-behavior: none; }
+/* Only the explicit remote grid contributes to outer scrolling. The hidden
+   measurement shell and xterm helpers can otherwise expose a blank screen. */
+#window { position: relative; min-width: 100%; min-height: 100%; overflow: clip; }
+#shell { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
 .pane { position: absolute; overflow: hidden; }
 .pane.active { outline: 1px solid #8acdd0; outline-offset: -1px; }
 /* Keep history scrolling without covering the final tmux character column. */

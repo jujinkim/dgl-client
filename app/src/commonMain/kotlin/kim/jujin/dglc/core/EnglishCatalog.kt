@@ -530,5 +530,8 @@ internal object EnglishCatalog {
         "호스트나 세션을 선택하여 여기에 연결하세요." to "Select a host or session to connect here.",
         "분할 경계 조절" to "Resize split boundary",
         "탭 배치 미리보기" to "Tab placement preview",
+        "글자 {0} ↺" to "Font {0} ↺",
+        "세션 글자 크기 초기화" to "Reset session font size",
+        "현재 글자 크기: {0}" to "Current font size: {0}",
     )
 }

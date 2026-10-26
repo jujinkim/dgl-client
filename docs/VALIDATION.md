@@ -6,22 +6,21 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-Android의 정상 복귀 확인과 실제 복구 표시를 분리하고, 백그라운드 유지 설정을 끈 연결의
-일회성 자동 재연결을 검사했습니다. 이전 복귀·아이콘 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+Android 터미널의 가짜 가로 overflow를 제한하고, 탭별 폰트 핀치와 최신 기본값 초기화를 검사했습니다.
+이전 SSH 복귀·복구 표시·아이콘 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust 코어/UniFFI | 31 통과. 외부 SSH 6개는 기본 ignore이며 통과로 계산하지 않음. 일반 SSH 비밀번호·shell·응답 확인 검사 포함 |
-| 격리 SSH/tmux 3.7c | 복귀/무응답 검사 1개 통과. 정상 확인 시 SSH/tmux client·입력/렌더링 대상 세대 유지와 Reset 없음, 명시적 snapshot 유지. 출력 큐 포화·열린 소켓 무응답의 3초 판정, 동일 pane PID/화면 복구와 실패 입력 무재전송 확인 |
-| JVM | 69 통과·외부 SSH/Windows 예상 skip 9개. 정상 확인의 화면/입력 분리, 현재 구독·주기·세대의 모든 pane 표시 완료, 오래된 구독/주기 거부, shell 표시 조건·실패 dim 유지·resize 단독 제외. 자동 복귀 예약의 일회성 소비·수동 취소·실패/삭제 세션 제외 포함. 명시적 결과 검증기 일치 |
-| Python·JavaScript | Python 98·터미널 JavaScript 13 통과 |
-| Android 빌드 | Debug·계측 APK·lint 통과. 기존 검토 진단 12개 일치. 원본 Debug APK 네 ABI Rust payload·개발용 서명 확인; APK 복사본 생성 없음 |
-| API36 연결 수명 | 전용 `Dgl_API36` 한 대에서 `AndroidConnectionLifetimeTest` 1개 통과(39초). IME·정상 복귀의 복구 표시/버튼 없음·SSH/tmux client 유지·Activity 재생성·알림 Intent·유지 끔의 연결/서비스 종료와 같은 탭/세션/pane/PID 복귀·중복 복귀의 단일 client·수동 종료/재시도 정지/task 제거의 예약 취소·최근 앱 제거 후 빈 연결 목록·루트 뒤로가기·삭제 세션/인증 실패 보존 확인 |
-| 무결성·문서 | 한국어/영어·생성 번역/자리표시자, 요구사항 SHA-256·Wrapper·변경 Rust 서식·diff 공백·문서 링크·로컬 대시보드 등록 검증. JSON Git 제외 유지 |
+| JVM | 71 통과·외부 SSH/Windows 예상 skip 9개. 핀치 누적·10/28 제한·잘못된 배율 거부·탭별 독립성·기본값 변경 후 유지·최신 기본값 초기화·탭 수명 검사 포함. 명시적 결과 검증기 일치 |
+| Python·JavaScript | Python 98·터미널 JavaScript 16 통과. 원격 창/일반 SSH 격자별 스크롤 경계, 창 축소 후 위치 보정, 모든 pane 폰트 반영·핀치 중 입력/resize 차단·종료 시 최종 resize와 IME 중첩 검사 포함 |
+| Android 빌드 | Debug·계측 APK·lint 통과. 기존 검토 진단 12개 일치. 원본 Debug APK의 네 ABI Rust payload·개발용 서명 확인; APK 복사본 생성 없음 |
+| API36 터미널·작업 공간 | 전용 `Dgl_API36` 한 대의 Compose/WebView와 결정적 연결 fixture로 작업 공간 2개·pane 렌더러 1개 통과. 숨긴 shell의 가짜 overflow 재현/차단·실제 넓은 원격 창 접근·실제 글자 크기 변화·핀치 취소·초기화 버튼·기본값 저장 불변·탭/Activity 수명·IME·분할/탭 이동·독립 pane 화면 확인 |
+| 무결성·문서 | 한국어/영어·생성 번역/자리표시자, 요구사항 SHA-256·diff 공백·문서 링크·로컬 대시보드 등록 검증. JSON Git 제외 유지 |
 
-계측의 IME·글꼴 설정과 SSH fixture를 실행기의 `finally`에서 원복했습니다.
-Android 일반 SSH의 새 셸 복귀·실제 출력 구독 실패 주입은 이번 기기 계측에 포함하지 않았습니다.
-일반 SSH 엔진과 표시 완료 조건은 Rust/JVM 단위 검사 범위입니다.
+계측의 화면 크기·밀도·IME·글꼴·애니메이션 설정은 실행기의 `finally`에서 원복했습니다.
+초기 핀치 계측은 좌표가 시스템 최소 핀치 거리보다 작아 실패해 휴대폰 밀도/물리 좌표로 보정했습니다.
+직접 실행한 기존 작업 공간 검사는 IME 전환에서 실패했고, 밀도·애니메이션을 먼저 고정하는 공식 실행기로 2개 모두 통과했습니다.
+이번 계측에는 실제 SSH 서버·네트워크 재접속을 포함하지 않았으며 Rust/UniFFI 검사도 재실행하지 않았습니다.
 실제 손가락 최근 앱 swipe·화면 잠금/기기 절전·물리 네트워크 전환, 전체 API matrix·장시간 반복 계측,
 Windows 네이티브 빌드·DPAPI·GUI와 macOS GUI는 수행하지 않았습니다.
 
