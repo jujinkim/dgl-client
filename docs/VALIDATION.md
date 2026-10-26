@@ -6,21 +6,22 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-설정을 카테고리 카드와 별도 단축키 편집 화면으로 구성하고, 하단 Ctrl·Shift·Alt 토글과 공통 Rust 키 인코더를 추가했습니다.
+터미널 크기 측정·resize 완료 처리를 보완하고, 연결별 글자 크기 초기화 FAB와 데스크톱 Ctrl+휠을 추가했습니다.
+Android IME 세대는 재사용 렌더러가 소유하며 조합 글자는 스냅샷 복원 중 기존 위치를 유지합니다.
 이전 변경의 검증 이력은 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust core·UniFFI | 34 통과. 설정 문자열·기존/빈 목록·기본값, 모든 modifier 합집합·커서 모드·미지원 입력·바인딩 경로 확인. 격리 SSH 통합 6개는 기본 ignore |
-| Rust 데스크톱 | 62 통과, 대화형 Keychain 1개는 기본 ignore. 밝은/어두운 테마의 설정 상세 왕복·포커스/스크롤 복원·드래그 확정/취소·제외/재추가/재시작, 토글 중첩·재해제·1회 소비·크기 변경 유지 확인 |
-| JVM·결과 검증기 | 74 통과, 외부 SSH/Windows 환경 9개는 명시적 예상 skip. 저장 호환·정렬 모델·조합키 수명·대상 변경·모달/백그라운드 해제, 기존 매크로·볼륨키 계약 확인 |
-| 터미널 JavaScript | 21 통과·skip 없음. 공개 키 이벤트의 단일 전송·IME 확정·붙여넣기/마우스/프로토콜 응답 분리·지연된 IME 원래 대상 보존, 기존 렌더/복구 회귀 포함 |
-| Android 빌드·lint | `:androidApp:assembleDebug :androidApp:lintDebug` 통과. 네 ABI Rust/UniFFI와 원본 Debug APK 갱신. 기존 lint 진단 12개는 검증기의 명시적 목록과 일치 |
+| Rust core·UniFFI | 35 통과. 세션 폰트 격리·범위 제한·최신 기본값 초기화와 기존 계약 확인. 격리 SSH 통합 6개는 기본 ignore |
+| Rust 데스크톱 | 63 통과, 대화형 Keychain 1개는 기본 ignore. resize 최신값 병합·실패 후 동일 크기 재시도, 실제 Ctrl+휠 확대/축소·원격 전송 차단, 좁은 창/분할 FAB 위치·클릭·포커스와 기존 회귀 확인 |
+| JVM·결과 검증기 | 76 통과, 외부 SSH/Windows 환경 9개는 명시적 예상 skip. 취소·재부착 IME 세대, 실패한 중간 크기의 최신값 재시도, 폰트 격리·최신 기본값 초기화와 기존 회귀 확인 |
+| 터미널 JavaScript | 25 통과·skip 없음. 늦은 폰트 측정·숨김/재표시·IME 취소/재부착, 조합 중 스냅샷 교체와 표시 좌표·캐시 보조 요소 제외, 기존 확정 단일 전송·대상 세대·복구 회귀 포함 |
+| Android 빌드·lint | `:androidApp:assembleDebug :androidApp:assembleDebugAndroidTest :androidApp:lintDebug` 통과. 네 ABI Rust/UniFFI와 원본 Debug APK 갱신. 계측 APK 컴파일은 실기 통과로 계산하지 않음. 기존 lint 진단 12개는 검증기의 명시적 목록과 일치 |
 | Python·기본 검사 | 스크립트 98 통과, 번역/자리표시자·Wrapper·원문 체크섬·diff 공백·문서 로컬 링크·대시보드 등록 검증 통과 |
-| macOS 패키징 | ARM64 Debug 앱 빌드·로컬 ad-hoc 서명/검증. Developer ID·공증 없음 |
 
-네이티브 GUI 도구가 격리 실행한 macOS 앱을 식별하지 못해 실제 화면 조작을 확인하지 못했습니다.
-UI 동작 결과는 GPUI 이벤트 주입 검사입니다. 연결된 Android 기기가 없어 Android 실제 GUI/IME·계측은 수행하지 않았습니다.
+UI 동작 결과는 GPUI 이벤트 주입 검사와 웹 브리지의 좌표 검사입니다.
+연결된 Android 기기가 없어 Android 실제 GUI/IME·계측은 수행하지 않았습니다.
+삼성 키보드를 열자마자 한글을 입력할 때의 조합 위치·최종 문자열, 영문/숫자 비교와 FAB의 실제 키보드 유지 확인은 남아 있습니다.
 Windows 네이티브 빌드·DPAPI·GUI, 실제 SSH/TUI, 전체 Android API 계측·장시간 반복은 이번 범위에 포함하지 않았습니다.
 
 ## 남은 한계

@@ -4,8 +4,8 @@ package kim.jujin.dglc.core
 class TerminalResizeQueue {
     var size = Size()
         private set
-    private var submitted: Size? = null
-    private var request: ULong? = null
+    private var applied: Size? = null
+    private var request: Pair<ULong, Size>? = null
     private var due = 0L
 
     fun resize(value: Size, nowMillis: Long) {
@@ -15,18 +15,19 @@ class TerminalResizeQueue {
     }
 
     fun next(nowMillis: Long): Size? =
-        size.takeIf { request == null && it != submitted && nowMillis >= due }
+        size.takeIf { request == null && it != applied && nowMillis >= due }
 
     fun submitted(id: ULong, value: Size) {
         check(request == null)
-        submitted = value
-        request = id
+        request = id to value
     }
 
     fun complete(id: ULong, succeeded: Boolean = true) {
-        if (request == id) {
+        if (request?.first == id) {
+            // Submission only reserves a slot. Failed requests may have partly changed
+            // the remote grid, so even the previously applied size must be retryable.
+            applied = if (succeeded) request?.second else null
             request = null
-            if (!succeeded) submitted = null
         }
     }
 
@@ -34,7 +35,7 @@ class TerminalResizeQueue {
 
     /** Preserve the viewport, but discard the old connection's requests and debounce deadline. */
     fun reset() {
-        submitted = null
+        applied = null
         request = null
         due = 0
     }

@@ -53,6 +53,7 @@ pub struct Terminal {
     parser: Processor,
     focus: FocusHandle,
     font_size: f32,
+    font_owner: Option<WeakEntity<WindowTerminal>>,
     bounds: Bounds<Pixels>,
     marked: String,
     marked_target: Option<Option<(u64, u64, String, u64)>>,
@@ -104,6 +105,7 @@ impl Terminal {
             parser: Processor::new(),
             focus: cx.focus_handle(),
             font_size: font_size.clamp(10, 28) as f32,
+            font_owner: None,
             bounds: Bounds::default(),
             marked: String::new(),
             marked_target: None,
@@ -411,6 +413,17 @@ impl Terminal {
         }
     }
     fn scroll_wheel(&mut self, e: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(delta) = font_wheel_delta(e) {
+            self.scroll = ScrollAccumulator::default();
+            if let Some(owner) = &self.font_owner {
+                let _ = owner.update(cx, |t, cx| {
+                    t.font.adjust(delta);
+                    cx.notify();
+                });
+            }
+            cx.stop_propagation();
+            return;
+        }
         if !self.enabled {
             return;
         }
@@ -573,6 +586,14 @@ impl EntityInputHandler for Terminal {
     ) -> Option<usize> {
         Some(0)
     }
+}
+fn font_wheel_delta(e: &ScrollWheelEvent) -> Option<i32> {
+    let vertical = match e.delta {
+        ScrollDelta::Pixels(p) => f32::from(p.y),
+        ScrollDelta::Lines(p) => p.y,
+    };
+    (e.modifiers.control && vertical.is_finite() && vertical != 0.)
+        .then(|| if vertical > 0. { 1 } else { -1 })
 }
 fn color(c: Color) -> Hsla {
     let palette = [

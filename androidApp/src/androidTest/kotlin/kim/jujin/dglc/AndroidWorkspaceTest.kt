@@ -219,6 +219,13 @@ class AndroidWorkspaceTest {
                 assertTrue("Native pinch must increase the font: $zoomed", zoomed != null && zoomed > 14)
                 eventually { js(renderer, "document.querySelector('.pane .xterm-screen').getBoundingClientRect().width").toDouble() > previousWidth * 1.1 }
                 awaitNode("세션 글자 크기 초기화")
+                val fab = bounds(awaitNode("세션 글자 크기 초기화"))
+                val location = IntArray(2)
+                instrumentation.runOnMainSync { renderer.view.getLocationOnScreen(location) }
+                val edge = (96 * renderer.view.resources.displayMetrics.density).toInt()
+                assertTrue("Font reset belongs at the terminal's top right", fab.top >= location[1] &&
+                    fab.top < location[1] + edge && fab.right <= location[0] + renderer.view.width &&
+                    fab.right > location[0] + renderer.view.width - edge)
                 assertEquals(14, model.local.value.preferences.fontSize)
                 assertEquals(14, model.repository.read().preferences.fontSize)
                 assertTrue(first.writes.isEmpty())
@@ -245,14 +252,17 @@ class AndroidWorkspaceTest {
                 stage = "cancelled shrinking pinch and latest-default reset"
                 pinch(recreated, .46f, .30f, cancel = true)
                 assertTrue(model.terminalFont(first).effective < zoomed!!)
+                click("키보드 열기"); waitIme(scenario, true)
+                assertTrue(recreated.view.hasFocus())
                 click("세션 글자 크기 초기화")
                 eventually { model.terminalFont(first).overrideSize.value == null }
                 assertEquals(16, model.terminalFont(first).effective)
                 assertNull(node("세션 글자 크기 초기화"))
                 assertEquals(16, model.repository.read().preferences.fontSize)
+                waitIme(scenario, true)
+                assertTrue("Font reset preserves the WebView input focus", recreated.view.hasFocus())
                 assertTrue("Pinch must never send terminal input", first.writes.isEmpty() && second.writes.isEmpty())
                 stage = "keyboard after pinch"
-                click("키보드 열기"); waitIme(scenario, true)
                 click("키보드 닫기"); waitIme(scenario, false)
             } catch (failure: Throwable) {
                 throw AssertionError("Font/scroll stage: $stage; tree=" + dump(instrumentation.uiAutomation.rootInActiveWindow), failure)

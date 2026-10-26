@@ -298,7 +298,10 @@ fn wheel_keeps_magnitude_fraction_direction_and_local_override(cx: &mut TestAppC
             ..plain
         },
     );
-    assert_eq!(take_sent(&terminal, cx), b"\x1b[<81;1;1M".repeat(2));
+    assert!(
+        take_sent(&terminal, cx).is_empty(),
+        "Ctrl+vertical wheel never reaches the remote mouse"
+    );
     output(&terminal, cx, "history\r\n".repeat(100).as_bytes());
     wheel(
         cx,

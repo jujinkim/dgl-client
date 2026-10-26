@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'core.TerminalImeAnimationTest': ['rendererGenerationsSurviveDetachAndRejectCancelledCallbacks'],
     'core.TerminalFontSizeTest': ['pinchAccumulatesSmallChangesClampsAndIgnoresInvalidFactors',
                                 'overridesStayIndependentAndResetUsesTheLatestDefault'],
     'core.BackgroundResumeTest': ['backgroundStopKeepsTargetAndResumesOnlyOnce',
@@ -32,6 +33,7 @@ TESTS = {
                          'failedSendPreservesDraftAndNeverAutomaticallyRetries', 'sizeGenerationIsNotAnInputDestinationChange',
                          'unicodeSelectionDraftAndCompletionAreConnectionOwned'],
     'core.TerminalResizeQueueTest': ['continuousAnimationWaitsForTheLastChange',
+                                    'failedIntermediateSizeInvalidatesPreviouslyAppliedGeometry',
                                     'failedNativeRequestCanBeRetriedAfterConnectionRecovers',
                                     'newConnectionImmediatelyUsesTheLatestViewport',
                                     'onlyOneRequestAndOneLatestValueAreRetained',

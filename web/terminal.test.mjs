@@ -103,11 +103,11 @@ test('composer captures the renderer paste once, blocks background input and enf
 });
 
 function cachedRenderer() {
-  const messages = [], frames = [], timers = new Map(), animations = [];
-  let render, nextTimer = 0;
+  const messages = [], frames = [], timers = new Map(), animations = [], renders = new Set(), events = {};
+  let terminal, nextTimer = 0;
   class Element {
     children = []; classes = new Set(); textContent = '';
-    style = {}; width = 100; height = 100;
+    style = { setProperty(name, value) { this[name] = value; } }; width = 100; height = 100; left = 0; top = 0;
     classList = { add: value => this.classes.add(value), remove: value => this.classes.delete(value) };
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
@@ -116,33 +116,42 @@ function cachedRenderer() {
     cloneNode(deep) {
       const copy = new Element(); copy.textContent = this.textContent; copy.width = this.width; copy.height = this.height;
       copy.id = this.id; copy.tagName = this.tagName;
+      copy.className = this.className;
       if (deep) this.children.forEach(child => copy.appendChild(child.cloneNode(true)));
       return copy;
     }
     querySelectorAll(selector) {
       return this.children.flatMap(child => [
-        ...(selector === '[id]' ? child.id ? [child] : [] : child.tagName === 'CANVAS' ? [child] : []),
+        ...((selector === '[id]' ? !!child.id : selector === 'canvas' ? child.tagName === 'CANVAS'
+          : selector.split(', ').some(part => part === 'textarea' ? child.tagName === 'TEXTAREA' : child.className === part.slice(1))) ? [child] : []),
         ...child.querySelectorAll(selector),
       ]);
     }
+    querySelector(selector) { return this.querySelectorAll(selector)[0]; }
     getContext() { return { drawImage: original => { this.pixels = original.pixels; } }; }
     get firstElementChild() { return this.children[0]; }
-    getBoundingClientRect() { return { width: this.width, height: this.height }; }
+    getBoundingClientRect() { return { width: this.width, height: this.height, left: this.left, top: this.top }; }
     animate(keyframes, options) {
       const animation = { keyframes, options, cancelled: false, cancel() { this.cancelled = true; } };
       animations.push(animation); return animation;
     }
   }
   const root = new Element(), screen = new Element(), canvas = new Element(), body = new Element();
+  const helpers = new Element(), textarea = new Element(), composition = new Element();
+  helpers.className = 'xterm-helpers'; textarea.tagName = 'TEXTAREA'; composition.className = 'composition-view';
+  helpers.appendChild(textarea); helpers.appendChild(composition); screen.appendChild(helpers);
   canvas.id = 'window'; canvas.appendChild(screen);
-  const viewport = { clientWidth: 0, clientHeight: 0, scrollLeft: 13, scrollTop: 29, addEventListener() {} };
+  const viewport = { clientWidth: 0, clientHeight: 0, scrollLeft: 13, scrollTop: 29,
+    addEventListener(name, callback) { (events[name] ||= []).push(callback); } };
   screen.textContent = 'previous screen';
-  root.querySelector = () => screen;
+  root.querySelector = selector => selector === '.xterm-screen' ? screen : selector === '.xterm-helpers' ? helpers : null;
   class Terminal {
-    element = root; rows = 24; parser = { registerOscHandler() {} };
+    element = root; cols = 10; rows = 5; parser = { registerOscHandler() {} };
+    buffer = { active: { cursorX: 3, cursorY: 2, baseY: 10, viewportY: 10 } };
+    constructor() { terminal = this; }
     loadAddon() {} open() {} onData() {} onBinary() {} onResize() {} refresh() {}
     resize(columns, rows) { this.cols = columns; this.rows = rows; }
-    onRender(callback) { render = callback; return { dispose() { render = null; } }; }
+    onRender(callback) { renders.add(callback); return { dispose() { renders.delete(callback); } }; }
   }
   const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) }, matchMedia: () => ({ matches: false }) };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
@@ -154,9 +163,10 @@ function cachedRenderer() {
     clearTimeout: id => timers.delete(id),
   });
   messages.length = 0;
-  return { window, root, screen, canvas, body, Element, messages, animations,
+  return { window, root, screen, canvas, body, Element, messages, animations, helpers, textarea, composition, terminal,
+    event(name, value) { for (const callback of events[name] || []) callback(value); },
     frame() { frames.splice(0).forEach(callback => callback()); },
-    render() { render?.(); },
+    render() { for (const callback of [...renders]) callback(); },
     expire(delay) { for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); } },
   };
 }
@@ -321,16 +331,19 @@ test('cancellation and a stalled renderer release the cache and pending ack', ()
   }
 });
 
-function imeRenderer() {
-  const messages = [], frames = [], terminals = [];
+function imeRenderer({ delayedFont = false } = {}) {
+  const messages = [], frames = [], terminals = [], observed = new Set();
   const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
   const host = () => ({ style: {}, addEventListener() {}, remove() {}, classList: { toggle() {} } });
   const canvas = { style: {}, appendChild() {} };
   let observe, render, terminal;
   class Terminal {
     cols = 100; rows = 30; options = {}; parser = { registerOscHandler() {} };
+    measuredFont = 14;
     buffer = { active: { viewportY: 10, baseY: 10 } };
-    element = { querySelector: () => ({ getBoundingClientRect: () => ({ width: this.cols * 10 * (this.options.fontSize || 14) / 14, height: this.rows * 20 * (this.options.fontSize || 14) / 14 }) }) };
+    screen = { getBoundingClientRect: () => ({ width: this.cols * 10 * (delayedFont ? this.measuredFont : this.options.fontSize || 14) / 14,
+      height: this.rows * 20 * (delayedFont ? this.measuredFont : this.options.fontSize || 14) / 14 }) };
+    element = { querySelector: selector => selector === '.xterm-screen' ? this.screen : null };
     constructor() { terminal ||= this; terminals.push(this); }
     loadAddon() {} open() {} dispose() {}
     onData(callback) { this.data = callback; } onBinary(callback) { this.binary = callback; }
@@ -341,11 +354,12 @@ function imeRenderer() {
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
     window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} },
     document: { getElementById: id => id === 'terminal' ? root : id === 'window' ? canvas : host(), createElement: host, hasFocus: () => false },
-    ResizeObserver: class { constructor(callback) { observe = callback; } observe() { observe(); } },
+    ResizeObserver: class { constructor(callback) { observe = callback; } observe(element) { observed.add(element); observe(); } unobserve(element) { observed.delete(element); } },
     requestAnimationFrame: callback => frames.push(callback),
+    clearTimeout() {},
   });
   messages.length = 0;
-  return { window, root, canvas, messages, terminal, terminals, observe: () => observe(), render: () => render(),
+  return { window, root, canvas, messages, terminal, terminals, observed, observe: () => observe(), render: () => render(),
     frame() { frames.splice(0).forEach(callback => callback()); } };
 }
 
@@ -393,6 +407,88 @@ test('pinch updates every pane locally, suppresses input and submits only the fi
   assert.deepEqual(r.messages.splice(0), [{ type: 'input', data: 'after', pane: '%1', target: 'current' }]);
   r.window.configure(14, 3000); r.render();
   assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 30 }]);
+});
+
+test('screen geometry observes late font metrics without a hidden shell render and after redisplay', () => {
+  const r = imeRenderer({ delayedFont: true });
+  r.window.setLayout({ window: '@1', columns: 100, rows: 30, active: '%1', panes: [
+    { id: '%1', visible: true, left: 0, top: 0, width: 100, height: 30 },
+  ] });
+  const visible = r.terminals[1];
+  assert.ok(r.observed.has(r.root));
+  assert.ok(r.observed.has(r.terminal.screen));
+  assert.ok(r.observed.has(visible.screen));
+  r.window.configure(28, 5000); r.frame();
+  assert.deepEqual(r.messages, [], 'options setters may return before measurements change');
+  visible.measuredFont = 28;
+  r.observe();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 50, rows: 15 }]);
+  assert.equal(r.terminal.measuredFont, 14, 'the hidden measurement shell can remain stale');
+  r.root.clientWidth = 0; r.root.clientHeight = 0;
+  r.window.configure(14, 5000); visible.measuredFont = 14; r.observe();
+  assert.deepEqual(r.messages, []);
+  r.root.clientWidth = 800; r.root.clientHeight = 400; r.observe();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 80, rows: 20 }]);
+  r.window.setLayout({ window: null, active: 'shell', panes: [] });
+  assert.ok(!r.observed.has(visible.screen), 'disposed panes release their observer');
+});
+
+test('detach cancels IME with a newer generation and reattachment rechecks the same viewport', () => {
+  const r = imeRenderer();
+  r.window.setImeAnimation(true, 8);
+  r.root.clientHeight = 400; r.observe();
+  r.window.setImeAnimation(false, 9); // renderer-owned cancellation, no matching onEnd required
+  r.frame();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 20 }]);
+  r.window.setImeAnimation(true, 8); // old callback cannot re-arm a detached renderer
+  r.window.setImeAnimation(false, 8); r.frame();
+  r.window.refreshViewport();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 20 }]);
+  r.window.setImeAnimation(true, 10);
+  r.root.clientHeight = 300; r.observe();
+  assert.deepEqual(r.messages, []);
+  r.window.setImeAnimation(false, 10); r.frame();
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 15 }]);
+});
+
+test('composition and textarea stay at the displayed cursor through snapshot parsing and final render', () => {
+  const r = cachedRenderer();
+  const position = () => [r.helpers.style['--dgl-input-left'], r.helpers.style['--dgl-input-top']];
+  r.event('compositionstart');
+  assert.deepEqual(position(), ['30px', '40px']);
+  const cursor = new r.Element(); cursor.className = 'xterm-cursor';
+  cursor.left = 64; cursor.top = 83; cursor.width = 10; cursor.height = 20;
+  r.helpers.left = 4; r.helpers.top = 3;
+  r.screen.appendChild(cursor);
+  r.event('compositionupdate', { data: '한' });
+  assert.deepEqual(position(), ['60px', '80px'], 'use the actual displayed cursor relative to the helpers');
+  r.composition.textContent = '한';
+  r.window.beginSnapshot();
+  assert.equal(r.root.children[0].querySelectorAll('.xterm-helpers, .composition-view, textarea').length, 0);
+  cursor.left = 4; cursor.top = 3;
+  r.terminal.buffer.active.cursorX = 0; r.terminal.buffer.active.cursorY = 0;
+  r.render(); r.event('compositionupdate', { data: '한' });
+  assert.deepEqual(position(), ['60px', '80px'], 'a snapshot reset cursor must not move the live composition');
+  r.window.beginSnapshot(); // a superseding snapshot keeps the same anchor
+  r.window.endSnapshot(30); r.render(); r.frame();
+  assert.deepEqual(position(), ['60px', '80px']);
+  cursor.left = 24; cursor.top = 63;
+  r.frame();
+  assert.deepEqual(position(), ['20px', '60px']);
+  assert.deepEqual(r.messages, [{ type: 'ack', id: 30 }]);
+  assert.equal(r.composition.textContent, '한', 'positioning never edits xterm composition text');
+});
+
+test('composition fallback accounts for viewport history and connection caches contain no input helpers', () => {
+  const r = cachedRenderer();
+  r.terminal.buffer.active.viewportY = 9;
+  r.event('compositionstart');
+  assert.equal(r.helpers.style['--dgl-input-top'], '60px');
+  r.window.setConnectionRecovery(true);
+  assert.equal(r.body.children[0].querySelectorAll('.xterm-helpers, .composition-view, textarea').length, 0);
+  r.window.beginSnapshot(); r.terminal.buffer.active.cursorX = 7;
+  r.window.cancelSnapshot();
+  assert.equal(r.helpers.style['--dgl-input-left'], '70px', 'cancellation releases the position freeze');
 });
 
 test('IME and pinch only submit a final viewport after both gestures have ended', () => {

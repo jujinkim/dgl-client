@@ -33,6 +33,8 @@ npm test --prefix web
 ```
 
 단축키 회귀 검사는 Rust 공통 인코더·UniFFI, Kotlin 저장 호환/조합키 수명, 웹 키·IME 출처/붙여넣기·마우스 비간섭/지연된 대상 검사를 포함합니다.
+크기·폰트 회귀 검사는 실패 후 동일 크기 재시도·최신 크기 병합, 렌더러 소유 IME 세대의 취소·재부착,
+지연된 폰트 측정·숨김 후 표시, 조합 중 스냅샷 교체·커서 좌표와 입력 보조 요소 캐시 제외를 포함합니다.
 
 검증기의 `linux` 모드는 macOS에서도 사용하는 비 Windows·비 SSH JVM 검사 모드입니다.
 외부 SSH/Windows 환경이 필요한 JVM 검사는 예상 skip, Rust 통합/Keychain 검사는 기본 ignore입니다.
@@ -45,6 +47,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo test --locked --w
 ```
 
 데스크톱 변경만 검사할 때는 같은 환경에서 `cargo test --locked -p dgl-desktop`을 실행합니다.
+GPUI 검사는 실제 Ctrl+휠의 확대·축소/원격 전송 차단과 좁은 창·분할 화면의 우측 상단 초기화 FAB 위치·클릭·포커스를 포함합니다.
 호스트·하단 단축키 순서 모델, 설정 상세 화면 왕복·포커스, GPUI 드래그 확정/취소·조합키 1회 소비·세션 탭 재사용 검사를 포함하며 대화형 Keychain 검사는 기본 ignore입니다.
 
 기본은 위 기능·단위 검사이며 전체 Android API 계측과 장시간 자원 측정은 별도 선택입니다.
@@ -144,6 +147,8 @@ ANDROID_SERIAL=emulator-5554 python3 scripts/workspace_android.py
 JVM 기본 검사에는 분할·이동·합치기·선택·최소 공간/최대 그룹·배치 저장·세션 예약·오래된 연결 대상 거부가 포함됩니다.
 `--section workspace`, `--section mobile-input`, `--section compact`로 필요한 구간만 재검사할 수 있습니다.
 전체 Android API matrix로 확대하지 않습니다.
+삼성 키보드 실기 인수는 키보드를 열자마자 한글을 입력해 조합 글자가 커서에 붙어 있는지와 최종 문자열이 정확한지를 확인합니다.
+영문·숫자도 비교하며, 자동 좌표 검사·계측 APK 컴파일을 이 실기 결과로 계산하지 않습니다.
 
 ## 의존성·배포 검사
 

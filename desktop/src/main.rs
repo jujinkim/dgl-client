@@ -316,9 +316,9 @@ impl Desktop {
                     tab.refresh = None;
                     changed = true;
                 }
-                let input = tab
-                    .terminal
-                    .update(cx, |t, cx| t.complete(result.request_id, cx));
+                let input = tab.terminal.update(cx, |t, cx| {
+                    t.complete(result.request_id, result.error.is_none(), cx)
+                });
                 if let Some(e) = result.error
                     && (input
                         || !matches!(

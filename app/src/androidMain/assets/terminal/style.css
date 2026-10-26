@@ -15,6 +15,15 @@ html, body { margin: 0; overflow: hidden; background: #11151b; }
 .boundary.vertical { cursor: col-resize; }
 .boundary.horizontal { cursor: row-resize; }
 .xterm { height: 100%; }
+/* Keep both IME elements at the displayed cursor through snapshot parsing.
+   xterm still owns composition text, visibility and the single finalized delta. */
+.xterm .xterm-helpers .composition-view,
+.xterm .xterm-helpers .xterm-helper-textarea {
+  left: var(--dgl-input-left) !important;
+  top: var(--dgl-input-top) !important;
+  height: var(--dgl-input-height) !important;
+  line-height: var(--dgl-input-height) !important;
+}
 .connection-cache {
   position: fixed; inset: 0; z-index: 10; overflow: hidden;
   background: #11151b; pointer-events: none; user-select: none;

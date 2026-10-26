@@ -9,6 +9,7 @@ pub mod model;
 pub mod protocol;
 pub mod ssh;
 pub mod sync;
+pub mod terminal_font;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, thiserror::Error,

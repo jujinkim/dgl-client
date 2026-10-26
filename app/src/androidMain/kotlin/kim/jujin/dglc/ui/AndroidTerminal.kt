@@ -14,11 +14,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
@@ -122,7 +127,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             override fun onPrepare(animation: android.view.WindowInsetsAnimation) {
                 if (animation.typeMask and AndroidInsets.Type.ime() != 0) {
                     imeAnimation = animation
-                    terminal.imeAnimation(true, ++imeVersion)
+                    imeVersion = terminal.beginImeAnimation()
                 }
             }
             override fun onProgress(insets: AndroidInsets, animations: MutableList<android.view.WindowInsetsAnimation>): AndroidInsets {
@@ -133,20 +138,20 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                     updateIme()
                     if (observing && imeAnimation === animation) {
                         imeAnimation = null
-                        terminal.imeAnimation(false, imeVersion)
+                        terminal.endImeAnimation(imeVersion)
                     }
                 }
             }
         })
+        terminal.refreshViewport()
         terminal.view.post { updateIme() }
         focus.request = { terminal.focus { entry.visible && entry.focus.inputAllowed() } }
         focus.keyboard = { terminal.keyboard(terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) != true, focus.inputAllowed) }
         focus.preparePaste = terminal::preparePaste
         focus.shortcut = terminal::shortcut
-        focus.fontSizeOverride = terminal.fontSizeOverride
-        focus.resetFontSize = terminal::resetFontSize
         onDispose {
             terminal.finishFontGesture()
+            terminal.cancelImeAnimation()
             entry.restoreIme = entry.focus.inputAllowed() && focus.imeVisible
             observing = false
             if (treeObserver.isAlive) treeObserver.removeOnPreDrawListener(observer)
@@ -156,7 +161,6 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             terminal.view.onFocusChangeListener = null
             focus.request = {}; focus.keyboard = {}; focus.shortcut = {}; focus.imeVisible = false
             focus.preparePaste = { _, _ -> error(t("터미널이 닫혔습니다.")) }
-            focus.fontSizeOverride = null; focus.resetFontSize = {}
         }
     }
     DisposableEffect(terminal) {
@@ -175,11 +179,22 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     }
     LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
+    val fontOverride by terminal.fontSizeOverride.collectAsState()
     Box(modifier) {
         key(terminal) { AndroidView(factory = {
             (terminal.view.parent as? android.view.ViewGroup)?.removeView(terminal.view)
             terminal.view
         }, modifier = Modifier.fillMaxSize()) }
+        fontOverride?.let { size ->
+            SmallFloatingActionButton(onClick = {
+                terminal.resetFontSize(resources?.model?.local?.value?.preferences?.fontSize ?: preferences.fontSize)
+            },
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                    .focusProperties { canFocus = false }.semantics {
+                        contentDescription = t("세션 글자 크기 초기화")
+                        stateDescription = tr("현재 글자 크기: {0}", size)
+                    }, shape = androidx.compose.foundation.shape.CircleShape) { Text("↺") }
+        }
         status.recoveryMessage?.let { message ->
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .45f)), contentAlignment = Alignment.Center) {
                 Text(message, color = Color.White, modifier = Modifier.padding(24.dp))
@@ -230,6 +245,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private var serial = 0L
     private var awaiting: Pair<Long, CompletableDeferred<Unit>>? = null
     private var closed = false
+    private val imeAnimation = TerminalImeAnimation()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     init {
         font.configure(preferences.fontSize)
@@ -363,8 +379,9 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         view.parent?.requestDisallowInterceptTouchEvent(false)
         if (!closed && ready.isCompleted) view.evaluateJavascript("window.setFontGesture(false)", null)
     }
-    fun resetFontSize() {
+    fun resetFontSize(default: Int) {
         if (closed) return
+        font.configure(default)
         font.reset()
         applyConfiguration()
     }
@@ -386,10 +403,22 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         withTimeout(15_000) { ready.await() }
         withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setSmoothTransitions($enabled)", null) }
     }
-    fun imeAnimation(active: Boolean, version: Long) {
+    fun beginImeAnimation(): Long = imeAnimation.begin().also { dispatchImeAnimation(true, it) }
+    fun endImeAnimation(version: Long) {
+        if (imeAnimation.end(version)) dispatchImeAnimation(false, version)
+    }
+    fun cancelImeAnimation() { dispatchImeAnimation(false, imeAnimation.cancel()) }
+    fun refreshViewport() {
+        cancelImeAnimation()
+        view.post { scope.launch {
+            withTimeoutOrNull(15_000) { ready.await() } ?: return@launch
+            if (!closed) view.evaluateJavascript("window.refreshViewport()", null)
+        } }
+    }
+    private fun dispatchImeAnimation(active: Boolean, version: Long) {
         scope.launch {
             withTimeoutOrNull(15_000) { ready.await() } ?: return@launch
-            if (!closed) view.evaluateJavascript("window.setImeAnimation($active,$version)", null)
+            if (!closed && version == imeAnimation.version) view.evaluateJavascript("window.setImeAnimation($active,$version)", null)
         }
     }
     override suspend fun beginSnapshot() {

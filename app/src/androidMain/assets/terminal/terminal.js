@@ -6,7 +6,12 @@
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 14, scrollback = 5000, enabled = true, smooth = false;
   let fontGesture = false;
+  let geometryObserver = null;
   const send = message => window.dgl.postMessage(JSON.stringify(message));
+  const stripInputHelpers = element => {
+    for (const helper of element.querySelectorAll('.xterm-helpers, .composition-view, textarea')) helper.remove();
+    return element;
+  };
   // One rendered window, independent of pane snapshot timers and changing layouts.
   // Compose draws the 45% black dim and status above this frozen viewport.
   let recoveryScreen = null;
@@ -16,7 +21,7 @@
       return;
     }
     if (recoveryScreen) return;
-    const previous = canvas.cloneNode(true);
+    const previous = stripInputHelpers(canvas.cloneNode(true));
     previous.removeAttribute('id');
     for (const element of previous.querySelectorAll('[id]')) {
       if (element.id === 'shell') element.classList.add('recovery-shell');
@@ -62,6 +67,34 @@
   let smoothTransitions = false;
   let cachedSize = null;
   let animations = [];
+  let snapshotUpdating = false;
+  // Use the rendered cursor, with public buffer coordinates as the fallback.
+  // CSS variables take precedence over xterm's deferred composition positioning.
+  const syncInputPosition = () => {
+    if (snapshotUpdating) return;
+    const screen = term.element?.querySelector('.xterm-screen');
+    const helpers = term.element?.querySelector('.xterm-helpers');
+    const buffer = term.buffer?.active;
+    if (!screen || !helpers?.style?.setProperty || !buffer || !Number.isInteger(buffer.cursorY) || !term.cols || !term.rows) return;
+    const bounds = screen.getBoundingClientRect(), origin = helpers.getBoundingClientRect();
+    if (!(bounds.width > 0 && bounds.height > 0)) return;
+    const width = bounds.width / term.cols, height = bounds.height / term.rows;
+    const row = buffer.baseY + buffer.cursorY - buffer.viewportY;
+    if (row < 0 || row >= term.rows) return;
+    const cursor = screen.querySelector?.('.xterm-cursor')?.getBoundingClientRect();
+    const left = cursor?.width > 0 ? cursor.left : bounds.left + Math.min(buffer.cursorX, term.cols - 1) * width;
+    const top = cursor?.height > 0 ? cursor.top : bounds.top + row * height;
+    helpers.style.setProperty('--dgl-input-left', `${left - origin.left}px`);
+    helpers.style.setProperty('--dgl-input-top', `${top - origin.top}px`);
+    helpers.style.setProperty('--dgl-input-height', `${height}px`);
+  };
+  api.syncInputPosition = syncInputPosition;
+  term.onRender?.(() => { syncInputPosition(); resize(); });
+  host.addEventListener('compositionstart', syncInputPosition, true);
+  host.addEventListener('compositionupdate', syncInputPosition);
+  host.addEventListener('focusin', syncInputPosition);
+  const screen = term.element?.querySelector('.xterm-screen');
+  if (screen) geometryObserver?.observe(screen);
   const stopAnimations = () => { animations.forEach(animation => animation.cancel()); animations = []; };
   api.setSmoothTransitions = enabled => {
     smoothTransitions = enabled === true;
@@ -75,11 +108,15 @@
     cachedScreen?.remove(); cachedScreen = null;
     cachedSize = null;
     reconnectSnapshot = false;
+    snapshotUpdating = false;
+    syncInputPosition();
     if (renderAck !== null) post({ type: 'ack', id: renderAck });
     renderAck = null;
   };
   api.cancelSnapshot = clearCache;
   api.beginSnapshot = () => {
+    syncInputPosition();
+    snapshotUpdating = true;
     const buffer = term.buffer?.active;
     if (buffer && buffer.viewportY < buffer.baseY) savedScroll = buffer.viewportY;
     const version = ++cacheVersion;
@@ -91,12 +128,12 @@
     renderListener?.dispose(); renderListener = null;
     if (!cachedScreen) {
       const screen = term.element?.querySelector('.xterm-screen');
-      if (!screen) return;
+      if (!screen) { snapshotUpdating = false; return; }
       cachedSize = screen.getBoundingClientRect();
       cachedScreen = document.createElement('div');
       cachedScreen.className = 'terminal-cache';
       cachedScreen.setAttribute('aria-hidden', 'true');
-      cachedScreen.appendChild(screen.cloneNode(true));
+      cachedScreen.appendChild(stripInputHelpers(screen.cloneNode(true)));
       term.element.appendChild(cachedScreen);
     }
     cachedScreen.classList.remove('is-releasing');
@@ -113,7 +150,7 @@
   api.endSnapshot = id => {
     if (savedScroll !== null) { term.scrollToLine(savedScroll); savedScroll = null; }
     if (!Number.isSafeInteger(id) || id <= 0) return;
-    if (!cachedScreen) { post({ type: 'ack', id }); return; }
+    if (!cachedScreen) { snapshotUpdating = false; syncInputPosition(); post({ type: 'ack', id }); return; }
     const version = cacheVersion;
     renderAck = id;
     renderListener?.dispose();
@@ -123,6 +160,8 @@
       // and a paint opportunity before exposing the replacement screen.
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (cacheVersion !== version || !cachedScreen) return;
+        snapshotUpdating = false;
+        syncInputPosition();
         const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
         // Resize, pane changes and ordinary snapshots swap atomically without motion.
         if (!reconnectSnapshot || reducedMotion) { clearCache(); return; }
@@ -331,7 +370,8 @@
       }
       imeVersion = version; imeAnimating = true; imeAnchoring = true;
       alignViewport();
-    } else if (version === imeVersion) {
+    } else {
+      imeVersion = version;
       // Wait for Compose's final layout. A replacement/cancelled animation owns a newer version.
       requestAnimationFrame(() => {
         if (version !== imeVersion) return;
@@ -342,11 +382,12 @@
       });
     }
   };
+  window.refreshViewport = () => { lastViewport = ''; resize(); };
   function resize() {
-    const shell = panes.get('shell');
-    const rect = shell.term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
-    if (!rect?.width || !rect?.height || !shell.term.cols || !shell.term.rows || root.clientWidth <= 0 || root.clientHeight <= 0) return;
-    const measured = { width: rect.width / shell.term.cols, height: rect.height / shell.term.rows };
+    const term = focused().term;
+    const rect = term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height || !term.cols || !term.rows || root.clientWidth <= 0 || root.clientHeight <= 0) return;
+    const measured = { width: rect.width / term.cols, height: rect.height / term.rows };
     const changed = measured.width !== cell.width || measured.height !== cell.height;
     cell = measured;
     const columns = Math.max(2, Math.min(500, Math.floor(root.clientWidth / cell.width)));
@@ -366,12 +407,13 @@
     fontSize = font; scrollback = history;
     for (const p of panes.values()) p.configure(font, history);
     resize();
+    // Font metrics can settle after the options setter returns, including while
+    // the measurement shell is hidden. Screen ResizeObservers catch later changes.
+    requestAnimationFrame(resize);
   };
   function arrange() {
     if (draggingBoundary) return;
     const shell = panes.get('shell');
-    const rect = shell.term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
-    if (rect?.width > 0 && rect?.height > 0) cell = { width: rect.width / shell.term.cols, height: rect.height / shell.term.rows };
     sizeCanvas();
     if (!layout) return;
     const tmux = layout.window !== null;
@@ -416,6 +458,8 @@
     layout = value; active = value.active || 'shell'; inputTarget = value.inputTarget;
     for (const p of value.panes) if (p.visible) ensure(p.id);
     for (const [id, p] of panes) if (id !== 'shell' && !value.panes.some(s => s.id === id)) {
+      const screen = p.term.element?.querySelector('.xterm-screen');
+      if (screen) geometryObserver?.unobserve(screen);
       p.cancelSnapshot(); p.term.dispose(); p.host.remove(); panes.delete(id);
     }
     arrange();
@@ -426,7 +470,14 @@
   root.addEventListener('click', event => {
     if (enabled && !fontGesture && !event.target.closest('.pane, .boundary')) focused().focusTerminal();
   });
-  panes.get('shell').term.onRender?.(resize);
-  new ResizeObserver(resize).observe(root);
+  geometryObserver = new ResizeObserver(() => {
+    resize();
+    for (const p of panes.values()) p.syncInputPosition();
+  });
+  geometryObserver.observe(root);
+  for (const p of panes.values()) {
+    const screen = p.term.element?.querySelector('.xterm-screen');
+    if (screen) geometryObserver.observe(screen);
+  }
   send({ type: 'ready' });
 })();

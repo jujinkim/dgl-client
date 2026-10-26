@@ -67,8 +67,6 @@ internal class TerminalFocus {
     var request: () -> Unit = {}
     var keyboard: () -> Unit = {}
     var imeVisible by mutableStateOf(false)
-    var fontSizeOverride by mutableStateOf<kotlinx.coroutines.flow.StateFlow<Int?>?>(null)
-    var resetFontSize: () -> Unit = {}
     var preparePaste: suspend (String, Boolean) -> ByteArray = { _, _ -> error(t("터미널이 아직 준비되지 않았습니다.")) }
     var inputAllowed: () -> Boolean = { true }
 }
@@ -99,7 +97,6 @@ private object AboveLauncher : PopupPositionProvider {
     val dismiss = { request = null; inputGate?.blockInput(menuOwner, false); terminalFocus.request() }
     val buttonHeight = if (mobile && !workspace) 40.dp else 48.dp
     val imeVisible = terminalFocus.imeVisible
-    val fontSizeOverride = terminalFocus.fontSizeOverride?.collectAsState()?.value
     val viewConfiguration = LocalViewConfiguration.current
     val compactConfiguration = remember(viewConfiguration) { object : ViewConfiguration by viewConfiguration {
         override val minimumTouchTargetSize = DpSize(40.dp, 40.dp)
@@ -137,15 +134,6 @@ private object AboveLauncher : PopupPositionProvider {
                         contentPadding = PaddingValues(horizontal = if (mobile) 8.dp else 10.dp)) {
                         Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
                     }
-                }
-            }
-            if (mobile) fontSizeOverride?.let { size ->
-                TerminalToolButton({ terminalFocus.resetFontSize() },
-                    modifier = Modifier.height(buttonHeight).semantics {
-                        contentDescription = t("세션 글자 크기 초기화")
-                        stateDescription = tr("현재 글자 크기: {0}", size)
-                    }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text(tr("글자 {0} ↺", size), fontSize = 11.sp, maxLines = 1)
                 }
             }
             Box {

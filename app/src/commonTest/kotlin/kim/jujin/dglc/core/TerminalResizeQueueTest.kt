@@ -69,6 +69,23 @@ class TerminalResizeQueueTest {
         assertNull(queue.next(1000))
     }
 
+    @Test fun failedIntermediateSizeInvalidatesPreviouslyAppliedGeometry() {
+        val queue = TerminalResizeQueue()
+        val original = queue.size
+        queue.submitted(1u, queue.next(0)!!); queue.complete(1u)
+        queue.resize(Size(90, 20), 10)
+        queue.submitted(2u, queue.next(160)!!)
+        queue.resize(original, 170)
+        queue.complete(2u, succeeded = false)
+        assertNull(queue.next(319))
+        assertEquals(original, queue.next(320), "failure may have partially changed the remote grid")
+        queue.submitted(3u, original)
+        queue.complete(2u)
+        assertNull(queue.next(500))
+        queue.complete(3u)
+        assertNull(queue.next(500))
+    }
+
     @Test fun newConnectionImmediatelyUsesTheLatestViewport() {
         val queue = TerminalResizeQueue()
         queue.submitted(1u, queue.next(0)!!)

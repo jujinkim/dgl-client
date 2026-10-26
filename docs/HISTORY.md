@@ -163,6 +163,13 @@ API36 작업 공간/입력/볼륨키/계층 선택 8개와 실제 Rust 연결 �
 터미널 크기 변경은 애니메이션 없이 교체하고 재접속 복구에서만 기본 fade·선택형 blur/크기 효과를 적용했습니다.
 당시 웹 18개와 Android Debug 빌드로 확인했으며 계측·실제 SSH 재접속·네이티브 GUI는 재검사하지 않았습니다.
 
+## 2026-10-26: 설정 상세·공통 조합키 입력
+
+설정 상세 화면과 하단 Ctrl·Shift·Alt 토글, 공통 Rust 키 인코더를 추가했습니다.
+당시 core·UniFFI 34·데스크톱 62·JVM 74·웹 21·Python 98개와 Android Debug/lint를 통과했습니다.
+JVM 예상 skip 9·Rust SSH ignore 6·Keychain ignore 1은 실기 통과로 계산하지 않았습니다.
+macOS ARM64 Debug 패키징·ad-hoc 서명을 확인했으며 연결된 Android 기기와 macOS GUI 인수는 없었습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.
