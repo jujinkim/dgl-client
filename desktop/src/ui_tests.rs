@@ -1820,19 +1820,19 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
         redraw(cx);
         let menu = cx.debug_bounds("cli-launcher-menu").unwrap();
         assert!(menu.bottom() <= trigger.top());
-        assert_eq!(menu.size.width, px(300.));
-        assert!(cx.debug_bounds("launch-Claude Code-test").is_none());
-        assert!(cx.debug_bounds("launch-Codex-test").is_none());
-        for (badge, normal) in [
-            ("launch-AGY-test", "launch-AGY-normal"),
-            ("launch-Grok Build-test", "launch-Grok Build-normal"),
+        for badge in [
+            "launch-Claude Code-test",
+            "launch-Codex-test",
+            "launch-AGY-test",
+            "launch-Grok Build-test",
         ] {
-            let badge = cx.debug_bounds(badge).unwrap();
-            let normal = cx.debug_bounds(normal).unwrap();
-            assert!(badge.left() > normal.left());
-            assert!(badge.right() <= normal.right());
-            assert!(badge.size.height < px(20.));
+            assert!(cx.debug_bounds(badge).is_none());
         }
+        let longest = cx.debug_bounds("launch-Claude Code-bypass").unwrap();
+        let shortest = cx.debug_bounds("launch-AGY-bypass").unwrap();
+        assert!(shortest.left() < longest.left());
+        assert!((menu.right() - longest.right() - px(1.)).abs() <= px(1.));
+        assert!(menu.size.width < px(300.));
         for (normal, bypass) in [
             ("launch-Claude Code-normal", "launch-Claude Code-bypass"),
             ("launch-Codex-normal", "launch-Codex-bypass"),
@@ -1841,9 +1841,11 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
         ] {
             let normal = cx.debug_bounds(normal).unwrap();
             let bypass = cx.debug_bounds(bypass).unwrap();
-            assert!(
-                (f32::from(normal.size.width) / f32::from(bypass.size.width) - 1.5).abs() < 0.02
-            );
+            assert_eq!(bypass.size.width, px(44.));
+            assert_eq!(normal.right(), bypass.left());
+            assert_eq!(normal.top(), bypass.top());
+            assert!(normal.size.width >= px(44.) && normal.size.height >= px(44.));
+            assert!(menu.contains(&normal.center()) && menu.contains(&bypass.center()));
             cx.simulate_click(normal.center(), Modifiers::default());
             cx.simulate_click(bypass.center(), Modifiers::default());
             assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));

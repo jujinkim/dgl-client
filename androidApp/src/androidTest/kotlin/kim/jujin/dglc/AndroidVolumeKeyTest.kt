@@ -263,7 +263,9 @@ class AndroidVolumeKeyTest {
                     assertNull(withTimeoutOrNull(150) { secondWire.writes.receive() })
                 }
                 val actions = listOf("Claude Code 실행" to "claude\r", "Claude Code Bypass 실행" to "claude --dangerously-skip-permissions\r",
-                    "Codex 실행" to "codex\r", "Codex Bypass 실행" to "codex --yolo\r")
+                    "Codex 실행" to "codex\r", "Codex Bypass 실행" to "codex --yolo\r",
+                    "AGY 실행 · 실험 지원" to "agy\r", "AGY Bypass 실행 · 실험 지원" to "agy --dangerously-skip-permissions\r",
+                    "Grok Build 실행 · 실험 지원" to "grok\r", "Grok Build Bypass 실행 · 실험 지원" to "grok --always-approve\r")
                 for (theme in listOf("light", "dark")) {
                     scenario.onMainActivity { app.update(app.local.value.copy(preferences = Preferences(language = "ko", theme = theme))) }
                     for ((label, command) in actions) {
@@ -272,7 +274,17 @@ class AndroidVolumeKeyTest {
                         click("CLI 실행 메뉴")
                         val normal = android.graphics.Rect().also { waitForText("Claude Code 실행").getBoundsInScreen(it) }
                         val bypass = android.graphics.Rect().also { waitForText("Claude Code Bypass 실행").getBoundsInScreen(it) }
-                        assertEquals(1.5, normal.width().toDouble() / bypass.width(), 0.03)
+                        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+                        assertEquals(48.0, bypass.width() / density.toDouble(), 1.0)
+                        assertEquals(normal.right, bypass.left)
+                        assertEquals(normal.top, bypass.top)
+                        val agy = android.graphics.Rect().also { waitForText("AGY 실행 · 실험 지원").getBoundsInScreen(it) }
+                        val agyBypass = android.graphics.Rect().also { waitForText("AGY Bypass 실행 · 실험 지원").getBoundsInScreen(it) }
+                        assertEquals(agy.right, agyBypass.left)
+                        assertEquals(bypass.width(), agyBypass.width())
+                        assertTrue("Bolt follows each service name", agyBypass.left < bypass.left)
+                        assertTrue("Touch target retained", agy.width() >= (48 * density - 1).toInt())
+                        assertNull(find(automation.rootInActiveWindow) { it.text?.toString() in listOf("Bypass", "test") })
                         assertTrue("Menu opens upwards", normal.bottom <= trigger.top)
                         if (label == actions.first().first) {
                             automation.takeScreenshot()?.let { bitmap ->

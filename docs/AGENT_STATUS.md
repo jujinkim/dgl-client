@@ -12,17 +12,19 @@ CLI 설치·로그인은 원격 환경에서 준비하며 DGL은 기존 프로�
 |---|---|---|
 | Claude Code | `claude` | `claude --dangerously-skip-permissions` |
 | Codex | `codex` | `codex --yolo` |
-| AGY `test` | `agy` | `agy --dangerously-skip-permissions` |
-| Grok Build `test` | `grok` | `grok --always-approve` |
+| AGY | `agy` | `agy --dangerously-skip-permissions` |
+| Grok Build | `grok` | `grok --always-approve` |
 
 입력 불가 상태에서는 실행하지 않습니다. 메뉴를 연 뒤 연결·탭·pane이 바뀌면 닫으며 실패한 입력을 재전송하지 않습니다.
-Bypass는 각 CLI의 권한 확인을 건너뛰는 옵션이며 `test`는 실험 지원을 뜻합니다.
+서비스명은 일반 실행, 바로 뒤의 번개 아이콘은 Bypass 실행입니다. Bypass는 각 CLI의 권한 확인을 건너뛰는 옵션입니다.
+메뉴는 가장 긴 행에 맞는 폭으로 표시하고 외곽 테두리만 유지합니다.
+AGY·Grok Build의 실행 메뉴 배지는 제거했으며, 에이전트 관측의 실험 지원·실제 CLI 훅 수신 미검증 상태는 유지합니다.
 
 ## 사용 방법
 
 1. 호스트에 연결한 뒤 호스트 메뉴의 **에이전트 상태 연동**을 연다. 창 행 오른쪽 상태 버튼은 그 창의 모든 pane 관측 상세를 연다.
 2. **설치 전 검사 · 변경 내용 보기**에서 Python, tmux, CLI 버전, 수정할 파일과 추가 훅을 확인한다.
-3. **연동 설치**를 누른다. 현재 버전 검증 대상은 Codex **0.163.0 / 0.164.0**, Claude Code **2.1.310**이다. 이 두 CLI의 다른 버전은 설치에서 제외한다. AGY·Grok Build는 설치된 CLI에 실험 지원으로 설치를 허용하며 실행 메뉴의 작은 `test` 배지를 유지한다. 미설치·설정 오류는 CLI별로 표시하며 다른 정상 CLI의 설치를 막지 않는다.
+3. **연동 설치**를 누른다. 현재 버전 검증 대상은 Codex **0.163.0 / 0.164.0**, Claude Code **2.1.310**이다. 이 두 CLI의 다른 버전은 설치에서 제외한다. AGY·Grok Build는 설치된 CLI에 실험 지원으로 설치를 허용한다. 미설치·설정 오류는 CLI별로 표시하며 다른 정상 CLI의 설치를 막지 않는다.
 4. Codex에서는 `/hooks`에서 추가된 도우미 명령을 직접 검토·신뢰한다. 앱은 훅 신뢰를 우회하거나 CLI를 재시작하지 않는다.
 5. **설치됨 / 활성화 확인 필요**와 **수신 확인 사건**을 구분한다. 후자는 해당 실행에서 실제 받은 사건 종류만 표시한다. 데스크톱에서는 관측 항목에 마우스를 올려 수신 확인 사건과 진단 ID를 확인한다. 새 실행 또는 다음 실제 훅 수신 전에는 기존 실행의 상태를 복원하지 않는다.
 6. 앱 설정에서 종류별 알림과 **OS 알림**을 설정한다. 종류별 알림은 기본 켜짐, OS 알림은 기본 꺼짐이다.
@@ -102,7 +104,7 @@ Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다
 |---|---|
 | Python 도우미 10개 검사 | 기존 5개 회귀와 공식 형식 24개 fixture, 중립 출력·실패 출력, AGY/Grok 설정·사용자 훅 보존, 반복 설치/해제, CLI별 오류 격리, 버전·호환 훅 오인·대화/자식 분리·중복·본문 미저장 통과 |
 | Rust·UniFFI | 관측 3개 검사: 기존 2개 및 네 서비스 wire ID·질문/승인/응답/오류의 공통 알림 경로. 전체 Rust 코어·UniFFI 회귀 통과 |
-| GPUI·Kotlin 실행/이동 | GPUI 29개 검사와 Kotlin 전체 JVM 회귀 통과. 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단, 메뉴 폭·60:40 비율·새 서비스만 작은 test 배지·닫힘·포커스 복귀, 종료 알림 대상 이동 거부 확인 |
+| GPUI·Kotlin 실행/이동 | 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단·닫힘·포커스 복귀·종료 알림 대상 이동 거부를 회귀 검사한다. 현재 메뉴 배치 검사의 결과는 [VALIDATION.md](VALIDATION.md)를 따른다 |
 | 격리 SSH/tmux 3.3a·3.7c | 네 합성 CLI 각각 숨겨진 창, 출력 미구독 수집, 최초 DB 동기화, 새 사건, 패널 이동, 재연결 재알림 방지, 같은 패널의 프로세스 재시작·종료 확인. 생산자는 C로 만든 합성 CLI이며 실제 CLI 검사는 아래와 별개 |
 | 실제 Codex 0.163.0 | 임시 HOME·독립 tmux에서 정상 신뢰 UI로 훅을 검토하고 SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SubagentStart/Stop 수신 확인 |
 | 실제 Claude Code 2.1.310 | 같은 격리 방식으로 SessionStart, UserPromptSubmit, 도구 전후, AskUserQuestion, PermissionRequest, PostToolUseFailure, Stop, SubagentStart/Stop, SessionEnd 수신 확인 |

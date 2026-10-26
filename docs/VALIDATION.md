@@ -6,22 +6,21 @@
 
 ## 현재 변경 검사 (2026-10-27)
 
-데스크톱 알림을 버튼 위의 패널로 분리하고, 반복 설명·진단 ID를 네이티브 툴팁으로 옮겼습니다.
-기존 포커스 링·입력 차단·읽음·종료된 대상 검증을 유지합니다.
+데스크톱·Android CLI 실행 메뉴에서 AGY·Grok Build의 `test` 배지와 내부 구분선을 제거했습니다.
+서비스명 바로 뒤에 번개 아이콘만 표시하고 가장 긴 행의 내용에 맞춰 메뉴 폭을 정합니다.
+일반/Bypass 실행 명령·대상 세대 검사·비활성 처리·닫힘과 포커스 복귀를 유지합니다.
 이전 변경의 검사 이력은 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust 데스크톱 | `cargo test --locked -p dgl-desktop`: 68 통과·대화형 Keychain 1 ignore. 패널 위치·리사이즈·320px 창·빈/100건 목록·스크롤·닫기·포커스·입력 차단·종료된 알림 대상과 기존 UI 회귀 검사 포함 |
-| 툴팁 영역 | GPUI 영역 클리핑·스크롤·크기 변경·가림·제거·창 종료 해제와 한국어/영어 문자열 검사 통과. 기존 `.tooltip` 호출 제거, 드래그 미리보기 유지 |
-| AppKit 브리지 | 네이티브 NSView 영역 등록·UTF-8 소유자 콜백·문구/영역 갱신·해제·정리 호출 검사 통과. 실제 표시·OS 지연을 확인한 결과는 아님 |
-| Windows 어댑터 | 정확히 같은 Win32 어댑터를 별도 최소 crate에서 `x86_64-pc-windows-gnu` 대상으로 타입 검사 통과. MSVC 전체 빌드·GUI 검사는 사용자 담당이며 미수행 |
-| macOS 패키징 | `artifacts/rust-candidate/mac/DaGaLi.app` 빌드·로컬 ad-hoc 서명·strict 검증 통과. computer-use는 `cgWindowNotFound`로 창을 찾지 못해 대표 툴팁 표시 확인은 미완료 |
-| 정적 검사 | 번역 목록·생성 Kotlin 일치·번호 자리표시자, 데스크톱 Rust 서식·diff 공백·문서 로컬 링크·대시보드 스키마 검사 통과 |
+| Rust 데스크톱 | `cargo test --locked -p dgl-desktop`: 68 통과·대화형 Keychain 1 ignore. 명령 8종·단일 전송·대상 변경 차단과 밝은/어두운 테마의 내용 기준 폭·서비스명 직후 번개·44px 클릭 영역·배지 없음·비활성·닫힘·포커스 복귀 포함 |
+| Kotlin/JVM | `:app:desktopTest`: 78 통과·환경상 예상 skip 9. 명령 8종·단일 전송·연결/pane/입력 세대 변경·복구/모달 차단과 기존 회귀 검사. `verify_test_results.py --mode linux`로 명시적 이름 목록과 대조 |
+| Android 빌드 | JDK 17·SDK 36 환경의 `assembleDebug`·`assembleDebugAndroidTest`·`lintDebug` 통과. lint 오류 0·기존 검토 진단 12개 일치. 메뉴 계측 검사는 8종 명령·48dp 번개 영역·서비스명 직후 배치·배지/Bypass 텍스트 없음으로 갱신했으며 실행하지 않음 |
+| 원본 APK | `collect_rust_android.py`: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`의 ID `kim.jujin.dglc`, 버전 `0.1.0`/`1`, min/target SDK 34/36, 네 ABI·Rust payload·v2 서명 검증 통과. 복사본 없이 원본 경로와 해시를 `artifacts/rust-candidate/android/build.json`에 기록 |
+| 정적 검사 | 번역 목록·생성 Kotlin·번호 자리표시자, 데스크톱 Rust 서식·diff 공백·문서 로컬 링크·대시보드 스키마·원문/Wrapper 무결성 검사 통과 |
 
-Kotlin/JVM·Android 빌드·계측·실제 SSH 연결·장시간 반복 검사는 이번 UI 변경에서 재실행하지 않았습니다.
-전체 Rust 서식 검사는 기존 `password_shell.rs` 차이를 유지하고 데스크톱 패키지에만 적용했습니다.
-예상 skip·ignore와 Windows 타입 검사를 네이티브 실기 통과로 계산하지 않습니다.
+Android 계측 실행·실제 SSH/CLI 수신·macOS GUI/패키징·Windows 네이티브·장시간 반복 검사는 이번 변경에서 수행하지 않았습니다.
+Rust 서식 검사는 데스크톱 패키지에 적용했습니다. 예상 skip·ignore와 계측 APK 컴파일은 실기 통과로 계산하지 않습니다.
 
 ## 남은 한계
 

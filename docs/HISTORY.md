@@ -217,6 +217,14 @@ Android Debug·계측 Kotlin 컴파일·lint(오류 0·기존 진단 12), 원본
 Mac ad-hoc 패키징·strict 서명·문서 링크·번역·아이콘·대시보드 검사를 확인했습니다.
 실제 Android 화면·macOS GUI/IME·Keychain·Windows 네이티브 검사는 수행하지 않았습니다.
 
+## 2026-10-27: 알림 패널·네이티브 툴팁
+
+알림을 버튼 위 패널로 분리하고 반복 설명·진단 ID를 네이티브 툴팁으로 옮겼습니다.
+당시 Rust 데스크톱 68 통과·대화형 Keychain 1 ignore, GPUI 패널·툴팁 영역과 AppKit 브리지 검사를 확인했습니다.
+Windows 툴팁 어댑터의 GNU 대상 독립 타입 검사와 Mac ad-hoc 패키징·strict 서명, 정적 검사도 통과했습니다.
+computer-use는 `cgWindowNotFound`로 대표 툴팁을 관찰하지 못했으며 실제 OS 표시·Windows MSVC/GUI는 미검증입니다.
+Kotlin/JVM·Android 빌드·계측·실제 SSH·장시간 검사는 재실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

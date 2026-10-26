@@ -190,7 +190,9 @@ impl Desktop {
             .absolute()
             .right(px(4.))
             .bottom(px(66.))
-            .w(px(300.))
+            .flex()
+            .flex_col()
+            .items_start()
             .bg(rgb(p.panel))
             .border_1()
             .border_color(rgb(p.line))
@@ -222,10 +224,10 @@ impl Desktop {
                 LaunchCommand::GrokBypass,
             ),
         ] {
-            let mut row = div().flex().w_full().h(px(44.));
-            for (label, icon, fraction, command, suffix) in [
-                (service, icon, 0.6, normal, "normal"),
-                ("Bypass", "launcher/bolt.svg", 0.4, bypass, "bypass"),
+            let mut row = div().flex().h(px(44.));
+            for (label, icon, command, suffix) in [
+                (Some(service), icon, normal, "normal"),
+                (None, "launcher/bolt.svg", bypass, "bypass"),
             ] {
                 let id = format!("launch-{service}-{suffix}");
                 let experimental = matches!(normal, LaunchCommand::Agy | LaunchCommand::Grok);
@@ -234,16 +236,13 @@ impl Desktop {
                     .debug_selector(move || id.clone())
                     .flex()
                     .items_center()
+                    .justify_center()
                     .gap_2()
                     .px_3()
                     .h_full()
-                    .flex_basis(relative(fraction))
                     .flex_shrink_0()
-                    .min_w_0()
+                    .min_w(px(44.))
                     .text_color(rgb(if enabled { p.fg } else { p.muted }))
-                    .when(suffix == "bypass", |d| {
-                        d.border_l_1().border_color(rgb(p.line))
-                    })
                     .when(enabled, |d| {
                         d.cursor_pointer().hover(move |s| s.bg(rgb(p.selection)))
                     })
@@ -254,21 +253,7 @@ impl Desktop {
                             p.muted
                         })),
                     ))
-                    .child(label)
-                    .when(experimental && suffix == "normal", |d| {
-                        d.child(
-                            div()
-                                .id(ElementId::Name(format!("launch-{service}-test").into()))
-                                .debug_selector(move || format!("launch-{service}-test"))
-                                .text_size(px(9.))
-                                .line_height(px(12.))
-                                .px_1()
-                                .border_1()
-                                .border_color(rgb(p.muted))
-                                .rounded_sm()
-                                .child("test"),
-                        )
-                    })
+                    .children(label)
                     .native_tooltip(tr!(
                         "{0} {1} 실행{2}",
                         service,

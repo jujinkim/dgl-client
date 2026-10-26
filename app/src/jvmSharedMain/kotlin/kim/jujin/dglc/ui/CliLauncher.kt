@@ -146,7 +146,7 @@ private object AboveLauncher : PopupPositionProvider {
                     val menuFocus = remember { FocusRequester() }
                     LaunchedEffect(Unit) { menuFocus.requestFocus() }
                     Surface(shadowElevation = 8.dp, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                        Column(Modifier.width(300.dp).onPreviewKeyEvent {
+                        Column(Modifier.width(IntrinsicSize.Max).onPreviewKeyEvent {
                             if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { dismiss(); true } else false
                         }.focusRequester(menuFocus).focusable()) {
                             val launch: (CliCommand) -> Unit = { command ->
@@ -197,20 +197,18 @@ private object AboveLauncher : PopupPositionProvider {
 
 @Composable private fun LauncherRow(service: String, icon: ImageVector, enabled: Boolean, normal: () -> Unit, bypass: () -> Unit, experimental: Boolean = false) {
     val support = if (experimental) t(" · 실험 지원") else ""
-    Row(Modifier.fillMaxWidth().height(48.dp)) {
-        LauncherItem(service, tr("{0} 실행{1}", service, support), icon, enabled, Modifier.weight(0.6f), normal, experimental)
-        LauncherItem("Bypass", tr("{0} Bypass 실행{1}", service, support), LauncherIcons.bolt, enabled, Modifier.weight(0.4f), bypass)
+    Row(Modifier.height(48.dp)) {
+        LauncherItem(service, tr("{0} 실행{1}", service, support), icon, enabled, Modifier.widthIn(min = 48.dp), normal)
+        LauncherItem(null, tr("{0} Bypass 실행{1}", service, support), LauncherIcons.bolt, enabled, Modifier.width(48.dp), bypass)
     }
 }
 
-@Composable private fun LauncherItem(label: String, description: String, icon: ImageVector, enabled: Boolean, modifier: Modifier, action: () -> Unit, experimental: Boolean = false) {
+@Composable private fun LauncherItem(label: String?, description: String, icon: ImageVector, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
     val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
     Row(modifier.fillMaxHeight().clickable(enabled = enabled, role = Role.Button, onClick = action)
         .semantics(mergeDescendants = true) { contentDescription = description }.padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = color)
-        Text(label, color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-        if (experimental) Text("test", color = color, fontSize = 9.sp, lineHeight = 12.sp,
-            modifier = Modifier.border(1.dp, color, RoundedCornerShape(2.dp)).padding(horizontal = 3.dp))
+        if (label != null) Text(label, color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
