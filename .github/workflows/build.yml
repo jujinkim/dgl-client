@@ -114,7 +114,7 @@ jobs:
         with:
           name: android-debug
           path: |
-            artifacts/dgl-client-0.1.0-debug.apk
+            androidApp/build/outputs/apk/debug/androidApp-debug.apk
             artifacts/build-manifest.json
             artifacts/SHA256SUMS
           if-no-files-found: error

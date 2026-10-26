@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Verify Android APK policy, Rust payload and notices, then collect deliverables."""
+"""Verify Android APK policy, Rust payload and notices, then write reports for the original APK."""
 import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import zipfile
 from evidence import ROOT, context
@@ -74,16 +73,14 @@ def main():
     base = ROOT / 'androidApp/build/outputs/apk'
     source = base / 'debug/androidApp-debug.apk'
     checks = [verify_apk(source, aapt), verify_apk(base / 'release/androidApp-release-unsigned.apk', aapt, release=True)]
-    apk_path = destination / 'dgl-client-0.1.0-debug.apk'
-    shutil.copyfile(source, apk_path)
-    files = [apk_path]
-    manifest = [{'name': p.name, 'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]
+    files = [source]
+    manifest = [{'name': p.relative_to(ROOT).as_posix(), 'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]
     (destination / 'build-manifest.json').write_text(json.dumps({'schema': 1, 'complete': True, 'status': 'passed',
         'context': context(), 'platform': 'android', 'applicationId': 'kim.jujin.dglc', 'minSdk': 34,
         'compileSdk': 36, 'targetSdk': 36, 'androidSigning': 'debug; release APK only verified unsigned',
         'engine': 'rust', 'apkChecks': checks, 'files': manifest}, indent=2) + '\n', encoding="utf-8")
     (destination / 'SHA256SUMS').write_text(''.join(item['sha256'] + '  ' + item['name'] + '\n' for item in manifest), encoding="utf-8")
-    print('Validated and collected: ' + ', '.join(item['name'] for item in manifest))
+    print('Validated: ' + ', '.join(item['name'] for item in manifest))
 
 
 if __name__ == '__main__':

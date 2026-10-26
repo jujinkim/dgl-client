@@ -69,8 +69,8 @@ python3 scripts/collect_rust_android.py
 
 Gradle의 Rust 작업은 `scripts/build_rust_android.py`로 네 ABI를 빌드합니다.
 `dglEngine` 선택 속성은 제거되어 전달하면 실패합니다.
-Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk`, 전달용 복사본은
-`artifacts/rust-candidate/android/dgl-rust-debug.apk`입니다. Release APK는
+Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나를 사용합니다.
+검사·배포 스크립트는 이 원본을 검증하고 APK 복사본을 만들지 않습니다. Release APK는
 `androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`이며 미서명입니다.
 앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.0` / `1`입니다.
 
@@ -154,8 +154,10 @@ python3 scripts/scan_secrets.py
 ```
 
 `collect_artifacts.py`는 빌드된 Debug·Release APK의 ID/SDK·백업 정책·번들 고지·Rust payload를 확인하고
-`artifacts/dgl-client-0.1.0-debug.apk`, `build-manifest.json`, `SHA256SUMS`를 생성합니다.
-`collect_rust_android.py`는 Debug 서명·Rust payload를 확인해 후보 전달 경로에 복사하는 도구입니다.
+`artifacts/build-manifest.json`, `artifacts/SHA256SUMS`를 생성합니다.
+보고서와 해시 목록의 APK 경로는 저장소 루트 기준이며, 루트에서 `sha256sum -c artifacts/SHA256SUMS`로 확인합니다.
+`collect_rust_android.py`는 원본 Debug APK의 서명·Rust payload를 확인하고
+`artifacts/rust-candidate/android/build.json`에 원본 경로와 검사 결과를 기록합니다. 두 도구 모두 APK를 복사하지 않습니다.
 잠금·검증 메타데이터·라이선스 갱신은 생성 결과를 검토하고 반영합니다.
 
 ## CI

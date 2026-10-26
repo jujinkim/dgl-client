@@ -76,9 +76,10 @@ Windows는 `scripts/run_windows.cmd`를 더블클릭하거나 PowerShell에서 �
 | 산출물 | 경로 |
 |---|---|
 | Android Debug | `androidApp/build/outputs/apk/debug/androidApp-debug.apk` |
-| Android 전달용 복사본 | `artifacts/rust-candidate/android/dgl-rust-debug.apk` |
 | macOS | `artifacts/rust-candidate/mac/dgl Rust Candidate.app` |
 | Windows ZIP | `artifacts/rust-candidate/windows/dgl-rust-windows-x64.zip` |
+
+Android Debug APK는 위 원본 하나만 사용하며 검사·배포 스크립트도 별도 복사본을 만들지 않습니다.
 
 앱 아이콘은 Android adaptive·단색, macOS ICNS, Windows 실행 파일 리소스로 포함됩니다.
 원본과 재생성 절차는 [앱 아이콘 안내](assets/app-icon/README.md)에 있습니다. 일반 빌드는 변환 도구를 요구하지 않습니다.

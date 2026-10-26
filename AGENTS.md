@@ -16,6 +16,7 @@
 - `web/`는 Android 터미널 assets 소스다. 랜딩 웹사이트 소스로 해석하지 않는다.
 - tmux가 원격 상태의 기준이다. 연결 종료는 원격 작업 삭제가 아니며 복구 중 입력 차단·실패 입력 무재전송·대상 세대 검사를 유지한다.
 - `scripts/README.md`와 `docs/DEVELOPMENT.md`의 실제 진입점을 유지한다. 삭제·이동 시 코드·CI·문서 참조를 함께 정리한다.
+- Android Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나만 사용한다. 검사·배포 시 APK 복사본이나 대시보드 중복 항목을 만들지 않는다.
 - JVM/Android 테스트 이름 변경 시 결과 검증기의 명시적 목록도 갱신한다. 미실행·skip·ignore를 통과로 기록하지 않는다.
 - `KICKOFF_PROMPT.md`/체크섬과 제3자 라이선스 원문·해시 증거는 보존한다. 현재 기능·범위에는 후속 사용자 지시를 우선한다.
 

@@ -9,8 +9,8 @@
 | 도구 | 역할·출력 |
 |---|---|
 | `build_rust_android.py` | Gradle에서 호출하는 Rust 네 ABI 빌드·UniFFI 생성 |
-| `collect_rust_android.py` | 빌드된 Debug APK의 ID·SDK·네 ABI·Rust payload·서명 확인, `artifacts/rust-candidate/android/` 수집 |
-| `collect_artifacts.py` | Android Debug/Release APK 정책·assets·라이선스 검사, `artifacts/` 전달물·manifest·해시 생성 |
+| `collect_rust_android.py` | 원본 Debug APK의 ID·SDK·네 ABI·Rust payload·서명 확인, `artifacts/rust-candidate/android/build.json` 기록 |
+| `collect_artifacts.py` | 원본 Android Debug/Release APK 정책·assets·라이선스 검사, `artifacts/` manifest·해시 생성 |
 | `package_rust_mac.py` | GPUI Debug/`--release` 빌드, `.app`·Rust 고지·ad-hoc 서명 |
 | `run_windows.cmd` / `windows_menu.ps1` | Windows 빌드·실행·검사 메뉴 |
 | `windows_tools.ps1` | Windows 필수 도구 전체 점검·선택적 설치/업데이트 |
@@ -19,8 +19,9 @@
 | `collect_rust_notices.py` | Cargo registry의 고지·manifest·의존성 목록 수집, 패키저에서 사용 |
 | `generate_app_icons.py` | 공통 도형에서 투명 원본·Android 전경/단색 벡터·macOS ICNS·Windows ICO·미리보기 생성. `--check`로 저장 파일 비교; [아이콘 안내](../assets/app-icon/README.md) |
 
-`collect_artifacts.py`와 `collect_rust_android.py`는 각각 전체 배포 정책 검사와 후보 Debug 전달본 수집을 담당합니다.
-둘 다 기존 빌드를 입력으로 사용하며 이전 JVM 엔진이 제품 APK에 들어가면 실패합니다.
+`collect_artifacts.py`와 `collect_rust_android.py`는 각각 전체 배포 정책 검사와 Debug 서명·Rust payload 검사를 담당합니다.
+둘 다 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본을 사용하고 APK 복사본을 만들지 않습니다.
+이전 JVM 엔진이 제품 APK에 들어가면 실패합니다.
 현재 Windows 배포 경로는 Rust ZIP입니다. 폐기된 JVM MSI/EXE 도구는 [이력](../docs/HISTORY.md)에서 찾을 수 있습니다.
 
 ## 기본 검사·유지보수

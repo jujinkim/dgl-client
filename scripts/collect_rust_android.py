@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Verify and collect the already-built Rust Android app."""
+"""Verify the already-built Rust Android app without copying its APK."""
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import zipfile
 
@@ -51,14 +50,13 @@ def main():
     subprocess.run([str(build_tools / "apksigner"), "verify", "--verbose", str(source)], check=True)
     output = ROOT / "artifacts/rust-candidate/android"
     output.mkdir(parents=True, exist_ok=True)
-    target = output / "dgl-rust-debug.apk"
-    shutil.copy2(source, target)
     report = {"engine": "rust", "applicationId": package[1], "versionCode": package[2], "versionName": package[3],
               "profile": "debug", "minSdk": 34, "targetSdk": 36, "abis": sorted(ABIS), "librarySha256": libraries,
-              "apkSha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+              "apkPath": source.relative_to(ROOT).as_posix(),
+              "apkSha256": hashlib.sha256(source.read_bytes()).hexdigest(),
               "cargoLockSha256": hashlib.sha256((ROOT / "Cargo.lock").read_bytes()).hexdigest()}
     (output / "build.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(target)
+    print("Validated: " + str(source))
 
 if __name__ == "__main__":
     main()
