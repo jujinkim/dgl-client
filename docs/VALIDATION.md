@@ -6,23 +6,17 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-Android 터미널의 가짜 가로 overflow를 제한하고, 탭별 폰트 핀치와 최신 기본값 초기화를 검사했습니다.
-이전 SSH 복귀·복구 표시·아이콘 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+Android 터미널 전환 애니메이션을 재접속 복구에만 적용하도록 제한했습니다.
+이전 SSH 복귀·작업 공간·글자 크기 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| JVM | 71 통과·외부 SSH/Windows 예상 skip 9개. 핀치 누적·10/28 제한·잘못된 배율 거부·탭별 독립성·기본값 변경 후 유지·최신 기본값 초기화·탭 수명 검사 포함. 명시적 결과 검증기 일치 |
-| Python·JavaScript | Python 98·터미널 JavaScript 16 통과. 원격 창/일반 SSH 격자별 스크롤 경계, 창 축소 후 위치 보정, 모든 pane 폰트 반영·핀치 중 입력/resize 차단·종료 시 최종 resize와 IME 중첩 검사 포함 |
-| Android 빌드 | Debug·계측 APK·lint 통과. 기존 검토 진단 12개 일치. 원본 Debug APK의 네 ABI Rust payload·개발용 서명 확인; APK 복사본 생성 없음 |
-| API36 터미널·작업 공간 | 전용 `Dgl_API36` 한 대의 Compose/WebView와 결정적 연결 fixture로 작업 공간 2개·pane 렌더러 1개 통과. 숨긴 shell의 가짜 overflow 재현/차단·실제 넓은 원격 창 접근·실제 글자 크기 변화·핀치 취소·초기화 버튼·기본값 저장 불변·탭/Activity 수명·IME·분할/탭 이동·독립 pane 화면 확인 |
-| 무결성·문서 | 한국어/영어·생성 번역/자리표시자, 요구사항 SHA-256·diff 공백·문서 링크·로컬 대시보드 등록 검증. JSON Git 제외 유지 |
+| 터미널 JavaScript | 18 통과·skip 없음. 일반 크기 변경은 설정 켬/끔 모두 dim·fade·blur 없이 렌더 후 교체. 재접속 기본 fade·선택형 효과·동작 줄이기·재접속 fade를 중단하는 크기 변경과 ACK 보존 확인 |
+| Android 빌드 | `:androidApp:assembleDebug` 통과. 원본 Debug APK 한 개를 갱신했으며 계측·lint는 재실행하지 않음 |
+| 번역·문서 | 한국어/영어·생성 번역/자리표시자, diff 공백·로컬 대시보드 등록 검사 통과. 설정과 사용 문서를 재접속 전용 효과로 갱신 |
 
-계측의 화면 크기·밀도·IME·글꼴·애니메이션 설정은 실행기의 `finally`에서 원복했습니다.
-초기 핀치 계측은 좌표가 시스템 최소 핀치 거리보다 작아 실패해 휴대폰 밀도/물리 좌표로 보정했습니다.
-직접 실행한 기존 작업 공간 검사는 IME 전환에서 실패했고, 밀도·애니메이션을 먼저 고정하는 공식 실행기로 2개 모두 통과했습니다.
-이번 계측에는 실제 SSH 서버·네트워크 재접속을 포함하지 않았으며 Rust/UniFFI 검사도 재실행하지 않았습니다.
-실제 손가락 최근 앱 swipe·화면 잠금/기기 절전·물리 네트워크 전환, 전체 API matrix·장시간 반복 계측,
-Windows 네이티브 빌드·DPAPI·GUI와 macOS GUI는 수행하지 않았습니다.
+이번 변경은 JavaScript 단위 검사로 검증했으며 Android 계측·GUI·실제 SSH 재접속은 실행하지 않았습니다.
+Rust/UniFFI·JVM 단위 검사, Windows 네이티브 빌드·DPAPI·GUI와 macOS GUI는 재실행하지 않았습니다.
 
 ## 남은 한계
 

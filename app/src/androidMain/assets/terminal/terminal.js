@@ -58,6 +58,7 @@
   let cacheTimer = null;
   let renderListener = null;
   let renderAck = null;
+  let reconnectSnapshot = false;
   let smoothTransitions = false;
   let cachedSize = null;
   let animations = [];
@@ -73,6 +74,7 @@
     stopAnimations();
     cachedScreen?.remove(); cachedScreen = null;
     cachedSize = null;
+    reconnectSnapshot = false;
     if (renderAck !== null) post({ type: 'ack', id: renderAck });
     renderAck = null;
   };
@@ -81,6 +83,7 @@
     const buffer = term.buffer?.active;
     if (buffer && buffer.viewportY < buffer.baseY) savedScroll = buffer.viewportY;
     const version = ++cacheVersion;
+    reconnectSnapshot = recoveryScreen !== null;
     if (renderAck !== null) post({ type: 'ack', id: renderAck });
     renderAck = null;
     clearTimeout(cacheTimer);
@@ -97,8 +100,12 @@
       term.element.appendChild(cachedScreen);
     }
     cachedScreen.classList.remove('is-releasing');
+    cachedScreen.classList.remove('is-updating');
+    cachedScreen.style.transitionDuration = '0ms';
+    if (reconnectSnapshot) cachedScreen.classList.add('is-recovering');
+    else cachedScreen.classList.remove('is-recovering');
     requestAnimationFrame(() => {
-      if (cacheVersion === version) cachedScreen?.classList.add('is-updating');
+      if (cacheVersion === version && reconnectSnapshot) cachedScreen?.classList.add('is-updating');
     });
     // Error/background fallback: never leave a stale screen covering the terminal.
     cacheTimer = setTimeout(clearCache, 15000);
@@ -117,11 +124,13 @@
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (cacheVersion !== version || !cachedScreen) return;
         const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-        const duration = reducedMotion ? 0 : smoothTransitions ? 120 : 90;
+        // Resize, pane changes and ordinary snapshots swap atomically without motion.
+        if (!reconnectSnapshot || reducedMotion) { clearCache(); return; }
+        const duration = smoothTransitions ? 120 : 90;
         cachedScreen.style.transitionDuration = `${duration}ms`;
         const liveScreen = term.element.querySelector('.xterm-screen');
         const nextSize = liveScreen?.getBoundingClientRect();
-        if (smoothTransitions && !reducedMotion && cachedSize?.width > 0 && cachedSize?.height > 0 &&
+        if (smoothTransitions && cachedSize?.width > 0 && cachedSize?.height > 0 &&
             nextSize?.width > 0 && nextSize?.height > 0 && typeof liveScreen.animate === 'function') {
           const options = { duration, easing: 'cubic-bezier(.2,.7,.2,1)' };
           animations.push(cachedScreen.firstElementChild.animate([

@@ -27,16 +27,18 @@ html, body { margin: 0; overflow: hidden; background: #11151b; }
 .terminal-cache {
   position: absolute; inset: 0; z-index: 4; overflow: hidden;
   background: #11151b; pointer-events: none; user-select: none;
-  opacity: 1; transition: opacity 90ms ease-out;
+  opacity: 1;
 }
+.terminal-cache.is-recovering { transition: opacity 90ms ease-out; }
 .terminal-cache * { animation: none !important; }
 .terminal-cache::after {
   content: ''; position: absolute; inset: 0 0 auto; height: min(96px, 35%);
   background: linear-gradient(to bottom, rgba(0, 0, 0, .24), transparent);
-  opacity: 0; transition: opacity 80ms ease-in-out;
+  opacity: 0;
 }
-.terminal-cache.is-updating::after { opacity: 1; }
-.terminal-cache.is-releasing { opacity: 0; }
+.terminal-cache.is-recovering::after { transition: opacity 80ms ease-in-out; }
+.terminal-cache.is-recovering.is-updating::after { opacity: 1; }
+.terminal-cache.is-recovering.is-releasing { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
-  .terminal-cache, .terminal-cache::after { transition: none; }
+  .terminal-cache.is-recovering, .terminal-cache.is-recovering::after { transition: none; }
 }

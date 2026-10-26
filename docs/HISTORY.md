@@ -151,6 +151,13 @@ API36 작업 공간/입력/볼륨키/계층 선택 8개와 실제 Rust 연결 �
 격리 SSH/tmux 3.7c 복귀/무응답 1개와 전용 API36 실제 Rust 연결 수명 1개를 통과했습니다.
 물리 기기·네트워크 전환·장시간 계측·Windows/macOS GUI는 수행하지 않았습니다.
 
+## 2026-10-26: Android 스크롤 경계·탭별 글자 크기
+
+숨긴 shell의 가짜 가로 overflow를 제한하고 탭별 폰트 핀치·최신 기본값 초기화를 추가했습니다.
+당시 JVM 71·Python 98·웹 16 통과, JVM 예상 skip 9와 Android Debug/계측 APK/lint를 확인했습니다.
+전용 API36의 결정적 연결 fixture로 작업 공간 2개·pane 렌더러 1개를 통과했습니다.
+실제 SSH 재접속·물리 기기·전체 API 계측·Windows/macOS GUI는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

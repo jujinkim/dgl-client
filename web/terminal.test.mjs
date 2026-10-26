@@ -135,12 +135,13 @@ function cachedRenderer() {
   }
   const root = new Element(), screen = new Element(), canvas = new Element(), body = new Element();
   canvas.id = 'window'; canvas.appendChild(screen);
-  const viewport = { scrollLeft: 13, scrollTop: 29, addEventListener() {} };
+  const viewport = { clientWidth: 0, clientHeight: 0, scrollLeft: 13, scrollTop: 29, addEventListener() {} };
   screen.textContent = 'previous screen';
   root.querySelector = () => screen;
   class Terminal {
     element = root; rows = 24; parser = { registerOscHandler() {} };
     loadAddon() {} open() {} onData() {} onBinary() {} onResize() {} refresh() {}
+    resize(columns, rows) { this.cols = columns; this.rows = rows; }
     onRender(callback) { render = callback; return { dispose() { render = null; } }; }
   }
   const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) }, matchMedia: () => ({ matches: false }) };
@@ -160,8 +161,9 @@ function cachedRenderer() {
   };
 }
 
-test('cached viewport stays opaque until a rendered replacement, then fades out', () => {
+test('reconnecting viewport stays opaque until a rendered replacement, then fades out', () => {
   const r = cachedRenderer();
+  r.window.setConnectionRecovery(true);
   r.window.beginSnapshot(); r.frame();
   const cache = r.root.children[0];
   assert.equal(cache['aria-hidden'], 'true');
@@ -180,6 +182,56 @@ test('cached viewport stays opaque until a rendered replacement, then fades out'
   r.expire(90);
   assert.equal(r.root.children.length, 0);
   assert.equal(r.animations.length, 0, 'advanced motion is opt-in');
+});
+
+test('ordinary resize snapshots swap after rendering without dim or motion regardless of the setting', () => {
+  for (const smooth of [false, true]) {
+    const r = cachedRenderer();
+    r.window.setSmoothTransitions(smooth);
+    r.window.beginSnapshot(); r.frame();
+    const cache = r.root.children[0];
+    assert.equal(cache.children[0].textContent, 'previous screen');
+    assert.ok(!cache.classes.has('is-recovering'));
+    assert.ok(!cache.classes.has('is-updating'));
+    r.window.resizePane(160, 12);
+    r.screen.textContent = 'resized screen';
+    r.screen.width = 200; r.screen.height = 50;
+    r.window.endSnapshot(8);
+    assert.deepEqual(r.messages, []);
+    r.render(); r.frame();
+    assert.equal(r.root.children.length, 1, 'hold the previous viewport until a paint opportunity');
+    assert.deepEqual(r.messages, []);
+    r.frame();
+    assert.equal(r.root.children.length, 0, 'no fade timer delays an ordinary resize');
+    assert.deepEqual(r.messages, [{ type: 'ack', id: 8 }]);
+    assert.ok(!cache.classes.has('is-releasing'));
+    assert.equal(r.animations.length, 0);
+  }
+});
+
+test('a resize superseding a reconnect fade removes recovery motion and keeps its render acknowledgement', () => {
+  const r = cachedRenderer();
+  r.window.setConnectionRecovery(true);
+  r.window.setSmoothTransitions(true);
+  r.window.beginSnapshot(); r.frame();
+  r.window.endSnapshot(1); r.render(); r.frame(); r.frame();
+  const cache = r.root.children[0];
+  assert.ok(cache.classes.has('is-releasing'));
+  r.window.setConnectionRecovery(false);
+  r.window.beginSnapshot(); r.window.resizePane(160, 12); r.frame();
+  assert.deepEqual(r.root.children, [cache]);
+  assert.ok(!cache.classes.has('is-recovering'));
+  assert.ok(!cache.classes.has('is-updating'));
+  assert.ok(!cache.classes.has('is-releasing'));
+  assert.equal(cache.style.transitionDuration, '0ms');
+  assert.ok(r.animations.every(animation => animation.cancelled));
+  r.animations.length = 0;
+  r.expire(120);
+  assert.deepEqual(r.root.children, [cache]);
+  r.window.endSnapshot(2); r.render(); r.frame(); r.frame();
+  assert.equal(r.root.children.length, 0);
+  assert.equal(r.animations.length, 0);
+  assert.deepEqual(r.messages, [{ type: 'ack', id: 1 }, { type: 'ack', id: 2 }]);
 });
 
 test('connection recovery keeps the previous rendered window through layout replacement and failed snapshots', () => {
@@ -207,8 +259,9 @@ test('connection recovery keeps the previous rendered window through layout repl
   r.window.setConnectionRecovery(false);
 });
 
-test('opt-in transition morphs differing sizes with crossfade and blur', () => {
+test('opt-in reconnect transition morphs differing sizes with crossfade and blur', () => {
   const r = cachedRenderer();
+  r.window.setConnectionRecovery(true);
   r.window.setSmoothTransitions(true);
   r.window.beginSnapshot(); r.frame();
   r.screen.width = 200; r.screen.height = 50;
@@ -227,6 +280,7 @@ test('opt-in transition morphs differing sizes with crossfade and blur', () => {
 
 test('reduced motion and disabling the setting cancel enhanced motion', () => {
   const r = cachedRenderer();
+  r.window.setConnectionRecovery(true);
   r.window.setSmoothTransitions(true);
   r.window.beginSnapshot(); r.frame();
   r.window.endSnapshot(1); r.render(); r.frame(); r.frame();
@@ -239,12 +293,12 @@ test('reduced motion and disabling the setting cancel enhanced motion', () => {
   r.window.beginSnapshot(); r.frame();
   r.window.endSnapshot(2); r.render(); r.frame(); r.frame();
   assert.equal(r.animations.length, 0);
-  r.expire(0);
   assert.equal(r.root.children.length, 0);
 });
 
 test('consecutive snapshots reuse one cache and stale fade callbacks cannot remove it', () => {
   const r = cachedRenderer();
+  r.window.setConnectionRecovery(true);
   r.window.beginSnapshot();
   const cache = r.root.children[0];
   r.window.endSnapshot(1); r.render(); r.frame(); r.frame();

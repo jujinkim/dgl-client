@@ -509,7 +509,7 @@ internal object EnglishCatalog {
         "화면 상하 분할" to "Split screen vertically",
         "화면 좌우 분할" to "Split screen horizontally",
         "화면 크기 변경을 전송하지 못했습니다. 잠시 후 다시 시도합니다." to "Could not send the terminal size change. Retrying shortly.",
-        "화면 크기가 바뀔 때 크기·페이드·블러 효과 적용" to "Animate size, fade, and blur when the viewport changes",
+        "재접속 시 크기·페이드·블러 효과 적용" to "Animate size, fade, and blur when reconnecting",
         "확인" to "OK",
         "확인 명령 실패" to "Probe command failed",
         "확인 중" to "Checking",

@@ -35,7 +35,7 @@ connection/pane/size generation이 달라진 응답은 화면에 적용하지 �
 - renderer surface는 연결보다 짧게 살 수 있다. 연결 탭을 바꾸면 새 surface에 재캡처하며 원격 프로세스를 종료하지 않는다.
 - Android viewport 변경은 마지막 변경부터 150ms 동안 묶으며 전송 중 요청 하나와 최신 대기 크기 하나만 유지한다. Rust는 같은 요청 크기를 무시하고, tmux 크기 변경 후 목록을 갱신해 실제 패널 크기가 달라질 때만 캡처한다. 다른 클라이언트가 크기를 제한하면 실제 pane 크기를 유지하며, 변경이 없으면 추가 Resize 이벤트도 보내지 않는다.
 - 크기 조정 복원은 `resizing` 표시로 연결 복구 UI와 구분하지만 내부 `Restoring` 입력 차단과 세대 검사는 유지한다. 캡처에서 확인한 실제 크기를 목록의 비교 기준에도 반영하여 후속 레이아웃 알림의 중복 캡처를 막는다.
-- Android는 번들 xterm DOM 렌더러의 보이는 화면 한 장만 복제해 캡처 조각을 가린다. `ResetEnd`에서 xterm 렌더 이벤트와 paint 기회를 확인한 뒤 180ms fade로 제거한다. 선택형 `smoothTerminalTransitions`(기본 false)은 240ms 크기 보간·크로스페이드·2px 블러를 추가한다. 캐시는 입력·접근성 대상에서 제외하며 대상 변경·실패·해제와 15초 제한에서 정리한다. 입력 버퍼·스크롤백을 복제하지 않으며 기존 출력 ACK·크기 제한을 유지한다.
+- Android는 번들 xterm DOM 렌더러의 보이는 화면 한 장만 복제해 캡처 조각을 가린다. `ResetEnd`에서 xterm 렌더 이벤트와 paint 기회를 확인한 뒤 캐시를 제거한다. 재접속 복구에서만 기본 90ms fade를 적용하며, 선택형 `smoothTerminalTransitions`(기본 false)은 120ms 크기 보간·크로스페이드·2px 블러를 추가한다. 크기 변경·대상 전환·일반 화면 동기화에는 dim이나 전환 애니메이션을 적용하지 않는다. 캐시는 입력·접근성 대상에서 제외하며 대상 변경·실패·해제와 15초 제한에서 정리한다. 입력 버퍼·스크롤백을 복제하지 않으며 기존 출력 ACK·크기 제한을 유지한다.
 - 현재 pen 속성·모든 VT 내부 상태는 tmux format/capture만으로 완전히 복원할 수 없다. 완전한 emulator serialization이 아니다. 색상 화면·커서·alternate 전환과 일반 출력은 테스트하고 미확인 상태는 명시한다.
 - Copy Mode 알림은 GUI 상태로 표시한다. `%output`을 Copy Mode UI로 간주하지 않는다.
 

@@ -612,7 +612,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
                     AccentSwitch(local.preferences.smoothTerminalTransitions, null)
                     Column(Modifier.padding(start = 8.dp)) {
                         Text(t("부드러운 터미널 화면 전환"))
-                        Text(t("화면 크기가 바뀔 때 크기·페이드·블러 효과 적용"), style = MaterialTheme.typography.bodySmall)
+                        Text(t("재접속 시 크기·페이드·블러 효과 적용"), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
