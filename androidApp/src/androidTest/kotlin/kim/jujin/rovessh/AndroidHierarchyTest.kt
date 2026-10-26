@@ -2,7 +2,6 @@ package kim.jujin.rovessh
 
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
-import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import kim.jujin.rovessh.core.*
@@ -63,7 +62,7 @@ class AndroidHierarchyTest {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             try {
                 scenario.onActivity {
-                    app = ViewModelProvider(it)[ClientViewModel::class.java].app
+                    app = (it.application as DglApplication).connections().app
                     previous = app.local.value; oldConnections = app.connections.value; oldSelected = app.selected.value
                     app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", showAllHierarchy = false, mobilePaneToolbarVisible = false)) }
                     freshAgents(); app.connections.value = listOf(first, second); app.selected.value = first

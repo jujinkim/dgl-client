@@ -92,6 +92,7 @@ pub struct Preferences {
     pub volume_up: crate::input::VolumeBinding,
     pub volume_down: crate::input::VolumeBinding,
     pub smooth_terminal_transitions: bool,
+    pub keep_connections_in_background: bool,
     pub show_all_hierarchy: bool,
 }
 impl Default for Preferences {
@@ -109,6 +110,7 @@ impl Default for Preferences {
             volume_up: Default::default(),
             volume_down: Default::default(),
             smooth_terminal_transitions: false,
+            keep_connections_in_background: true,
             show_all_hierarchy: false,
         }
     }

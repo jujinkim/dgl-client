@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ActivityScenario
-import androidx.lifecycle.ViewModelProvider
 import kim.jujin.dgl.RustAgentInbox
 import kim.jujin.rovessh.core.*
 import org.junit.Assert.*
@@ -74,7 +73,7 @@ class AgentNotificationTest {
                 val clickDeadline = System.currentTimeMillis() + 5000
                 while (!delivered && System.currentTimeMillis() < clickDeadline) {
                     scenario.onActivity { activity ->
-                        val model = ViewModelProvider(activity)[ClientViewModel::class.java].app
+                        val model = (activity.application as DglApplication).connections().app
                         delivered = model.agentNavigationError.value == t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.")
                         assertTrue(model.connections.value.isEmpty())
                     }
@@ -85,7 +84,7 @@ class AgentNotificationTest {
                 // identity so ActivityScenario can match its teardown callbacks.
                 scenario.onActivity {
                     it.intent = launchIntent
-                    ViewModelProvider(it)[ClientViewModel::class.java].app.agentNavigationError.value = null
+                    (it.application as DglApplication).connections().app.agentNavigationError.value = null
                 }
                 instrumentation.waitForIdleSync()
             }

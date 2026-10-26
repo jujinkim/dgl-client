@@ -61,11 +61,27 @@ internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.D
             view.post { updateIme() }
             view.onApplyWindowInsets(insets)
         }
+        var imeAnimation: android.view.WindowInsetsAnimation? = null
+        var imeVersion = 0L
         terminal.view.setWindowInsetsAnimationCallback(object : android.view.WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+            override fun onPrepare(animation: android.view.WindowInsetsAnimation) {
+                if (animation.typeMask and AndroidInsets.Type.ime() != 0) {
+                    imeAnimation = animation
+                    terminal.imeAnimation(true, ++imeVersion)
+                }
+            }
             override fun onProgress(insets: AndroidInsets, animations: MutableList<android.view.WindowInsetsAnimation>): AndroidInsets {
                 updateIme(); return insets
             }
-            override fun onEnd(animation: android.view.WindowInsetsAnimation) { terminal.view.post { updateIme() } }
+            override fun onEnd(animation: android.view.WindowInsetsAnimation) {
+                terminal.view.post {
+                    updateIme()
+                    if (observing && imeAnimation === animation) {
+                        imeAnimation = null
+                        terminal.imeAnimation(false, imeVersion)
+                    }
+                }
+            }
         })
         terminal.view.post { updateIme() }
         focus.request = { terminal.focus() }
@@ -219,6 +235,12 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     suspend fun setSmoothTransitions(enabled: Boolean) {
         withTimeout(15_000) { ready.await() }
         withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setSmoothTransitions($enabled)", null) }
+    }
+    fun imeAnimation(active: Boolean, version: Long) {
+        scope.launch {
+            withTimeoutOrNull(15_000) { ready.await() } ?: return@launch
+            if (!closed) view.evaluateJavascript("window.setImeAnimation($active,$version)", null)
+        }
     }
     override suspend fun beginSnapshot() {
         withTimeout(15_000) { ready.await() }

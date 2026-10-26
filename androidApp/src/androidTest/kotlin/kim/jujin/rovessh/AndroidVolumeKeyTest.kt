@@ -5,7 +5,6 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import kim.jujin.rovessh.core.*
@@ -98,7 +97,7 @@ class AndroidVolumeKeyTest {
             var initialized = false
             try {
                 scenario.onMainActivity { activity ->
-                    app = ViewModelProvider(activity)[ClientViewModel::class.java].app
+                    app = (activity.application as DglApplication).connections().app
                     previous = app.local.value
                     val store = MemoryCredentialStore().apply { write("volume-test", Credential("test")) }
                     val host = HostProfile("volume-test", "Volume test", "example.test", username = "test")
@@ -198,7 +197,7 @@ class AndroidVolumeKeyTest {
     @Test fun editorSaveCancelValidationAndStepOrdering() = runBlocking<Unit> {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             lateinit var app: AppModel; lateinit var previous: LocalState
-            scenario.onMainActivity { app = ViewModelProvider(it)[ClientViewModel::class.java].app; previous = app.local.value; app.update(previous.copy(preferences = Preferences(language = "ko"))) }
+            scenario.onMainActivity { app = (it.application as DglApplication).connections().app; previous = app.local.value; app.update(previous.copy(preferences = Preferences(language = "ko"))) }
             try {
                 click("설정")
                 click("볼륨 키로 단축키 실행")
@@ -232,7 +231,7 @@ class AndroidVolumeKeyTest {
             lateinit var first: ClientModel; lateinit var second: ClientModel
             val firstWire = ShellTransport(); val secondWire = ShellTransport()
             scenario.onMainActivity { activity ->
-                app = ViewModelProvider(activity)[ClientViewModel::class.java].app
+                app = (activity.application as DglApplication).connections().app
                 previous = app.local.value
                 val store = MemoryCredentialStore().apply { write("cli-test", Credential("test")) }
                 val host = HostProfile("cli-test", "CLI test", "example.test", username = "test")

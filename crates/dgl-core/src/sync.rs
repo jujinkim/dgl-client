@@ -576,6 +576,7 @@ mod tests {
         local.preferences.agent_notifications.os = true;
         local.preferences.show_all_hierarchy = true;
         local.preferences.language = "ko".into();
+        local.preferences.keep_connections_in_background = false;
         let out = exchange(Some(a.cache), &local, doc.as_bytes(), &[]).unwrap();
         for value in [
             "SECRET-REFERENCE",
@@ -586,6 +587,7 @@ mod tests {
             "volumeUp",
             "showAllHierarchy",
             "language",
+            "keepConnectionsInBackground",
             "privateKey",
             "password",
         ] {
@@ -603,6 +605,7 @@ mod tests {
         assert!(!other.local.preferences.agent_notifications.os);
         assert!(!other.local.preferences.show_all_hierarchy);
         assert_eq!(other.local.preferences.language, "system");
+        assert!(other.local.preferences.keep_connections_in_background);
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {

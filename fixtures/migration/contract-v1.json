@@ -656,6 +656,7 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
+          "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system"
@@ -710,6 +711,7 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
+          "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system"
@@ -830,6 +832,7 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
+          "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system"
@@ -908,6 +911,7 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
+          "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system"
@@ -1013,6 +1017,7 @@
             "CtrlB"
           ],
           "smoothTerminalTransitions": false,
+          "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system"
@@ -1051,6 +1056,7 @@
           },
           "terminalShortcuts": [],
           "smoothTerminalTransitions": false,
+          "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system"
@@ -1104,6 +1110,7 @@
             "End"
           ],
           "smoothTerminalTransitions": false,
+          "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": false,
           "showAllHierarchy": false,
           "language": "system"

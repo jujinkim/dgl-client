@@ -15,7 +15,7 @@ import kim.jujin.rovessh.core.AgentNotice
 import kim.jujin.rovessh.core.agentMessage
 import kim.jujin.rovessh.core.agentName
 
-/** No service, wake lock or push. The ViewModel's existing connections own collection. */
+/** Agent alerts use the process-owned connections; the SSH service owns maintenance. */
 class AgentNotifications(private val context: Context) {
     companion object {
         const val CHANNEL = "agent-observations-v1"

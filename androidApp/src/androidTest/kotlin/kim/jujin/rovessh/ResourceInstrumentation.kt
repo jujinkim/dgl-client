@@ -7,7 +7,6 @@ import android.os.Process
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
-import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.runner.AndroidJUnitRunner
 import kim.jujin.rovessh.core.*
@@ -38,7 +37,7 @@ private class AndroidResourcePlatform(private val scenario: ActivityScenario<Mai
     private val live = WeakHashMap<WebView, Boolean>()
     init {
         scenario.onActivity { activity ->
-            app = ViewModelProvider(activity)[ClientViewModel::class.java].app
+            app = (activity.application as DglApplication).connections().app
             original = app.local.value
             app.update(original.copy(preferences = original.preferences.copy(scrollback = 10000)))
         }

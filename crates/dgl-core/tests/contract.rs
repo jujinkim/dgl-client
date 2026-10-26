@@ -233,12 +233,20 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
     }
     let mut state = model::LocalState::default();
     assert!(state.preferences.mobile_pane_toolbar_visible);
+    assert!(state.preferences.keep_connections_in_background);
+    state.preferences.keep_connections_in_background = false;
     assert!(!state.preferences.show_all_hierarchy);
     state.preferences.show_all_hierarchy = true;
     state.preferences.mobile_pane_toolbar_visible = false;
     assert!(!state.preferences.smooth_terminal_transitions);
     state.preferences.smooth_terminal_transitions = true;
     state.save(&path).unwrap();
+    assert!(
+        !model::LocalState::read(&path)
+            .unwrap()
+            .preferences
+            .keep_connections_in_background
+    );
     assert!(
         model::LocalState::read(&path)
             .unwrap()

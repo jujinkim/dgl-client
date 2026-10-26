@@ -5,6 +5,12 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'ConnectionLifetimeTest': ['homeLockAndRecreationReuseConnectionsUntilTaskRemoval',
+                               'disablingMaintenanceAndRetryExhaustionReleaseResources',
+                               'rejectedOrLostServiceDoesNotReconnectOrLoop',
+                               'maintenanceContinuesWhileAnyConnectionIsActive'],
+    'InputRejectionsTest': ['nativeCodesDistinguishPreparationQueueAndChangedTargets',
+                            'repeatedRejectionsCoalesceWithinEachRecoveryCycle'],
     'core.I18nTest': ['systemLanguageOverridesAndUnsupportedFallback',
                       'translationsReorderArgumentsWithoutInterpretingUserData',
                       'switchingLanguageRefreshesLabelsAndKeepsInputLiteral'],

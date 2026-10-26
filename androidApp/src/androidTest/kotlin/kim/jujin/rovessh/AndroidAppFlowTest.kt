@@ -6,7 +6,6 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.webkit.WebView
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import kim.jujin.rovessh.core.*
@@ -45,7 +44,7 @@ class AndroidAppFlowTest {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
               try {
                 scenario.onActivity { activity ->
-                    app = ViewModelProvider(activity)[ClientViewModel::class.java].app
+                    app = (activity.application as DglApplication).connections().app
                     previous = app.local.value
                     app.credentials.write(profile.id, credential)
                     app.update(previous.copy(hosts = previous.hosts + profile, trust = previous.trust + (profile.endpoint to fixture.getString("fingerprint"))))

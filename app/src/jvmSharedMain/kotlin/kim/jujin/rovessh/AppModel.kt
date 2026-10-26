@@ -20,6 +20,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     val agentNotifications = MutableStateFlow<List<AgentNotice>>(emptyList())
     val agentNavigationError = MutableStateFlow<String?>(null)
     val agentNavigation = MutableStateFlow(0L)
+    val backgroundConnectionError = MutableStateFlow<String?>(null)
     val local = MutableStateFlow(repository.read())
     val connections = MutableStateFlow<List<ClientConnection>>(emptyList())
     val selected = MutableStateFlow<ClientConnection?>(null)
@@ -57,7 +58,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         } }
         if (notice == null || client == null) { agentNavigationError.value = t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다."); return }
         selected.value = client
-        client.selectTarget(notice.event.session, notice.event.window, notice.event.pane)
+        navigate(client, notice.event.session, notice.event.window, notice.event.pane)
         agentNavigation.value += 1
     }
     fun openAgentObservation(client: ClientConnection, observation: AgentObservation) {
@@ -70,8 +71,12 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             return
         }
         selected.value = client
-        client.selectTarget(observation.session, observation.window, observation.pane)
+        navigate(client, observation.session, observation.window, observation.pane)
         agentNavigation.value += 1
+    }
+    private fun navigate(client: ClientConnection, session: String, window: String, pane: String) {
+        if (client.session.value != session || client.pane.value != pane ||
+            (client.status.value.window != null && client.status.value.window != window)) client.selectTarget(session, window, pane)
     }
     @Synchronized fun update(value: LocalState) {
         repository.save(value)
@@ -96,5 +101,11 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         connection.close(); connections.value -= connection
         if (selected.value == connection) selected.value = connections.value.lastOrNull()
     }
-    fun close() { composers.values.forEach { it.close() }; composers.clear(); cloudSync?.close(); agentScope.cancel(); connections.value.forEach { it.close() }; synchronized(agentInbox) { agentInbox.close() } }
+    fun disconnectAll() { connections.value.forEach { it.disconnect() } }
+    fun close() {
+        composers.values.forEach { it.close() }; composers.clear(); cloudSync?.close(); agentScope.cancel()
+        connections.value.forEach { it.close() }; connections.value = emptyList(); selected.value = null; visibleConnection = null
+        chooseSyncFile = {}; sendAgentNotification = {}; foreground = false
+        synchronized(agentInbox) { agentInbox.close() }
+    }
 }

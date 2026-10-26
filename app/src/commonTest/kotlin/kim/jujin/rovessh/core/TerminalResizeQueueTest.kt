@@ -7,7 +7,8 @@ class TerminalResizeQueueTest {
         val resizing = ConnectionStatus(phase = Phase.Restoring, resizing = true)
         assertFalse(resizing.acceptsInput)
         assertFalse(resizing.showsConnectionProgress)
-        assertTrue(resizing.copy(resizing = false).showsConnectionProgress)
+        assertFalse(resizing.copy(resizing = false).showsConnectionProgress)
+        assertTrue(resizing.copy(canStopRetrying = true).showsConnectionProgress)
         assertTrue(resizing.copy(phase = Phase.Reconnecting).showsConnectionProgress)
         assertTrue(ConnectionStatus(phase = Phase.Ready).acceptsInput)
     }

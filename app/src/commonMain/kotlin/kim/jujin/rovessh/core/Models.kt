@@ -37,6 +37,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val volumeUp: VolumeBinding = VolumeBinding(),
     val volumeDown: VolumeBinding = VolumeBinding(),
     val smoothTerminalTransitions: Boolean = false,
+    val keepConnectionsInBackground: Boolean = true,
     val showAllHierarchy: Boolean = false,
     val accent: AccentSettings = AccentSettings(),
 )
@@ -62,8 +63,8 @@ data class ConnectionStatus(
     val window: String? = null,
 ) {
     val acceptsInput get() = phase == Phase.Ready || phase == Phase.Shell
-    val showsConnectionProgress get() = phase == Phase.Connecting || phase == Phase.Reconnecting ||
-        (phase == Phase.Restoring && !resizing)
+    val showsConnectionProgress get() = phase == Phase.Connecting || phase == Phase.Authenticating ||
+        phase == Phase.Reconnecting || (phase == Phase.Restoring && canStopRetrying)
 }
 object RetryPolicy {
     fun retryable(failure: Failure) = failure == Failure.Network

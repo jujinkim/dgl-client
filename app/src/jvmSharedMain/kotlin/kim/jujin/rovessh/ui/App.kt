@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.first
 @Composable expect fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier)
 @Composable expect fun ImportKeyButton(onKey: (String) -> Unit, onError: (String) -> Unit)
 @Composable expect fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean)
+@Composable expect fun PlatformConnectionSettings(model: AppModel)
 @Composable expect fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit)
 expect fun copyPublicKey(value: String)
 
@@ -129,6 +130,8 @@ expect fun copyPublicKey(value: String)
                         TextButton({ model.removeConnection(connection) }) { Text("×") }
                     }
                 }
+                val maintenanceError by model.backgroundConnectionError.collectAsState()
+                maintenanceError?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val wide = !mobileLayout && maxWidth >= 840.dp
                     Row(Modifier.fillMaxSize()) {
@@ -216,6 +219,14 @@ expect fun copyPublicKey(value: String)
     val pane by client.pane.collectAsState()
     val trust by client.trustRequest.collectAsState()
     val notice by client.notice.collectAsState()
+    val inputNotice by client.inputNotice.collectAsState()
+    LaunchedEffect(inputNotice) {
+        val displayed = inputNotice
+        if (displayed != null) {
+            kotlinx.coroutines.delay(4000)
+            if (client.inputNotice.value == displayed) client.inputNotice.value = null
+        }
+    }
     val tmuxProblem by client.tmuxProblem.collectAsState()
     var tmuxDetails by remember(tmuxProblem) { mutableStateOf(false) }
     var navigation by remember { mutableStateOf(!mobileLayout) }
@@ -258,7 +269,7 @@ expect fun copyPublicKey(value: String)
         else -> currentSession?.let { displayTreeText(it.name) } ?: t("선택 안 함")
     }
     val statusDetail = if (status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) || status.canStopRetrying) displayTreeText(status.message) else ""
-    val statusLabel = listOf(displayTreeText(client.host.alias), status.phase.displayLabel(), remote.targetLabel(session, pane), statusDetail).filter { it.isNotEmpty() }.joinToString(" · ")
+    val statusLabel = listOf(displayTreeText(client.host.alias), (if (status.phase == Phase.Restoring && !status.showsConnectionProgress) t("연결됨") else status.phase.displayLabel()), remote.targetLabel(session, pane), statusDetail).filter { it.isNotEmpty() }.joinToString(" · ")
     val agentNotices by model.agentNotifications.collectAsState()
     val hierarchy = remote.hierarchyRows(preferences.showAllHierarchy)
     val navigationContent: @Composable (Modifier) -> Unit = { modifier ->
@@ -325,6 +336,11 @@ expect fun copyPublicKey(value: String)
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
             CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
                 PlatformTerminal(client, preferences, Modifier.fillMaxSize())
+            }
+            inputNotice?.let { message ->
+                Snackbar(Modifier.align(Alignment.BottomCenter), action = {
+                    TextButton({ client.inputNotice.value = null }) { Text(t("닫기")) }
+                }) { Text(message) }
             }
         }
         TerminalShortcutBar(client, preferences.terminalShortcuts, terminalInputAllowed, terminalFocus, mobileLayout, composer::open)
@@ -565,6 +581,7 @@ expect fun copyPublicKey(value: String)
             }
             AgentNotificationSettingsUi(model)
             CloudSyncSettings(model)
+            PlatformConnectionSettings(model)
             PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
             Text(t("신뢰한 서버"), style = MaterialTheme.typography.titleSmall)
             local.trust.forEach { (endpoint, fingerprint) ->

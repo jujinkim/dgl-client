@@ -2,6 +2,7 @@
 import re
 
 EXPECTED_ANDROID = {
+    'kim.jujin.rovessh.AndroidConnectionLifetimeTest.imeBackgroundIntentAndTaskRemovalPreserveOnlyRemoteWork',
     'kim.jujin.rovessh.AgentNotificationTest.channelPermissionAndClickIntentRetainOnlyEventId',
     'kim.jujin.rovessh.AgentNotificationTest.nativeInboxDeduplicatesVisibleReadAndDoesNotResolveObservation',
     'kim.jujin.rovessh.AndroidHierarchyTest.compactRowsExpansionPanelDetailsAndSelectedHostActions',

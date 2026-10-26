@@ -4,6 +4,9 @@ import kim.jujin.rovessh.ClientConnection
 import kim.jujin.rovessh.InputTarget
 import kim.jujin.rovessh.InputCompletion
 import kim.jujin.rovessh.inputTargetIdentity
+import kim.jujin.rovessh.InputRejections
+import kim.jujin.rovessh.nativeInputError
+import uniffi.dgl_core.CoreException
 import kim.jujin.rovessh.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -11,7 +14,7 @@ import kotlinx.serialization.json.*
 import uniffi.dgl_core.NativeConnection
 import java.security.MessageDigest
 
-/** The ViewModel owns this adapter. Each WebView receives its own native output subscription. */
+/** The process runtime owns this adapter. Each WebView has its own output subscription. */
 class RustClientConnection(
     override val host: HostProfile,
     private val credentials: CredentialStore,
@@ -32,6 +35,10 @@ class RustClientConnection(
     override val pane = MutableStateFlow<String?>(null)
     override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
     override val notice = MutableStateFlow<String?>(null)
+    override val inputNotice = MutableStateFlow<String?>(null)
+    private val rejections = InputRejections()
+    private fun rejectInput(code: String) { rejections.reject(code)?.let { inputNotice.value = it } }
+    private fun inputCode(error: Exception) = (error as? CoreException.Failure)?.code ?: "Unknown"
     override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
@@ -88,8 +95,9 @@ class RustClientConnection(
                                 val code = record["error"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
                                 val completion = inputCompletions.remove(id)
                                 val input = id?.let { inputRequests.remove(it) } == true
-                                if (completion != null) completion.complete(InputCompletion(code?.let(::message)))
-                                else if (code != null && (input || code !in setOf("Cancelled", "StaleGeneration"))) notice.value = message(code)
+                                if (completion != null) completion.complete(InputCompletion(code?.let(::nativeInputError)))
+                                else if (code != null && input) rejectInput(code)
+                                else if (code != null && code !in setOf("Cancelled", "StaleGeneration")) notice.value = message(code)
                             }
                         }
                     }
@@ -113,8 +121,7 @@ class RustClientConnection(
         val wait = retry?.get("wait_seconds")?.takeUnless { it is JsonNull }?.jsonPrimitive?.int
         val stopped = retry?.get("stopped")?.jsonPrimitive?.boolean == true
         val resizing = phase == Phase.Restoring && error == null &&
-            retry?.get("connecting")?.jsonPrimitive?.boolean != true &&
-            s["resizing"]?.jsonPrimitive?.boolean == true
+            retry?.get("connecting")?.jsonPrimitive?.boolean != true
         val canStopRetrying = phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting) ||
             (phase == Phase.Restoring && retry?.get("connecting")?.jsonPrimitive?.boolean == true)
         val canRetryNow = canStopRetrying || (phase == Phase.Failed && (error == "Network" || stopped))
@@ -153,6 +160,7 @@ class RustClientConnection(
             }, probes.firstNotNullOfOrNull { it.optional("path") }), version?.optional("version"), version?.optional("exit_status")?.toIntOrNull())
         } else null
         // Publish readiness only after its matching target and trust details are visible.
+        rejections.phase(phase)
         status.value = nextStatus
         if (phase == Phase.Ready && (lastSession != session.value || lastPane != pane.value)) {
             lastSession = session.value; lastPane = pane.value
@@ -213,7 +221,11 @@ class RustClientConnection(
         }
         action(buildJsonObject { put("action", "snapshot") })
     }
-    @Synchronized override fun bindSurface(value: TerminalSurface?) { surface = value; if (value != null) bindOutput() }
+    @Synchronized override fun bindSurface(value: TerminalSurface?) {
+        if (surface === value) return
+        surface = value
+        if (value != null) bindOutput()
+    }
     @Synchronized override fun unbindSurface(expected: TerminalSurface) { if (surface === expected) { surface = null; outputJob?.cancel(); subscription?.let { native?.unsubscribe(it) }; subscription = null } }
     override fun trust() {
         val request = trustRequest.value ?: return
@@ -226,10 +238,14 @@ class RustClientConnection(
     private fun action(value: JsonObject) { try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") } }
     override fun retryNow() = action(buildJsonObject { put("action", "retryNow") })
     override fun stopRetrying() = action(buildJsonObject { put("action", "stopRetrying") })
-    override fun selectTarget(session: String, window: String?, pane: String?) = action(buildJsonObject {
+    override fun selectTarget(session: String, window: String?, pane: String?) {
+        if (this.session.value == session && (pane == null || this.pane.value == pane) &&
+            (window == null || status.value.window == window)) return
+        action(buildJsonObject {
         put("action", "selectTarget"); put("session", session)
         window?.let { put("window", it) }; pane?.let { put("pane", it) }
-    })
+        })
+    }
     override fun selectSession(id: String) = action(buildJsonObject { put("action", "selectSession"); put("id", id) })
     override fun selectPane(id: String) = action(buildJsonObject { put("action", "selectPane"); put("id", id) })
     override fun createSession(name: String) = manage(TmuxCommand.newSession(name))
@@ -260,11 +276,12 @@ class RustClientConnection(
         }
     }
     @Synchronized override fun paneInput(pane: String, target: String?, bytes: ByteArray) {
-        val c = native ?: return
-        if (!status.value.acceptsInput || target == null) return
-        val current = c.targetJson() ?: return
-        if (inputTargetIdentity(target) != inputTargetIdentity(current) || json.parseToJsonElement(current).jsonObject["pane_id"]?.jsonPrimitive?.content != pane) return
-        try { inputRequests.add(c.submitInput(target, bytes)) } catch (_: Exception) { notice.value = t("대상 변경으로 입력을 취소했습니다.") }
+        val c = native ?: return rejectInput("Closed")
+        if (!status.value.acceptsInput) return rejectInput("NotReady")
+        val current = c.targetJson() ?: return rejectInput("NotReady")
+        if (target == null || inputTargetIdentity(target) != inputTargetIdentity(current) || json.parseToJsonElement(current).jsonObject["pane_id"]?.jsonPrimitive?.content != pane) return rejectInput("StaleGeneration")
+        // A size-only change keeps the destination; submit against the latest grid generation.
+        try { inputRequests.add(c.submitInput(current, bytes)) } catch (error: Exception) { rejectInput(inputCode(error)) }
     }
     @Synchronized override fun focusPane(pane: String, target: String?) {
         if (target != null && native?.targetJson()?.let { inputTargetIdentity(it) == inputTargetIdentity(target) } == true) selectPane(pane)
@@ -275,7 +292,14 @@ class RustClientConnection(
             put("op", "resizePaneTo"); put("target", pane); put("columns", size.columns); put("rows", size.rows)
         }) })
     }
-    @Synchronized override fun input(bytes: ByteArray) { val c = native ?: return; if (!status.value.acceptsInput) return; try { c.targetJson()?.let { inputRequests.add(c.submitInput(it, bytes)) } } catch (_: Exception) { notice.value = t("입력을 전송하지 않았습니다. 대기열 또는 연결 상태를 확인하세요.") } }
+    @Synchronized override fun input(bytes: ByteArray) {
+        val c = native ?: return rejectInput("Closed")
+        if (!status.value.acceptsInput) return rejectInput("NotReady")
+        try {
+            val target = c.targetJson() ?: return rejectInput("NotReady")
+            inputRequests.add(c.submitInput(target, bytes))
+        } catch (error: Exception) { rejectInput(inputCode(error)) }
+    }
     @Synchronized override fun captureInputTarget(): InputTarget? = native?.targetJson()?.let {
         InputTarget(epoch, session.value, inputTargetIdentity(it))
     }
@@ -292,7 +316,7 @@ class RustClientConnection(
             else -> try {
                 // Use the latest size generation, then let the core validate again at dequeue.
                 inputCompletions[c.submitInput(raw, bytes)] = completion
-            } catch (_: Exception) { completion.complete(InputCompletion(t("입력을 전송하지 않았습니다. 대기열 또는 연결 상태를 확인하세요."))) }
+            } catch (error: Exception) { completion.complete(InputCompletion(nativeInputError(inputCode(error)))) }
         }
         return completion
     }

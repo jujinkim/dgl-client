@@ -47,5 +47,13 @@ SSHJ/Bouncy Castle 연결 엔진은 제품 APK에 포함하지 않습니다. Jed
 Rust APK 수집기는 네 ABI와 필수 Rust 클래스를 확인하고 이전 엔진이 제품 DEX에 있으면 실패합니다.
 
 `coreBindings/src/main/kotlin/uniffi`, `coreBindings/src/main/jniLibs`와 빌드 출력은 생성물입니다.
+Android의 `DglApplication`이 `AppModel`/Rust 연결을 소유하고 Activity와 `ConnectionService`가 공유합니다.
+`specialUse` 포어그라운드 서비스는 사용자 시작 SSH 유지 용도를 명시하며 `START_NOT_STICKY`로 실행합니다.
+홈 이동·잠금 중 통신에 partial wake lock을 사용하고, 10분 제한을 유지 수명 안에서 5분마다 갱신합니다.
+설정 중단·연결 종료·재시도 소진·서비스 파괴·최근 앱 제거 시 wake lock과 갱신 작업을 해제합니다.
+최근 앱 제거는 앱 모델·연결·관측/동기화 작업을 닫으며 원격 tmux에는 종료 명령을 보내지 않습니다.
+Android 서비스 등록 기준은 [specialUse 문서](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use),
+IME 콜백은 [키보드 동기화 문서](https://developer.android.com/develop/ui/views/layout/sw-keyboard)를 따릅니다.
+
 Android 터미널 assets는 `web/bundle.mjs`로 갱신하며 CI에서 소스와 번들 차이를 검사합니다.
 기술 선택의 과거 경위는 [HISTORY.md](HISTORY.md)에 요약합니다.

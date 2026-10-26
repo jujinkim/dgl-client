@@ -77,6 +77,10 @@ class AgentNavigationTest {
             assertSame(second, model.selected.value)
             assertEquals<List<List<String?>>>(listOf(listOf("\$2", "@2", "%2")), second.targets)
             assertTrue(first.targets.isEmpty())
+            second.session.value = observation.session; second.pane.value = observation.pane
+            second.status.value = second.status.value.copy(window = observation.window)
+            model.openAgentObservation(second, observation)
+            assertEquals(1, second.targets.size, "opening the current pane must not request another snapshot")
             assertEquals(0, first.connects + second.connects)
             second.agents.value = second.agents.value.copy(observations = listOf(observation.copy(run = "recreated-run")))
             model.openAgentObservation(second, observation)

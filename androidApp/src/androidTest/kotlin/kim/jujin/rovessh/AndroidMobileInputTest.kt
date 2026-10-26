@@ -6,7 +6,6 @@ import android.view.*
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebView
-import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import kim.jujin.rovessh.core.*
@@ -64,7 +63,7 @@ class AndroidMobileInputTest {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             try {
                 scenario.onActivity {
-                    app = ViewModelProvider(it)[ClientViewModel::class.java].app
+                    app = (it.application as DglApplication).connections().app
                     previous = app.local.value; oldConnections = app.connections.value; oldSelected = app.selected.value
                     app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", mobilePaneToolbarVisible = true,
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
@@ -88,7 +87,7 @@ class AndroidMobileInputTest {
                 awaitNode("패널 도구 접기")
                 scenario.recreate()
                 awaitNode("패널 도구 접기")
-                scenario.onActivity { assertSame(app, ViewModelProvider(it)[ClientViewModel::class.java].app) }
+                scenario.onActivity { assertSame(app, (it.application as DglApplication).connections().app) }
                 stage = "fixed geometry"
                 delay(300)
                 checkBar()

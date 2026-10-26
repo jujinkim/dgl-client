@@ -93,4 +93,5 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
 
 actual fun copyPublicKey(value: String) { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(value), null) }
 @Composable actual fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean) {}
+@Composable actual fun PlatformConnectionSettings(model: kim.jujin.rovessh.AppModel) {}
 @Composable actual fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit) {}

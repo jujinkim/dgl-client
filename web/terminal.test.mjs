@@ -162,7 +162,7 @@ test('cached viewport stays opaque until a rendered replacement, then fades out'
   assert.deepEqual(r.messages, [{ type: 'ack', id: 7 }]);
   assert.ok(cache.classes.has('is-releasing'));
   assert.equal(r.root.children.length, 1);
-  r.expire(180);
+  r.expire(90);
   assert.equal(r.root.children.length, 0);
   assert.equal(r.animations.length, 0, 'advanced motion is opt-in');
 });
@@ -179,8 +179,8 @@ test('opt-in transition morphs differing sizes with crossfade and blur', () => {
   assert.equal(r.animations[1].keyframes[0].opacity, 0);
   assert.equal(r.animations[1].keyframes[0].filter, 'blur(2px)');
   assert.equal(r.animations[1].keyframes[1].filter, 'blur(0px)');
-  assert.equal(r.animations[0].options.duration, 240);
-  r.expire(240);
+  assert.equal(r.animations[0].options.duration, 120);
+  r.expire(120);
   assert.equal(r.root.children.length, 0);
   assert.ok(r.animations.every(animation => animation.cancelled));
 });
@@ -209,7 +209,7 @@ test('consecutive snapshots reuse one cache and stale fade callbacks cannot remo
   const cache = r.root.children[0];
   r.window.endSnapshot(1); r.render(); r.frame(); r.frame();
   r.window.beginSnapshot(); r.frame();
-  r.expire(180);
+  r.expire(90);
   assert.deepEqual(r.root.children, [cache]);
   assert.ok(!cache.classes.has('is-releasing'));
   r.window.cancelSnapshot(); r.frame();
@@ -225,4 +225,94 @@ test('cancellation and a stalled renderer release the cache and pending ack', ()
     assert.equal(r.root.children.length, 0);
     assert.deepEqual(r.messages, [{ type: 'ack', id: 9 }]);
   }
+});
+
+function imeRenderer() {
+  const messages = [], frames = [];
+  const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
+  const canvas = { style: {} }, host = { addEventListener() {} };
+  let observe, render, terminal;
+  class Terminal {
+    cols = 100; rows = 30; options = {}; parser = { registerOscHandler() {} };
+    buffer = { active: { viewportY: 10, baseY: 10 } };
+    element = { querySelector: () => ({ getBoundingClientRect: () => ({ width: this.cols * 10, height: this.rows * 20 }) }) };
+    constructor() { terminal = this; }
+    loadAddon() {} open() {} onData() {} onBinary() {}
+    onRender(callback) { render = callback; }
+    resize(columns, rows) { this.cols = columns; this.rows = rows; }
+  }
+  const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
+  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
+    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} },
+    document: { getElementById: id => id === 'terminal' ? root : id === 'window' ? canvas : host },
+    ResizeObserver: class { constructor(callback) { observe = callback; } observe() { observe(); } },
+    requestAnimationFrame: callback => frames.push(callback),
+  });
+  messages.length = 0;
+  return { window, root, canvas, messages, terminal, observe: () => observe(), render: () => render(),
+    frame() { frames.splice(0).forEach(callback => callback()); } };
+}
+
+test('IME show and hide anchor the existing surface and submit only the final grid', () => {
+  const r = imeRenderer();
+  r.window.setImeAnimation(true, 1);
+  for (const height of [540, 480, 420, 360]) { r.root.clientHeight = height; r.observe(); }
+  assert.equal(r.canvas.style.transform, 'translateY(-240px)');
+  assert.deepEqual(r.messages, []);
+  r.window.setImeAnimation(false, 1); r.frame();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 18 }]);
+  r.window.resizePane(100, 18); r.render();
+  assert.equal(r.canvas.style.transform, 'translateY(0px)');
+  r.window.setImeAnimation(true, 2);
+  for (const height of [420, 480, 540, 600]) { r.root.clientHeight = height; r.observe(); }
+  assert.equal(r.canvas.style.transform, 'translateY(240px)');
+  assert.deepEqual(r.messages, []);
+  r.window.setImeAnimation(false, 2); r.frame();
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 30 }]);
+});
+
+test('cancelled and rapidly reversed IME animations ignore old endings and settle latest geometry', () => {
+  const r = imeRenderer();
+  r.window.setImeAnimation(true, 1);
+  r.root.clientHeight = 400; r.observe();
+  r.window.setImeAnimation(false, 1);
+  r.window.setImeAnimation(true, 2);
+  r.frame();
+  assert.deepEqual(r.messages, []);
+  r.root.clientHeight = 600; r.observe();
+  r.window.setImeAnimation(false, 1); r.frame();
+  assert.deepEqual(r.messages, []);
+  r.window.setImeAnimation(false, 2); r.frame();
+  assert.equal(r.canvas.style.transform, '');
+  assert.deepEqual(r.messages, [], 'a cancelled show returns to the existing grid');
+  r.window.setImeAnimation(true, 3);
+  r.root.clientHeight = 400; r.observe();
+  r.window.setImeAnimation(false, 3); r.frame();
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 20 }]);
+});
+
+test('IME preserves an existing history reading position', () => {
+  const r = imeRenderer();
+  r.terminal.buffer.active.viewportY = 3;
+  r.window.setImeAnimation(true, 1);
+  r.root.clientHeight = 300; r.observe();
+  assert.equal(r.canvas.style.transform, '');
+  assert.equal(r.terminal.buffer.active.viewportY, 3);
+  r.window.setImeAnimation(false, 1); r.frame();
+  assert.equal(r.canvas.style.transform, '');
+  assert.equal(r.terminal.buffer.active.viewportY, 3);
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 15 }]);
+});
+
+test('a replacement snapshot releases its predecessor acknowledgement and reduced durations are bundled', () => {
+  const r = cachedRenderer();
+  r.window.beginSnapshot(); r.window.endSnapshot(11);
+  r.window.beginSnapshot(); r.frame();
+  assert.deepEqual(r.messages, [{ type: 'ack', id: 11 }]);
+  assert.equal(r.root.children.length, 1);
+  r.window.cancelSnapshot();
+  assert.equal(r.root.children.length, 0);
+  const css = readFileSync(new URL('../app/src/androidMain/assets/terminal/style.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('opacity 90ms'));
+  assert.ok(css.includes('opacity 80ms'));
 });

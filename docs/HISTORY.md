@@ -106,6 +106,13 @@ Android 계측 APK는 빌드했으나 계측 실행과 Windows·macOS GUI 실기
 당시 데스크톱 59 통과·대화형 Keychain 1 ignore, 대시보드 등록·문서 링크·원문 무결성 검사를 확인했습니다.
 Android 빌드·실제 SSH/tmux·Windows/macOS 실기 인수는 수행하지 않았습니다.
 
+## 2026-10-26: 언어·실시간 제목
+
+데스크톱 제목을 DGL로 정리하고 한국어/영어·기기별 언어 선택과 세션·창의 실시간 pane 제목을 연결했습니다.
+당시 코어/UniFFI 30·데스크톱 60·JVM 51·Python 98 통과, JVM 예상 skip 9·Rust ignore 6을 기록했습니다.
+격리 tmux 3.3a·3.7c 제목 검사, Android Debug·lint·계측 컴파일, Mac ad-hoc 패키징을 확인했습니다.
+Android 계측 실행·Windows/macOS 실기 인수는 수행하지 않았습니다. 상세는 해당 Git 이력에서 확인합니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

@@ -49,6 +49,8 @@
     const buffer = term.buffer?.active;
     if (buffer && buffer.viewportY < buffer.baseY) savedScroll = buffer.viewportY;
     const version = ++cacheVersion;
+    if (renderAck !== null) post({ type: 'ack', id: renderAck });
+    renderAck = null;
     clearTimeout(cacheTimer);
     stopAnimations();
     renderListener?.dispose(); renderListener = null;
@@ -83,7 +85,7 @@
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (cacheVersion !== version || !cachedScreen) return;
         const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-        const duration = reducedMotion ? 0 : smoothTransitions ? 240 : 180;
+        const duration = reducedMotion ? 0 : smoothTransitions ? 120 : 90;
         cachedScreen.style.transitionDuration = `${duration}ms`;
         const liveScreen = term.element.querySelector('.xterm-screen');
         const nextSize = liveScreen?.getBoundingClientRect();
@@ -191,7 +193,35 @@
   }
   window.outputPane = (id, target) => { ensure(id); output = id; };
   let lastViewport = '';
+  let imeAnimating = false, imeAnchoring = false, imeVersion = 0, preserveReading = false;
   let cell = { width: 8.54, height: 19.6 }, boundaries = [], draggingBoundary = false;
+  function alignViewport() {
+    if (!canvas.style) return;
+    const height = layout?.window != null ? layout.rows * cell.height
+      : focused().term.element?.querySelector('.xterm-screen')?.getBoundingClientRect()?.height;
+    canvas.style.transform = imeAnchoring && !preserveReading && height > 0
+      ? `translateY(${root.clientHeight - height}px)` : '';
+  }
+  window.setImeAnimation = (animating, version) => {
+    if (!Number.isSafeInteger(version) || version < imeVersion) return;
+    if (animating) {
+      if (!imeAnchoring) {
+        const buffer = focused().term.buffer?.active;
+        preserveReading = !!buffer && buffer.viewportY < buffer.baseY;
+      }
+      imeVersion = version; imeAnimating = true; imeAnchoring = true;
+      alignViewport();
+    } else if (version === imeVersion) {
+      // Wait for Compose's final layout. A replacement/cancelled animation owns a newer version.
+      requestAnimationFrame(() => {
+        if (version !== imeVersion) return;
+        imeAnimating = false;
+        const previous = lastViewport;
+        resize();
+        if (lastViewport === previous) { imeAnchoring = false; alignViewport(); }
+      });
+    }
+  };
   function resize() {
     const shell = panes.get('shell');
     const rect = shell.term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
@@ -202,6 +232,8 @@
     const columns = Math.max(2, Math.min(500, Math.floor(root.clientWidth / cell.width)));
     const rows = Math.max(2, Math.min(250, Math.floor(root.clientHeight / cell.height)));
     const key = `${columns},${rows}`;
+    alignViewport();
+    if (imeAnimating) return;
     if (key !== lastViewport) { lastViewport = key; send({ type: 'resize', columns, rows }); arrange(); }
     else if (changed) arrange();
   }
@@ -221,6 +253,8 @@
     boundaries.forEach(b => b.remove()); boundaries = [];
     canvas.style.width = tmux ? `${layout.columns * cell.width}px` : '100%';
     canvas.style.height = tmux ? `${layout.rows * cell.height}px` : '100%';
+    if (!imeAnimating && `${layout.columns},${layout.rows}` === lastViewport) imeAnchoring = false;
+    alignViewport();
     for (const [id, p] of panes) {
       if (id === 'shell') continue;
       const spec = layout.panes.find(p => p.id === id);

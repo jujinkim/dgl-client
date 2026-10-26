@@ -5,7 +5,6 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
-import android.app.Application
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
@@ -14,29 +13,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
 import androidx.compose.runtime.*
 import androidx.core.graphics.drawable.toDrawable
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
 import kim.jujin.rovessh.ui.App
 import kim.jujin.rovessh.ui.VolumeKeyDispatcher
 import kim.jujin.rovessh.ui.VolumeKeyHost
 
-class ClientViewModel(application: Application) : AndroidViewModel(application) {
-    val app = createEngine(application).also { model ->
-        val notifications = AgentNotifications(application)
-        val configure = model.languageChanged
-        model.languageChanged = { preference ->
-            val previous = kim.jujin.rovessh.core.I18n.language
-            configure(preference)
-            if (previous != kim.jujin.rovessh.core.I18n.language) notifications.refreshLanguage()
-        }
-        model.sendAgentNotification = notifications::show
-    }
-    override fun onCleared() { app.close() }
-}
-
 class MainActivity : ComponentActivity(), VolumeKeyHost {
     override val volumeKeys = VolumeKeyDispatcher()
-    private lateinit var holder: ClientViewModel
+    private lateinit var holder: AndroidConnectionRuntime
     private var notificationPermissionAsked = false
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val openSyncFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -60,7 +43,7 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        holder = ViewModelProvider(this)[ClientViewModel::class.java]
+        holder = (application as DglApplication).connections()
         holder.app.languageChanged(holder.app.local.value.preferences.language)
         holder.app.chooseSyncFile = { create ->
             val intent = Intent(if (create) Intent.ACTION_CREATE_DOCUMENT else Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -74,8 +57,8 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
         openNotice(intent)
         setContent {
             val local by holder.app.local.collectAsState()
-            LaunchedEffect(local.preferences.agentNotifications.os) {
-                if (local.preferences.agentNotifications.os && !notificationPermissionAsked && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            LaunchedEffect(local.preferences.agentNotifications.os, local.preferences.keepConnectionsInBackground) {
+                if ((local.preferences.agentNotifications.os || local.preferences.keepConnectionsInBackground) && !notificationPermissionAsked && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     notificationPermissionAsked = true
                     notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
@@ -100,15 +83,17 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
             App(holder.app, mobileLayout = true)
         }
     }
+    override fun onStart() { super.onStart(); if (::holder.isInitialized) holder.setVisible(true) }
+    override fun onStop() {
+        if (::holder.isInitialized && !isChangingConfigurations) holder.setVisible(false)
+        super.onStop()
+    }
     override fun onResume() {
         super.onResume()
         volumeKeys.resumed = true
         if (::holder.isInitialized) holder.app.foreground = hasWindowFocus()
         if (::holder.isInitialized) holder.app.languageChanged(holder.app.local.value.preferences.language)
         if (::holder.isInitialized) holder.app.cloudSync?.sync()
-        if (::holder.isInitialized) holder.app.connections.value.forEach {
-            if (it.status.value.phase == kim.jujin.rovessh.core.Phase.Ready) it.restore()
-        }
     }
     override fun onPause() {
         volumeKeys.resumed = false
@@ -127,6 +112,8 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
     override fun onDestroy() {
         if (::holder.isInitialized) holder.app.chooseSyncFile = {}
         volumeKeys.clear()
+        if (::holder.isInitialized && isFinishing)
+            (application as DglApplication).removeTask(holder)
         super.onDestroy()
     }
 }

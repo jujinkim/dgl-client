@@ -6,30 +6,33 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-데스크톱 타이틀바 `DGL` 정리와 데스크톱·Android 한국어/영어 UI, 시스템 언어 선택과 기기별 저장,
-세션·창 행의 실시간 터미널 제목 연동 검사입니다.
-이전 호스트 순서·세션 탭 재사용 검사는 [HISTORY.md](HISTORY.md)에 있습니다.
+Android 프로세스 공유 엔진·백그라운드 SSH 유지 서비스, 입력 오류 분류와 비차단 안내,
+IME 하단 정렬·최종 resize와 화면 전환 시간 변경 검사입니다.
+이전 언어·실시간 제목 검사 결과는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 번역 목록 | 공통 JSON·Kotlin 생성 파일 일치, 호출부 키 누락과 번호 자리표시자 일치 검사 통과 |
-| 언어 동작 | 한국어/영어 강제 선택, 시스템 한국어와 지원하지 않는 언어의 영어 fallback, 예전 설정 기본값·재실행 저장·클라우드 제외, 인수 순서 변경·사용자 입력의 중괄호/Unicode 보존 검사 통과 |
-| 타이틀 표시 | 세션별 활성 창·pane, 비활성 창·다른 세션, 제목 변경·활성 전환·빈 제목·같은 이름·Unicode/제어 문자·행 ID와 포커스/펼침 유지 검사 통과. Rust/Kotlin 공통 fixture 사용 |
-| Rust workspace | 코어·계약·SSH fixture·UniFFI 30 통과, 데스크톱 60 통과. 기본 실행의 SSH/tmux 5 ignore·대화형 Keychain 1 ignore는 통과에 포함하지 않음 |
-| 실제 SSH/tmux 제목 | 격리 OpenSSH와 tmux 3.3a·3.7c에서 `hierarchy_titles_all_sessions_without_screen_reset` 각각 1개 통과. 프로그램 OSC 제목·숨은 창/다른 세션·재연결·출력 구독 제거 후 제목 갱신, 입력 대상/프로세스와 화면 상태 보존 확인. 기본 ignore인 다른 통합 검사는 실행하지 않음 |
-| JVM | 51 통과·외부 SSH/Windows 환경의 예상 skip 9개, 명시적 결과 검증기 통과 |
-| Python | 98개 통과. JVM 검사 이름 목록 일치 포함 |
-| Android | 4개 ABI Rust payload와 Kotlin 컴파일·Debug APK·lint 통과. 수집 도구가 앱 ID/버전/SDK·Rust 제품 경로·v2 서명을 확인. lint 기존 검토 진단 12개 일치 |
-| Android 검사 코드 | UI 검사의 한국어 설정 고정·실시간 제목 기대값과 언어별 알림 비교 갱신. 계측 Kotlin 컴파일 통과, 계측 실행은 하지 않음 |
-| macOS 패키징 | Debug 앱 번들·로컬 ad-hoc 서명과 strict 서명 검사 통과. 실제 GUI 인수·Developer ID·공증을 의미하지 않음 |
-| 문서·메타데이터 | 언어 선택·번역 유지 절차 갱신. 기존 로컬 대시보드 등록 검증기 통과·Git 제외 유지 |
-| 무결성 | `git diff --check`·원문 요구사항 SHA-256·Gradle wrapper checksum 검사 통과 |
+| 연결 수명 단위 | 서비스 시작/중단·복귀/재생성 시 연결 재사용·여러 연결 중 마지막 종료·재시도 소진·설정 해제·시작 실패/서비스 손실·task 제거 후 재시작 차단 확인 |
+| 입력 단위 | NotReady·QueueFull·StaleGeneration·Cancelled/Closed 구분, 같은 복원 주기 안내 합치기, 작성창 실패 이유·초안 유지·무재전송, 같은 대상 재탐색 생략 확인 |
+| 설정·동기화 | Kotlin/Rust 기본 true·예전 설정·저장/재실행, 클라우드 문서와 캐시 제외 확인. 공통 설정 fixture 갱신 |
+| Rust | 코어·공통 계약·UniFFI 30 통과, 기본 SSH 통합 5 ignore는 통과에 포함하지 않음 |
+| 실제 SSH/tmux | 격리 OpenSSH·tmux 3.7c의 `isolated_auth_management_input_reconnect` 1 통과. 인증·관리·입력·단절 후 재접속과 원격 프로세스/세대·실패 입력 무재전송 확인 |
+| JVM | 57 통과·외부 SSH/Windows 환경의 예상 skip 9개. 추가 6개 테스트를 명시적 결과 목록에 등록하고 검증기 통과 |
+| 웹 | 12 통과. IME 표시/숨김·취소/역전의 하단 정렬·최종 resize만 전달·과거 출력 열람 위치, 연속 스냅샷 캐시/ack 정리, dim 80·fade 90·선택형 blur/확대축소 120ms와 동작 줄이기 확인 |
+| Python | 98 통과. JVM/Android 검사 이름 목록 일치 포함 |
+| Android 빌드 | 네 ABI Rust payload·Kotlin 컴파일, Debug·미서명 Release·계측 APK 빌드 통과. lint 기존 검토 진단 12개 일치 |
+| API36 단일 계측 | `AndroidConnectionLifetimeTest` 1 통과(약 12–13초). 실제 Rust SSH 연결에서 IME 표시/숨김·짧은 백그라운드 복귀·Activity 재생성·알림 앱 열기 인텐트 뒤 SSH 대상과 tmux 클라이언트 동일성 확인. `finishAndRemoveTask()` 뒤 연결/알림 정리·입력 거절·서비스 자동 재시작 없음과 원격 pane PID 보존 확인 |
+| 무결성·문서 | 번역 목록·번호 자리표시자·생성 파일, 원문 요구사항 SHA-256·Gradle wrapper·diff 공백 검사 통과. 로컬 대시보드 등록 검증기 통과·Git 제외 유지 |
 
-GPUI 검사는 합성 상태와 실제 이벤트 디스패치를 사용합니다. 실제 서버의 창·pane 전환이나 네트워크 복구 인수를 대신하지 않습니다.
-Windows MSVC 네이티브 빌드·DPAPI·GUI와 macOS 실제 GUI·Keychain·OS 알림,
-전체 SSH/tmux 통합·Android 계측은 이번에 실행하지 않았습니다. Debug APK는 커밋 후에도 다시 빌드·수집합니다.
-Windows 기본 빌드·ZIP·수동 CI 경로는 유지합니다.
-기존 Rust 의존성 `block`/`proc-macro-error2`의 향후 호환성 경고는 남아 있습니다.
+API36 계측의 최초 실행은 새 알림 인텐트 때문에 ActivityScenario 종료 대기에서 실패했습니다.
+테스트가 원래 launch intent를 복원하도록 수정한 뒤 통과했습니다. 실패·skip을 통과로 계산하지 않습니다.
+서비스에는 `specialUse` 용도와 권한을 등록하고 `START_NOT_STICKY`를 사용합니다.
+partial wake lock은 10분 제한·5분 갱신이며 유지 중단/연결 종료/재시도 소진/task 제거 때 갱신 작업과 함께 해제합니다.
+
+API36에서 task 제거 API를 검사했으며 최근 앱 카드의 실제 손가락 swipe·화면 잠금·물리 기기 절전 정책 인수는 하지 않았습니다.
+새 인텐트의 다른 실제 pane 이동은 기존 연결 조작 경로와 단위 검사 범위이며 계측에서는 현재 연결 열기를 확인했습니다.
+전체 Android API matrix·장시간 백그라운드/배터리·실제 한국어/일본어 키보드·Windows 네이티브·macOS GUI는 실행하지 않았습니다.
+Windows 기본 MSVC 빌드·ZIP·수동 CI 경로는 유지합니다.
 
 ## 남은 한계
 
