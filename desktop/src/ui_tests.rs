@@ -226,7 +226,29 @@ fn session_clicks_reuse_tabs_across_groups_keep_entities_and_host_history(cx: &m
         assert_eq!(s.session_tab("b", "$1"), Some(b1));
         assert_eq!(s.active_tab().unwrap().label(), "b · renamed");
         assert_eq!(s.tabs.len(), 3);
-        let mut missing = renamed.clone();
+        let mut metadata = renamed.clone();
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v2.json"))
+                .unwrap();
+        metadata.remote = serde_json::from_value(fixture[0]["remote"].clone()).unwrap();
+        metadata.remote.sessions[0].name = "renamed".into();
+        let tab = s.tabs.iter_mut().find(|t| t.id == b1).unwrap();
+        let terminal_id = tab.terminal.entity_id();
+        let connection = tab.connection.clone();
+        tab.update_session(&metadata);
+        assert_eq!(tab.label(), "b · renamed · 편집 · 작업");
+        metadata.remote.windows[0].name = "Editor".into();
+        metadata.remote.panes[0].title = "Building 😀\u{202e}\n".into();
+        tab.update_session(&metadata);
+        assert_eq!(tab.label(), "b · renamed · Editor · Building 😀");
+        assert_eq!(tab.terminal.entity_id(), terminal_id);
+        assert!(Arc::ptr_eq(&tab.connection, &connection));
+        let mut recovering = metadata.clone();
+        recovering.phase = dgl_core::connection::Phase::Reconnecting;
+        recovering.remote = Default::default();
+        tab.update_session(&recovering);
+        assert_eq!(tab.label(), "b · renamed · Editor · Building 😀");
+        let mut missing = metadata;
         missing.phase = dgl_core::connection::Phase::MissingSession;
         missing.remote.sessions.clear();
         s.tabs
@@ -235,7 +257,10 @@ fn session_clicks_reuse_tabs_across_groups_keep_entities_and_host_history(cx: &m
             .unwrap()
             .update_session(&missing);
         assert_eq!(s.session_tab("b", "$1"), Some(b1));
-        assert_eq!(s.active_tab().unwrap().label(), "b · renamed");
+        assert_eq!(
+            s.active_tab().unwrap().label(),
+            "b · renamed · Editor · Building 😀"
+        );
         let notice: dgl_core::agent::Notice = serde_json::from_value(serde_json::json!({
             "endpoint":"fixture@127.0.0.1:1", "read":false,
             "event":{"id":"reuse", "seq":1, "server":"old", "run":"old", "actor":"parent",
@@ -1014,7 +1039,7 @@ fn add_terminal(view: &Entity<Desktop>, cx: &mut VisualTestContext) -> Entity<Te
             terminal: terminal.clone(),
             last_sequence: 0,
             session: None,
-            session_name: None,
+            session_title: None,
             pending_target: None,
         });
         cx.notify();

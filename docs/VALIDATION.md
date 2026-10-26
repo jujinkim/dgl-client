@@ -6,23 +6,23 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-터미널 크기 측정·resize 완료 처리를 보완하고, 연결별 글자 크기 초기화 FAB와 데스크톱 Ctrl+휠을 추가했습니다.
-Android IME 세대는 재사용 렌더러가 소유하며 조합 글자는 스냅샷 복원 중 기존 위치를 유지합니다.
+기존 tmux 메타데이터 구독을 GUI 탭·Android 연결 선택 이름에 연결했습니다.
+세션·활성 창·활성 pane 제목 변경과 전환을 반영하며 빈 값·중복 이름·제어 문자를 정리합니다.
+데스크톱에는 긴 이름의 말줄임·툴팁을 추가하고, 재접속·세션 소실 중 마지막 이름 보존을 검사했습니다.
 이전 변경의 검증 이력은 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust core·UniFFI | 35 통과. 세션 폰트 격리·범위 제한·최신 기본값 초기화와 기존 계약 확인. 격리 SSH 통합 6개는 기본 ignore |
-| Rust 데스크톱 | 63 통과, 대화형 Keychain 1개는 기본 ignore. resize 최신값 병합·실패 후 동일 크기 재시도, 실제 Ctrl+휠 확대/축소·원격 전송 차단, 좁은 창/분할 FAB 위치·클릭·포커스와 기존 회귀 확인 |
-| JVM·결과 검증기 | 76 통과, 외부 SSH/Windows 환경 9개는 명시적 예상 skip. 취소·재부착 IME 세대, 실패한 중간 크기의 최신값 재시도, 폰트 격리·최신 기본값 초기화와 기존 회귀 확인 |
-| 터미널 JavaScript | 25 통과·skip 없음. 늦은 폰트 측정·숨김/재표시·IME 취소/재부착, 조합 중 스냅샷 교체와 표시 좌표·캐시 보조 요소 제외, 기존 확정 단일 전송·대상 세대·복구 회귀 포함 |
-| Android 빌드·lint | `:androidApp:assembleDebug :androidApp:assembleDebugAndroidTest :androidApp:lintDebug` 통과. 네 ABI Rust/UniFFI와 원본 Debug APK 갱신. 계측 APK 컴파일은 실기 통과로 계산하지 않음. 기존 lint 진단 12개는 검증기의 명시적 목록과 일치 |
-| Python·기본 검사 | 스크립트 98 통과, 번역/자리표시자·Wrapper·원문 체크섬·diff 공백·문서 로컬 링크·대시보드 등록 검증 통과 |
+| Rust 데스크톱 | 64 통과, 대화형 Keychain 1개는 기본 ignore. 제목·창/pane 전환·다른 세션 분리·빈 값/중복/Unicode 정리, 제목 변경·세션 소실 시 탭/터미널/연결 동일성과 기존 GPUI 회귀 확인 |
+| JVM·결과 검증기 | 77 통과, 외부 SSH/Windows 환경 9개는 명시적 예상 skip. Rust와 같은 제목·전환·분리·정리 사례와 기존 회귀 확인. 명시적 검사 이름 목록 갱신 |
+| 격리 SSH/tmux 3.7c | `hierarchy_titles_all_sessions_without_screen_reset` 1개 통과. 실제 OSC 제목·tmux 이름·활성 창/pane 변경을 메타데이터 구독으로 수신하고 화면 재캡처·입력 대상 변경 없이 처리하는 기존 코어 경로 확인 |
+| Android Debug APK | `:androidApp:assembleDebug` 통과. 원본 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 갱신. `collect_rust_android.py`로 앱 ID·버전·SDK·Rust 네 ABI·서명 검증. lint·계측은 수행하지 않음 |
+| Python·기본 검사 | 스크립트 98 통과. JVM 이름 목록·예상 skip 결과 검증과 diff 공백·대시보드 등록 검증 통과. 문서는 기존 등록 `docs/` 경로에 포함되어 등록 정보 변경 없음 |
 
-UI 동작 결과는 GPUI 이벤트 주입 검사와 웹 브리지의 좌표 검사입니다.
-연결된 Android 기기가 없어 Android 실제 GUI/IME·계측은 수행하지 않았습니다.
+UI 동작 결과는 GPUI 이벤트 주입 검사입니다.
+Android 실제 GUI/IME·계측은 수행하지 않았습니다.
 삼성 키보드를 열자마자 한글을 입력할 때의 조합 위치·최종 문자열, 영문/숫자 비교와 FAB의 실제 키보드 유지 확인은 남아 있습니다.
-Windows 네이티브 빌드·DPAPI·GUI, 실제 SSH/TUI, 전체 Android API 계측·장시간 반복은 이번 범위에 포함하지 않았습니다.
+Windows 네이티브 빌드·DPAPI·GUI, 실제 사용자 서버/TUI, 전체 Android API 계측·장시간 반복은 이번 범위에 포함하지 않았습니다.
 
 ## 남은 한계
 

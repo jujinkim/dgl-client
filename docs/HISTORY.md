@@ -170,6 +170,14 @@ API36 작업 공간/입력/볼륨키/계층 선택 8개와 실제 Rust 연결 �
 JVM 예상 skip 9·Rust SSH ignore 6·Keychain ignore 1은 실기 통과로 계산하지 않았습니다.
 macOS ARM64 Debug 패키징·ad-hoc 서명을 확인했으며 연결된 Android 기기와 macOS GUI 인수는 없었습니다.
 
+## 2026-10-26: 터미널 크기·글자 크기 초기화·IME 수명
+
+resize 최신값 병합·실패 후 재시도, 연결별 폰트 초기화 FAB와 데스크톱 Ctrl+휠을 추가했습니다.
+Android 재사용 렌더러의 IME 세대와 스냅샷 복원 중 조합 위치를 보완했습니다.
+당시 core·UniFFI 35·데스크톱 63·JVM 76·웹 25·Python 98 통과,
+JVM 예상 skip 9·Rust SSH ignore 6·Keychain ignore 1과 Android Debug/계측 APK/lint를 확인했습니다.
+실제 GUI/IME·SSH/TUI·물리 기기·Windows 네이티브 검사는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

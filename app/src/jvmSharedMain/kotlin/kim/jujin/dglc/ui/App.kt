@@ -130,7 +130,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
                         TextButton({ switching = true }, enabled = connections.isNotEmpty(), modifier = Modifier.fillMaxWidth()
                             .semantics { contentDescription = t("서버 선택") }, contentPadding = PaddingValues(4.dp)) {
                             Column(Modifier.weight(1f)) {
-                                Text(selected?.host?.alias ?: t("연결 선택"), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(selected?.let { workspaceTabTitle(it) } ?: t("연결 선택"), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Text(" ▾")
                         }

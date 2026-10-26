@@ -74,6 +74,27 @@ pub fn session_label(state: &RemoteState, session: &RemoteSession) -> Label {
         detail: tr!("창 {0}개 · 패널 {1}개", windows.len(), panes),
     }
 }
+pub fn session_tab_title(state: &RemoteState, session: &RemoteSession) -> String {
+    let window = state
+        .windows
+        .iter()
+        .find(|w| w.session == session.id && w.active);
+    let pane = window.and_then(|w| state.panes.iter().find(|p| p.window == w.id && p.active));
+    let mut parts = vec![named(&session.name, t("이름 없는 세션"))];
+    for text in [
+        window.map(|w| w.name.as_str()),
+        pane.map(|p| p.title.as_str()),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let text = display_text(text);
+        if !text.is_empty() && !parts.contains(&text) {
+            parts.push(text);
+        }
+    }
+    parts.join(" · ")
+}
 pub fn window_label(state: &RemoteState, window: &RemoteWindow) -> Label {
     let count = state.panes.iter().filter(|p| p.window == window.id).count();
     Label {
@@ -220,6 +241,47 @@ pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&st
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tab_titles_follow_active_window_and_pane_and_ignore_other_sessions() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v2.json"))
+                .unwrap();
+        let mut state: RemoteState = serde_json::from_value(fixture[3]["remote"].clone()).unwrap();
+        state.windows[1].active = false;
+        state.panes[1].active = false;
+        state.panes[3].active = false;
+        let title = |state: &RemoteState| session_tab_title(state, &state.sessions[0]);
+        assert_eq!(title(&state), "개발 · 편집 · 작업");
+        state.panes[2].title = "Hidden".into();
+        state.panes[4].title = "Other session".into();
+        assert_eq!(title(&state), "개발 · 편집 · 작업");
+        state.sessions[0].name = " 프로젝트\n".into();
+        state.windows[0].name = "Editor".into();
+        state.panes[0].title = "Building 😀\u{202e}\n".into();
+        assert_eq!(title(&state), "프로젝트 · Editor · Building 😀");
+        state.panes[0].active = false;
+        state.panes[1].active = true;
+        state.panes[1].title = "Review".into();
+        assert_eq!(title(&state), "프로젝트 · Editor · Review");
+        state.windows[0].active = false;
+        state.windows[1].active = true;
+        assert_eq!(title(&state), "프로젝트 · 서버 · Hidden");
+        state.windows[1].name = "프로젝트".into();
+        state.panes[2].title = " 프로젝트\u{2069}".into();
+        assert_eq!(title(&state), "프로젝트");
+        state.windows[1].name = "\t\n".into();
+        state.panes[2].title.clear();
+        assert_eq!(title(&state), "프로젝트");
+        assert_eq!(
+            session_tab_title(&state, &state.sessions[1]),
+            "개발 · Other session"
+        );
+        assert_eq!(session_tab_title(&state, &state.sessions[2]), "빈 세션");
+        state.windows.clear();
+        assert_eq!(title(&state), "프로젝트");
+        assert_eq!(state.sessions[0].id, "$1");
+        assert_eq!(state.panes[1].id, "%2");
+    }
     #[test]
     fn live_titles_follow_active_panes_without_changing_identity() {
         let fixture: serde_json::Value =

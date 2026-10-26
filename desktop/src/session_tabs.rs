@@ -62,7 +62,7 @@ impl Tab {
             .iter()
             .find(|s| Some(&s.id) == self.session.as_ref())
         {
-            self.session_name = Some(session.name.clone());
+            self.session_title = Some(hierarchy::session_tab_title(&state.remote, session));
         }
     }
     pub(super) fn label(&self) -> String {
@@ -70,7 +70,7 @@ impl Tab {
         match self.session.as_deref() {
             Some(id) => format!(
                 "{alias} · {}",
-                hierarchy::display_text(self.session_name.as_deref().unwrap_or(id))
+                hierarchy::display_text(self.session_title.as_deref().unwrap_or(id))
             ),
             None => tr!("{0} · 세션 선택", alias),
         }
@@ -168,7 +168,7 @@ impl Desktop {
             connection,
             terminal,
             session,
-            session_name: None,
+            session_title: None,
             pending_target: None,
             refresh: None,
             last_sequence: 0,
@@ -287,7 +287,7 @@ impl Desktop {
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id)
             && let Some(remote) = state.remote.sessions.iter().find(|s| s.id == session)
         {
-            tab.session_name = Some(remote.name.clone());
+            tab.session_title = Some(hierarchy::session_tab_title(&state.remote, remote));
         }
         self.activate_tab(id);
         Some(id)

@@ -862,6 +862,12 @@ impl Desktop {
                                 s.group_focus(id, w, cx);
                             },
                         )
+                        .max_w(px(320.))
+                        .truncate()
+                        .tooltip({
+                            let label = label.clone();
+                            move |_, cx| cx.new(|_| Tip(label.clone())).into()
+                        })
                         .cursor_move()
                         .on_drag(DragTab { id: tab_id, label }, move |tab, _, _, cx| {
                             drag_view.update(cx, |s, cx| {

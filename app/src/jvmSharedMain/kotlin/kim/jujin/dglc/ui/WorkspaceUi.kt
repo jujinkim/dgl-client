@@ -20,8 +20,12 @@ import androidx.compose.ui.unit.*
 import kim.jujin.dglc.*
 import kim.jujin.dglc.core.*
 
-internal fun workspaceTabTitle(client: ClientConnection): String = client.host.alias + " · " +
-    (client.remote.value.sessions.firstOrNull { it.id == client.session.value }?.name ?: client.session.value ?: t("연결 선택"))
+@Composable internal fun workspaceTabTitle(client: ClientConnection): String {
+    val session by client.session.collectAsState()
+    val remote by client.remote.collectAsState()
+    return displayTreeText(client.host.alias) + " · " +
+        (remote.sessions.firstOrNull { it.id == session }?.let { remote.sessionTabTitle(it) } ?: session ?: t("연결 선택"))
+}
 
 @Composable internal fun WorkspaceInputBlock(model: AppModel, owner: Any, blocked: Boolean) {
     SideEffect { model.blockInput(owner, blocked) }
@@ -129,10 +133,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                         Row(Modifier.fillMaxWidth().height(48.dp).background(MaterialTheme.colorScheme.surfaceContainer), verticalAlignment = Alignment.CenterVertically) {
                             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
                                 group.tabs.forEach { tab -> key(tab) { model.tabClient(tab)?.let { client ->
-                                    // Subscribe to both fields so live names update without changing tab identity.
-                                    val session by client.session.collectAsState()
-                                    val remote by client.remote.collectAsState()
-                                    val title = client.host.alias + " · " + (remote.sessions.firstOrNull { it.id == session }?.name ?: session ?: t("연결 선택"))
+                                    val title = workspaceTabTitle(client)
                                     var bounds by remember { mutableStateOf(Rect.Zero) }
                                     Row(Modifier.onGloballyPositioned { bounds = it.boundsInRoot(); tabBounds[tab] = bounds }
                                         .background(if (group.selected == tab) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)

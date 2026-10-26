@@ -17,6 +17,12 @@ fun RemoteState.sessionLabel(session: RemoteSession): TreeLabel {
     val count = panes.count { p -> children.any { it.id == p.window } }
     return TreeLabel(liveTitle(session.name, t("이름 없는 세션"), children.firstOrNull { it.active }), tr("창 {0}개 · 패널 {1}개", children.size, count))
 }
+fun RemoteState.sessionTabTitle(session: RemoteSession): String {
+    val window = windows.firstOrNull { it.session == session.id && it.active }
+    val pane = window?.let { w -> panes.firstOrNull { it.window == w.id && it.active } }
+    return (listOf(named(session.name, t("이름 없는 세션"))) + listOfNotNull(window?.name, pane?.title).map(::displayTreeText))
+        .filter { it.isNotEmpty() }.distinct().joinToString(" · ")
+}
 fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(liveTitle(window.name, t("이름 없는 창"), window),
     tr("창 {0} · 패널 {1}개", window.index, panes.count { it.window == window.id }))
 fun RemotePane.treeLabel(): TreeLabel {

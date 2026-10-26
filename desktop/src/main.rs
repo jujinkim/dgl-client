@@ -57,7 +57,7 @@ struct Tab {
     terminal: Entity<Terminal>,
     last_sequence: u64,
     session: Option<String>,
-    session_name: Option<String>,
+    session_title: Option<String>,
     pending_target: Option<session_tabs::PendingTarget>,
 }
 #[derive(Clone)]
@@ -431,7 +431,7 @@ impl Desktop {
             } else {
                 None
             };
-            let session_name = tab.session_name.clone();
+            let session_title = tab.session_title.clone();
             let id = tab.id;
             // Keep the slot and its group, even when a manual reconnect replaces SSH.
             let group = self.workspace.group_for(id).unwrap();
@@ -449,7 +449,7 @@ impl Desktop {
                 }
                 self.close_tab(id);
                 replacement.id = id;
-                replacement.session_name = session_name;
+                replacement.session_title = session_title;
                 self.tabs.push(replacement);
                 // Reinsert the original ID in exactly the same group and position.
                 self.workspace.groups.get_mut(&group).unwrap().tabs.push(id);

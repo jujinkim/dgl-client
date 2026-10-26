@@ -5,6 +5,40 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class HierarchyTest {
+    @Test fun tabTitlesFollowActiveWindowAndPaneAndIgnoreOtherSessions() {
+        val fixture = javaClass.getResourceAsStream("/migration/hierarchy-v2.json")!!.use {
+            Json.parseToJsonElement(it.reader(Charsets.UTF_8).readText()).jsonArray
+        }
+        var remote = RemoteStateDecoder.json(fixture[3].jsonObject.getValue("remote").jsonObject)
+        remote = remote.copy(windows = remote.windows.mapIndexed { i, w -> w.copy(active = i != 1) },
+            panes = remote.panes.mapIndexed { i, p -> p.copy(active = i != 1 && i != 3) })
+        fun title() = remote.sessionTabTitle(remote.sessions[0])
+        fun pane(index: Int, text: String) { remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i == index) p.copy(title = text) else p }) }
+        assertEquals("개발 · 편집 · 작업", title())
+        pane(2, "Hidden"); pane(4, "Other session")
+        assertEquals("개발 · 편집 · 작업", title())
+        remote = remote.copy(sessions = remote.sessions.mapIndexed { i, s -> if (i == 0) s.copy(name = " 프로젝트\n") else s },
+            windows = remote.windows.mapIndexed { i, w -> if (i == 0) w.copy(name = "Editor") else w })
+        pane(0, "Building 😀\u202e\n")
+        assertEquals("프로젝트 · Editor · Building 😀", title())
+        remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i < 2) p.copy(active = i == 1) else p })
+        pane(1, "Review")
+        assertEquals("프로젝트 · Editor · Review", title())
+        remote = remote.copy(windows = remote.windows.mapIndexed { i, w -> if (i < 2) w.copy(active = i == 1) else w })
+        assertEquals("프로젝트 · 서버 · Hidden", title())
+        remote = remote.copy(windows = remote.windows.mapIndexed { i, w -> if (i == 1) w.copy(name = "프로젝트") else w })
+        pane(2, " 프로젝트\u2069")
+        assertEquals("프로젝트", title())
+        remote = remote.copy(windows = remote.windows.mapIndexed { i, w -> if (i == 1) w.copy(name = "\t\n") else w })
+        pane(2, "")
+        assertEquals("프로젝트", title())
+        assertEquals("개발 · Other session", remote.sessionTabTitle(remote.sessions[1]))
+        assertEquals("빈 세션", remote.sessionTabTitle(remote.sessions[2]))
+        remote = remote.copy(windows = emptyList())
+        assertEquals("프로젝트", title())
+        assertEquals("\$1", remote.sessions[0].id)
+        assertEquals("%2", remote.panes[1].id)
+    }
     @Test fun liveTitlesFollowActivePanesWithoutChangingIdentity() {
         val fixture = javaClass.getResourceAsStream("/migration/hierarchy-v2.json")!!.use {
             Json.parseToJsonElement(it.reader(Charsets.UTF_8).readText()).jsonArray
