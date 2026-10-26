@@ -32,6 +32,8 @@ python3 scripts/verify_test_results.py --mode linux --output artifacts/jvm-tests
 npm test --prefix web
 ```
 
+단축키 회귀 검사는 Rust 공통 인코더·UniFFI, Kotlin 저장 호환/조합키 수명, 웹 키·IME 출처/붙여넣기·마우스 비간섭/지연된 대상 검사를 포함합니다.
+
 검증기의 `linux` 모드는 macOS에서도 사용하는 비 Windows·비 SSH JVM 검사 모드입니다.
 외부 SSH/Windows 환경이 필요한 JVM 검사는 예상 skip, Rust 통합/Keychain 검사는 기본 ignore입니다.
 이 결과를 실기 검사로 보고하지 않습니다.
@@ -43,7 +45,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo test --locked --w
 ```
 
 데스크톱 변경만 검사할 때는 같은 환경에서 `cargo test --locked -p dgl-desktop`을 실행합니다.
-호스트 순서 모델과 GPUI 드래그·세션 탭 재사용 검사를 포함하며 대화형 Keychain 검사는 기본 ignore입니다.
+호스트·하단 단축키 순서 모델, 설정 상세 화면 왕복·포커스, GPUI 드래그 확정/취소·조합키 1회 소비·세션 탭 재사용 검사를 포함하며 대화형 Keychain 검사는 기본 ignore입니다.
 
 기본은 위 기능·단위 검사이며 전체 Android API 계측과 장시간 자원 측정은 별도 선택입니다.
 검사 결과·남은 한계는 [VALIDATION.md](VALIDATION.md)에 기록합니다.

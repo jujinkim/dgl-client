@@ -11,6 +11,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.RectangleShape
@@ -578,59 +579,77 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
 @Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, androidInput: Boolean, dismiss: () -> Unit) {
     val local by model.local.collectAsState()
     var forget by remember { mutableStateOf<String?>(null) }
-    EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text(t("설정")) }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(t("언어"), style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("system" to t("시스템"), "ko" to "한국어", "en" to "English").forEach { (value, label) ->
-                    val choice = local.preferences.language.takeIf { it == "ko" || it == "en" } ?: "system"
-                    FilterChip(choice == value,
-                        { model.modify { it.copy(preferences = it.preferences.copy(language = value)) } }, label = { Text(label) })
-                }
-            }
-            Text(t("테마"), style = MaterialTheme.typography.titleSmall)
-            Row { listOf("system" to t("시스템"), "light" to t("밝게"), "dark" to t("어둡게")).forEach { (value, label) -> FilterChip(local.preferences.theme == value, { model.update(local.copy(preferences = local.preferences.copy(theme = value))) }, label = { Text(label) }) } }
-            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(local.preferences.showAllHierarchy, role = Role.Switch, onValueChange = { enabled ->
-                model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) }
-            }), verticalAlignment = Alignment.CenterVertically) {
-                AccentSwitch(local.preferences.showAllHierarchy, null)
-                Text(t("단일 창도 표시"), Modifier.padding(start = 8.dp))
-            }
-            AccentSettingsUi(local.preferences.accent) { accent ->
-                model.modify { it.copy(preferences = it.preferences.copy(accent = accent)) }
-            }
-            Text(tr("터미널 글자 크기: {0}", local.preferences.fontSize))
-            Row {
-                TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize - 1).coerceAtLeast(10)))) }) { Text(t("작게")) }
-                TextButton({ model.update(local.copy(preferences = local.preferences.copy(fontSize = (local.preferences.fontSize + 1).coerceAtMost(28)))) }) { Text(t("크게")) }
-            }
-            Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback))
-            if (androidInput) {
-                Row(Modifier.fillMaxWidth().toggleable(local.preferences.smoothTerminalTransitions, role = Role.Switch, onValueChange = { enabled ->
-                        model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) }
-                    }), verticalAlignment = Alignment.CenterVertically) {
-                    AccentSwitch(local.preferences.smoothTerminalTransitions, null)
-                    Column(Modifier.padding(start = 8.dp)) {
-                        Text(t("부드러운 터미널 화면 전환"))
-                        Text(t("재접속 시 크기·페이드·블러 효과 적용"), style = MaterialTheme.typography.bodySmall)
+    var details by remember { mutableStateOf(false) }
+    var restoreFocus by remember { mutableStateOf(false) }
+    val mainScroll = rememberScrollState()
+    val shortcutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val back = { if (details) { details = false; restoreFocus = true } else dismiss() }
+    LaunchedEffect(details) {
+        if (!details && restoreFocus) { withFrameNanos { }; shortcutFocus.requestFocus(); restoreFocus = false }
+    }
+    EditorDialog(mobileLayout, settingsLayout = true, onDismissRequest = back, title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (details) TextButton(back) { Text(t("뒤로")) }
+            Text(t(if (details) "하단 단축키" else "설정"))
+        }
+    }, text = {
+        if (details) TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
+            model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
+        } else Column(Modifier.verticalScroll(mainScroll), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SettingsCard(t("화면·언어"), t("앱의 언어와 모양을 선택합니다.")) {
+                Text(t("언어"), style = MaterialTheme.typography.titleSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("system" to t("시스템"), "ko" to "한국어", "en" to "English").forEach { (value, label) ->
+                        val choice = local.preferences.language.takeIf { it == "ko" || it == "en" } ?: "system"
+                        FilterChip(choice == value, { model.modify { it.copy(preferences = it.preferences.copy(language = value)) } }, label = { Text(label) })
                     }
                 }
+                Text(t("테마"), style = MaterialTheme.typography.titleSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("system" to t("시스템"), "light" to t("밝게"), "dark" to t("어둡게")).forEach { (value, label) ->
+                        FilterChip(local.preferences.theme == value, { model.modify { it.copy(preferences = it.preferences.copy(theme = value)) } }, label = { Text(label) })
+                    }
+                }
+                AccentSettingsUi(local.preferences.accent) { accent -> model.modify { it.copy(preferences = it.preferences.copy(accent = accent)) } }
             }
-            TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
-                model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
+            SettingsCard(t("터미널·입력"), t("터미널 글자와 입력 도구를 조정합니다.")) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("터미널 글자 크기: {0}", local.preferences.fontSize), Modifier.weight(1f))
+                    TextButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize - 1).coerceAtLeast(10))) } }) { Text(t("작게")) }
+                    TextButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize + 1).coerceAtMost(28))) } }) { Text(t("크게")) }
+                }
+                Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
+                TextButton({ details = true }, modifier = Modifier.fillMaxWidth().then(Modifier.focusRequester(shortcutFocus))) {
+                    Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); Text(" ›")
+                }
+                if (androidInput) PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
             }
-            AgentNotificationSettingsUi(model)
-            CloudSyncSettings(model)
-            PlatformConnectionSettings(model)
-            PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
-            Text(t("신뢰한 서버"), style = MaterialTheme.typography.titleSmall)
-            local.trust.forEach { (endpoint, fingerprint) ->
-                Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; TextButton({ forget = endpoint }) { Text(t("신뢰 키 삭제")) } }
+            SettingsCard(t("작업 공간"), t("계층 표시와 화면 전환을 선택합니다.")) {
+                SettingsSwitch(t("단일 창도 표시"), local.preferences.showAllHierarchy) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) } }
+                if (androidInput) {
+                    SettingsSwitch(t("부드러운 터미널 화면 전환"), local.preferences.smoothTerminalTransitions) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) } }
+                    Text(t("재접속 시 크기·페이드·블러 효과 적용"), style = MaterialTheme.typography.bodySmall)
+                }
             }
-            Text(model.storageDescription)
+            if (androidInput) SettingsCard(t("연결"), t("백그라운드 연결과 배터리 사용을 관리합니다.")) { PlatformConnectionSettings(model) }
+            SettingsCard(t("알림"), t("에이전트 알림과 OS 알림을 선택합니다.")) { AgentNotificationSettingsUi(model) }
+            SettingsCard(t("동기화"), t("기기 간 공통 설정과 호스트를 공유합니다.")) { CloudSyncSettings(model) }
+            SettingsCard(t("보안·저장"), t("신뢰한 서버와 이 기기의 저장 위치를 확인합니다.")) {
+                Text(t("신뢰한 서버"), style = MaterialTheme.typography.titleSmall)
+                local.trust.forEach { (endpoint, fingerprint) ->
+                    Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; TextButton({ forget = endpoint }) { Text(t("신뢰 키 삭제")) } }
+                }
+                Text(model.storageDescription, style = MaterialTheme.typography.bodySmall)
+            }
         }
-    }, confirmButton = { TextButton(dismiss) { Text(t("닫기")) } })
-    forget?.let { endpoint -> ConfirmDialog(t("신뢰 키 삭제"), tr("{0} 키를 삭제합니다. 다음 연결에서 지문을 다시 확인해야 합니다.", endpoint), { model.update(local.copy(trust = local.trust - endpoint)); forget = null }, { forget = null }) }
+    }, confirmButton = { TextButton(back) { Text(t(if (details) "뒤로" else "닫기")) } })
+    forget?.let { endpoint -> ConfirmDialog(t("신뢰 키 삭제"), tr("{0} 키를 삭제합니다. 다음 연결에서 지문을 다시 확인해야 합니다.", endpoint), { model.modify { it.copy(trust = it.trust - endpoint) }; forget = null }, { forget = null }) }
+}
+
+@Composable private fun SettingsSwitch(label: String, selected: Boolean, change: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(selected, role = Role.Switch, onValueChange = change), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f)); AccentSwitch(selected, null)
+    }
 }
 
 @Composable internal fun NameDialog(title: String, accept: (String) -> Unit, dismiss: () -> Unit) {
@@ -644,13 +663,25 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
 
 @Composable private fun EditorDialog(
     fullscreen: Boolean,
+    settingsLayout: Boolean = false,
     onDismissRequest: () -> Unit,
     title: @Composable () -> Unit,
     text: @Composable () -> Unit,
     confirmButton: @Composable () -> Unit,
     dismissButton: @Composable () -> Unit = {},
 ) {
-    if (!fullscreen) AlertDialog(onDismissRequest = onDismissRequest, title = title, text = text, confirmButton = confirmButton, dismissButton = dismissButton)
+    if (!fullscreen && !settingsLayout) AlertDialog(onDismissRequest = onDismissRequest, title = title, text = text, confirmButton = confirmButton, dismissButton = dismissButton)
+    else if (!fullscreen) Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(24.dp), contentAlignment = Alignment.Center) {
+            Surface(Modifier.widthIn(max = 720.dp).fillMaxWidth().heightIn(max = maxHeight), shape = MaterialTheme.shapes.large) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ProvideTextStyle(MaterialTheme.typography.titleLarge) { title() }
+                    Box(Modifier.weight(1f, fill = false).fillMaxWidth()) { text() }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { dismissButton(); confirmButton() }
+                }
+            }
+        }
+    }
     else Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

@@ -28,6 +28,41 @@ import kotlinx.serialization.Serializable
     }
 }
 
+/** A toolbar item is either a semantic key or a one-shot modifier, serialized as its name. */
+@Serializable enum class TerminalShortcut(val key: TerminalKey? = null) {
+    Ctrl, Shift, Alt, Escape(TerminalKey.Escape),
+    Tab(TerminalKey.Tab), ShiftTab(TerminalKey.ShiftTab), ShiftLeft(TerminalKey.ShiftLeft), CtrlA(TerminalKey.CtrlA),
+    CtrlB(TerminalKey.CtrlB), CtrlC(TerminalKey.CtrlC), CtrlD(TerminalKey.CtrlD), CtrlE(TerminalKey.CtrlE),
+    CtrlF(TerminalKey.CtrlF), CtrlG(TerminalKey.CtrlG), CtrlH(TerminalKey.CtrlH), CtrlI(TerminalKey.CtrlI),
+    CtrlJ(TerminalKey.CtrlJ), CtrlK(TerminalKey.CtrlK), CtrlL(TerminalKey.CtrlL), CtrlM(TerminalKey.CtrlM),
+    CtrlN(TerminalKey.CtrlN), CtrlO(TerminalKey.CtrlO), CtrlP(TerminalKey.CtrlP), CtrlQ(TerminalKey.CtrlQ),
+    CtrlR(TerminalKey.CtrlR), CtrlS(TerminalKey.CtrlS), CtrlT(TerminalKey.CtrlT), CtrlU(TerminalKey.CtrlU),
+    CtrlV(TerminalKey.CtrlV), CtrlW(TerminalKey.CtrlW), CtrlX(TerminalKey.CtrlX), CtrlY(TerminalKey.CtrlY),
+    CtrlZ(TerminalKey.CtrlZ), Up(TerminalKey.Up), Down(TerminalKey.Down), Left(TerminalKey.Left),
+    Right(TerminalKey.Right), Home(TerminalKey.Home), End(TerminalKey.End), Enter(TerminalKey.Enter),
+    Backspace(TerminalKey.Backspace), Delete(TerminalKey.Delete), PageUp(TerminalKey.PageUp), PageDown(TerminalKey.PageDown);
+    val label: String get() = key?.label ?: name
+    companion object {
+        val defaultShortcuts = listOf(Ctrl, Shift, Alt) + TerminalKey.defaultShortcuts.map { valueOf(it.name) }
+        val all = (defaultShortcuts + entries).distinct()
+    }
+}
+data class TerminalModifiers(val control: Boolean = false, val shift: Boolean = false, val alt: Boolean = false) {
+    fun union(other: TerminalModifiers) = TerminalModifiers(control || other.control, shift || other.shift, alt || other.alt)
+    fun active(key: TerminalShortcut) = when (key) { TerminalShortcut.Ctrl -> control; TerminalShortcut.Shift -> shift; TerminalShortcut.Alt -> alt; else -> false }
+    fun toggle(key: TerminalShortcut) = when (key) {
+        TerminalShortcut.Ctrl -> copy(control = !control); TerminalShortcut.Shift -> copy(shift = !shift); TerminalShortcut.Alt -> copy(alt = !alt); else -> this
+    }
+}
+/** Drag previews never mutate the persisted list; add/remove retain the visible order. */
+fun moveShortcut(keys: List<TerminalShortcut>, from: Int, to: Int): List<TerminalShortcut> =
+    if (from !in keys.indices || to !in keys.indices) keys else keys.toMutableList().apply { add(to, removeAt(from)) }
+fun TerminalKey.semanticInput(): Pair<String, TerminalModifiers> = when {
+    name.startsWith("Ctrl") -> name.removePrefix("Ctrl").lowercase() to TerminalModifiers(control = true)
+    name.startsWith("Shift") -> name.removePrefix("Shift").lowercase() to TerminalModifiers(shift = true)
+    else -> name.lowercase() to TerminalModifiers()
+}
+
 @Serializable sealed interface MacroStep {
     @Serializable @SerialName("text") data class Text(val text: String) : MacroStep
     @Serializable @SerialName("key") data class Key(val key: TerminalKey) : MacroStep

@@ -33,7 +33,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import kim.jujin.dglc.ClientConnection
-import kim.jujin.dglc.core.TerminalKey
+import kim.jujin.dglc.core.TerminalShortcut
 
 internal enum class CliCommand(val wire: String) {
     Claude("claude\r"), ClaudeBypass("claude --dangerously-skip-permissions\r"),
@@ -62,6 +62,7 @@ internal class CliLaunchRequest(private val client: ClientConnection) {
 }
 
 internal class TerminalFocus {
+    var shortcut: (TerminalShortcut) -> Unit = {}
     var activate: () -> Unit = {}
     var request: () -> Unit = {}
     var keyboard: () -> Unit = {}
@@ -80,8 +81,10 @@ private object AboveLauncher : PopupPositionProvider {
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalKey>, allowed: () -> Boolean, terminalFocus: TerminalFocus,
+@Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalShortcut>, allowed: () -> Boolean, terminalFocus: TerminalFocus,
     mobile: Boolean = false, openComposer: () -> Unit = {}, workspace: Boolean = false, inputGate: kim.jujin.dglc.AppModel? = null) {
+    val shortcutInput = inputGate?.shortcutInput(client)
+    val modifiers = shortcutInput?.modifiers?.collectAsState()?.value
     val status by client.status.collectAsState()
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
@@ -89,6 +92,7 @@ private object AboveLauncher : PopupPositionProvider {
     val blocks = inputGate?.inputBlocks?.collectAsState()?.value
     val menuAllowed = { allowed() && (blocks == null || inputGate?.inputBlocked(menuOwner) != true) }
     val available = menuAllowed()
+    SideEffect { shortcutInput?.sync() }
     // A target/phase/dialog change discards the request before painting or handling another click.
     var request by remember(client, status.phase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
     if (inputGate != null) WorkspaceInputBlock(inputGate, menuOwner, request != null)
@@ -121,11 +125,15 @@ private object AboveLauncher : PopupPositionProvider {
                 shortcuts.distinct().forEach { shortcut ->
                     TerminalToolButton({
                         if (menuAllowed() && client.status.value.acceptsInput) {
-                            client.input(shortcut.bytes())
+                            if (shortcut.key == null) shortcutInput?.toggle(shortcut)
+                            else terminalFocus.shortcut(shortcut)
                             terminalFocus.request()
                         }
                     }, enabled = available && status.acceptsInput,
-                        modifier = Modifier.height(buttonHeight).widthIn(min = if (mobile) 46.dp else 58.dp),
+                        containerColor = if (modifiers?.active(shortcut) == true) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.height(buttonHeight).widthIn(min = if (mobile) 46.dp else 58.dp).semantics {
+                            if (shortcut.key == null) stateDescription = t(if (modifiers?.active(shortcut) == true) "켜짐" else "꺼짐")
+                        },
                         contentPadding = PaddingValues(horizontal = if (mobile) 8.dp else 10.dp)) {
                         Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
                     }

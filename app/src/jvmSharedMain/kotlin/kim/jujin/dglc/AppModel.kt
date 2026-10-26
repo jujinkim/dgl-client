@@ -16,6 +16,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
 ) {
     private val agentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     @Volatile var foreground = false
+        set(value) { field = value; if (!value) clearShortcutModifiers() }
     @Volatile var hostEditing = false
     @Volatile var visibleConnection: ClientConnection? = null
     @Volatile var visibleConnections: Set<ClientConnection> = emptySet()
@@ -33,7 +34,11 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     private val tabClients = linkedMapOf<String, ClientConnection>()
     private val reservations = mutableMapOf<Pair<String, String>, ClientConnection>()
     private val sessionJobs = java.util.IdentityHashMap<ClientConnection, Job>()
+    private val shortcutInputs = java.util.IdentityHashMap<ClientConnection, ShortcutInput>()
+    @Synchronized fun shortcutInput(client: ClientConnection) = shortcutInputs.getOrPut(client) { ShortcutInput(client) }
+    @Synchronized fun clearShortcutModifiers() { shortcutInputs.values.forEach { it.clear() } }
     @Synchronized fun blockInput(owner: Any, blocked: Boolean) {
+        if (blocked) clearShortcutModifiers()
         inputBlocks.value = if (blocked) inputBlocks.value + owner else inputBlocks.value - owner
     }
     fun inputBlocked(except: Any? = null) = inputBlocks.value.any { it !== except }
@@ -52,6 +57,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     @Synchronized fun changeWorkspace(transform: (WorkspaceState) -> WorkspaceState) {
         val previous = workspace.value
         val next = transform(previous)
+        if (previous.activeTab != next.activeTab || previous.activeGroup != next.activeGroup) clearShortcutModifiers()
         workspace.value = next
         selected.value = tabClient(next.activeTab)
         if (previous.root != next.root) runCatching { repository.workspace.save(next.root) }.onFailure {
@@ -60,6 +66,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     }
     @Synchronized fun selectConnection(client: ClientConnection) {
         if (client !in connections.value) return
+        if (selected.value !== client) clearShortcutModifiers()
         selected.value = client
         tabId(client)?.let { workspace.value = workspace.value.select(it) }
     }
@@ -146,6 +153,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         tabClients[id] = connection
         connections.value += connection
         workspace.value = workspace.value.add(id)
+        clearShortcutModifiers()
         selected.value = connection
         sessionJobs[connection] = agentScope.launch {
             connection.session.collect { session -> synchronized(this@AppModel) {
@@ -210,6 +218,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             if (id != null) { workspace.value = workspace.value.close(id); tabClients.remove(id) }
             connections.value -= connection
             if (selected.value == connection) selected.value = tabClient(workspace.value.activeTab)
+            shortcutInputs.remove(connection)?.clear()
             terminalFonts.remove(connection)
             composers.remove(connection)
         }
@@ -222,7 +231,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         val (drafts, clients) = synchronized(this) {
             agentScope.cancel()
             val owned = composers.values.toList() to connections.value
-            composers.clear(); terminalFonts.clear(); connections.value = emptyList(); selected.value = null; visibleConnection = null; visibleConnections = emptySet()
+            composers.clear(); terminalFonts.clear(); shortcutInputs.clear(); connections.value = emptyList(); selected.value = null; visibleConnection = null; visibleConnections = emptySet()
             tabClients.clear(); reservations.clear(); sessionJobs.clear(); inputBlocks.value = emptySet()
             chooseSyncFile = {}; sendAgentNotification = {}; foreground = false
             owned

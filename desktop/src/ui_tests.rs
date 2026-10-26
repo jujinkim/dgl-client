@@ -1337,19 +1337,77 @@ fn shortcut_buttons_are_spaced_and_send_modified_keys_to_selected_terminal(
         expected
     );
     assert!(first.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
-}
-
-#[gpui::test]
-fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) {
-    use dgl_core::{input::TerminalKey, model::LocalState};
-    let (view, cx) = setup(cx);
-    let terminal = add_terminal(&view, cx);
+    // Capture-only transports must stop changing phase during the toggle checks:
+    // a real reconnect is supposed to clear the pending modifiers.
+    let (runtime, connections) = view.read_with(cx, |s, _| {
+        (
+            s.runtime.clone(),
+            s.tabs
+                .iter()
+                .map(|tab| tab.connection.clone())
+                .collect::<Vec<_>>(),
+        )
+    });
+    for connection in &connections {
+        connection.close();
+    }
+    for connection in connections {
+        runtime.block_on(connection.join());
+    }
+    redraw(cx);
+    cx.update(|w, _| w.activate_window());
+    redraw(cx);
+    for key in ["key-Ctrl", "key-Alt"] {
+        let point = cx.debug_bounds(key).unwrap().center();
+        cx.simulate_click(point, Modifiers::default());
+        redraw(cx);
+    }
+    cx.simulate_resize(gpui::size(px(900.), px(700.)));
+    redraw(cx);
+    assert!(second.read_with(cx, |t, cx| t.modifiers(cx).control && t.modifiers(cx).alt));
+    cx.simulate_input("c");
+    expected.push(b"\x1b\x03".to_vec());
+    cx.simulate_input("c");
+    expected.push(b"c".to_vec());
+    assert_eq!(
+        second.read_with(cx, |t, cx| t.captured_inputs(cx)),
+        expected
+    );
+    assert_eq!(
+        second.read_with(cx, |t, cx| t.modifiers(cx)),
+        dgl_core::input::Modifiers::default()
+    );
+    let point = cx.debug_bounds("key-Ctrl").unwrap().center();
+    cx.simulate_click(point, Modifiers::default());
+    redraw(cx);
     view.update(cx, |s, cx| {
         s.dialog = Some(Dialog::Settings);
         cx.notify();
     });
     redraw(cx);
+    assert_eq!(
+        second.read_with(cx, |t, cx| t.modifiers(cx)),
+        dgl_core::input::Modifiers::default()
+    );
+}
+
+#[gpui::test]
+fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) {
+    use dgl_core::{
+        input::{TerminalKey, TerminalShortcut},
+        model::LocalState,
+    };
+    let (view, cx) = setup(cx);
+    let terminal = add_terminal(&view, cx);
+    view.update(cx, |s, cx| {
+        s.dialog = Some(Dialog::Shortcuts);
+        cx.notify();
+    });
+    redraw(cx);
     for selector in [
+        "shortcut-setting-Ctrl",
+        "shortcut-setting-Shift",
+        "shortcut-setting-Alt",
         "shortcut-setting-Esc",
         "shortcut-setting-Tab",
         "shortcut-setting-Enter",
@@ -1370,11 +1428,13 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
             !saved
                 .preferences
                 .terminal_shortcuts
-                .contains(&TerminalKey::Enter)
+                .contains(&TerminalShortcut::Key(TerminalKey::Enter))
         );
     });
     let close = cx.debug_bounds("cancel-dialog").unwrap();
     cx.simulate_click(close.center(), Modifiers::default());
+    redraw(cx);
+    cx.simulate_keystrokes("escape");
     redraw(cx);
     // Removed keys no longer occupy the front of the bar.
     let bar = cx.debug_bounds("shortcut-bar").unwrap();
@@ -1386,7 +1446,7 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
         vec![b"\x03".to_vec()]
     );
     view.update(cx, |s, cx| {
-        s.dialog = Some(Dialog::Settings);
+        s.dialog = Some(Dialog::Shortcuts);
         cx.notify();
     });
     redraw(cx);
@@ -1412,7 +1472,7 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
                 .unwrap()
                 .preferences
                 .terminal_shortcuts,
-            TerminalKey::DEFAULT_SHORTCUTS
+            TerminalShortcut::defaults()
         );
     });
     assert_eq!(
@@ -1685,7 +1745,7 @@ fn input_tools_stay_under_terminals_with_fixed_ends_in_narrow_and_split_windows(
     let (view, cx) = setup(cx);
     add_terminal(&view, cx);
     view.update(cx, |s, cx| {
-        s.local.preferences.terminal_shortcuts = dgl_core::input::TerminalKey::ALL.to_vec();
+        s.local.preferences.terminal_shortcuts = dgl_core::input::TerminalShortcut::all();
         cx.notify();
     });
     for width in [640., 1200.] {
@@ -1948,4 +2008,127 @@ fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
     redraw(cx);
     assert!(view.read_with(cx, |s, _| s.dialog.is_none() && s.composers.is_empty()));
     assert!(cx.update(|w, cx| second.focus_handle(cx).is_focused(w)));
+}
+
+#[gpui::test]
+fn shortcut_editor_drag_cancel_remove_readd_and_back_restore(cx: &mut TestAppContext) {
+    use dgl_core::input::{Modifier, TerminalKey, TerminalShortcut as S};
+    let (view, cx) = setup(cx);
+    for theme in ["light", "dark"] {
+        let original = vec![
+            S::Modifier(Modifier::Ctrl),
+            S::Modifier(Modifier::Shift),
+            S::Key(TerminalKey::Enter),
+        ];
+        view.update(cx, |s, cx| {
+            s.local.preferences.theme = theme.into();
+            s.local.preferences.terminal_shortcuts = original.clone();
+            s.dialog = Some(Dialog::Shortcuts);
+            cx.notify();
+        });
+        redraw(cx);
+        let from = cx.debug_bounds("shortcut-drag-Enter").unwrap().center();
+        let row = cx.debug_bounds("shortcut-row-0").unwrap();
+        let to = point(row.center().x, row.top() + px(4.));
+        cx.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(
+            point(from.x + px(20.), from.y),
+            gpui::MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(to, gpui::MouseButton::Left, Modifiers::default());
+        redraw(cx);
+        view.read_with(cx, |s, _| {
+            assert_eq!(s.local.preferences.terminal_shortcuts, original)
+        });
+        cx.simulate_keystrokes("escape");
+        redraw(cx);
+        cx.simulate_mouse_up(to, gpui::MouseButton::Left, Modifiers::default());
+        redraw(cx);
+        view.read_with(cx, |s, _| {
+            assert_eq!(s.local.preferences.terminal_shortcuts, original)
+        });
+        let from = cx.debug_bounds("shortcut-drag-Enter").unwrap().center();
+        cx.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(
+            point(from.x + px(20.), from.y),
+            gpui::MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(to, gpui::MouseButton::Left, Modifiers::default());
+        redraw(cx);
+        cx.simulate_mouse_up(to, gpui::MouseButton::Left, Modifiers::default());
+        redraw(cx);
+        view.read_with(cx, |s, _| {
+            assert_eq!(
+                s.local.preferences.terminal_shortcuts[0],
+                S::Key(TerminalKey::Enter)
+            );
+            assert_eq!(
+                dgl_core::model::LocalState::read(&s.path)
+                    .unwrap()
+                    .preferences
+                    .terminal_shortcuts,
+                s.local.preferences.terminal_shortcuts
+            );
+        });
+        let remove = cx.debug_bounds("shortcut-setting-Enter").unwrap().center();
+        cx.simulate_click(remove, Modifiers::default());
+        redraw(cx);
+        let add = cx.debug_bounds("shortcut-setting-Enter").unwrap();
+        view.update(cx, |s, cx| {
+            let body = s.modal.scroll.bounds();
+            let mut offset = s.modal.scroll.offset();
+            if add.bottom() > body.bottom() {
+                offset.y -= add.bottom() - body.bottom() + px(8.);
+                s.modal.scroll.set_offset(offset);
+            }
+            cx.notify();
+        });
+        redraw(cx);
+        let point = cx.debug_bounds("shortcut-setting-Enter").unwrap().center();
+        cx.simulate_click(point, Modifiers::default());
+        redraw(cx);
+        view.read_with(cx, |s, _| {
+            assert_eq!(
+                s.local.preferences.terminal_shortcuts.last(),
+                Some(&S::Key(TerminalKey::Enter))
+            )
+        });
+        // Esc from detail returns to main, then the next Esc closes settings.
+        cx.simulate_keystrokes("escape");
+        redraw(cx);
+        view.read_with(cx, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::Settings)))
+        });
+        cx.simulate_keystrokes("escape");
+        redraw(cx);
+        view.read_with(cx, |s, _| assert!(s.dialog.is_none()));
+    }
+    view.update(cx, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(cx);
+    let entry = cx.debug_bounds("edit-shortcuts").unwrap();
+    view.update(cx, |s, cx| {
+        let body = s.modal.scroll.bounds();
+        s.modal
+            .scroll
+            .set_offset(point(px(0.), -(entry.bottom() - body.bottom() + px(16.))));
+        cx.notify();
+    });
+    redraw(cx);
+    let saved = view.read_with(cx, |s, _| s.modal.scroll.offset());
+    let point = cx.debug_bounds("edit-shortcuts").unwrap().center();
+    cx.simulate_click(point, Modifiers::default());
+    redraw(cx);
+    cx.simulate_keystrokes("escape");
+    redraw(cx);
+    view.read_with(cx, |s, _| assert_eq!(s.modal.scroll.offset(), saved));
+    cx.update(|w, cx| {
+        view.update(cx, |s, cx| {
+            assert!(s.modal.button("edit-shortcuts", cx).is_focused(w));
+        })
+    });
 }

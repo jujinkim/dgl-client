@@ -6,17 +6,22 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-Android 터미널 전환 애니메이션을 재접속 복구에만 적용하도록 제한했습니다.
-이전 SSH 복귀·작업 공간·글자 크기 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+설정을 카테고리 카드와 별도 단축키 편집 화면으로 구성하고, 하단 Ctrl·Shift·Alt 토글과 공통 Rust 키 인코더를 추가했습니다.
+이전 변경의 검증 이력은 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 터미널 JavaScript | 18 통과·skip 없음. 일반 크기 변경은 설정 켬/끔 모두 dim·fade·blur 없이 렌더 후 교체. 재접속 기본 fade·선택형 효과·동작 줄이기·재접속 fade를 중단하는 크기 변경과 ACK 보존 확인 |
-| Android 빌드 | `:androidApp:assembleDebug` 통과. 원본 Debug APK 한 개를 갱신했으며 계측·lint는 재실행하지 않음 |
-| 번역·문서 | 한국어/영어·생성 번역/자리표시자, diff 공백·로컬 대시보드 등록 검사 통과. 설정과 사용 문서를 재접속 전용 효과로 갱신 |
+| Rust core·UniFFI | 34 통과. 설정 문자열·기존/빈 목록·기본값, 모든 modifier 합집합·커서 모드·미지원 입력·바인딩 경로 확인. 격리 SSH 통합 6개는 기본 ignore |
+| Rust 데스크톱 | 62 통과, 대화형 Keychain 1개는 기본 ignore. 밝은/어두운 테마의 설정 상세 왕복·포커스/스크롤 복원·드래그 확정/취소·제외/재추가/재시작, 토글 중첩·재해제·1회 소비·크기 변경 유지 확인 |
+| JVM·결과 검증기 | 74 통과, 외부 SSH/Windows 환경 9개는 명시적 예상 skip. 저장 호환·정렬 모델·조합키 수명·대상 변경·모달/백그라운드 해제, 기존 매크로·볼륨키 계약 확인 |
+| 터미널 JavaScript | 21 통과·skip 없음. 공개 키 이벤트의 단일 전송·IME 확정·붙여넣기/마우스/프로토콜 응답 분리·지연된 IME 원래 대상 보존, 기존 렌더/복구 회귀 포함 |
+| Android 빌드·lint | `:androidApp:assembleDebug :androidApp:lintDebug` 통과. 네 ABI Rust/UniFFI와 원본 Debug APK 갱신. 기존 lint 진단 12개는 검증기의 명시적 목록과 일치 |
+| Python·기본 검사 | 스크립트 98 통과, 번역/자리표시자·Wrapper·원문 체크섬·diff 공백·문서 로컬 링크·대시보드 등록 검증 통과 |
+| macOS 패키징 | ARM64 Debug 앱 빌드·로컬 ad-hoc 서명/검증. Developer ID·공증 없음 |
 
-이번 변경은 JavaScript 단위 검사로 검증했으며 Android 계측·GUI·실제 SSH 재접속은 실행하지 않았습니다.
-Rust/UniFFI·JVM 단위 검사, Windows 네이티브 빌드·DPAPI·GUI와 macOS GUI는 재실행하지 않았습니다.
+네이티브 GUI 도구가 격리 실행한 macOS 앱을 식별하지 못해 실제 화면 조작을 확인하지 못했습니다.
+UI 동작 결과는 GPUI 이벤트 주입 검사입니다. 연결된 Android 기기가 없어 Android 실제 GUI/IME·계측은 수행하지 않았습니다.
+Windows 네이티브 빌드·DPAPI·GUI, 실제 SSH/TUI, 전체 Android API 계측·장시간 반복은 이번 범위에 포함하지 않았습니다.
 
 ## 남은 한계
 

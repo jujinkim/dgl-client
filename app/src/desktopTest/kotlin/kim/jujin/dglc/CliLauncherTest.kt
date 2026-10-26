@@ -20,6 +20,11 @@ class CliLauncherTest {
         override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
         override val notice = MutableStateFlow<String?>(null)
         override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
+        val encoded = mutableListOf<TerminalModifiers>()
+        override fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? {
+            encoded += modifiers
+            return if (modifiers.control && text == "한") null else byteArrayOf(3)
+        }
         override fun input(bytes: ByteArray) { writes += bytes }
         override fun connect() {}
         override fun trust() {}
@@ -35,6 +40,51 @@ class CliLauncherTest {
         override fun restore() {}
         override fun disconnect() {}
         override fun close() {}
+    }
+
+    @Test fun modifiersToggleUnionConsumeAndRejectUnsupportedWithoutReplay() {
+        val client = RecordingConnection()
+        val input = ShortcutInput(client)
+        input.toggle(TerminalShortcut.Ctrl); input.toggle(TerminalShortcut.Alt)
+        input.encode("c", "c", TerminalModifiers(shift = true), false)
+        assertEquals(TerminalModifiers(true, true, true), client.encoded.last())
+        assertEquals(TerminalModifiers(), input.modifiers.value)
+        input.toggle(TerminalShortcut.Shift)
+        client.status.value = ConnectionStatus(Phase.Restoring, resizing = true)
+        input.sync()
+        assertTrue(input.modifiers.value.shift, "viewport changes retain the pending modifier")
+        client.status.value = ConnectionStatus(Phase.Ready)
+        input.sync()
+        assertTrue(input.modifiers.value.shift)
+        input.toggle(TerminalShortcut.Shift)
+        assertEquals(TerminalModifiers(), input.modifiers.value)
+        input.toggle(TerminalShortcut.Ctrl)
+        assertNull(input.encode("text", "한", TerminalModifiers(), false))
+        assertTrue(input.modifiers.value.control)
+        client.input(byteArrayOf(1)) // volume macro/paste/CLI bypass the keyboard encoder
+        assertTrue(input.modifiers.value.control)
+        input.encode("c", "c", TerminalModifiers(), false)
+        assertEquals(TerminalModifiers(), input.modifiers.value)
+        assertEquals(2, client.encoded.count { it.control && !it.alt })
+    }
+
+    @Test fun targetChangesRecoveryAndModalClearsCannotLeakModifiers() {
+        val client = RecordingConnection()
+        val input = ShortcutInput(client)
+        for (change in 0..4) {
+            input.toggle(TerminalShortcut.Ctrl)
+            when (change) {
+                0 -> client.inputTarget = client.inputTarget.copy(epoch = 2)
+                1 -> client.pane.value = "%2"
+                2 -> client.session.value = "$2"
+                3 -> client.status.value = ConnectionStatus(Phase.Restoring)
+                4 -> input.clear()
+            }
+            input.sync()
+            assertEquals(TerminalModifiers(), input.modifiers.value)
+            client.status.value = ConnectionStatus(Phase.Ready)
+        }
+        assertTrue(client.writes.isEmpty())
     }
 
     @Test fun exactCommandsOnceForActiveShellAndPane() {

@@ -8,6 +8,7 @@ use alacritty_terminal::{
     vte::ansi::{Color, CursorShape, Processor},
 };
 use dgl_core::connection::{Action, Connection};
+use dgl_core::input::{Modifiers as KeyModifiers, TerminalShortcut};
 use dgl_core::tr;
 use gpui::{prelude::*, *};
 use std::{collections::HashSet, ops::Range, sync::Arc};
@@ -54,6 +55,7 @@ pub struct Terminal {
     font_size: f32,
     bounds: Bounds<Pixels>,
     marked: String,
+    marked_target: Option<Option<(u64, u64, String, u64)>>,
     selection: Range<usize>,
     dragging: bool,
     mouse_button: Option<MouseButton>,
@@ -65,6 +67,9 @@ pub struct Terminal {
     pub sent: Vec<Vec<u8>>,
     pub notice: Option<String>,
     input_requests: HashSet<u64>,
+    pub modifiers: KeyModifiers,
+    modifier_target: Option<(u64, u64, String, u64)>,
+    modifier_phase: Option<dgl_core::connection::Phase>,
 }
 impl Terminal {
     #[cfg(test)]
@@ -101,6 +106,7 @@ impl Terminal {
             font_size: font_size.clamp(10, 28) as f32,
             bounds: Bounds::default(),
             marked: String::new(),
+            marked_target: None,
             selection: 0..0,
             dragging: false,
             mouse_button: None,
@@ -112,6 +118,9 @@ impl Terminal {
             sent: Vec::new(),
             notice: None,
             input_requests: HashSet::new(),
+            modifiers: KeyModifiers::default(),
+            modifier_target: None,
+            modifier_phase: None,
         }
     }
     fn begin_snapshot(&mut self, pane: &str, reset: &[u8]) {
@@ -162,6 +171,66 @@ impl Terminal {
                 }
                 Err(e) => self.notice = Some(tr!("입력을 보내지 못했습니다: {0}", e)),
             }
+        }
+    }
+    fn input_identity(&self) -> Option<(u64, u64, String, u64)> {
+        self.connection.target().map(|t| {
+            (
+                t.connection,
+                t.generation.connection,
+                t.pane_id,
+                t.generation.pane,
+            )
+        })
+    }
+    pub fn sync_modifiers(&mut self) {
+        let next = self.input_identity();
+        let state = self.connection.state();
+        let size_change = state.phase == dgl_core::connection::Phase::Restoring && state.resizing;
+        let phase = if size_change {
+            self.modifier_phase.clone()
+        } else {
+            Some(state.phase)
+        };
+        if self.modifier_target != next || self.modifier_phase != phase || !self.enabled {
+            self.modifiers = KeyModifiers::default();
+        }
+        self.modifier_target = next;
+        self.modifier_phase = phase;
+    }
+    pub fn shortcut(&mut self, shortcut: TerminalShortcut) {
+        self.sync_modifiers();
+        if !self.enabled {
+            return;
+        }
+        match shortcut {
+            TerminalShortcut::Modifier(m) => self.modifiers.toggle(m),
+            TerminalShortcut::Key(k) => {
+                if let Some(bytes) = k.encode(
+                    self.modifiers,
+                    self.term.mode().contains(TermMode::APP_CURSOR),
+                ) {
+                    self.modifiers = KeyModifiers::default();
+                    self.send(bytes);
+                }
+            }
+        }
+    }
+    fn commit_keyboard(&mut self, key: &str, text: Option<&str>, physical: KeyModifiers) {
+        self.sync_modifiers();
+        if !self.enabled {
+            return;
+        }
+        if let Some(bytes) = dgl_core::input::encode_key(
+            key,
+            text,
+            self.modifiers.union(physical),
+            self.term.mode().contains(TermMode::APP_CURSOR),
+        ) {
+            self.modifiers = KeyModifiers::default();
+            self.send(bytes);
+        } else {
+            self.notice = Some(dgl_core::i18n::t("이 조합은 터미널 입력으로 표현할 수 없습니다. 조합키를 해제하거나 다른 키를 사용하세요.").into());
         }
     }
     pub fn complete(&mut self, id: u64) -> bool {
@@ -217,9 +286,23 @@ impl Terminal {
             // control byte to the remote shell first.
             return;
         }
+        self.sync_modifiers();
         if let Some(bytes) = key_sequence(k, *self.term.mode()) {
-            self.send(bytes);
+            if self.modifiers == KeyModifiers::default() {
+                self.send(bytes);
+            } else {
+                self.commit_keyboard(
+                    &k.key,
+                    k.key_char.as_deref(),
+                    KeyModifiers {
+                        control: k.modifiers.control,
+                        shift: k.modifiers.shift,
+                        alt: k.modifiers.alt,
+                    },
+                );
+            }
             cx.stop_propagation();
+            cx.notify();
         }
     }
     fn mouse_active(&self, modifiers: Modifiers) -> bool {
@@ -420,6 +503,7 @@ impl EntityInputHandler for Terminal {
         }
     }
     fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        self.marked_target = None;
         self.marked.clear();
         self.selection = 0..0;
         cx.notify();
@@ -431,10 +515,18 @@ impl EntityInputHandler for Terminal {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let origin = self.marked_target.take();
         self.marked.clear();
         self.selection = 0..0;
+        if origin.is_some_and(|origin| origin != self.input_identity()) {
+            self.sync_modifiers();
+            self.notice =
+                Some(dgl_core::i18n::t("연결·세션·패널이 변경되어 입력을 취소했습니다.").into());
+            cx.notify();
+            return;
+        }
         if !text.is_empty() {
-            self.send(text.as_bytes().to_vec());
+            self.commit_keyboard("text", Some(text), KeyModifiers::default());
         }
         cx.notify();
     }
@@ -446,6 +538,9 @@ impl EntityInputHandler for Terminal {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.marked_target.is_none() {
+            self.marked_target = Some(self.input_identity());
+        }
         self.marked = text.into();
         self.selection = selected.unwrap_or_else(|| {
             let n = text.encode_utf16().count();

@@ -20,95 +20,20 @@ pub(super) fn key_sequence(key: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
     if m.platform {
         return None;
     }
-    let modifier = 1 + u8::from(m.shift) + 2 * u8::from(m.alt) + 4 * u8::from(m.control);
-    let final_char = match key.key.as_str() {
-        "up" => Some('A'),
-        "down" => Some('B'),
-        "right" => Some('C'),
-        "left" => Some('D'),
-        "home" => Some('H'),
-        "end" => Some('F'),
-        "f1" => Some('P'),
-        "f2" => Some('Q'),
-        "f3" => Some('R'),
-        "f4" => Some('S'),
-        _ => None,
-    };
-    if let Some(c) = final_char {
-        return Some(
-            if modifier > 1 {
-                format!("\x1b[1;{modifier}{c}")
-            } else if key.key.starts_with('f') || mode.contains(TermMode::APP_CURSOR) {
-                format!("\x1bO{c}")
-            } else {
-                format!("\x1b[{c}")
-            }
-            .into_bytes(),
-        );
+    // Ordinary printable keys belong to GPUI's text/IME commit path.
+    if !m.control && !m.alt && (key.key.chars().count() == 1 || key.key == "space") {
+        return None;
     }
-    let number = match key.key.as_str() {
-        "insert" => Some(2),
-        "delete" => Some(3),
-        "pageup" => Some(5),
-        "pagedown" => Some(6),
-        "f5" => Some(15),
-        "f6" => Some(17),
-        "f7" => Some(18),
-        "f8" => Some(19),
-        "f9" => Some(20),
-        "f10" => Some(21),
-        "f11" => Some(23),
-        "f12" => Some(24),
-        _ => None,
-    };
-    if let Some(n) = number {
-        return Some(
-            if modifier > 1 {
-                format!("\x1b[{n};{modifier}~")
-            } else {
-                format!("\x1b[{n}~")
-            }
-            .into_bytes(),
-        );
-    }
-    let mut bytes = match key.key.as_str() {
-        "enter" => vec![b'\r'],
-        "backspace" => vec![if m.control { 0x08 } else { 0x7f }],
-        "tab" if m.shift => b"\x1b[Z".to_vec(),
-        "tab" => vec![b'\t'],
-        "escape" => vec![0x1b],
-        key if m.control => vec![control_byte(key)?],
-        "space" if m.alt => vec![b' '],
-        key if m.alt && key.chars().count() == 1 => {
-            if m.shift {
-                key.to_uppercase().into_bytes()
-            } else {
-                key.as_bytes().to_vec()
-            }
-        }
-        _ => return None,
-    };
-    if m.alt {
-        bytes.insert(0, 0x1b);
-    }
-    Some(bytes)
-}
-
-fn control_byte(key: &str) -> Option<u8> {
-    match key {
-        "space" | " " | "2" | "@" => Some(0),
-        "3" => Some(0x1b),
-        "4" => Some(0x1c),
-        "5" => Some(0x1d),
-        "6" => Some(0x1e),
-        "7" | "/" => Some(0x1f),
-        "8" | "?" => Some(0x7f),
-        key if key.len() == 1 => {
-            let byte = key.as_bytes()[0].to_ascii_uppercase();
-            (b'@'..=b'_').contains(&byte).then_some(byte & 31)
-        }
-        _ => None,
-    }
+    dgl_core::input::encode_key(
+        &key.key,
+        None,
+        dgl_core::input::Modifiers {
+            control: m.control,
+            shift: m.shift,
+            alt: m.alt,
+        },
+        mode.contains(TermMode::APP_CURSOR),
+    )
 }
 
 pub(super) fn button_code(button: MouseButton) -> Option<u8> {

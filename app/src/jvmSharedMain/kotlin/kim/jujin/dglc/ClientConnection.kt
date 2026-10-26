@@ -36,6 +36,8 @@ interface ClientConnection {
     fun paneInput(pane: String, target: String?, bytes: ByteArray) { input(bytes) }
     fun focusPane(pane: String, target: String?) { selectPane(pane) }
     fun resizePane(pane: String, target: String?, size: Size) {}
+    /** Product adapters use the Rust encoder. Null means the legacy protocol cannot encode this input. */
+    fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? = null
     fun input(bytes: ByteArray)
     /** Identity excludes the size generation: opening the IME must not change the destination. */
     fun captureInputTarget(): InputTarget? = null

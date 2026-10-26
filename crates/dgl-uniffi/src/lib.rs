@@ -258,6 +258,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn keyboard_encoder_matches_core_and_rejects_unsupported_compositions() {
+        assert_eq!(
+            encode_terminal_input("left".into(), None, true, true, true, true).unwrap(),
+            b"\x1b[1;8D"
+        );
+        assert_eq!(
+            encode_terminal_input("c".into(), Some("c".into()), true, false, false, false).unwrap(),
+            b"\x03"
+        );
+        assert!(
+            encode_terminal_input("text".into(), Some("한".into()), true, false, false, false)
+                .is_err()
+        );
+    }
+    #[test]
     fn native_key_round_trip_and_invalid_import() {
         let key = generate_key().unwrap();
         assert!(key.public_key.starts_with("ssh-ed25519 "));
@@ -267,4 +282,27 @@ mod tests {
         );
         assert!(public_key("invalid key".into(), "secret".into()).is_err());
     }
+}
+
+/// Encodes semantic keyboard input, not already encoded onData/paste/mouse bytes.
+#[uniffi::export]
+pub fn encode_terminal_input(
+    key: String,
+    text: Option<String>,
+    control: bool,
+    shift: bool,
+    alt: bool,
+    application_cursor: bool,
+) -> Result<Vec<u8>, CoreError> {
+    dgl_core::input::encode_key(
+        &key,
+        text.as_deref(),
+        dgl_core::input::Modifiers {
+            control,
+            shift,
+            alt,
+        },
+        application_cursor,
+    )
+    .ok_or_else(invalid)
 }

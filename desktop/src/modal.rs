@@ -82,6 +82,12 @@ impl Modal {
             window.refresh();
         }
     }
+    pub fn restore_button(&mut self, id: &str, window: &mut Window) {
+        if let Some(focus) = self.buttons.borrow().get(id) {
+            window.focus(focus);
+            self.initial = false;
+        }
+    }
     pub fn finish(&mut self, window: &mut Window) {
         self.building = false;
         let ring = self.ring.borrow();

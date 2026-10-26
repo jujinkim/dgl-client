@@ -51,6 +51,25 @@ class TerminalInputTest {
         assertEquals(65536, TerminalInput.encode(listOf(MacroStep.Text("\r\n".repeat(65536)))).size)
     }
 
+    @Test fun shortcutOrderPreviewCancelExclusionAndLegacyListsSurviveRestart() {
+        val json = Json { encodeDefaults = true }
+        for (source in listOf("[]", "[\"Right\",\"CtrlC\",\"Escape\"]", "[\"Alt\",\"Ctrl\",\"Shift\"]")) {
+            val state = json.decodeFromString<LocalState>("{\"preferences\":{\"terminalShortcuts\":$source}}")
+            assertEquals(source, json.encodeToString(kotlinx.serialization.builtins.ListSerializer(TerminalShortcut.serializer()), state.preferences.terminalShortcuts))
+            assertEquals(state, json.decodeFromString<LocalState>(json.encodeToString(LocalState.serializer(), state)))
+        }
+        val original = TerminalShortcut.defaultShortcuts
+        assertEquals(listOf(TerminalShortcut.Ctrl, TerminalShortcut.Shift, TerminalShortcut.Alt), original.take(3))
+        val preview = moveShortcut(original, 2, 0)
+        assertEquals(TerminalShortcut.Alt, preview.first())
+        assertEquals(TerminalShortcut.Ctrl, original.first()) // cancellation keeps the saved list
+        val removed = preview.filterNot { it == TerminalShortcut.Shift }
+        val restored = removed + TerminalShortcut.Shift
+        assertEquals(TerminalShortcut.Shift, restored.last())
+        assertEquals(original.toSet(), restored.toSet())
+        assertEquals(original, moveShortcut(original, -1, 0))
+    }
+
     @Test fun oldPreferencesAndIndependentBindingsRoundTrip() {
         val old = Json.decodeFromString<LocalState>("""{"preferences":{"theme":"dark","fontSize":18,"scrollback":1000}}""")
         assertFalse(old.preferences.volumeKeysEnabled)

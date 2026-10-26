@@ -31,61 +31,6 @@ impl Render for Tip {
     }
 }
 impl Desktop {
-    pub(super) fn shortcut_settings(&self, cx: &mut Context<Self>) -> Div {
-        use dgl_core::input::TerminalKey;
-        let p = self.palette;
-        let mut choices = div().flex().flex_wrap().gap_1();
-        let mut shown = Vec::new();
-        for &key in TerminalKey::DEFAULT_SHORTCUTS
-            .iter()
-            .chain(TerminalKey::ALL)
-        {
-            if shown.contains(&key) {
-                continue;
-            }
-            shown.push(key);
-            let selected = self.local.preferences.terminal_shortcuts.contains(&key);
-            choices = choices.child(
-                self.button(
-                    format!("shortcut-setting-{}", key.label()),
-                    format!("{} {}", if selected { "☑" } else { "☐" }, key.label()),
-                    cx,
-                    move |s, _, _| {
-                        let keys = &mut s.local.preferences.terminal_shortcuts;
-                        if keys.contains(&key) {
-                            keys.retain(|k| *k != key);
-                        } else {
-                            keys.push(key);
-                        }
-                        s.save();
-                    },
-                )
-                .rounded_md()
-                .border_color(rgb(if selected { p.accent } else { p.line }))
-                .bg(rgb(if selected { p.selection } else { p.bg })),
-            );
-        }
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(t("하단 단축키"))
-            .child(t(
-                "표시할 키를 선택하세요. 새로 켠 키는 맨 뒤에 추가됩니다.",
-            ))
-            .child(choices)
-            .child(self.button(
-                "reset-shortcuts",
-                t("단축키 기본값 복원"),
-                cx,
-                |s, _, _| {
-                    s.local.preferences.terminal_shortcuts =
-                        TerminalKey::DEFAULT_SHORTCUTS.to_vec();
-                    s.save();
-                },
-            ))
-    }
-
     fn toggle_menu(&mut self, id: String) {
         self.menu = if self.menu.as_ref() == Some(&id) {
             None
@@ -449,14 +394,16 @@ impl Desktop {
                 let t = terminal.clone();
                 shortcuts = shortcuts.child(
                     self.input_button(format!("key-{label}"), label, cx, move |_, w, cx| {
-                        t.update(cx, |t, _| t.send(key.bytes().to_vec()));
+                        t.update(cx, |t, cx| t.shortcut(key, cx));
                         w.focus(&t.focus_handle(cx));
                     })
                     .h(px(32.))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded_md(),
+                    .rounded_md()
+                    .bg(rgb(if matches!(key, dgl_core::input::TerminalShortcut::Modifier(m) if terminal.read(cx).modifiers(cx).contains(m)) { p.selection } else { p.panel }))
+                    .border_color(rgb(if matches!(key, dgl_core::input::TerminalShortcut::Modifier(m) if terminal.read(cx).modifiers(cx).contains(m)) { p.accent } else { p.line })),
                 );
             }
         }
@@ -477,6 +424,14 @@ impl Desktop {
                     s.dragging_tab = None;
                     s.dragging_host = None;
                     s.host_drop = None;
+                    cx.stop_active_drag(w);
+                    cx.stop_propagation();
+                    w.prevent_default();
+                    cx.notify();
+                    return;
+                }
+                if s.settings.dragging.is_some() && e.keystroke.key == "escape" {
+                    s.settings.dragging = None;
                     cx.stop_active_drag(w);
                     cx.stop_propagation();
                     w.prevent_default();

@@ -620,7 +620,9 @@
         "hosts": [],
         "trust": {},
         "preferences": {
-          "accent": {"mode": "system"},
+          "accent": {
+            "mode": "system"
+          },
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -640,6 +642,9 @@
             "os": false
           },
           "terminalShortcuts": [
+            "Ctrl",
+            "Shift",
+            "Alt",
             "Escape",
             "Tab",
             "Enter",
@@ -675,7 +680,9 @@
         "hosts": [],
         "trust": {},
         "preferences": {
-          "accent": {"mode": "system"},
+          "accent": {
+            "mode": "system"
+          },
           "theme": "dark",
           "fontSize": 19,
           "scrollback": 5000,
@@ -695,6 +702,9 @@
             "os": false
           },
           "terminalShortcuts": [
+            "Ctrl",
+            "Shift",
+            "Alt",
             "Escape",
             "Tab",
             "Enter",
@@ -782,7 +792,9 @@
           "example.test:22": "SHA256:synthetic-test-only"
         },
         "preferences": {
-          "accent": {"mode": "system"},
+          "accent": {
+            "mode": "system"
+          },
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -816,6 +828,9 @@
             "os": false
           },
           "terminalShortcuts": [
+            "Ctrl",
+            "Shift",
+            "Alt",
             "Escape",
             "Tab",
             "Enter",
@@ -875,7 +890,9 @@
         ],
         "trust": {},
         "preferences": {
-          "accent": {"mode": "system"},
+          "accent": {
+            "mode": "system"
+          },
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -895,6 +912,9 @@
             "os": false
           },
           "terminalShortcuts": [
+            "Ctrl",
+            "Shift",
+            "Alt",
             "Escape",
             "Tab",
             "Enter",
@@ -991,7 +1011,9 @@
         "hosts": [],
         "trust": {},
         "preferences": {
-          "accent": {"mode": "system"},
+          "accent": {
+            "mode": "system"
+          },
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -1035,7 +1057,9 @@
         "hosts": [],
         "trust": {},
         "preferences": {
-          "accent": {"mode": "system"},
+          "accent": {
+            "mode": "system"
+          },
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -1074,7 +1098,9 @@
         "hosts": [],
         "trust": {},
         "preferences": {
-          "accent": {"mode": "system"},
+          "accent": {
+            "mode": "system"
+          },
           "theme": "system",
           "fontSize": 14,
           "scrollback": 5000,
@@ -1094,6 +1120,9 @@
             "os": false
           },
           "terminalShortcuts": [
+            "Ctrl",
+            "Shift",
+            "Alt",
             "Escape",
             "Tab",
             "Enter",

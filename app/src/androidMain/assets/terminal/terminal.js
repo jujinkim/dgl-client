@@ -40,8 +40,8 @@
   };
   function createPane(pane, host) {
   const api = {};
-  const post = message => send(message.type === 'input' || message.type === 'input-binary'
-    ? { ...message, pane, target: pane === active ? inputTarget : null } : message);
+  const post = message => send(message.type === 'input' || message.type === 'input-binary' || message.type === 'keyboard'
+    ? { ...message, pane, target: 'target' in message ? message.target : pane === active ? inputTarget : null } : message);
   const term = new Terminal({
     cursorBlink: true, scrollback: 5000, fontSize: 14,
     fontFamily: 'monospace', allowProposedApi: false,
@@ -154,9 +154,64 @@
   term.parser.registerOscHandler(52, () => true);
   let inputEnabled = true;
   let pasteCapture = null;
+  let keyOrigin = null, textOrigin = false, textTarget = null, composing = false, compositionPending = false, compositionVersion = 0, pasting = false;
+  const keyboard = (key, text, modifiers = {}, target = pane === active ? inputTarget : null) => {
+    if (!inputEnabled || fontGesture) return;
+    post({ type: 'keyboard', key, text, target, control: modifiers.ctrlKey === true,
+      shift: modifiers.shiftKey === true, alt: modifiers.altKey === true,
+      applicationCursor: term.modes?.applicationCursorKeysMode === true });
+  };
+  // Public APIs only. onKey runs before the corresponding onData, so that event
+  // is encoded from its semantic key rather than transforming terminal bytes.
+  term.attachCustomKeyEventHandler?.(event => {
+    if (event.type === 'keydown' && (event.isComposing || event.keyCode === 229)) {
+      if (!compositionPending) textTarget = pane === active ? inputTarget : null;
+      textOrigin = true;
+    }
+    return true;
+  });
+  term.onKey?.(({ domEvent }) => {
+    // Clipboard/app shortcuts keep xterm/OS behavior. Sticky Ctrl is never Meta.
+    if (domEvent.metaKey || (domEvent.ctrlKey && domEvent.shiftKey && ['c', 'v'].includes(domEvent.key.toLowerCase()))) return;
+    keyOrigin = { event: domEvent, target: pane === active ? inputTarget : null };
+  });
+  host.addEventListener('compositionstart', () => { composing = true; compositionPending = true; ++compositionVersion; textOrigin = true; textTarget = pane === active ? inputTarget : null; keyOrigin = null; }, true);
+  host.addEventListener('compositionend', () => {
+    composing = false; textOrigin = true;
+    const version = compositionVersion;
+    // Bubble after xterm schedules its final delta. Clear canceled/empty origins
+    // after that callback, without touching a newer composition.
+    setTimeout(() => { if (!composing && version === compositionVersion) { compositionPending = false; textOrigin = false; } }, 0);
+  });
+  host.addEventListener('input', event => {
+    if (event.inputType === 'insertFromPaste') return;
+    if (event.data || event.inputType === 'insertText' || event.inputType === 'insertCompositionText') {
+      if (!compositionPending) textTarget = pane === active ? inputTarget : null;
+      textOrigin = true;
+    }
+  }, true);
+  host.addEventListener('paste', () => {
+    pasting = true; keyOrigin = null;
+    setTimeout(() => { pasting = false; }, 0);
+  }, true);
+  api.sendShortcut = (key, control, shift, alt) => keyboard(key, null, { ctrlKey: control, shiftKey: shift, altKey: alt });
   term.onData(data => {
     if (pasteCapture !== null) { pasteCapture.push(data); return; }
-    if (inputEnabled && !fontGesture && new TextEncoder().encode(data).length <= 65536) post({ type: 'input', data });
+    const captured = keyOrigin, origin = captured?.event; keyOrigin = null;
+    if (new TextEncoder().encode(data).length > 65536) return;
+    if (!pasting && origin) {
+      const named = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+        PageUp: 'pageup', PageDown: 'pagedown', ' ': 'space' };
+      const key = named[origin.key] || origin.key.toLowerCase();
+      keyboard(key, [...origin.key].length === 1 ? origin.key : null, origin, captured.target);
+      textOrigin = false; compositionPending = false;
+    } else if (!pasting && textOrigin && !/[\x00-\x1f\x7f]/.test(data)) {
+      // xterm emits only the finalized composition/textarea delta, once. Never
+      // intercept intermediate IME updates or reinterpret protocol/mouse reports.
+      keyboard('text', data, {}, textTarget); textOrigin = composing; compositionPending = composing;
+    } else if (!pasting && textOrigin && ['\r', '\t', '\x7f'].includes(data)) {
+      keyboard({ '\r': 'enter', '\t': 'tab', '\x7f': 'backspace' }[data], null, {}, textTarget); textOrigin = composing; compositionPending = composing;
+    } else if (inputEnabled && !fontGesture) post({ type: 'input', data });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
   term.onBinary(data => { if (inputEnabled && !fontGesture && data.length <= 65536) post({ type: 'input-binary', data }); });
@@ -223,6 +278,7 @@
   window.cancelSnapshot = () => { for (const p of panes.values()) p.cancelSnapshot(); };
   window.focusTerminal = () => focused().focusTerminal();
   window.preparePaste = (...args) => focused().preparePaste(...args);
+  window.sendShortcut = (...args) => focused().sendShortcut(...args);
   window.setInputEnabled = value => { enabled = value === true; for (const p of panes.values()) p.setInputEnabled(enabled); };
   window.setSmoothTransitions = value => { smooth = value === true; for (const p of panes.values()) p.setSmoothTransitions(smooth); };
   function ensure(id) {

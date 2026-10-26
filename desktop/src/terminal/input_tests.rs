@@ -317,3 +317,41 @@ fn wheel_keeps_magnitude_fraction_direction_and_local_override(cx: &mut TestAppC
     wheel(cx, ScrollDelta::Lines(point(0., -2.)), plain);
     assert_eq!(take_sent(&terminal, cx), b"\x1bOB\x1bOB");
 }
+
+#[gpui::test]
+fn one_shot_modifiers_combine_consume_once_and_ignore_paste_mouse(cx: &mut TestAppContext) {
+    use dgl_core::input::{Modifier, Modifiers as M, TerminalKey, TerminalShortcut as S};
+    let (_runtime, terminal, cx) = setup(cx);
+    terminal.update(cx, |t, _| {
+        t.shortcut(S::Modifier(Modifier::Ctrl));
+        t.shortcut(S::Modifier(Modifier::Alt));
+    });
+    cx.simulate_input("c");
+    assert_eq!(take_sent(&terminal, cx), b"\x1b\x03");
+    cx.simulate_input("c");
+    assert_eq!(take_sent(&terminal, cx), b"c");
+    terminal.update(cx, |t, _| {
+        t.shortcut(S::Modifier(Modifier::Shift));
+        t.shortcut(S::Modifier(Modifier::Shift));
+        assert_eq!(t.modifiers, M::default());
+        t.shortcut(S::Modifier(Modifier::Ctrl));
+        t.send(b"paste".to_vec());
+        assert!(t.modifiers.control);
+        t.shortcut(S::Modifier(Modifier::Alt));
+        t.shortcut(S::Key(TerminalKey::ShiftLeft));
+        assert_eq!(t.modifiers, M::default());
+    });
+    assert_eq!(take_sent(&terminal, cx), b"paste\x1b[1;8D");
+    terminal.update(cx, |t, _| t.shortcut(S::Modifier(Modifier::Ctrl)));
+    cx.simulate_input("한");
+    assert!(take_sent(&terminal, cx).is_empty());
+    terminal.read_with(cx, |t, _| {
+        assert!(t.modifiers.control);
+        assert!(t.notice.is_some());
+    });
+    terminal.update(cx, |t, _| {
+        t.enabled = false;
+        t.sync_modifiers();
+        assert_eq!(t.modifiers, M::default());
+    });
+}

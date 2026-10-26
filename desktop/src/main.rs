@@ -20,6 +20,7 @@ mod notifications;
 mod pane_toolbar;
 mod platform;
 mod session_tabs;
+mod settings;
 mod storage;
 mod terminal;
 mod text_input;
@@ -94,6 +95,7 @@ enum Dialog {
         operation: DeleteOp,
     },
     Settings,
+    Shortcuts,
     Agents(Arc<Connection>, String, Option<String>),
     Notifications,
     Compose(TabId),
@@ -115,6 +117,8 @@ struct Desktop {
     menu: Option<String>,
     launcher: launcher::LaunchMenu,
     group_bounds: HashMap<GroupId, Bounds<Pixels>>,
+    shortcut_target: Option<(GroupId, Option<TabId>)>,
+    settings: settings::SettingsState,
     split_bounds: HashMap<Vec<bool>, Bounds<Pixels>>,
     resizing: Option<Vec<bool>>,
     dragging_tab: Option<TabId>,
@@ -198,6 +202,8 @@ impl Desktop {
             menu: None,
             launcher: launcher::LaunchMenu::default(),
             group_bounds: HashMap::new(),
+            shortcut_target: None,
+            settings: settings::SettingsState::default(),
             split_bounds: HashMap::new(),
             resizing: None,
             dragging_tab: None,
@@ -247,6 +253,7 @@ impl Desktop {
             );
             cx.notify();
         }
+        self.tick_shortcut_drag(cx);
         self.tick_agents(cx);
         self.tick_cloud_sync(cx);
         let mut changed = false;
@@ -666,9 +673,19 @@ impl Render for Desktop {
                 window.focus(&self.focus);
             }
         }
+        let shortcut_target = Some((self.workspace.active, self.workspace.selected()));
+        let clear_modifiers = self.shortcut_target != shortcut_target
+            || self.dialog.is_some()
+            || self.launcher.opened.is_some()
+            || !window.is_window_active();
+        self.shortcut_target = shortcut_target;
         for tab in &self.tabs {
-            tab.terminal
-                .update(cx, |t, _| t.enabled = self.dialog.is_none());
+            tab.terminal.update(cx, |t, cx| {
+                t.enabled = self.dialog.is_none();
+                if clear_modifiers {
+                    t.clear_modifiers(cx);
+                }
+            });
         }
         let mut root = self.render_workspace(window, cx);
         if let Some(dialog) = self.dialog.clone() {
@@ -689,6 +706,7 @@ impl Render for Desktop {
                 Dialog::Prompt { input, .. } => ("prompt", vec![input.clone()]),
                 Dialog::Delete { .. } => ("delete", vec![]),
                 Dialog::Settings => ("settings", vec![]),
+                Dialog::Shortcuts => ("shortcuts", vec![]),
                 Dialog::Agents(..) => ("agents", vec![]),
                 Dialog::Notifications => ("notifications", vec![]),
                 Dialog::Compose(id) => ("compose", vec![self.composers[id].input.clone()]),
@@ -715,7 +733,9 @@ impl Render for Desktop {
                 .gap_3();
             let mut footer = div().flex().gap_2().justify_end().child(self.button(
                 "cancel-dialog",
-                if matches!(&dialog, Dialog::Compose(_)) {
+                if matches!(&dialog, Dialog::Shortcuts) {
+                    t("뒤로")
+                } else if matches!(&dialog, Dialog::Compose(_)) {
                     t("취소")
                 } else {
                     t("취소 / 닫기")
@@ -780,101 +800,10 @@ impl Render for Desktop {
                     );
                 }
                 Dialog::Settings => {
-                    body = body
-                        .child(div().text_xl().child(t("설정")))
-                        .child(t("언어"));
-                    let choice = match self.local.preferences.language.as_str() {
-                        "ko" => "ko",
-                        "en" => "en",
-                        _ => "system",
-                    };
-                    let mut languages = div().flex().flex_wrap().gap_2();
-                    for (value, label) in
-                        [("system", t("시스템")), ("ko", "한국어"), ("en", "English")]
-                    {
-                        languages = languages.child(self.button(
-                            format!("language-{value}"),
-                            format!("{} {label}", if choice == value { "●" } else { "○" }),
-                            cx,
-                            move |s, _, cx| s.language(value, cx),
-                        ));
-                    }
-                    body = body
-                        .child(languages)
-                        .child(self.accent_settings(cx))
-                        .child(self.shortcut_settings(cx))
-                        .child(self.cloud_sync_settings(cx))
-                        .child(self.agent_settings(cx))
-                        .child(self.button(
-                            "show-all-hierarchy",
-                            tr!(
-                                "{0} 단일 창도 표시",
-                                if self.local.preferences.show_all_hierarchy {
-                                    "☑"
-                                } else {
-                                    "☐"
-                                }
-                            ),
-                            cx,
-                            |s, _, _| {
-                                s.local.preferences.show_all_hierarchy =
-                                    !s.local.preferences.show_all_hierarchy;
-                                s.save();
-                            },
-                        ));
-                    for (value, label) in [
-                        ("system", t("시스템")),
-                        ("light", t("밝게")),
-                        ("dark", t("어둡게")),
-                    ] {
-                        body = body.child(self.button(
-                            format!("theme-{value}"),
-                            label,
-                            cx,
-                            move |s, _, cx| s.theme(value, cx),
-                        ));
-                    }
-                    body = body.child(tr!(
-                        "터미널 글자 크기: {0}",
-                        self.local.preferences.font_size
-                    ));
-                    for (delta, label) in [(-1, t("작게")), (1, t("크게"))] {
-                        body = body.child(self.button(
-                            format!("font-size-{delta}"),
-                            label,
-                            cx,
-                            move |s, _, cx| {
-                                s.local.preferences.font_size =
-                                    (s.local.preferences.font_size + delta).clamp(10, 28);
-                                for t in &s.tabs {
-                                    t.terminal.update(cx, |t, _| {
-                                        t.set_font(s.local.preferences.font_size)
-                                    });
-                                }
-                                s.save();
-                            },
-                        ));
-                    }
-                    body = body
-                        .child(platform::STORAGE_LABEL)
-                        .child(t(platform::SHORTCUT_HELP))
-                        .child(t("신뢰한 서버"));
-                    for (endpoint, fingerprint) in &self.local.trust {
-                        let e = endpoint.clone();
-                        body = body
-                            .child(format!("{endpoint}\n{fingerprint}"))
-                            .child(self.button(
-                                format!("forget-{endpoint}"),
-                                t("신뢰 삭제…"),
-                                cx,
-                                move |s, _, _| {
-                                    s.dialog = Some(Dialog::Delete {
-                                        title: tr!("{0} 신뢰 삭제", e),
-                                        operation: DeleteOp::Trust(e.clone()),
-                                    })
-                                },
-                            ));
-                    }
+                    body = body.child(self.settings_main(cx));
+                }
+                Dialog::Shortcuts => {
+                    body = body.child(self.shortcut_settings(cx));
                 }
             }
             root = root.child(
@@ -893,7 +822,14 @@ impl Render for Desktop {
                     .p_6()
                     .child(
                         div()
-                            .w(px(520.))
+                            .w(px(
+                                if matches!(self.dialog, Some(Dialog::Settings | Dialog::Shortcuts))
+                                {
+                                    720.
+                                } else {
+                                    520.
+                                },
+                            ))
                             .max_w_full()
                             .p_4()
                             .border_1()
@@ -924,6 +860,11 @@ impl Render for Desktop {
             );
         }
         if self.dialog.is_some() {
+            if self.settings.restore && matches!(self.dialog, Some(Dialog::Settings)) {
+                self.settings.restore = false;
+                self.modal.scroll.set_offset(self.settings.main_offset());
+                self.modal.restore_button("edit-shortcuts", window);
+            }
             self.modal.finish(window);
         }
         root

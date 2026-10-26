@@ -468,3 +468,92 @@ test('a replacement snapshot releases its predecessor acknowledgement and reduce
   assert.ok(css.includes('opacity 90ms'));
   assert.ok(css.includes('opacity 80ms'));
 });
+
+function keyboardRenderer() {
+  const messages = [], listeners = {}, events = {}, timers = [];
+  let terminal;
+  class Terminal {
+    modes = { applicationCursorKeysMode: false }; parser = { registerOscHandler() {} };
+    constructor() { terminal = this; }
+    loadAddon() {} open() {} onResize() {}
+    onKey(callback) { listeners.key = callback; }
+    attachCustomKeyEventHandler(callback) { listeners.custom = callback; }
+    onData(callback) { listeners.data = callback; }
+    onBinary(callback) { listeners.binary = callback; }
+    paste(text) { listeners.data(text); }
+  }
+  const host = { style: {}, addEventListener: (name, callback) => { events[name] = callback; } };
+  const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) } };
+  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
+    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} }, ResizeObserver: class { observe() {} },
+    document: { getElementById: () => host, hasFocus: () => false }, setTimeout: callback => timers.push(callback),
+  });
+  messages.length = 0;
+  return { window, terminal, messages, listeners, events, timers,
+    key(key, data, modifiers = {}) {
+      const domEvent = { type: 'keydown', key, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...modifiers };
+      listeners.custom(domEvent); listeners.key({ domEvent }); listeners.data(data);
+    },
+  };
+}
+
+test('semantic keys use the shared encoder channel once and preserve cursor mode and physical modifiers', () => {
+  const r = keyboardRenderer();
+  r.terminal.modes.applicationCursorKeysMode = true;
+  r.key('ArrowLeft', '\x1b[1;7D', { ctrlKey: true, altKey: true });
+  r.key('c', 'c');
+  r.window.sendShortcut('left', false, true, false);
+  assert.deepEqual(r.messages, [
+    { type: 'keyboard', key: 'left', text: null, control: true, shift: false, alt: true, applicationCursor: true, pane: 'shell', target: null },
+    { type: 'keyboard', key: 'c', text: 'c', control: false, shift: false, alt: false, applicationCursor: true, pane: 'shell', target: null },
+    { type: 'keyboard', key: 'left', text: null, control: false, shift: true, alt: false, applicationCursor: true, pane: 'shell', target: null },
+  ]);
+  r.messages.length = 0;
+  r.window.setInputEnabled(false); r.key('c', 'c'); r.window.sendShortcut('left', false, false, false);
+  assert.deepEqual(r.messages, []);
+});
+
+test('IME commits once while paste mouse and protocol responses bypass semantic input', () => {
+  const r = keyboardRenderer();
+  r.events.compositionstart();
+  r.events.input({ inputType: 'insertCompositionText', data: 'ㅎ' });
+  r.events.input({ inputType: 'insertCompositionText', data: '한' });
+  assert.deepEqual(r.messages, [], 'intermediate composition events do not submit anything');
+  r.listeners.data('\x1b[0n'); // a terminal protocol response during composition
+  r.events.compositionend();
+  r.listeners.data('한😀'); // finalized delta from xterm, not compositionend.data
+  r.events.paste(); r.listeners.data('pasted text');
+  r.timers.splice(0).forEach(callback => callback());
+  r.listeners.data('\x1b[<0;1;1M'); r.listeners.binary('\x1b[M \x85\xff');
+  assert.equal(r.window.preparePaste('composer', false), 'composer');
+  assert.deepEqual(r.messages, [
+    { type: 'input', data: '\x1b[0n', pane: 'shell', target: null },
+    { type: 'keyboard', key: 'text', text: '한😀', control: false, shift: false, alt: false, applicationCursor: false, pane: 'shell', target: null },
+    { type: 'input', data: 'pasted text', pane: 'shell', target: null },
+    { type: 'input', data: '\x1b[<0;1;1M', pane: 'shell', target: null },
+    { type: 'input-binary', data: '\x1b[M \x85\xff', pane: 'shell', target: null },
+  ]);
+});
+
+
+test('delayed IME commit retains the original target across pane or reconnect changes', () => {
+  const r = keyboardRenderer();
+  r.window.setLayout({ window: null, active: 'shell', inputTarget: 'generation-one', panes: [] });
+  r.events.compositionstart();
+  r.events.input({ inputType: 'insertCompositionText', data: '한' });
+  r.window.setLayout({ window: null, active: 'shell', inputTarget: 'generation-two', panes: [] });
+  r.events.compositionend(); r.listeners.data('한');
+  assert.equal(r.messages.length, 1);
+  assert.equal(r.messages[0].target, 'generation-one', 'native validation must reject an old commit instead of retargeting it');
+  r.key('c', 'c');
+  assert.equal(r.messages[1].target, 'generation-two');
+  r.events.input({ inputType: 'insertText', data: 'null' }); r.listeners.data('null');
+  assert.equal(r.messages[2].text, 'null');
+  assert.equal(r.messages[2].target, 'generation-two');
+  // An empty/canceled composition must not keep an old destination for later input.
+  r.events.compositionstart(); r.events.compositionend();
+  r.timers.splice(0).forEach(callback => callback());
+  r.window.setLayout({ window: null, active: 'shell', inputTarget: 'generation-three', panes: [] });
+  r.events.input({ inputType: 'insertText', data: 'next' }); r.listeners.data('next');
+  assert.equal(r.messages[3].target, 'generation-three');
+});

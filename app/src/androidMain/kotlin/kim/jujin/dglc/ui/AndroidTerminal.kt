@@ -78,7 +78,13 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                 { pane, target, bytes -> if (entry.visible && entry.focus.inputAllowed()) client.paneInput(pane, target, bytes) },
                 { pane, target -> if (entry.visible) { entry.focus.activate(); if (entry.focus.inputAllowed()) client.focusPane(pane, target) } },
                 { pane, target, size -> if (entry.visible && entry.focus.inputAllowed()) client.resizePane(pane, target, size) },
-                resources?.model?.terminalFont(client) ?: TerminalFontSize(preferences.fontSize)))
+                resources?.model?.terminalFont(client) ?: TerminalFontSize(preferences.fontSize),
+                keyboardInput = { pane, target, key, text, physical, cursor ->
+                    if (entry.visible && entry.focus.inputAllowed() && target != null &&
+                        client.captureInputTarget()?.identity == kim.jujin.dglc.inputTargetIdentity(target)) {
+                        resources?.model?.shortcutInput(client)?.encode(key, text, physical, cursor)?.let { client.paneInput(pane, target, it) }
+                    }
+                }))
             return entry
         }
         resources?.entries?.getOrPut(client, ::create) ?: create()
@@ -136,6 +142,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         focus.request = { terminal.focus { entry.visible && entry.focus.inputAllowed() } }
         focus.keyboard = { terminal.keyboard(terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) != true, focus.inputAllowed) }
         focus.preparePaste = terminal::preparePaste
+        focus.shortcut = terminal::shortcut
         focus.fontSizeOverride = terminal.fontSizeOverride
         focus.resetFontSize = terminal::resetFontSize
         onDispose {
@@ -147,7 +154,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             terminal.view.setWindowInsetsAnimationCallback(null)
             terminal.view.setOnTouchListener(null)
             terminal.view.onFocusChangeListener = null
-            focus.request = {}; focus.keyboard = {}; focus.imeVisible = false
+            focus.request = {}; focus.keyboard = {}; focus.shortcut = {}; focus.imeVisible = false
             focus.preparePaste = { _, _ -> error(t("터미널이 닫혔습니다.")) }
             focus.fontSizeOverride = null; focus.resetFontSize = {}
         }
@@ -186,7 +193,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private val paneInput: ((String, String?, ByteArray) -> Unit)? = null,
     private val focusPane: (String, String?) -> Unit = { _, _ -> },
     private val resizePane: (String, String?, Size) -> Unit = { _, _, _ -> },
-    private val font: TerminalFontSize = TerminalFontSize(preferences.fontSize)) : TerminalSurface {
+    private val font: TerminalFontSize = TerminalFontSize(preferences.fontSize),
+    private val keyboardInput: (String, String?, String, String?, TerminalModifiers, Boolean) -> Unit = { _, _, _, _, _, _ -> }) : TerminalSurface {
     val fontSizeOverride get() = font.overrideSize
     private var scrollback = preferences.scrollback.coerceIn(100, 10000)
     private var consumingPinch = false
@@ -273,6 +281,9 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                         val bytes = json.getString("data").toByteArray(Charsets.UTF_8)
                         inputForPane(bytes)
                     }
+                    "keyboard" -> keyboardInput(json.getString("pane"), target(), json.getString("key"),
+                        if (json.isNull("text")) null else json.getString("text"),
+                        TerminalModifiers(json.optBoolean("control"), json.optBoolean("shift"), json.optBoolean("alt")), json.optBoolean("applicationCursor"))
                     "input-binary" -> inputForPane(kim.jujin.dglc.core.TerminalInput.decodeBinary(json.getString("data")))
                     "focus" -> focusPane(json.getString("pane"), target())
                     "resize-pane" -> resizePane(json.getString("pane"), target(), Size(json.getInt("columns"), json.getInt("rows")))
@@ -326,6 +337,10 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                 } }
             }
         }
+    }
+    fun shortcut(shortcut: TerminalShortcut) {
+        val (key, own) = shortcut.key?.semanticInput() ?: return
+        if (!closed && ready.isCompleted) view.evaluateJavascript("window.sendShortcut(${JSONObject.quote(key)},${own.control},${own.shift},${own.alt})", null)
     }
     suspend fun setInputEnabled(enabled: Boolean) {
         withTimeout(15_000) { ready.await() }

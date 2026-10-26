@@ -121,6 +121,7 @@ impl WindowTerminal {
         for t in self.panes.values() {
             t.update(cx, |t, _| {
                 t.enabled = self.enabled;
+                t.sync_modifiers();
                 if let Some(n) = t.notice.take() {
                     self.notice = Some(n);
                 }
@@ -138,6 +139,36 @@ impl WindowTerminal {
         {
             self.notice = Some(dgl_core::tr!("입력을 보내지 못했습니다: {0}", e));
         }
+    }
+    pub fn clear_modifiers(&mut self, cx: &mut App) {
+        for pane in self.panes.values() {
+            pane.update(cx, |t, _| t.modifiers = KeyModifiers::default());
+        }
+    }
+    pub fn modifiers(&self, cx: &App) -> KeyModifiers {
+        self.connection
+            .state()
+            .pane
+            .as_deref()
+            .or(Some("shell"))
+            .and_then(|id| self.panes.get(id))
+            .map(|t| t.read(cx).modifiers)
+            .unwrap_or_default()
+    }
+    pub fn shortcut(&mut self, key: TerminalShortcut, cx: &mut Context<Self>) {
+        if !self.enabled {
+            return;
+        }
+        let id = self
+            .connection
+            .state()
+            .pane
+            .unwrap_or_else(|| "shell".into());
+        self.pane(&id, cx).update(cx, |t, cx| {
+            t.shortcut(key);
+            cx.notify();
+        });
+        cx.notify();
     }
     pub fn prepare_paste(
         &self,
@@ -237,6 +268,7 @@ impl Render for WindowTerminal {
             t.update(cx, |t, _| {
                 t.set_font(self.font_size);
                 t.enabled = self.enabled;
+                t.sync_modifiers();
             });
             content = content.child(t);
         }
@@ -245,6 +277,7 @@ impl Render for WindowTerminal {
             terminal.update(cx, |t, _| {
                 t.set_font(self.font_size);
                 t.enabled = self.enabled;
+                t.sync_modifiers();
             });
             content = content.child(
                 div()

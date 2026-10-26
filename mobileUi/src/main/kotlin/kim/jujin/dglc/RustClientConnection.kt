@@ -435,6 +435,8 @@ class RustClientConnection(
             put("op", "resizePaneTo"); put("target", pane); put("columns", size.columns); put("rows", size.rows)
         }) })
     }
+    override fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? =
+        runCatching { uniffi.dgl_core.encodeTerminalInput(key, text, modifiers.control, modifiers.shift, modifiers.alt, applicationCursor) }.getOrNull()
     @Synchronized override fun input(bytes: ByteArray) {
         val c = native ?: return rejectInput("Closed")
         if (!status.value.acceptsInput) return rejectInput("NotReady")

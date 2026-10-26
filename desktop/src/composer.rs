@@ -147,6 +147,11 @@ impl Desktop {
     }
 
     pub(super) fn dismiss_dialog(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.dialog, Some(Dialog::Shortcuts)) {
+            self.shortcuts_back();
+            cx.notify();
+            return;
+        }
         if let Some(Dialog::Compose(id)) = self.dialog
             && let Some(composer) = self.composers.get(&id)
         {
