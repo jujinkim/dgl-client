@@ -319,15 +319,16 @@ impl Desktop {
         })
         .detach();
     }
-    pub(super) fn cloud_sync_settings(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn cloud_sync_settings(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         if self.cloud_sync.blocked {
-            return div().child(t(&self.cloud_sync.status).to_owned());
+            return div()
+                .id("cloud-sync-blocked")
+                .child(t(&self.cloud_sync.status).to_owned());
         }
         let busy = self.cloud_sync.receiver.is_some() || self.cloud_sync.selecting;
-        let mut body=div().flex().flex_col().gap_2().child(t("설정·호스트 동기화"))
-            .child(t("Google Drive 또는 iCloud Drive 앱의 동기화 폴더를 선택하세요. 모든 기기에서 같은 dgl-sync.json을 사용합니다."))
-            .child(t("첫 연결에서는 공유 파일의 공통 설정을 적용하고 이 기기의 호스트 목록을 병합합니다."))
-            .child(t("테마·강조 색상 선택을 공유합니다. OS 실제 색상·비밀번호·개인키·신뢰 키·매크로·OS 알림·기기별 화면 배치는 공유하지 않습니다."));
+        let mut body = div().id("cloud-sync-settings").flex().flex_col().gap_2()
+            .native_tooltip(t("테마·강조 색상 선택을 공유합니다. OS 실제 색상·비밀번호·개인키·신뢰 키·매크로·OS 알림·기기별 화면 배치는 공유하지 않습니다."))
+            .child(t("동기화 폴더의 같은 dgl-sync.json을 선택하세요. 첫 연결 시 공통 설정을 적용하고 호스트를 병합합니다."));
         if !busy {
             for provider in [Provider::GoogleDrive, Provider::ICloudDrive] {
                 body = body.child(self.button(

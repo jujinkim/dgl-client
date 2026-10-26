@@ -558,5 +558,14 @@
   "하단 단축키 · {0}개 · 순서 및 표시 편집 ›": "Bottom shortcuts · {0} · Edit order and visibility ›",
   "이 조합은 터미널 입력으로 표현할 수 없습니다. 조합키를 해제하거나 다른 키를 사용하세요.": "The terminal protocol cannot encode this combination. Turn off a modifier or use another key.",
   "켜짐": "On",
-  "꺼짐": "Off"
+  "꺼짐": "Off",
+  "이번 실행 중 최대 100건. 읽음은 질문 응답·승인 처리를 뜻하지 않습니다.": "Up to 100 notifications from this run. Reading does not answer questions or approve requests.",
+  "{0} · {1}초 전": "{0} · {1}s ago",
+  "스크롤백: {0}줄": "Scrollback: {0} lines",
+  "동기화 폴더의 같은 dgl-sync.json을 선택하세요. 첫 연결 시 공통 설정을 적용하고 호스트를 병합합니다.": "Select the same dgl-sync.json in your sync folder. The first connection applies shared settings and merges hosts.",
+  "저장된 연결 정보를 삭제합니다. 원격 작업은 유지됩니다.": "Deletes saved connection details. Remote work continues.",
+  "삭제하면 해당 원격 프로세스가 종료됩니다.": "Deleting terminates the remote process.",
+  "다음 연결 시 서버 키를 다시 확인해야 합니다.": "You will need to verify the server key on the next connection.",
+  "Python 3 도우미·훅을 설치하고 기존 설정을 백업합니다.": "Installs the Python 3 helper and hooks, and backs up existing settings.",
+  "Codex의 /hooks에서 직접 검토·신뢰하세요. 새 실행 또는 훅 수신 후 확인됩니다.": "Review and trust the hooks in Codex /hooks. A new run or received hook confirms activation."
 }

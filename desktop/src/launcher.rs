@@ -178,10 +178,7 @@ impl Desktop {
         .items_center()
         .justify_center()
         .text_size(px(20.))
-        .tooltip(|_, cx| {
-            cx.new(|_| workspace_ui::Tip(t("CLI 실행 메뉴").into()))
-                .into()
-        })
+        .native_tooltip(t("CLI 실행 메뉴"))
     }
     pub fn render_launcher(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         self.launcher.opened.as_ref()?;
@@ -272,21 +269,16 @@ impl Desktop {
                                 .child("test"),
                         )
                     })
-                    .tooltip(move |_, cx| {
-                        cx.new(|_| {
-                            workspace_ui::Tip(tr!(
-                                "{0} {1} 실행{2}",
-                                service,
-                                suffix,
-                                if experimental {
-                                    t(" · 실험 지원")
-                                } else {
-                                    ""
-                                }
-                            ))
-                        })
-                        .into()
-                    })
+                    .native_tooltip(tr!(
+                        "{0} {1} 실행{2}",
+                        service,
+                        suffix,
+                        if experimental {
+                            t(" · 실험 지원")
+                        } else {
+                            ""
+                        }
+                    ))
                     .on_click(cx.listener(move |s, _, w, cx| {
                         if enabled {
                             s.launch(command, w, cx);

@@ -123,7 +123,7 @@ impl Desktop {
                         cx,
                         move |s, w, cx| s.pane_action(tab_id, action, w, cx),
                     )
-                    .tooltip(move |_, cx| cx.new(|_| workspace_ui::Tip(description.into())).into())
+                    .native_tooltip(description)
                     .when(!enabled, |d| d.opacity(0.35).cursor_default()),
                 );
             }

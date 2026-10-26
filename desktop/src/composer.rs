@@ -205,14 +205,14 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_3()
-            .child(div().text_xl().child(t("텍스트 작성")))
-            .child(composer.input.clone())
             .child(
                 div()
-                    .text_xs()
-                    .text_color(rgb(self.palette.muted))
-                    .child(t("Enter는 줄바꿈 · 전송 버튼으로 보내기")),
+                    .id("composer-title")
+                    .text_xl()
+                    .child(t("텍스트 작성"))
+                    .native_tooltip(t("Enter는 줄바꿈 · 전송 버튼으로 보내기")),
             )
+            .child(composer.input.clone())
             .child(
                 self.button_base("composer-enter", cx, move |s, _, _| {
                     if let Some(composer) = s.composers.get_mut(&id)

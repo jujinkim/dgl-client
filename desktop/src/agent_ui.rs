@@ -222,7 +222,7 @@ impl Desktop {
             .flex_shrink_0()
             .overflow_hidden()
             .text_xs()
-            .tooltip(move |_, cx| cx.new(|_| workspace_ui::Tip(tip.clone())).into());
+            .native_tooltip(tip);
         if unread.len() < 10
             && let Some(a) = Agent::ALL
                 .into_iter()
@@ -259,10 +259,8 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_3()
-            .child(tr!("에이전트 상태 연동 · {0}", alias))
-            .child(t(
-                "마지막 관측 사건입니다. 현재 입력·승인 대기 또는 작업 성공을 뜻하지 않습니다.",
-            ))
+            .child(div().id("agent-details-title").text_lg().child(tr!("에이전트 상태 연동 · {0}", alias))
+                .native_tooltip(t("마지막 관측 사건입니다. 현재 입력·승인 대기 또는 작업 성공을 뜻하지 않습니다.")))
             .child({
                 let mut filtered = state.agents.clone();
                 filtered.observations.retain(|o| {
@@ -285,43 +283,55 @@ impl Desktop {
                 }
             })
         }) {
-            body = body.child(format!(
-                "{} · {}{}",
-                o.agent.label(),
-                hierarchy::target_label(&state.remote, Some(&o.session), Some(&o.pane)),
-                if o.actor != "parent" {
-                    t(" · 서브에이전트")
-                } else {
-                    ""
-                }
-            ));
-            body = body.child(
-                o.last
-                    .as_ref()
-                    .map(|e| {
-                        tr!(
-                            "{0} · {1} · {2}초 전",
-                            e.kind.label(),
-                            e.event,
-                            agent::now_ms().saturating_sub(e.at) / 1000
-                        )
-                    })
-                    .unwrap_or_else(|| t("미연동 · 상태 미확인").into()),
-            );
-            body = body.child(tr!(
+            let details = tr!(
                 "진단 정보 · 세션 ID: {0} · 창 ID: {1} · 패널 ID: {2}",
                 o.session,
                 o.window,
                 o.pane
-            ));
-            body = body.child(tr!(
+            );
+            let supported = tr!(
                 "수신 확인 사건: {0}",
                 o.supported
                     .iter()
                     .map(|k| k.label())
                     .collect::<Vec<_>>()
                     .join(" · ")
-            ));
+            );
+            body = body.child(
+                div()
+                    .id(SharedString::from(format!(
+                        "agent-observation-{}-{}",
+                        o.run, o.actor
+                    )))
+                    .native_tooltip(format!(
+                        "{details}\n{supported}\n{}",
+                        o.last.as_ref().map_or("", |e| e.event.as_str())
+                    ))
+                    .child(format!(
+                        "{} · {}{}",
+                        o.agent.label(),
+                        hierarchy::target_label(&state.remote, Some(&o.session), Some(&o.pane)),
+                        if o.actor != "parent" {
+                            t(" · 서브에이전트")
+                        } else {
+                            ""
+                        }
+                    ))
+                    .child(
+                        div().text_sm().child(
+                            o.last
+                                .as_ref()
+                                .map(|e| {
+                                    tr!(
+                                        "{0} · {1}초 전",
+                                        e.kind.label(),
+                                        agent::now_ms().saturating_sub(e.at) / 1000
+                                    )
+                                })
+                                .unwrap_or_else(|| t("미연동 · 상태 미확인").into()),
+                        ),
+                    ),
+            );
             let target = o.clone();
             let c = connection.clone();
             body = body.child(self.button(
@@ -359,7 +369,9 @@ impl Desktop {
         if pane.is_some() {
             return body;
         }
-        body = body.child(t("선택 설치: Python 3 도우미·사용자 훅을 추가하고 기존 설정을 백업합니다. 대화·명령 본문은 저장하지 않습니다."));
+        body = body.child(div().id("agent-install-help")
+            .child(t("Python 3 도우미·훅을 설치하고 기존 설정을 백업합니다."))
+            .native_tooltip(t("선택 설치: Python 3 도우미·사용자 훅을 추가하고 기존 설정을 백업합니다. 대화·명령 본문은 저장하지 않습니다.")));
         let c = connection.clone();
         body = body.child(self.button(
             "agent-inspect",
@@ -419,9 +431,13 @@ impl Desktop {
                         }
                     }
                 }
-                body = body.child(t("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 실제 훅 수신으로 확인됩니다. 기존 실행은 종료하지 않습니다."));
-                for (op, label) in [("install", t("연동 설치")), ("remove", t("DaGaLi 훅만 해제"))]
-                {
+                body = body.child(div().id("agent-codex-help")
+                    .child(t("Codex의 /hooks에서 직접 검토·신뢰하세요. 새 실행 또는 훅 수신 후 확인됩니다."))
+                    .native_tooltip(t("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 실제 훅 수신으로 확인됩니다. 기존 실행은 종료하지 않습니다.")));
+                for (op, label) in [
+                    ("install", t("연동 설치")),
+                    ("remove", t("DaGaLi 훅만 해제")),
+                ] {
                     let c = connection.clone();
                     let token = token.to_owned();
                     body = body.child(self.button(
@@ -444,33 +460,83 @@ impl Desktop {
         body
     }
     pub fn recent_agents(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let mut body = div()
-            .id("recent-agents")
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(t("최근 알림 · 이번 실행 중 최대 100건"))
-            .child(t("읽음은 질문 응답·승인 처리를 뜻하지 않습니다."));
+        let mut body = div().id("recent-agents").flex().flex_col().gap_2();
+        if self.inbox.recent.is_empty() {
+            return body.child(
+                div()
+                    .id("notifications-empty")
+                    .debug_selector(|| "notifications-empty".into())
+                    .py_3()
+                    .text_sm()
+                    .text_color(rgb(self.palette.muted))
+                    .child(t("수신한 알림이 없습니다.")),
+            );
+        }
         for n in &self.inbox.recent {
             let id = n.id();
-            body = body
-                .child(tr!("{0}{1} · {2} · 진단 정보: 세션 ID {3} / 창 ID {4} / 패널 ID {5}{6} · {7} · {8}초 전", if n.read { "" } else { "● " }, n.event.agent.label(), n.endpoint, n.event.session, n.event.window, n.event.pane, if n.event.actor != "parent" {
-                        t(" · 서브에이전트")
-                    } else {
-                        ""
-                    }, n.event.kind.label(), agent::now_ms().saturating_sub(n.event.at) / 1000))
-                .child(self.button(
-                    format!("notice-{id}"),
-                    t("패널로 이동 · 읽음"),
-                    cx,
-                    move |s, _, cx| s.open_agent_notice(&id, cx),
-                ));
+            let details = tr!(
+                "진단 정보 · 세션 ID: {0} · 창 ID: {1} · 패널 ID: {2}",
+                n.event.session,
+                n.event.window,
+                n.event.pane
+            );
+            let tip = format!(
+                "{}\n{} · {} · {}\n{}",
+                details,
+                n.event.server,
+                n.event.run,
+                n.event.event,
+                t("읽음은 질문 응답·승인 처리를 뜻하지 않습니다.")
+            );
+            body = body.child(
+                div()
+                    .id(SharedString::from(format!("notice-row-{id}")))
+                    .flex()
+                    .flex_col()
+                    .flex_shrink_0()
+                    .gap_1()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(rgb(self.palette.line))
+                    .native_tooltip(tip)
+                    .child(div().flex().flex_wrap().gap_1().text_sm().child(format!(
+                        "{}{} · {}{}",
+                        if n.read { "" } else { "● " },
+                        n.event.agent.label(),
+                        n.event.kind.label(),
+                        if n.event.actor != "parent" {
+                            t(" · 서브에이전트")
+                        } else {
+                            ""
+                        }
+                    )))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(self.palette.muted))
+                            .child(tr!(
+                                "{0} · {1}초 전",
+                                n.endpoint,
+                                agent::now_ms().saturating_sub(n.event.at) / 1000
+                            )),
+                    )
+                    .child(self.button(
+                        format!("notice-{id}"),
+                        t("패널로 이동"),
+                        cx,
+                        move |s, _, cx| s.open_agent_notice(&id, cx),
+                    )),
+            );
         }
         body
     }
-    pub fn agent_settings(&self, cx: &mut Context<Self>) -> Div {
+    pub fn agent_settings(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let settings = &self.local.preferences.agent_notifications;
-        let mut body = div().flex().flex_col().child(t("에이전트 알림"));
+        let mut body = div()
+            .id("agent-settings")
+            .flex()
+            .flex_col()
+            .native_tooltip(t("OS 권한·집중 모드와 관계없이 앱 내 알림은 유지됩니다."));
         for (i, label, enabled) in [
             (0, t("질문·승인 요청"), settings.questions),
             (1, t("응답 종료 신호"), settings.responses),
@@ -486,7 +552,6 @@ impl Desktop {
                 s.save();
             }));
         }
-        body.child(t("OS 권한·집중 모드와 관계없이 앱 내 알림은 유지됩니다."))
-            .child(t(&self.notification_status).to_owned())
+        body.child(t(&self.notification_status).to_owned())
     }
 }

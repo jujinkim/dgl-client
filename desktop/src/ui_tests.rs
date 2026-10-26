@@ -712,7 +712,13 @@ fn status_action_dialogs_restore_focus_and_block_terminal_input(cx: &mut TestApp
         // Also exercise the dialog's close button.
         cx.simulate_click(button.center(), Modifiers::default());
         redraw(cx);
-        let close = cx.debug_bounds("cancel-dialog").unwrap();
+        let close = cx
+            .debug_bounds(if id == "agent-notifications" {
+                "close-notifications"
+            } else {
+                "cancel-dialog"
+            })
+            .unwrap();
         cx.simulate_click(close.center(), Modifiers::default());
         redraw(cx);
         assert!(view.read_with(cx, |s, _| s.dialog.is_none()));
@@ -735,6 +741,91 @@ struct AgentPanelPreview {
     desktop: Entity<Desktop>,
     connection: Arc<Connection>,
     state: dgl_core::connection::State,
+}
+
+#[gpui::test]
+fn notification_panel_anchors_resizes_scrolls_and_dismisses_without_background_actions(
+    cx: &mut TestAppContext,
+) {
+    use dgl_core::agent::{Agent, AgentEvent, Kind, Notice};
+    let (view, ui) = setup(cx);
+    let terminal = add_terminal(&view, ui);
+    redraw(ui);
+    ui.update(|w, cx| w.focus(&terminal.focus_handle(cx)));
+    let button = ui.debug_bounds("agent-notifications").unwrap();
+    ui.simulate_click(button.center(), Modifiers::default());
+    redraw(ui);
+    assert!(ui.debug_bounds("notifications-empty").is_some());
+    // Resizing an already open panel must use the button's new bounds immediately.
+    for (width, height) in [(1200., 700.), (420., 600.), (320., 300.)] {
+        ui.simulate_resize(gpui::size(px(width), px(height)));
+        redraw(ui);
+        let panel = ui.debug_bounds("notification-panel").unwrap();
+        let button = ui.debug_bounds("agent-notifications").unwrap();
+        assert_eq!(panel.size.width, px(360_f32.min(width - 16.)));
+        if width >= 400. {
+            assert_eq!(panel.right(), button.right());
+        }
+        assert_eq!(panel.bottom(), button.top() - px(8.));
+        assert!(panel.left() >= px(8.) && panel.top() >= px(8.));
+        assert!(panel.right() <= px(width - 8.));
+    }
+    ui.simulate_resize(gpui::size(px(640.), px(600.)));
+    view.update(ui, |s, cx| {
+        s.inbox.recent = (0..100)
+            .map(|i| Notice {
+                endpoint: "fixture@127.0.0.1:1".into(),
+                read: false,
+                event: AgentEvent {
+                    id: format!("panel-{i}"),
+                    seq: i,
+                    server: "old-server".into(),
+                    run: "run".into(),
+                    actor: "parent".into(),
+                    session: "$0".into(),
+                    window: "@0".into(),
+                    pane: "%0".into(),
+                    agent: Agent::Codex,
+                    kind: Kind::Approval,
+                    event: "PermissionRequest".into(),
+                    at: dgl_core::agent::now_ms(),
+                },
+            })
+            .collect();
+        cx.notify();
+    });
+    redraw(ui);
+    let panel = ui.debug_bounds("notification-panel").unwrap();
+    let list = ui.debug_bounds("notification-list").unwrap();
+    assert!(panel.size.height <= px(540.));
+    assert!(list.bottom() <= panel.bottom());
+    let scroll = view.read_with(ui, |s, _| s.modal.scroll.clone());
+    assert!(scroll.max_offset().height > px(0.));
+    ui.simulate_event(ScrollWheelEvent {
+        position: list.center(),
+        delta: ScrollDelta::Pixels(point(px(0.), px(-500.))),
+        modifiers: Modifiers::default(),
+        touch_phase: TouchPhase::Moved,
+    });
+    redraw(ui);
+    assert!(scroll.offset().y < px(0.));
+    ui.simulate_keystrokes("tab shift-tab a ctrl-c");
+    ui.simulate_input("차단");
+    // Reclick the bell through the transparent dismissal layer.
+    let bell = ui.debug_bounds("agent-notifications").unwrap();
+    ui.simulate_click(bell.center(), Modifiers::default());
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.dialog.is_none()));
+    assert!(ui.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+    // An outside click dismisses but cannot invoke a background control.
+    ui.simulate_click(bell.center(), Modifiers::default());
+    redraw(ui);
+    let add = ui.debug_bounds("add").unwrap();
+    ui.simulate_click(add.center(), Modifiers::default());
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.dialog.is_none()));
+    assert!(ui.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+    assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
 }
 impl gpui::Render for AgentPanelPreview {
     fn render(

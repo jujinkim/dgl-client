@@ -30,15 +30,11 @@ impl Desktop {
             .bg(rgb(self.palette.panel))
             .child(
                 div()
+                    .id(SharedString::from(format!("settings-title-{title}")))
                     .text_lg()
                     .text_color(rgb(self.palette.accent))
+                    .native_tooltip(t(description))
                     .child(t(title)),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(rgb(self.palette.muted))
-                    .child(t(description)),
             )
     }
     pub(super) fn settings_main(&mut self, cx: &mut Context<Self>) -> Div {
@@ -104,10 +100,16 @@ impl Desktop {
         let terminal = self
             .settings_card("터미널·입력", "터미널 글자와 입력 도구를 조정합니다.")
             .child(font)
-            .child(div().text_xs().child(tr!(
-                "스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사",
-                self.local.preferences.scrollback
-            )))
+            .child(
+                div()
+                    .id("scrollback-setting")
+                    .text_xs()
+                    .native_tooltip(tr!(
+                        "스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사",
+                        self.local.preferences.scrollback
+                    ))
+                    .child(tr!("스크롤백: {0}줄", self.local.preferences.scrollback)),
+            )
             .child(self.button(
                 "edit-shortcuts",
                 tr!(
@@ -146,10 +148,7 @@ impl Desktop {
             .settings_card("동기화", "기기 간 공통 설정과 호스트를 공유합니다.")
             .child(self.cloud_sync_settings(cx));
         let mut security = self
-            .settings_card(
-                "보안·저장",
-                "신뢰한 서버와 이 기기의 저장 위치를 확인합니다.",
-            )
+            .settings_card("보안·저장", platform::SHORTCUT_HELP)
             .child(t("신뢰한 서버"));
         for (endpoint, fingerprint) in &self.local.trust {
             let e = endpoint.clone();
@@ -167,9 +166,7 @@ impl Desktop {
                     },
                 ));
         }
-        security = security
-            .child(div().text_xs().child(platform::STORAGE_LABEL))
-            .child(div().text_xs().child(t(platform::SHORTCUT_HELP)));
+        security = security.child(div().text_xs().child(platform::STORAGE_LABEL));
         div()
             .flex()
             .flex_col()
@@ -243,21 +240,21 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_2()
-            .child(div().text_xl().child(t("하단 단축키")))
+            .child(
+                div()
+                    .id("shortcut-settings-title")
+                    .text_xl()
+                    .child(t("하단 단축키"))
+                    .native_tooltip(format!(
+                        "{}\n{}",
+                        t("핸들을 끌어 순서를 바꾸세요. 변경은 놓을 때 저장됩니다."),
+                        t("Ctrl·Shift·Alt는 다음 키 입력에 한 번 적용됩니다.")
+                    )),
+            )
             .child(self.button("shortcuts-back", t("뒤로"), cx, |s, _, _| {
                 s.shortcuts_back()
             }))
-            .child(div().text_lg().child(t("사용 중인 단축키")))
-            .child(
-                div()
-                    .text_xs()
-                    .child(t("핸들을 끌어 순서를 바꾸세요. 변경은 놓을 때 저장됩니다.")),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .child(t("Ctrl·Shift·Alt는 다음 키 입력에 한 번 적용됩니다.")),
-            );
+            .child(div().text_lg().child(t("사용 중인 단축키")));
         let keys = &self.local.preferences.terminal_shortcuts;
         if keys.is_empty() {
             active = active.child(t("사용 중인 단축키가 없습니다."));
@@ -350,7 +347,7 @@ impl Desktop {
                                     s.settings.destination = Some(index);
                                     cx.notify();
                                 });
-                                cx.new(|_| workspace_ui::Tip(drag.0.label().into()))
+                                cx.new(|_| workspace_ui::DragPreview(drag.0.label().into()))
                             },
                         ),
                     )

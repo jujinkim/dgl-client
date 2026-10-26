@@ -1,5 +1,6 @@
 //! One subscription and viewport per SSH connection; one persistent emulator per pane.
 use super::*;
+use crate::native_tooltips::NativeTooltip;
 use dgl_core::terminal_font::TerminalFontSize;
 use dgl_core::{command::Operation, flow::OutputEvent, flow::PaneTarget, model::RemotePane};
 use dgl_core::{flow::OutputKind, model::Size};
@@ -466,14 +467,7 @@ impl Render for WindowTerminal {
                         .text_color(rgb(0xdce1e8))
                         .cursor_pointer()
                         .child("↺")
-                        .tooltip(|_, cx| {
-                            cx.new(|_| {
-                                crate::workspace_ui::Tip(
-                                    dgl_core::i18n::t("세션 글자 크기 초기화").into(),
-                                )
-                            })
-                            .into()
-                        })
+                        .native_tooltip(dgl_core::i18n::t("세션 글자 크기 초기화"))
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.font.reset();

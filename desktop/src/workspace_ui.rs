@@ -19,8 +19,8 @@ struct DragHost {
     id: String,
     label: String,
 }
-pub(super) struct Tip(pub(super) String);
-impl Render for Tip {
+pub(super) struct DragPreview(pub(super) String);
+impl Render for DragPreview {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
             .p_2()
@@ -282,7 +282,7 @@ impl Desktop {
                                     s.menu = None;
                                     cx.notify();
                                 });
-                                cx.new(|_| Tip(host.label.clone()))
+                                cx.new(|_| DragPreview(host.label.clone()))
                             },
                         ),
                     )
@@ -650,10 +650,7 @@ impl Desktop {
                                     .flex()
                                     .items_center()
                                     .gap_2()
-                                    .tooltip({
-                                        let status = status.clone();
-                                        move |_, cx| cx.new(|_| Tip(status.clone())).into()
-                                    })
+                                    .native_tooltip(status.clone())
                                     .when_some(status_host, |d, host| {
                                         d.child(self.info_badge(host).max_w(px(120.)))
                                     })
@@ -671,8 +668,29 @@ impl Desktop {
                                     .on_mouse_down(MouseButton::Left, |_, w, _| w.prevent_default())
                                     .child(
                                         self.button_base("agent-notifications", cx, |s, _, _| {
-                                            s.dialog = Some(Dialog::Notifications);
+                                            s.dialog = if matches!(
+                                                s.dialog,
+                                                Some(Dialog::Notifications)
+                                            ) {
+                                                None
+                                            } else {
+                                                Some(Dialog::Notifications)
+                                            };
                                         })
+                                        .child(
+                                            canvas(
+                                                {
+                                                    let anchor = self.notification_anchor.clone();
+                                                    move |bounds, _, _| {
+                                                        // The canvas is inset by the button's 1px border.
+                                                        *anchor.borrow_mut() = bounds.dilate(px(1.))
+                                                    }
+                                                },
+                                                |_, _, _, _| {},
+                                            )
+                                            .absolute()
+                                            .inset_0(),
+                                        )
                                         .w(px(56.))
                                         .h(px(24.))
                                         .p_0()
@@ -680,7 +698,7 @@ impl Desktop {
                                         .items_center()
                                         .justify_center()
                                         .gap_1()
-                                        .tooltip(|_, cx| cx.new(|_| Tip(t("알림").into())).into())
+                                        .native_tooltip(t("알림"))
                                         .child(
                                             div()
                                                 .debug_selector(|| "notification-icon".into())
@@ -721,7 +739,7 @@ impl Desktop {
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .tooltip(|_, cx| cx.new(|_| Tip(t("설정").into())).into()),
+                                        .native_tooltip(t("설정")),
                                     ),
                             ),
                     ),
@@ -893,10 +911,7 @@ impl Desktop {
                                 .debug_selector(move || format!("tab-host-{tab_id}"))
                                 .max_w(px(120.)),
                         )
-                        .tooltip({
-                            let label = label.clone();
-                            move |_, cx| cx.new(|_| Tip(label.clone())).into()
-                        })
+                        .native_tooltip(label.clone())
                         .cursor_move()
                         .on_drag(DragTab { id: tab_id, label }, move |tab, _, _, cx| {
                             drag_view.update(cx, |s, cx| {
@@ -904,7 +919,7 @@ impl Desktop {
                                 s.menu = None;
                                 cx.notify();
                             });
-                            cx.new(|_| Tip(tab.label.clone()))
+                            cx.new(|_| DragPreview(tab.label.clone()))
                         })
                         .on_drop(cx.listener(
                             move |s, tab: &DragTab, w, cx| {
@@ -941,7 +956,7 @@ impl Desktop {
                     s.save_layout();
                     s.group_focus(s.workspace.active, w, cx);
                 })
-                .tooltip(|_, cx| cx.new(|_| Tip(t("그룹 합치기").into())).into()),
+                .native_tooltip(t("그룹 합치기")),
             );
         }
         for (axis, label, description) in [
@@ -961,7 +976,7 @@ impl Desktop {
                         }
                     },
                 )
-                .tooltip(move |_, cx| cx.new(|_| Tip(description.into())).into())
+                .native_tooltip(description)
                 .when(!enabled, |d| d.opacity(0.35).cursor_default()),
             );
         }
@@ -1254,7 +1269,7 @@ impl Desktop {
             .flex_col()
             .items_start()
             .py_2()
-            .tooltip(move |_, cx| cx.new(|_| Tip(full.clone())).into())
+            .native_tooltip(full)
             .child(
                 div()
                     .id(ElementId::Name(title_id.clone().into()))
@@ -1353,7 +1368,7 @@ impl Desktop {
                             s.refresh();
                         }
                     })
-                    .tooltip(|_, cx| cx.new(|_| Tip(t("세션 새로고침").into())).into())
+                    .native_tooltip(t("세션 새로고침"))
                     .when(refreshing || !browse, |d| d.opacity(0.35)),
                 ),
         );

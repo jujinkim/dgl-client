@@ -208,6 +208,15 @@ Python 98·문서 링크·대시보드 스키마 검사는 통과했으며 실�
 격리 SSH/tmux 3.7c 빠른 제목 조회 1개·Android Debug/계측 APK 컴파일·lint·원본 APK 네 ABI/서명을 확인했습니다.
 Android 계측·macOS GUI/IME·Windows 네이티브 검사는 수행하지 않았습니다.
 
+## 2026-10-27: DaGaLi 표시 이름 통일
+
+앱 표시 이름·제목·탐색기·기본 강조 색상·훅 해제 메뉴와 Android 라벨·macOS 번들·Windows 알림 이름을 통일했습니다.
+Android 상단은 공통 원본의 24dp 앱 아이콘만 표시하도록 정리했습니다.
+당시 Rust 데스크톱 65·JVM 78·Python 98 통과, Keychain ignore 1·JVM 예상 skip 9,
+Android Debug·계측 Kotlin 컴파일·lint(오류 0·기존 진단 12), 원본 APK 네 ABI·서명,
+Mac ad-hoc 패키징·strict 서명·문서 링크·번역·아이콘·대시보드 검사를 확인했습니다.
+실제 Android 화면·macOS GUI/IME·Keychain·Windows 네이티브 검사는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

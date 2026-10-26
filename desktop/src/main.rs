@@ -16,6 +16,8 @@ mod i18n;
 mod key_file;
 mod launcher;
 mod modal;
+mod native_tooltips;
+mod notification_panel;
 mod notifications;
 mod pane_toolbar;
 mod platform;
@@ -39,7 +41,9 @@ use dgl_core::{
 };
 use dgl_core::{i18n::t, tr};
 use gpui::{prelude::*, *};
+use native_tooltips::NativeTooltip;
 use std::collections::{HashMap, HashSet};
+use std::{cell::RefCell, rc::Rc};
 use std::{
     path::PathBuf,
     sync::Arc,
@@ -131,6 +135,7 @@ struct Desktop {
     inbox: dgl_core::agent::Inbox,
     agent_tick: u64,
     notification_status: String,
+    notification_anchor: Rc<RefCell<Bounds<Pixels>>>,
     cloud_sync: cloud_sync::CloudSync,
     #[cfg(debug_assertions)]
     notification_probe_at: Option<u64>,
@@ -216,6 +221,7 @@ impl Desktop {
             inbox: Default::default(),
             agent_tick: 0,
             notification_status: String::new(),
+            notification_anchor: Default::default(),
             cloud_sync,
             #[cfg(debug_assertions)]
             notification_probe_at,
@@ -558,7 +564,7 @@ impl Desktop {
         let focus = self.modal.building.then(|| self.modal.button(&id, cx));
         let reveal = focus
             .clone()
-            .filter(|_| id != "cancel-dialog" && id != "save-host");
+            .filter(|_| id != "cancel-dialog" && id != "save-host" && id != "close-notifications");
         div()
             .when_some(reveal, |d, focus| {
                 d.on_children_prepainted(self.modal.reveal_on_focus(focus))
@@ -733,128 +739,146 @@ impl Render for Desktop {
                 window,
                 cx,
             );
-            let mut body = div()
-                .id("dialog-body")
-                .debug_selector(|| "dialog-body".into())
-                .track_scroll(&self.modal.scroll)
-                .overflow_y_scroll()
-                .max_h(px(
-                    (f32::from(window.viewport_size().height) - 180.).clamp(100., 620.)
-                ))
-                .flex()
-                .flex_col()
-                .gap_3();
-            let mut footer = div().flex().gap_2().justify_end().child(self.button(
-                "cancel-dialog",
-                if matches!(&dialog, Dialog::Shortcuts) {
-                    t("뒤로")
-                } else if matches!(&dialog, Dialog::Compose(_)) {
-                    t("취소")
-                } else {
-                    t("취소 / 닫기")
-                },
-                cx,
-                |s, _, cx| s.dismiss_dialog(cx),
-            ));
-            match dialog {
-                dialog @ Dialog::Host { .. } => {
-                    body = body.child(self.render_host_dialog(dialog, cx));
-                    footer = footer
-                        .child(self.button("save-host", t("저장"), cx, |s, _, cx| s.save_host(cx)));
-                }
-                Dialog::Prompt {
-                    title,
-                    connection,
-                    operation,
-                    input,
-                } => {
-                    body = body
-                        .child(div().text_xl().child(title))
-                        .child(input.clone());
-                    let _ = (connection, operation);
-                    footer = footer.child(self.button(
-                        "accept-name",
-                        t("확인"),
-                        cx,
-                        |s, _, cx| s.accept_name(cx),
-                    ));
-                }
-
-                Dialog::Delete { title, .. } => {
-                    body=body.child(div().text_xl().child(title)).child(t("원격 대상 삭제는 해당 프로세스를 종료합니다. 로컬 호스트 삭제는 저장된 연결 정보만 삭제합니다."));
-                    footer =
-                        footer.child(
-                            self.button("confirm-delete", t("삭제"), cx, |s, _, _| s.confirm()),
-                        );
-                }
-                Dialog::Agents(connection, alias, pane) => {
-                    body = body.child(self.agent_details(connection, alias, pane.as_deref(), cx));
-                }
-                Dialog::Notifications => {
-                    body = body.child(self.recent_agents(cx));
-                }
-                Dialog::Compose(id) => {
-                    body = body.child(self.render_composer(id, cx));
-                    let composer = &self.composers[&id];
-                    let enabled =
-                        composer.pending.is_none() && !composer.input.read(cx).content.is_empty();
-                    footer = footer.child(
-                        self.button(
-                            "send-composer",
-                            if composer.pending.is_some() {
-                                t("전송 중…")
-                            } else {
-                                t("전송")
-                            },
-                            cx,
-                            |s, _, cx| s.send_composer(cx),
-                        )
-                        .when(!enabled, |d| d.opacity(0.35).cursor_default()),
-                    );
-                }
-                Dialog::Settings => {
-                    body = body.child(self.settings_main(cx));
-                }
-                Dialog::Shortcuts => {
-                    body = body.child(self.shortcut_settings(cx));
-                }
-            }
-            root = root.child(
-                div()
-                    .id("modal-overlay")
-                    .occlude()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-                    .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-                    .absolute()
-                    .inset_0()
-                    .bg(rgba(0x00000099))
+            if matches!(dialog, Dialog::Notifications) {
+                root = root.child(self.render_notification_panel(window, cx));
+            } else {
+                let mut body = div()
+                    .id("dialog-body")
+                    .debug_selector(|| "dialog-body".into())
+                    .track_scroll(&self.modal.scroll)
+                    .overflow_y_scroll()
+                    .max_h(px(
+                        (f32::from(window.viewport_size().height) - 180.).clamp(100., 620.)
+                    ))
                     .flex()
-                    .items_center()
-                    .justify_center()
-                    .p_6()
-                    .child(
-                        div()
-                            .w(px(
-                                if matches!(self.dialog, Some(Dialog::Settings | Dialog::Shortcuts))
-                                {
-                                    720.
+                    .flex_col()
+                    .gap_3();
+                let mut footer = div().flex().gap_2().justify_end().child(self.button(
+                    "cancel-dialog",
+                    if matches!(&dialog, Dialog::Shortcuts) {
+                        t("뒤로")
+                    } else if matches!(&dialog, Dialog::Compose(_)) {
+                        t("취소")
+                    } else {
+                        t("취소 / 닫기")
+                    },
+                    cx,
+                    |s, _, cx| s.dismiss_dialog(cx),
+                ));
+                match dialog {
+                    dialog @ Dialog::Host { .. } => {
+                        body = body.child(self.render_host_dialog(dialog, cx));
+                        footer = footer.child(self.button(
+                            "save-host",
+                            t("저장"),
+                            cx,
+                            |s, _, cx| s.save_host(cx),
+                        ));
+                    }
+                    Dialog::Prompt {
+                        title,
+                        connection,
+                        operation,
+                        input,
+                    } => {
+                        body = body
+                            .child(div().text_xl().child(title))
+                            .child(input.clone());
+                        let _ = (connection, operation);
+                        footer = footer.child(self.button(
+                            "accept-name",
+                            t("확인"),
+                            cx,
+                            |s, _, cx| s.accept_name(cx),
+                        ));
+                    }
+
+                    Dialog::Delete { title, operation } => {
+                        let warning = match operation {
+                            DeleteOp::Host(_) => {
+                                t("저장된 연결 정보를 삭제합니다. 원격 작업은 유지됩니다.")
+                            }
+                            DeleteOp::Remote(..) => t("삭제하면 해당 원격 프로세스가 종료됩니다."),
+                            DeleteOp::Trust(_) => t("다음 연결 시 서버 키를 다시 확인해야 합니다."),
+                        };
+                        body = body.child(div().text_xl().child(title)).child(warning);
+                        footer = footer.child(self.button(
+                            "confirm-delete",
+                            t("삭제"),
+                            cx,
+                            |s, _, _| s.confirm(),
+                        ));
+                    }
+                    Dialog::Agents(connection, alias, pane) => {
+                        body =
+                            body.child(self.agent_details(connection, alias, pane.as_deref(), cx));
+                    }
+                    Dialog::Notifications => unreachable!(),
+                    Dialog::Compose(id) => {
+                        body = body.child(self.render_composer(id, cx));
+                        let composer = &self.composers[&id];
+                        let enabled = composer.pending.is_none()
+                            && !composer.input.read(cx).content.is_empty();
+                        footer = footer.child(
+                            self.button(
+                                "send-composer",
+                                if composer.pending.is_some() {
+                                    t("전송 중…")
                                 } else {
-                                    520.
+                                    t("전송")
                                 },
-                            ))
-                            .max_w_full()
-                            .p_4()
-                            .border_1()
-                            .border_color(rgb(self.palette.line))
-                            .bg(rgb(bg))
-                            .flex()
-                            .flex_col()
-                            .gap_4()
-                            .child(body)
-                            .child(footer),
-                    ),
-            );
+                                cx,
+                                |s, _, cx| s.send_composer(cx),
+                            )
+                            .when(!enabled, |d| d.opacity(0.35).cursor_default()),
+                        );
+                    }
+                    Dialog::Settings => {
+                        body = body.child(self.settings_main(cx));
+                    }
+                    Dialog::Shortcuts => {
+                        body = body.child(self.shortcut_settings(cx));
+                    }
+                }
+                root = root.child(
+                    div()
+                        .id("modal-overlay")
+                        .occlude()
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                        .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+                        .absolute()
+                        .inset_0()
+                        .bg(rgba(0x00000099))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .p_6()
+                        .child(
+                            div()
+                                .w(px(
+                                    if matches!(
+                                        self.dialog,
+                                        Some(Dialog::Settings | Dialog::Shortcuts)
+                                    ) {
+                                        720.
+                                    } else {
+                                        520.
+                                    },
+                                ))
+                                .max_w_full()
+                                .p_4()
+                                .border_1()
+                                .border_color(rgb(self.palette.line))
+                                .bg(rgb(bg))
+                                .flex()
+                                .flex_col()
+                                .gap_4()
+                                .child(body)
+                                .child(footer),
+                        ),
+                );
+            }
         }
         if let Some(error) = self.error.clone() {
             root = root.child(
@@ -880,7 +904,7 @@ impl Render for Desktop {
             }
             self.modal.finish(window);
         }
-        root
+        native_tooltips::root(root)
     }
 }
 fn main() {
