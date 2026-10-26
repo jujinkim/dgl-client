@@ -221,7 +221,19 @@ impl Desktop {
             notification_probe_at,
         }
     }
+    fn sync_title_updates(&self, foreground: bool) {
+        for tab in &self.tabs {
+            tab.connection.set_title_updates_enabled(
+                self.workspace.title_updates_enabled(tab.id, foreground),
+            );
+        }
+    }
     fn tick(&mut self, cx: &mut Context<Self>) {
+        let foreground = cx.windows().into_iter().any(|h| {
+            cx.update_window(h, |_, w, _| w.is_window_active())
+                .unwrap_or(false)
+        });
+        self.sync_title_updates(foreground);
         #[cfg(debug_assertions)]
         if self
             .notification_probe_at
@@ -665,6 +677,7 @@ impl Render for Desktop {
             &self.local.preferences.accent,
             self.appearance.as_ref().and_then(|a| a.accent),
         );
+        self.sync_title_updates(window.is_window_active());
         self.sync_launcher(window, cx);
         let bg = self.palette.bg;
         if self.dialog.is_none() {

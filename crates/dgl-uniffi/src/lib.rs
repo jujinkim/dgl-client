@@ -135,6 +135,9 @@ impl NativeConnection {
         let action: Action = serde_json::from_str(&action_json).map_err(|_| invalid())?;
         Ok(self.inner.action(action)?)
     }
+    pub fn set_title_updates_enabled(&self, enabled: bool) {
+        self.inner.set_title_updates_enabled(enabled)
+    }
     pub fn subscribe(&self) -> Result<u64, CoreError> {
         Ok(self.inner.output().subscribe()?)
     }
@@ -271,6 +274,22 @@ mod tests {
             encode_terminal_input("text".into(), Some("한".into()), true, false, false, false)
                 .is_err()
         );
+    }
+    #[test]
+    fn title_visibility_is_transient_and_independent_of_subscriptions() {
+        let c = NativeConnection::new(
+            r#"{"id":"title-test","alias":"test","hostname":"127.0.0.1","port":1,"username":"test","credentialRef":"test"}"#.into(),
+            r#"{"password":"","privateKey":"","passphrase":""}"#.into(), None).unwrap();
+        let before: serde_json::Value = serde_json::from_str(&c.state_json()).unwrap();
+        for enabled in [true, true, false, true, false] {
+            c.set_title_updates_enabled(enabled);
+        }
+        // Visibility is a direct control signal: no queued actions or output consumer.
+        assert_eq!(c.completions_json(), "[]");
+        assert_eq!(c.inner.output().subscription(), 0);
+        assert!(before.get("title_updates_enabled").is_none());
+        c.stop();
+        runtime().block_on(c.inner.join());
     }
     #[test]
     fn native_key_round_trip_and_invalid_import() {

@@ -189,6 +189,12 @@ impl Drop for Request {
         }
     }
 }
+#[derive(Default)]
+struct TitleVisibility {
+    enabled: bool,
+    revision: u64,
+    last_start: Option<tokio::time::Instant>,
+}
 struct Shared {
     state: Mutex<State>,
     output: Arc<OutputQueue>,
@@ -201,6 +207,8 @@ struct Shared {
     requests: Mutex<HashSet<u64>>,
     input_revision: AtomicU64,
     check_request: AtomicU64,
+    title_visibility: Mutex<TitleVisibility>,
+    title_changed: Notify,
 }
 pub struct Connection {
     shared: Arc<Shared>,
@@ -236,6 +244,51 @@ impl Shared {
             pane_id: p.clone(),
             generation: s.generation.clone(),
         })
+    }
+    fn title_scope(&self) -> Option<crate::title::Scope> {
+        let visibility = self.title_visibility.lock().unwrap();
+        if !visibility.enabled {
+            return None;
+        }
+        let s = self.state.lock().unwrap();
+        if s.phase != Phase::Ready || s.checking {
+            return None;
+        }
+        Some(crate::title::Scope {
+            visibility: visibility.revision,
+            target: PaneTarget {
+                connection: s.handle,
+                pane_id: s.pane.clone()?,
+                generation: s.generation.clone(),
+            },
+        })
+    }
+    fn apply_title(&self, scope: &crate::title::Scope, title: String) {
+        // Serialize hiding with publication; a hide/return also invalidates old responses.
+        let visibility = self.title_visibility.lock().unwrap();
+        if !visibility.enabled || visibility.revision != scope.visibility {
+            return;
+        }
+        let mut s = self.state.lock().unwrap();
+        if s.phase != Phase::Ready
+            || s.checking
+            || s.handle != scope.target.connection
+            || s.pane.as_ref() != Some(&scope.target.pane_id)
+            || s.generation.connection != scope.target.generation.connection
+            || s.generation.pane != scope.target.generation.pane
+        {
+            return;
+        }
+        if let Some(pane) = s
+            .remote
+            .panes
+            .iter_mut()
+            .find(|p| p.id == scope.target.pane_id)
+            && pane.title != title
+        {
+            pane.title = title;
+            s.sequence = s.sequence.checked_add(1).expect("state sequence exhausted");
+        }
     }
     fn complete(&self, mut r: Request, error: Option<Error>) {
         self.cancelled.lock().unwrap().remove(&r.id);
@@ -334,6 +387,8 @@ impl Connection {
             requests: Mutex::new(HashSet::new()),
             input_revision: AtomicU64::new(0),
             check_request: AtomicU64::new(0),
+            title_visibility: Mutex::new(TitleVisibility::default()),
+            title_changed: Notify::new(),
         });
         let (tx, rx) = mpsc::channel(32);
         let (retry_tx, retry_rx) = mpsc::channel(32);
@@ -405,6 +460,19 @@ impl Connection {
     }
     pub fn output(&self) -> Arc<OutputQueue> {
         self.shared.output.clone()
+    }
+    /// Transient UI visibility, independent of output subscriptions and saved state.
+    pub fn set_title_updates_enabled(&self, enabled: bool) {
+        let mut visibility = self.shared.title_visibility.lock().unwrap();
+        if visibility.enabled == enabled {
+            return;
+        }
+        visibility.enabled = enabled;
+        visibility.revision = visibility
+            .revision
+            .checked_add(1)
+            .expect("visibility revision exhausted");
+        self.shared.title_changed.notify_one();
     }
     fn submit(&self, kind: RequestKind) -> Result<u64> {
         if self.shared.cancel.load(Ordering::SeqCst) || self.shared.done.load(Ordering::SeqCst) {
@@ -620,6 +688,7 @@ struct Control {
     capturing: Option<String>,
     dirty: bool,
     paused: HashSet<String>,
+    titles: crate::title::Updates,
 }
 impl Control {
     async fn next(&mut self) -> Result<Event> {
@@ -640,6 +709,8 @@ impl Control {
     async fn unsolicited(&mut self, e: Event) -> Result<()> {
         match e {
             Event::Output { pane, bytes } => {
+                self.titles.reconcile(self.shared.title_scope());
+                self.titles.feed(&pane, &bytes);
                 if self.capturing.as_ref() != Some(&pane)
                     && let Some((target, size, _)) = self.screens.get(&pane)
                 {
@@ -715,6 +786,7 @@ impl Control {
         self.dirty = false;
         let sessions = model::sessions(&self.command(Operation::Sessions).await?)?;
         let windows = model::windows(&self.command(Operation::Windows).await?)?;
+        self.titles.covered_by_refresh();
         let mut panes = model::panes(&self.command(Operation::Panes).await?)?;
         let mut seen = HashSet::new();
         panes.retain(|p| seen.insert(p.id.clone()));
@@ -749,6 +821,26 @@ impl Control {
                 s.window = window.map(|w| w.id.clone());
             }
         });
+        Ok(())
+    }
+    async fn refresh_title(&mut self) -> Result<()> {
+        self.titles.reconcile(self.shared.title_scope());
+        let Some(scope) = self.titles.begin() else {
+            return Ok(());
+        };
+        self.shared.title_visibility.lock().unwrap().last_start = Some(tokio::time::Instant::now());
+        let result = self
+            .command(Operation::PaneTitle {
+                target: scope.target.pane_id.clone(),
+            })
+            .await;
+        self.titles.finish();
+        match result {
+            Ok(rows) => self.shared.apply_title(&scope, model::pane_title(&rows)?),
+            // A deleted pane is resolved by the normal metadata/screen path.
+            Err(Error::InvalidArgument) => self.dirty = true,
+            Err(error) => return Err(error),
+        }
         Ok(())
     }
     async fn refresh_screen_if_needed(&mut self, resizing: bool) -> Result<()> {
@@ -1110,7 +1202,10 @@ async fn attach(
         capturing: None,
         dirty: false,
         paused: HashSet::new(),
+        titles: Default::default(),
     };
+    c.titles
+        .set_last_start(c.shared.title_visibility.lock().unwrap().last_start);
     c.response().await?;
     c.command(Operation::FlowControl).await?;
     c.command(Operation::MetadataSubscription).await?;
@@ -1561,8 +1656,12 @@ async fn connected(
             Event(Result<Event>),
             Shell(Option<russh::ChannelMsg>),
             Refresh,
+            Title,
+            Visibility,
         }
         let incoming = if let Some(c) = control.as_mut() {
+            c.titles.reconcile(shared.title_scope());
+            let title_deadline = c.titles.deadline();
             let pending_refresh = c.dirty || !c.paused.is_empty();
             // A slow link may receive another change during every refresh.
             // Keep pending user requests eligible instead of starving input.
@@ -1570,6 +1669,13 @@ async fn connected(
                 Some(check) = checks.recv()=>Incoming::Checked(check),
                 r=rx.recv()=>Incoming::Request(r),
                 e=c.next()=>Incoming::Event(e),
+                _=shared.title_changed.notified()=>Incoming::Visibility,
+                _=async {
+                    match title_deadline {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending().await,
+                    }
+                } => Incoming::Title,
                 _=std::future::ready(()), if pending_refresh => Incoming::Refresh,
             }
         } else if let Some(sh) = shell.as_mut() {
@@ -1610,7 +1716,15 @@ async fn connected(
                     }
                 });
             }
-            Incoming::Refresh => {}
+            Incoming::Refresh | Incoming::Visibility => {}
+            Incoming::Title => {
+                let result = control.as_mut().unwrap().refresh_title().await;
+                if result == Err(Error::MissingSession) {
+                    missing_session(ssh, &shared, &mut control).await?;
+                } else {
+                    result?;
+                }
+            }
             Incoming::Event(e) => {
                 let result = async {
                     let c = control.as_mut().unwrap();
@@ -1874,6 +1988,57 @@ mod tests {
             last_session: Some("$12".into()),
             last_pane: Some("%34".into()),
         }
+    }
+    #[tokio::test]
+    async fn title_publication_rejects_stale_responses_and_only_changes_title() {
+        let c = Connection::start(host(1), Credential::default(), None);
+        assert!(c.shared.title_scope().is_none()); // disabled by default
+        c.shared.update(|s| {
+            s.phase = Phase::Ready;
+            s.pane = Some("%34".into());
+            s.window = Some("@2".into());
+            s.remote.panes = model::panes(&[b"%34|@2|80|24|1||sh|old|0|0".to_vec()]).unwrap();
+        });
+        let before = serde_json::to_value(c.state()).unwrap();
+        c.set_title_updates_enabled(true);
+        assert_eq!(serde_json::to_value(c.state()).unwrap(), before);
+        let scope = c.shared.title_scope().unwrap();
+        c.shared.apply_title(&scope, "old".into());
+        assert_eq!(serde_json::to_value(c.state()).unwrap(), before);
+        c.shared.apply_title(&scope, "한글 🚀".into());
+        let mut expected = before.clone();
+        expected["sequence"] = (c.state().sequence).into();
+        expected["remote"]["panes"][0]["title"] = "한글 🚀".into();
+        assert_eq!(serde_json::to_value(c.state()).unwrap(), expected);
+        assert_eq!(c.state().sequence, before["sequence"].as_u64().unwrap() + 1);
+        c.set_title_updates_enabled(false);
+        c.set_title_updates_enabled(true);
+        let hidden = c.state().sequence;
+        c.shared.apply_title(&scope, "stale hide/return".into());
+        assert_eq!(c.state().sequence, hidden);
+        for change_connection in [false, true] {
+            let old = c.shared.title_scope().unwrap();
+            c.shared.update(|s| {
+                if change_connection {
+                    s.generation.connection += 1;
+                } else {
+                    s.generation.pane += 1;
+                }
+            });
+            let sequence = c.state().sequence;
+            c.shared.apply_title(&old, "stale destination".into());
+            assert_eq!(c.state().sequence, sequence);
+        }
+        let fresh = c.shared.title_scope().unwrap();
+        c.shared.update(|s| s.generation.size += 1);
+        c.shared.apply_title(&fresh, String::new());
+        assert!(c.state().remote.panes[0].title.is_empty());
+        c.shared.update(|s| s.phase = Phase::Reconnecting);
+        let sequence = c.state().sequence;
+        c.shared.apply_title(&fresh, "stale phase".into());
+        assert_eq!(c.state().sequence, sequence);
+        c.close();
+        c.join().await;
     }
     // Yield to real loopback I/O without advancing the paused retry clock.
     async fn until(mut predicate: impl FnMut() -> bool) {

@@ -103,6 +103,9 @@ pub enum Operation {
     Modes {
         target: String,
     },
+    PaneTitle {
+        target: String,
+    },
     Sessions,
     Windows,
     Panes,
@@ -140,6 +143,7 @@ impl Command {
             Pending{target:t}=>format!("capture-pane -p -P -C -t {}",target(t,'%')?),
             Pause{target:t}|Resume{target:t}=>{target(t,'%')?;format!("refresh-client -A {}",quote(&format!("{}:{}",t,if matches!(op,Pause{..}){"pause"}else{"continue"}))?)},
             Modes{target:t}=>format!("display-message -p -t {} '#{{cursor_x}}|#{{cursor_y}}|#{{alternate_on}}|#{{cursor_flag}}|#{{keypad_cursor_flag}}|#{{keypad_flag}}|#{{mouse_any_flag}}|#{{mouse_button_flag}}|#{{mouse_standard_flag}}|#{{mouse_utf8_flag}}|#{{mouse_sgr_flag}}|#{{bracketed_paste}}|#{{scroll_region_upper}}|#{{scroll_region_lower}}|#{{insert_flag}}|#{{pane_width}}|#{{pane_height}}'",target(t,'%')?),
+            PaneTitle{target:t}=>format!("display-message -p -t {} '#{{q;s/[[#:cntrl#:]]/ /:pane_title}}'",target(t,'%')?),
             Sessions=>"list-sessions -F '#{session_id}|#{q:session_name}|#{session_attached}'".into(),
             Windows=>"list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}|#{window_width}|#{window_height}|#{window_zoomed_flag}|#{window_visible_layout}'".into(),
             Panes=>"list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}|#{pane_left}|#{pane_top}'".into(),

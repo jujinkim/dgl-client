@@ -42,6 +42,12 @@ class RustClientConnection(
     override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+    private var titleUpdatesEnabled = false
+    @Synchronized override fun setTitleUpdatesEnabled(enabled: Boolean) {
+        if (titleUpdatesEnabled == enabled) return
+        titleUpdatesEnabled = enabled
+        native?.setTitleUpdatesEnabled(enabled)
+    }
     @Volatile private var native: NativeConnection? = null
     private var stateJob: Job? = null
     private var outputJob: Job? = null
@@ -88,6 +94,7 @@ class RustClientConnection(
                 synchronized(this@RustClientConnection) {
                     if (current != epoch || closed) { connection.stop(); scope.launch { connection.shutdown(); connection.close() }; return@launch }
                     native = connection
+                    connection.setTitleUpdatesEnabled(titleUpdatesEnabled)
                     resizes.reset()
                     submitResize(connection)
                     bindOutput()

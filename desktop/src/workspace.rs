@@ -196,6 +196,9 @@ impl Workspace {
             layout,
         }
     }
+    pub fn title_updates_enabled(&self, tab: TabId, foreground: bool) -> bool {
+        foreground && self.groups.values().any(|g| g.selected == Some(tab))
+    }
     pub fn selected(&self) -> Option<TabId> {
         self.groups.get(&self.active)?.selected
     }
@@ -458,5 +461,31 @@ mod tests {
             assert_eq!(Layout::load(&path), Layout::default());
         }
         std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod title_visibility_tests {
+    use super::*;
+    #[test]
+    fn foreground_enables_each_groups_selected_tab_only() {
+        let mut w = Workspace::new(Layout::default());
+        let a = w.add_tab();
+        let b = w.add_tab();
+        assert!(!w.title_updates_enabled(a, true));
+        assert!(w.title_updates_enabled(b, true));
+        assert!(!w.title_updates_enabled(b, false));
+        // Group selection, rather than active input focus, determines visibility.
+        w.groups.insert(
+            99,
+            Group {
+                tabs: vec![a],
+                selected: Some(a),
+            },
+        );
+        assert!(w.title_updates_enabled(a, true));
+        assert!(w.title_updates_enabled(b, true));
+        assert!(!w.title_updates_enabled(a, false));
+        assert!(!w.title_updates_enabled(999, true));
     }
 }

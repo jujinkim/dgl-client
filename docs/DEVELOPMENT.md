@@ -48,6 +48,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo test --locked --w
 
 데스크톱 변경만 검사할 때는 같은 환경에서 `cargo test --locked -p dgl-desktop`을 실행합니다.
 GPUI 검사는 실제 Ctrl+휠의 확대·축소/원격 전송 차단과 좁은 창·분할 화면의 우측 상단 초기화 FAB 위치·클릭·포커스를 포함합니다.
+제목 빠른 갱신 검사는 조각난 OSC·BEL/ST·다른 제어 문자열, 가상 시간 499/500ms·연속 신호 병합·동시 조회 차단,
+숨김/연결/pane 세대의 오래된 응답 거부와 전면·그룹별 표시 상태 전달을 포함합니다.
 호스트·하단 단축키 순서 모델, 설정 상세 화면 왕복·포커스, GPUI 드래그 확정/취소·조합키 1회 소비·세션 탭 재사용 검사를 포함하며 대화형 Keychain 검사는 기본 ignore입니다.
 
 기본은 위 기능·단위 검사이며 전체 Android API 계측과 장시간 자원 측정은 별도 선택입니다.
@@ -117,6 +119,16 @@ python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command 
 ```sh
 python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command cargo test --locked -p dgl-core --test ssh_integration resume::healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_input -- --ignored --exact
 ```
+
+제목 빠른 조회와 기존 숨김 구독을 함께 확인할 때:
+
+```sh
+python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command cargo test --locked -p dgl-core --test ssh_integration hierarchy_titles_all_sessions_without_screen_reset -- --ignored --exact
+```
+
+검사 중 해당 fixture 클라이언트의 메타데이터 구독을 잠시 제거하여 OSC 빠른 경로를 분리합니다.
+제목 조회·숨김/전면 복귀·출력 원문·입력 대상/화면 보존을 확인한 뒤 구독을 복원하고
+숨긴 창/다른 세션 제목·재접속 검사를 이어갑니다. 사용자 tmux 설정·서버는 사용하지 않습니다.
 
 tmux 소스 빌드에는 C 컴파일러·make·libevent·ncurses 개발 헤더가 필요합니다.
 Android 계측은 전용 에뮬레이터와 명시적인 `ANDROID_SERIAL`을 사용합니다.

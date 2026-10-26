@@ -1161,6 +1161,95 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
         c.input(target.clone(), b"exactly-once\r".to_vec()).unwrap(),
     )
     .await;
+    // Isolate the OSC path from the existing one-second metadata subscription.
+    let client = tmux(&["list-clients", "-t", session, "-F", "#{client_name}"]);
+    assert_eq!(client.lines().count(), 1);
+    tmux(&["refresh-client", "-t", &client, "-B", "dgl-metadata"]);
+    tmux(&["set-window-option", "-t", window, "automatic-rename", "off"]);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    c.set_title_updates_enabled(true);
+    for value in ["빠른 제목 🚀 | ' #{}", "마지막 제목", ""] {
+        tmux(&["send-keys", "-t", pane, "-l", &format!("title:{value}")]);
+        tmux(&["send-keys", "-t", pane, "Enter"]);
+        until(&c, |s| {
+            s.remote
+                .panes
+                .iter()
+                .any(|p| p.id == pane && p.title == value)
+        })
+        .await;
+        assert_eq!(c.target().unwrap(), target);
+        assert_eq!(c.state().phase, Phase::Ready);
+    }
+    c.set_title_updates_enabled(false);
+    tmux(&[
+        "send-keys",
+        "-t",
+        pane,
+        "-l",
+        "title:hidden fast path disabled",
+    ]);
+    tmux(&["send-keys", "-t", pane, "Enter"]);
+    tokio::time::sleep(Duration::from_millis(650)).await;
+    assert!(
+        c.state()
+            .remote
+            .panes
+            .iter()
+            .find(|p| p.id == pane)
+            .unwrap()
+            .title
+            .is_empty()
+    );
+    c.set_title_updates_enabled(true);
+    tokio::time::sleep(Duration::from_millis(550)).await;
+    assert!(
+        c.state()
+            .remote
+            .panes
+            .iter()
+            .find(|p| p.id == pane)
+            .unwrap()
+            .title
+            .is_empty(),
+        "returning alone must not poll"
+    );
+    tmux(&["send-keys", "-t", pane, "-l", "title:foreground again"]);
+    tmux(&["send-keys", "-t", pane, "Enter"]);
+    until(&c, |s| {
+        s.remote
+            .panes
+            .iter()
+            .any(|p| p.id == pane && p.title == "foreground again")
+    })
+    .await;
+    let mut live = Vec::new();
+    while let Some(event) = c.output().poll(sub).unwrap() {
+        assert_ne!(
+            event.kind,
+            OutputKind::ResetBegin,
+            "title queries must preserve the screen"
+        );
+        if event.kind == OutputKind::Live {
+            live.extend_from_slice(&event.bytes);
+        }
+        c.output().ack(sub, event.sequence).unwrap();
+    }
+    assert!(
+        live.windows(b"\x1b]2;foreground again\x07".len())
+            .any(|w| w == b"\x1b]2;foreground again\x07"),
+        "OSC output must be delivered verbatim"
+    );
+    c.set_title_updates_enabled(false);
+    let subscription = dgl_core::command::Command::new(&Operation::MetadataSubscription)
+        .unwrap()
+        .wire;
+    let format = subscription
+        .strip_prefix("refresh-client -B '")
+        .unwrap()
+        .strip_suffix('\'')
+        .unwrap();
+    tmux(&["refresh-client", "-t", &client, "-B", format]);
     // A running program changes the OSC title without a tmux rename command.
     // The format subscription must update metadata without changing the input target.
     tmux(&["send-keys", "-t", pane, "-l", "title:OSC live title 🚀"]);

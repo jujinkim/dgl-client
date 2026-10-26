@@ -351,3 +351,13 @@ pub fn panes(rows: &[Vec<u8>]) -> Result<Vec<RemotePane>> {
         })
         .collect()
 }
+
+/// Same quoting and control-character normalization as the full pane listing.
+pub fn pane_title(rows: &[Vec<u8>]) -> Result<String> {
+    let [row] = rows else {
+        return Err(Error::Protocol);
+    };
+    Ok(unquote(
+        std::str::from_utf8(row).map_err(|_| Error::Protocol)?,
+    ))
+}

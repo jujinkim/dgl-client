@@ -195,7 +195,29 @@ class WorkspaceTest {
         val model = AppModel(LocalRepository(directory), credentials, "test", keys, inbox) { host, _, _, _ -> Connection(host).also { created += it } }
         try { test(model, created) } finally { model.close(); directory.deleteRecursively() }
     }
+    @Test fun titleUpdatesFollowForegroundAndVisibleGroupsWithoutSurfaceSubscriptions() = runBlocking {
+        withModel { model, created ->
+            repeat(3) { model.open(HostProfile("host$it", "alias", "example.test", username = "test")) }
+            val (first, second, hidden) = created
+            // The selected input connection may differ from another visible split group.
+            model.selected.value = first
+            model.visibleConnections = setOf(first, second)
+            assertTrue(created.none { it.titleUpdates })
+            model.foreground = true
+            assertTrue(first.titleUpdates); assertTrue(second.titleUpdates); assertFalse(hidden.titleUpdates)
+            model.visibleConnections = setOf(second, hidden)
+            assertFalse(first.titleUpdates); assertTrue(second.titleUpdates); assertTrue(hidden.titleUpdates)
+            model.foreground = false
+            assertTrue(created.none { it.titleUpdates })
+            model.foreground = true
+            assertFalse(first.titleUpdates); assertTrue(second.titleUpdates); assertTrue(hidden.titleUpdates)
+            model.visibleConnections = emptySet()
+            assertTrue(created.none { it.titleUpdates })
+        }
+    }
     private class Connection(override val host: HostProfile) : ClientConnection {
+        var titleUpdates = false
+        override fun setTitleUpdatesEnabled(enabled: Boolean) { titleUpdates = enabled }
         override val agents = MutableStateFlow(AgentSnapshot())
         override var generation = 0L
         override val refreshing = MutableStateFlow(false)

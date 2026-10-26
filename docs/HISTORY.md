@@ -193,6 +193,13 @@ dagali 아이콘을 둥근 ㄱ자 엔터 머리와 두 pane의 터미널 얼굴�
 APK ID/버전/SDK/네 ABI/서명, macOS ARM64 ad-hoc 패키징·strict 서명과 ICNS 연결, Windows ICO 7개 크기를 확인했습니다.
 Python 98·문서 링크·대시보드 스키마 검사는 통과했으며 실제 Android 런처·macOS Dock/Finder·Windows 네이티브·GUI 검사는 수행하지 않았습니다.
 
+## 2026-10-27: 탭 제목 길이·모바일 계층 정리
+
+탭 제목 앞 20글자·호스트 별도 줄, 모바일 상단 세션명과 연결 메뉴의 tmux 관리·도구 전환,
+계층의 두 줄 제목·개수 배지·우측 펼침을 정리했습니다.
+당시 Rust 데스크톱 64·JVM 77 통과, Keychain ignore 1·JVM 예상 skip 9와 Android Debug/계측 APK 컴파일·lint를 확인했습니다.
+실제 Android 조작·macOS GUI/IME·Windows 네이티브 검사는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

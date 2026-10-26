@@ -16,10 +16,18 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
 ) {
     private val agentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     @Volatile var foreground = false
-        set(value) { field = value; if (!value) clearShortcutModifiers() }
+        set(value) { synchronized(this) {
+            field = value
+            if (!value) clearShortcutModifiers()
+            updateTitleVisibility()
+        } }
     @Volatile var hostEditing = false
     @Volatile var visibleConnection: ClientConnection? = null
     @Volatile var visibleConnections: Set<ClientConnection> = emptySet()
+        set(value) { synchronized(this) { field = value; updateTitleVisibility() } }
+    private fun updateTitleVisibility() {
+        connections.value.forEach { it.setTitleUpdatesEnabled(foreground && it in visibleConnections) }
+    }
     @Volatile var workspaceEnabled = false
     @Volatile var sendAgentNotification: (AgentNotice) -> Unit = {}
     val agentNotifications = MutableStateFlow<List<AgentNotice>>(emptyList())

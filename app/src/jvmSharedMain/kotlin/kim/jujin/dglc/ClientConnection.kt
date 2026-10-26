@@ -19,6 +19,8 @@ interface ClientConnection {
     val notice: MutableStateFlow<String?>
     val inputNotice: MutableStateFlow<String?> get() = notice
     val tmuxProblem: MutableStateFlow<TmuxProblem?>
+    /** Fast title queries are enabled only while this connection is visible in the foreground. */
+    fun setTitleUpdatesEnabled(enabled: Boolean) {}
     fun connect()
     /** Activity resume only; implementations coalesce checks and retain explicit user stops. */
     fun onResume() {}
