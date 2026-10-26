@@ -284,7 +284,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     val blocks by model.inputBlocks.collectAsState()
     val terminalBaseAllowed = {
         // Observe Compose state for button/bridge updates; the flow also closes the pre-recomposition input race.
-        inputAllowed() && !composerOpen && !composer.opened.value && !(mobileLayout && navigation) && !tmuxDetails && namePrompt == null && deletion == null &&
+        inputAllowed() && status.acceptsInput && client.status.value.acceptsInput && !composerOpen && !composer.opened.value && !(mobileLayout && navigation) && !tmuxDetails && namePrompt == null && deletion == null &&
             client.trustRequest.value == null && client.notice.value == null
     }
     val terminalInputAllowed = { terminalBaseAllowed() && blocks.isEmpty() && !model.inputBlocked() }

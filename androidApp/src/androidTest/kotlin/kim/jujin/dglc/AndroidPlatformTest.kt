@@ -161,6 +161,24 @@ class AndroidPlatformTest {
                 assertTrue(js(terminal, "document.querySelectorAll('.pane .xterm-screen')[0].textContent").contains("LEFT_PERSIST"))
                 terminal.layout(remote.copy(windows = remote.windows.map { it.copy(zoomed = true) }), "@1", "%2", "zoom")
                 assertEquals("1", js(terminal, "[...document.querySelectorAll('.pane')].filter(p=>p.style.display!=='none').length"))
+                terminal.layout(remote, "@1", "%2", "before-recovery")
+                terminal.connectionRecovery(true)
+                assertTrue(js(terminal, "document.querySelector('.connection-cache').textContent").contains("LEFT_PERSIST"))
+                assertTrue(js(terminal, "document.querySelector('.connection-cache').textContent").contains("RIGHT_PERSIST"))
+                // The new layout can remove every old pane while tmux reconnects.
+                terminal.layout(RemoteState(), null, "shell", null)
+                terminal.outputPane("shell", "restoring")
+                terminal.reset("PARTIAL_RESTORATION".encodeToByteArray())
+                terminal.cancelSnapshot()
+                terminal.connectionRecovery(true)
+                assertEquals("0", js(terminal, "document.querySelectorAll('#window .pane').length"))
+                val frozen = js(terminal, "document.querySelector('.connection-cache').textContent")
+                assertTrue(frozen.contains("LEFT_PERSIST")); assertTrue(frozen.contains("RIGHT_PERSIST"))
+                assertFalse(frozen.contains("PARTIAL_RESTORATION"))
+                assertEquals("1", js(terminal, "document.querySelectorAll('.connection-cache').length"))
+                assertTrue(js(terminal, "getComputedStyle(document.querySelector('.connection-cache')).pointerEvents === 'none'").contains("true"))
+                terminal.connectionRecovery(false)
+                assertTrue(js(terminal, "document.querySelector('.connection-cache') === null").contains("true"))
             } finally { instrumentation.runOnMainSync { terminal.close() } }
         }
     }

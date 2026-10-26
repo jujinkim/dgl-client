@@ -1599,6 +1599,20 @@ fn split_emoji_buttons_stay_at_right_of_overflowing_tab_bar(cx: &mut TestAppCont
 fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext) {
     let (view, cx) = setup(cx);
     add_terminal(&view, cx);
+    // This disconnected layout fixture must have a stable launch context even
+    // when a retry deadline would otherwise expire between simulated clicks.
+    let stop_fixture = |cx: &mut VisualTestContext| {
+        let (runtime, connection) = view.read_with(cx, |s, _| {
+            (
+                s.runtime.clone(),
+                s.active_tab().unwrap().connection.clone(),
+            )
+        });
+        connection.close();
+        runtime.block_on(connection.join());
+        redraw(cx);
+    };
+    stop_fixture(cx);
     cx.simulate_resize(gpui::size(px(640.), px(480.)));
     redraw(cx);
     for theme in ["light", "dark"] {
@@ -1658,6 +1672,7 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
         redraw(cx);
         // Changing active tabs invalidates the open menu without sending anything.
         add_terminal(&view, cx);
+        stop_fixture(cx);
         redraw(cx);
         assert!(view.read_with(cx, |s, _| s.launcher.opened.is_none()));
     }

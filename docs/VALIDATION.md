@@ -6,26 +6,30 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-Android 창 크기에 반응하는 탐색기·세션 탭·분할 작업 공간과 입력/렌더러 수명 분리 검사입니다.
-이전 패키지 정리와 연결 수명 검사 결과는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+Android 복귀 시 연결 응답 확인·터미널 복원과 Android/데스크톱 공통 3회·1초 재시도 정책 검사입니다.
+이전 작업 공간·연결 수명 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Kotlin 작업 공간 | 분할·이동·합치기·선택/빈 그룹·최소 280×180dp/최대 16그룹·비율 제한·드래그 검증/취소·구조만 저장/잘못된 파일 대체 |
-| 세션·알림 | 연결 전 호스트/세션 예약·그룹을 넘어선 기존 탭 재사용·독립 연결·창/pane 유지·오래된 연결 세대의 지연 선택 거부·실제 보이는 여러 연결의 알림 처리 |
-| JVM | 64 통과·외부 SSH/Windows 환경의 예상 skip 9개. 작업 공간 새 검사 7개와 명시적 결과 검증기 포함 |
-| Python·JavaScript | Python 98·터미널 JavaScript 12 통과. 새 계측 이름 목록과 소스 목록 일치 확인 |
-| Android 빌드 | Debug·계측 APK·lint 통과. lint 기존 검토 진단 12개 일치. Debug 네 ABI Rust payload·서명 검사 및 전달용 APK 수집 |
-| API36 작업 공간·회귀 | 작업 공간 1·기존 모바일 입력 1·볼륨키 5·계층 1, 총 8개 통과. 839/840dp·넓은 분할·탭 메뉴/드래그 이동 및 취소·WebView 동일성·키보드 유지·높이 부족 시 임시 확대/복원·활성 입력·전역 모달 차단 확인 |
-| 실제 Rust 연결 수명 | 격리 SSH/tmux 3.7c fixture의 API36 선택 1개 통과(약 11초). IME·Activity 재생성·짧은 복귀·알림 Intent·task 제거와 원격 프로세스 보존 확인. 전체 API 계측으로 확대하지 않음 |
-| 무결성·문서 | 번역 목록/생성 파일·자리표시자, 요구사항 SHA-256·Gradle wrapper·diff 공백 확인. 사용·작업 공간·입력·구조·검사 문서와 로컬 대시보드 등록 갱신/검증, JSON Git 제외 유지 |
+| Rust 전체 | 코어/UniFFI 31·데스크톱 60, 총 91 통과. 외부 SSH 6·Keychain 1은 기본 ignore이며 통과로 계산하지 않음 |
+| Rust 복구 | 가상 시계로 999ms 동안 재시도 없음/정확히 1초마다 최대 3회·소진 후 복귀 재시작·성공 후 예산 초기화·사용자 정지 보존·중복 검사 병합·별도 제어 슬롯·검사 중 입력 차단/종료 확인 |
+| 격리 SSH/tmux 3.7c | 새 복귀 검사 1개 통과. 정상 복귀에서 SSH/tmux client 유지·별도 exec 확인·출력 큐 포화와 열린 소켓 무응답 중 3초 판정·동일 pane PID/화면/입력 복구·오래된 구독/대상/검사 결과와 입력 재전송 거부 |
+| 일반 SSH | 로컬 russh 서버의 비밀번호/일반 shell 검사 통과. 응답 확인 뒤 연결·pane 세대 유지와 입력 재개 포함 |
+| JVM | 67 통과·외부 SSH/Windows 예상 skip 9개. 새 3개는 중복 복귀·현재 구독/모든 pane 스냅샷 완료·이전 구독/주기 거부·shell·실패 dim 유지·resize 단독 제외를 검사. 명시적 결과 검증기 갱신 |
+| Python·JavaScript | Python 98·터미널 JavaScript 13 통과. 격리 실행기의 Cargo `--` 구분자 전달도 실제 SSH 명령으로 확인 |
+| Android 빌드 | Debug·계측 APK·lint 통과. 기존 검토 진단 12개 일치. 네 ABI Rust payload·Debug 서명 확인과 전달용 APK 수집 |
+| API36 선택 계측 | `AndroidConnectionLifetimeTest`와 `AndroidPlatformTest`의 창 렌더러 선택, 총 2개 통과. IME·홈 복귀/응답 확인·화면 준비 후 dim 해제 상태·Activity 재생성·알림 Intent·task 제거와 원격 PID 보존·새 실행 시 빈 연결 목록·실제 HOME 런처에서 시작한 루트 뒤로가기/복귀 확인. 기존 45% dim 아래 창 전체 보관·원래 pane 삭제/부분 복원/스냅샷 취소 중 기존 화면 유지·표시 완료 뒤 보관 해제 확인 |
+| 무결성·문서 | 한국어/영어·생성 번역/자리표시자, 요구사항 SHA-256·Wrapper·diff 공백·로컬 대시보드 등록 검증. JSON Git 제외 유지 |
 
-API36은 전용 `Dgl_API36` 에뮬레이터 한 대만 사용합니다. UI 검사는 결정적 연결과 실제 Compose/WebView/IME를 사용하며,
-이를 실제 원격 SSH나 물리 기기의 입력·백그라운드 정책 검사로 계산하지 않습니다.
-화면 크기·밀도·IME·글꼴·애니메이션 설정은 실행기의 `finally`에서 원복합니다.
-기존 계측 도구는 세로 스크롤 방향과 IME 커밋 뒤 접근성 선택 상태를 기다리도록 보완했으며, 실패·skip을 허용하거나 검사를 생략하지 않았습니다.
-Rust wire·UniFFI 계약과 Windows 빌드·ZIP·수동 CI 경로는 유지합니다.
-전체 Android API matrix·장시간 반복 계측·Windows/macOS GUI·물리 Android 인수는 수행하지 않았습니다.
+데스크톱 첫 전체 실행의 런처 메뉴 검사는 가짜 연결의 재시도 세대가 클릭 중 바뀌어 실패했습니다.
+해당 레이아웃 fixture를 종료된 연결로 고정한 뒤 전체 60개가 통과했습니다.
+API36 초기 뒤로가기 검사는 instrumentation 시작을 HOME 시작으로 취급해 실패했습니다.
+[Android 16의 기본 루트 뒤로가기](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/services/core/java/com/android/server/wm/ActivityClientController.java)는 HOME 실행 출처를 검사하므로 실제 런처 아이콘에서 시작하도록 검사를 고쳤습니다.
+제품의 뒤로가기 처리는 재정의하지 않았습니다.
+
+API36은 전용 `Dgl_API36` 한 대만 사용했으며 IME·글꼴 설정과 fixture를 실행기의 `finally`에서 원복했습니다.
+실제 손가락 최근 앱 swipe·화면 잠금/기기 절전·물리 네트워크 전환, 전체 API matrix·장시간 반복 계측,
+Windows 네이티브 빌드·DPAPI·GUI와 macOS GUI는 수행하지 않았습니다.
 
 ## 남은 한계
 

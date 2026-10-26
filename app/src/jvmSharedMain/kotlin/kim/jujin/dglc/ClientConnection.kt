@@ -20,6 +20,8 @@ interface ClientConnection {
     val inputNotice: MutableStateFlow<String?> get() = notice
     val tmuxProblem: MutableStateFlow<TmuxProblem?>
     fun connect()
+    /** Activity resume only; implementations coalesce checks and retain explicit user stops. */
+    fun onResume() {}
     fun retryNow() = connect()
     fun stopRetrying() = disconnect()
     fun trust()

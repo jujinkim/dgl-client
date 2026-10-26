@@ -12,6 +12,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -153,10 +160,18 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         }
     }
     LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback) { terminal.configure(preferences) }
-    key(terminal) { AndroidView(factory = {
-        (terminal.view.parent as? android.view.ViewGroup)?.removeView(terminal.view)
-        terminal.view
-    }, modifier = modifier) }
+    val status by client.status.collectAsState()
+    Box(modifier) {
+        key(terminal) { AndroidView(factory = {
+            (terminal.view.parent as? android.view.ViewGroup)?.removeView(terminal.view)
+            terminal.view
+        }, modifier = Modifier.fillMaxSize()) }
+        status.recoveryMessage?.let { message ->
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .45f)), contentAlignment = Alignment.Center) {
+                Text(message, color = Color.White, modifier = Modifier.padding(24.dp))
+            }
+        }
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -308,6 +323,12 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     override suspend fun beginSnapshot() {
         withTimeout(15_000) { ready.await() }
         withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.beginSnapshot()", null) }
+    }
+    override suspend fun connectionRecovery(active: Boolean) {
+        withTimeout(15_000) { ready.await() }
+        withContext(Dispatchers.Main.immediate) {
+            if (!closed) view.evaluateJavascript("window.setConnectionRecovery($active)", null)
+        }
     }
     override suspend fun endSnapshot() = mutex.withLock {
         if (closed) return@withLock

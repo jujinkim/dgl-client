@@ -5,6 +5,9 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'core.TerminalRecoveryTest': ['resumeCoalescesAndBlocksInputUntilCurrentSnapshotsAreDisplayed',
+                                  'staleSubscriptionsAndCyclesCannotClearRecoveryOrReplayInput',
+                                  'failuresStayDimmedAndResizeAloneDoesNotStartRecovery'],
     'WorkspaceTest': ['splitMoveMergeSelectionAndEmptyGroups', 'minimumSpaceGroupLimitAndResizePreserveLayout',
                       'validatedDropsAndCancelledDragsDoNotMutateState', 'geometryOnlyPersistenceAndMalformedFilesStartEmpty',
                       'sessionsReserveBeforeConnectAndReuseAcrossGroups', 'staleConnectionGenerationsRejectDelayedTargetsAndModalGates',

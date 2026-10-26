@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import time
 import signal
+import sys
 
 
 def run(args, **kwargs):
@@ -76,7 +77,14 @@ def main():
     parser.add_argument('--agent-home', action='store_true', help='Use a private HOME for agent observer integration tests')
     parser.add_argument('--tmux-login-path', action='store_true', help='Expose tmux only through an isolated login shell PATH')
     parser.add_argument('--command', nargs=argparse.REMAINDER)
-    args = parser.parse_args()
+    # argparse treats a literal `--` as its own terminator even after REMAINDER.
+    # Preserve the child command verbatim (cargo/libtest needs that separator).
+    argv = sys.argv[1:]
+    split = argv.index('--command') if '--command' in argv else len(argv)
+    args = parser.parse_args(argv[:split])
+    args.command = argv[split + 1:] if split < len(argv) else None
+    if args.command == []:
+        parser.error('--command requires a child command')
     if not args.tmux:
         raise SystemExit('tmux is required')
     tmux = str(Path(args.tmux).resolve())

@@ -128,6 +128,13 @@ Kotlin/Java 제품·참조·검사를 `kim.jujin.dglc`로 통일하고 보호 �
 Android Debug·미서명 Release·계측 APK·lint와 API36 선택 2개 검사를 확인했습니다.
 iOS/Swift/Xcode 타깃은 저장소에 없었으며 Windows/macOS·물리 Android 인수는 수행하지 않았습니다.
 
+## 2026-10-26: Android 작업 공간
+
+창 크기에 따른 탐색기·세션 탭·분할 작업 공간과 입력/렌더러 수명을 분리했습니다.
+당시 JVM 64·Python 98·웹 12 통과, JVM 예상 skip 9개와 Android Debug·계측 APK·lint를 확인했습니다.
+API36 작업 공간/입력/볼륨키/계층 선택 8개와 실제 Rust 연결 수명 1개를 통과했습니다.
+화면·IME 설정은 원복했으며 전체 API 계측·Windows/macOS GUI·물리 Android 인수로 확대하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

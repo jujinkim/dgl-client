@@ -145,6 +145,9 @@ pub async fn connect(
     })
 }
 impl Ssh {
+    pub fn abort(&self) {
+        let _ = self.socket.0.shutdown(std::net::Shutdown::Both);
+    }
     pub async fn execute(&self, command: &str) -> Result<(u32, Vec<u8>)> {
         tokio::time::timeout(Duration::from_secs(15), async {
             let mut channel = self

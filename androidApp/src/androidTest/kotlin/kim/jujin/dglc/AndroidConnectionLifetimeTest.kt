@@ -9,6 +9,8 @@ import android.webkit.WebView
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import kim.jujin.dglc.core.*
 import kim.jujin.dglc.ssh.SshjTransport
 import kotlinx.coroutines.*
@@ -28,6 +30,7 @@ class AndroidConnectionLifetimeTest {
         assumeTrue(InstrumentationRegistry.getArguments().getString("dgl.fixture") == "true")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
+        val launcher = context.packageManager.getLaunchIntentForPackage(context.packageName)!!
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         val fixture = JSONObject(File(context.cacheDir, "integration.json").readText())
         val credential = Credential(privateKey = fixture.getString("key"))
@@ -43,7 +46,7 @@ class AndroidConnectionLifetimeTest {
         fun notification() = manager.activeNotifications.firstOrNull { it.id == ConnectionService.NOTIFICATION }
         suspend fun waitUntil(check: suspend () -> Boolean) { withTimeout(10_000) { while (!check()) delay(30) } }
         try {
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            ActivityScenario.launch<MainActivity>(launcher).use { scenario ->
                 scenario.onActivity {
                     app = (it.application as DglApplication).connections().app
                     previous = app.local.value
@@ -60,6 +63,9 @@ class AndroidConnectionLifetimeTest {
                 val target = client.captureInputTarget()!!
                 val pid = admin.execute("tmux display-message -p -t '$pane' '#{pane_pid}'").decodeToString()
                 val sshClients = admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString()
+                suspend fun restored() {
+                    withTimeout(10_000) { client.status.first { it.phase == Phase.Ready && it.acceptsInput && it.recoveryMessage == null } }
+                }
                 stage = "IME"
                 for (show in listOf(true, false)) {
                     scenario.onActivity { activity ->
@@ -81,6 +87,29 @@ class AndroidConnectionLifetimeTest {
                     withTimeout(10_000) { client.status.first { it.phase == Phase.Ready } }
                     assertEquals(target, client.captureInputTarget())
                 }
+                stage = "root back and home resume"
+                lateinit var warmActivity: MainActivity
+                scenario.onActivity { warmActivity = it; assertTrue("Launcher Activity must be the task root", it.isTaskRoot) }
+                fun shell(command: String) = instrumentation.uiAutomation.executeShellCommand(command).use {
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+                }
+                for (key in listOf("KEYCODE_HOME")) {
+                    stage = "$key background"
+                    shell("input keyevent $key")
+                    waitUntil { scenario.state !in setOf(Lifecycle.State.RESUMED, Lifecycle.State.STARTED) }
+                    assertEquals("$key must background the root Activity", Lifecycle.State.CREATED, scenario.state)
+                    assertSame(app, (context.applicationContext as DglApplication).currentConnections()!!.app)
+                    val checked = async(Dispatchers.Unconfined) { withTimeout(10_000) { client.status.first { it.checking } } }
+                    shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n kim.jujin.dglc/.MainActivity")
+                    stage = "$key foreground"
+                    waitUntil { scenario.state == Lifecycle.State.RESUMED }
+                    stage = "$key restoration"
+                    checked.await()
+                    restored()
+                    scenario.onActivity { assertSame(warmActivity, it) }
+                    assertEquals(target, client.captureInputTarget())
+                    assertEquals(sshClients, admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString())
+                }
                 stage = "background and recreation"
                 scenario.moveToState(Lifecycle.State.CREATED)
                 delay(300)
@@ -89,7 +118,7 @@ class AndroidConnectionLifetimeTest {
                 scenario.moveToState(Lifecycle.State.RESUMED)
                 scenario.recreate()
                 scenario.onActivity { assertSame(app, (it.application as DglApplication).connections().app) }
-                withTimeout(10_000) { client.status.first { it.phase == Phase.Ready } }
+                restored()
                 stage = "notification intent"
                 val before = client.captureInputTarget()
                 lateinit var activity: MainActivity
@@ -111,6 +140,49 @@ class AndroidConnectionLifetimeTest {
                 delay(250)
                 assertNull(notification())
             }
+            // Android's root-Back rule requires a HOME launch source. An
+            // instrumentation/shell start has a different source even with MAIN/LAUNCHER.
+            stage = "fresh home-launch after task removal"
+            fun shell(command: String) = instrumentation.uiAutomation.executeShellCommand(command).use {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+            }
+            shell("input keyevent KEYCODE_HOME")
+            val metrics = context.resources.displayMetrics
+            shell("input swipe ${metrics.widthPixels / 2} ${metrics.heightPixels * 9 / 10} ${metrics.widthPixels / 2} ${metrics.heightPixels / 3} 250")
+            var icon: android.view.accessibility.AccessibilityNodeInfo? = null
+            waitUntil {
+                icon = instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("dgl client")?.firstOrNull { it.isClickable }
+                icon != null
+            }
+            assertTrue(icon!!.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
+            var fresh: MainActivity? = null
+            waitUntil {
+                instrumentation.runOnMainSync {
+                    fresh = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<MainActivity>().singleOrNull()
+                }
+                fresh != null
+            }
+            val oldApp = app
+            instrumentation.runOnMainSync {
+                app = (fresh!!.application as DglApplication).connections().app
+                assertNotSame(oldApp, app)
+                assertTrue(app.connections.value.isEmpty())
+                app.modify { it.copy(preferences = it.preferences.copy(keepConnectionsInBackground = true)) }
+                app.open(host); client = app.selected.value!!
+            }
+            withTimeout(20_000) { client.status.first { it.acceptsInput } }
+            val warm = fresh!!
+            val target = client.captureInputTarget()
+            stage = "home-launched root back"
+            shell("input keyevent KEYCODE_BACK")
+            waitUntil { warm.lifecycle.currentState == Lifecycle.State.CREATED }
+            assertFalse(warm.isFinishing)
+            val checked = async(Dispatchers.Unconfined) { withTimeout(10_000) { client.status.first { it.checking } } }
+            shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n kim.jujin.dglc/.MainActivity")
+            checked.await()
+            withTimeout(10_000) { client.status.first { it.acceptsInput && it.recoveryMessage == null } }
+            assertEquals(target, client.captureInputTarget())
+            instrumentation.runOnMainSync { assertEquals(Lifecycle.State.RESUMED, warm.lifecycle.currentState); warm.finishAndRemoveTask() }
         } catch (error: Exception) { throw AssertionError("Lifecycle smoke failed at $stage", error) }
         finally {
             if (::app.isInitialized) { app.credentials.delete(host.id); app.update(previous) }

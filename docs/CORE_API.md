@@ -23,13 +23,13 @@
 - `PaneTarget { connection, paneId, generation }`: 입력을 만들 때 캡처한다.
   송신 시 UI의 현재 포커스를 다시 조회하지 않는다.
 - `Command { requestId, operation }`: 세션/창/패널 생성·선택·이름 변경·분할·resize·삭제,
-  새로고침, snapshot. raw shell/control 문자열을 일반 UI에 노출하지 않는다.
+  새로고침, snapshot, `checkConnection`. raw shell/control 문자열을 일반 UI에 노출하지 않는다.
 - `Error { code, operation, retryable, diagnostic }`: Authentication, HostKeyUnknown,
   HostKeyChanged, Network, Protocol, MissingSession, Storage, InvalidArgument,
   QueueFull, NotReady, StaleGeneration, Cancelled, Closed. 진단은 경로 탐지 단계·안전한 종료 코드만
   허용하며 비밀번호/키/원격 출력/사용자 입력을 포함하지 않는다.
 - `StateEvent { sequence, connectionGeneration, state }`: 연결 단계, 신뢰 요청,
-  서버 권위의 sessions/windows/panes/layout, 요청 완료/취소, 종료 완료.
+  기본값 false인 `checking`, 서버 권위의 sessions/windows/panes/layout, 요청 완료/취소, 종료 완료.
 - `OutputEvent { subscription, sequence, target, kind, bytes }`: Resize, ResetBegin,
   ResetChunk, ResetEnd, Live. byte buffer는 수신측 소유 불변 복사본이며 UTF-8 코드포인트가
   배치/이벤트 경계를 넘을 수 있다. Kotlin에서 임의로 문자열 변환하지 않는다.
@@ -51,7 +51,7 @@ hex 인코딩한다. 입력 한 요청은 UTF-8 변환 후 1..65,536바이트, �
 StaleGeneration, NotReady, Closed 중 하나를 즉시 반환한다. Accepted는 원격 처리 완료가
 아니다. 실행 직전 세대를 다시 검사하고 완료 이벤트를 Sent/Cancelled/StaleGeneration/
 TransportLost로 전달한다. 연결 단절 시 전송 성공 범위를 알 수 없는 요청도
-TransportLost로 끝내며 **자동 재전송하지 않는다**. 복구 중 입력은 거절한다.
+TransportLost로 끝내며 **자동 재전송하지 않는다**. 확인·복구 중 입력은 거절한다. 확인 시작 전 대기하던 입력도 취소하며 실패 입력을 재전송하지 않는다.
 포커스가 바뀌어도 이미 수락한 입력은 원래 pane으로만 가거나 취소된다. 크기 세대만 달라진 경우 목적지 변경으로 취급하지 않고, 연결/포커스 세대와 pane ID를 검사한다.
 
 취소는 requestId 기준으로 멱등적이다. 이미 보낸 바이트는 회수하지 않는다. 관리 명령의
@@ -63,6 +63,9 @@ TransportLost로 끝내며 **자동 재전송하지 않는다**. 복구 중 입�
 연결 전체에서 대기+전달 중인 **모든 pane 출력 payload 합이 262,144바이트 이하**다.
 개별 전달은 최대 16,384바이트, 메타데이터 이벤트를 포함해 미확인 이벤트 256개 이하다.
 구독별 unbounded channel, snapshot을 전부 별도 버퍼로 누적하는 우회는 금지한다.
+Android 복구 화면은 원격 출력 버퍼와 별개로 마지막 렌더링 창의 DOM 사본 하나를 유지한다.
+새 layout/Reset 전에 보관하고 현재 구독의 모든 pane 표시 완료 뒤 해제한다.
+일반 pane 스냅샷의 취소·시간 초과와 복구 실패는 이 화면을 지우지 않는다.
 프로토콜 파서의 별도 안전 상한(행 1MiB, 응답 4MiB)은 이 출력 예산과 구분해 계측한다.
 
 수신측은 실제 터미널 엔진이 이벤트를 적용한 뒤 `ack(subscription, sequence)`한다.
@@ -85,7 +88,12 @@ resize는 해당 패널의 size 세대를 증가시킨다. 외부 split/kill/res
 
 상태와 출력 구독은 별개다. 상태 스냅샷은 최신 값으로 합칠 수 있지만 신뢰 요청·명령 결과·
 종료 이벤트는 잃으면 안 된다. 명령 결과는 제한된 요청 슬롯과 함께 유지하며 슬롯이 찼으면
-새 요청을 거절한다. 종료·취소는 데이터 큐와 별도 제어 경로/취소 토큰을 사용한다.
+새 요청을 거절한다. 종료·취소·연결 확인은 데이터 큐와 별도 제어 경로/취소 토큰을 사용한다.
+제어 요청에는 데이터 33슬롯과 별도로 3슬롯을 예약한다. 중복 연결 확인은 같은 request ID로 합친다.
+`checkConnection`은 기존 SSH의 별도 exec 채널에서 `:`을 최대 3초 기다린다. 일반 명령·출력 역압력이 검사를 막지 않는다.
+성공 결과는 현재 연결 세대를 검사한 뒤 actor에서 목록/대상/snapshot을 갱신하며, snapshot 조각은 시작 당시 구독에만 속한다.
+네트워크 오류는 각 시도 전 1초 대기 후 최대 3회 재접속한다. 최초/수동 접속은 즉시 수행한다.
+복귀 시 소진된 네트워크 실패는 새 예산을 시작하고 사용자 정지·종료와 인증/호스트키 오류는 유지한다.
 
 `close()`는 멱등적이며 출력 ack를 기다리지 않는다. 새 요청 거절 → 세대 무효화 → 모든
 입출력/타이머/콜백 취소 → SSH/control client 종료 → 작업 join → 구독/버퍼 반환 →
@@ -93,9 +101,9 @@ Closed 완료 순서다. tmux 서버·세션·원격 pane 프로세스에는 종
 완료 후 active tasks/subscriptions/buffered bytes가 0이며 후속 콜백이 없어야 한다.
 일반 SSH shell 종료는 PTY 종료로 별도 구분한다.
 
-Android ViewModel은 핸들과 구독을 소유한다. `onCleared`에서 먼저 구독을 취소하고
-명시적 코어 종료를 호출한 뒤 생성된 모든 외부 객체의 `close()`를 실행한다. 화면 재생성은
-ViewModel 연결을 유지하되 WebView 출력 구독을 교체하고 새 snapshot을 요청한다.
+Android 프로세스 런타임이 연결 핸들을, Activity의 WebView가 출력 구독을 소유한다.
+화면 재생성은 런타임 연결을 유지하되 WebView 출력 구독을 교체하고 새 snapshot을 요청한다.
+task 제거는 구독·명시적 코어 종료·외부 객체의 `close()`까지 수행한다.
 native await 취소는 호출 종료와 코어 작업 취소를 구분해 정의한다.
 [UniFFI async 취소](https://mozilla.github.io/uniffi-rs/latest/futures.html)와
 [Kotlin 명시적 객체 해제](https://mozilla.github.io/uniffi-rs/latest/kotlin/lifetimes.html)를

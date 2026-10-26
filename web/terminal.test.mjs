@@ -110,9 +110,22 @@ function cachedRenderer() {
     style = {}; width = 100; height = 100;
     classList = { add: value => this.classes.add(value), remove: value => this.classes.delete(value) };
     setAttribute(name, value) { this[name] = value; }
+    removeAttribute(name) { delete this[name]; }
     appendChild(child) { this.children.push(child); child.parent = this; }
     remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
-    cloneNode() { const copy = new Element(); copy.textContent = this.textContent; copy.width = this.width; copy.height = this.height; return copy; }
+    cloneNode(deep) {
+      const copy = new Element(); copy.textContent = this.textContent; copy.width = this.width; copy.height = this.height;
+      copy.id = this.id; copy.tagName = this.tagName;
+      if (deep) this.children.forEach(child => copy.appendChild(child.cloneNode(true)));
+      return copy;
+    }
+    querySelectorAll(selector) {
+      return this.children.flatMap(child => [
+        ...(selector === '[id]' ? child.id ? [child] : [] : child.tagName === 'CANVAS' ? [child] : []),
+        ...child.querySelectorAll(selector),
+      ]);
+    }
+    getContext() { return { drawImage: original => { this.pixels = original.pixels; } }; }
     get firstElementChild() { return this.children[0]; }
     getBoundingClientRect() { return { width: this.width, height: this.height }; }
     animate(keyframes, options) {
@@ -120,7 +133,9 @@ function cachedRenderer() {
       animations.push(animation); return animation;
     }
   }
-  const root = new Element(), screen = new Element();
+  const root = new Element(), screen = new Element(), canvas = new Element(), body = new Element();
+  canvas.id = 'window'; canvas.appendChild(screen);
+  const viewport = { scrollLeft: 13, scrollTop: 29, addEventListener() {} };
   screen.textContent = 'previous screen';
   root.querySelector = () => screen;
   class Terminal {
@@ -132,13 +147,13 @@ function cachedRenderer() {
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
     window, Terminal, TextEncoder,
     FitAddon: { FitAddon: class {} }, ResizeObserver: class { observe() {} },
-    document: { getElementById: () => ({ addEventListener() {} }), createElement: () => new Element() },
+    document: { body, getElementById: id => id === 'window' ? canvas : viewport, createElement: () => new Element() },
     requestAnimationFrame: callback => frames.push(callback),
     setTimeout: (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; },
     clearTimeout: id => timers.delete(id),
   });
   messages.length = 0;
-  return { window, root, screen, messages, animations,
+  return { window, root, screen, canvas, body, Element, messages, animations,
     frame() { frames.splice(0).forEach(callback => callback()); },
     render() { render?.(); },
     expire(delay) { for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); } },
@@ -165,6 +180,31 @@ test('cached viewport stays opaque until a rendered replacement, then fades out'
   r.expire(90);
   assert.equal(r.root.children.length, 0);
   assert.equal(r.animations.length, 0, 'advanced motion is opt-in');
+});
+
+test('connection recovery keeps the previous rendered window through layout replacement and failed snapshots', () => {
+  const r = cachedRenderer();
+  const bitmap = new r.Element(); bitmap.tagName = 'CANVAS'; bitmap.pixels = 'rendered pixels';
+  r.canvas.appendChild(bitmap);
+  r.window.setConnectionRecovery(true);
+  const cache = r.body.children[0], previous = cache.firstElementChild;
+  assert.equal(cache.className, 'connection-cache');
+  assert.equal(cache['aria-hidden'], 'true');
+  assert.equal(cache.inert, true);
+  assert.equal(previous.id, undefined, 'frozen markup must not replace live element identities');
+  assert.equal(previous.style.left, '-13px'); assert.equal(previous.style.top, '-29px');
+  assert.equal(previous.children[0].textContent, 'previous screen');
+  assert.equal(previous.children[1].pixels, 'rendered pixels', 'canvas pixels need an explicit copy');
+  r.screen.textContent = 'partial replacement';
+  r.canvas.children = [];
+  r.window.beginSnapshot(); r.window.cancelSnapshot(); r.expire(15000);
+  r.window.setConnectionRecovery(true);
+  assert.equal(r.body.children.length, 1, 'retries reuse one frozen viewport');
+  assert.equal(r.body.children[0], cache);
+  assert.equal(previous.children[0].textContent, 'previous screen');
+  r.window.setConnectionRecovery(false);
+  assert.equal(r.body.children.length, 0, 'only recovery completion releases the frozen window');
+  r.window.setConnectionRecovery(false);
 });
 
 test('opt-in transition morphs differing sizes with crossfade and blur', () => {

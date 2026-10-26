@@ -61,17 +61,23 @@ data class ConnectionStatus(
     val canStopRetrying: Boolean = false,
     val resizing: Boolean = false,
     val window: String? = null,
+    val checking: Boolean = false,
+    val recovering: Boolean = false,
 ) {
-    val acceptsInput get() = phase == Phase.Ready || phase == Phase.Shell
-    val showsConnectionProgress get() = phase == Phase.Connecting || phase == Phase.Authenticating ||
+    val acceptsInput get() = !checking && !recovering && (phase == Phase.Ready || phase == Phase.Shell)
+    val recoveryMessage get() = when {
+        checking -> t("연결 확인 중…")
+        recovering -> if (phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired)) message else t("연결 복구 중…")
+        else -> null
+    }
+    val showsConnectionProgress get() = checking || phase == Phase.Connecting || phase == Phase.Authenticating ||
         phase == Phase.Reconnecting || (phase == Phase.Restoring && canStopRetrying)
 }
 object RetryPolicy {
     fun retryable(failure: Failure) = failure == Failure.Network
     fun delayMillis(attempt: Int, jitter: Double = 0.5): Long {
         require(attempt >= 0 && jitter in 0.0..1.0)
-        val base = minOf(30_000L, 1_000L shl minOf(attempt, 5))
-        return (base * (0.75 + jitter * 0.5)).toLong()
+        return 1_000L
     }
 }
 class ClientFailure(val kind: Failure, val safeMessage: String, val diagnosticCode: String? = null) : Exception(safeMessage)
@@ -114,6 +120,8 @@ interface TmuxController {
 
 /** write completes only when bytes have been accepted by a bounded renderer queue. */
 interface TerminalSurface {
+    /** Keep the last rendered window visible while a connection restores its panes. */
+    suspend fun connectionRecovery(active: Boolean) {}
     suspend fun layout(remote: RemoteState, window: String?, pane: String?, inputTarget: String?) {}
     suspend fun outputPane(pane: String, target: String) {}
     suspend fun write(bytes: ByteArray)

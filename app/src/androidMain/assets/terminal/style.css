@@ -13,6 +13,15 @@ html, body { margin: 0; overflow: hidden; background: #11151b; }
 .boundary.vertical { cursor: col-resize; }
 .boundary.horizontal { cursor: row-resize; }
 .xterm { height: 100%; }
+.connection-cache {
+  position: fixed; inset: 0; z-index: 10; overflow: hidden;
+  background: #11151b; pointer-events: none; user-select: none;
+}
+.connection-cache *, .connection-cache *::before, .connection-cache *::after {
+  animation: none !important; transition: none !important;
+}
+.connection-cache .terminal-cache { opacity: 1; }
+.connection-cache .recovery-shell { position: absolute; inset: 0; width: 100%; height: 100%; }
 .terminal-cache {
   position: absolute; inset: 0; z-index: 4; overflow: hidden;
   background: #11151b; pointer-events: none; user-select: none;

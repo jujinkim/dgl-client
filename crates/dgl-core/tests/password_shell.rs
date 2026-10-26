@@ -46,11 +46,11 @@ impl server::Handler for Fixture {
     async fn exec_request(
         &mut self,
         ch: ChannelId,
-        _: &[u8],
+        command: &[u8],
         s: &mut server::Session,
     ) -> Result<(), Self::Error> {
         s.channel_success(ch)?;
-        s.exit_status_request(ch, 127)?;
+        s.exit_status_request(ch, if command == b":" { 0 } else { 127 })?;
         s.eof(ch)?;
         s.close(ch)?;
         Ok(())
@@ -209,6 +209,21 @@ async fn password_failure_and_plain_shell_diagnostics() {
     assert_eq!(event.kind, OutputKind::Resize);
     assert_eq!(event.size, Size::new(97, 19).unwrap());
     connection.output().ack(subscription, event.sequence).unwrap();
+    let check = connection.action(Action::CheckConnection).unwrap();
+    assert!(connection.state().checking);
+    assert_eq!(connection.input(after.clone(), b"blocked".to_vec()), Err(Error::NotReady));
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(result) = connection.completions().into_iter().find(|r| r.request_id == check) {
+                assert_eq!(result.error, None);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.unwrap();
+    assert!(!connection.state().checking);
+    assert_eq!(connection.state().phase, Phase::Shell);
+    assert_eq!(connection.target().unwrap(), after);
     connection.input(after, b"after-resize".to_vec()).unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {

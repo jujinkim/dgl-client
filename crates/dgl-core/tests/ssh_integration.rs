@@ -1360,3 +1360,6 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
 
 #[path = "ssh_integration/window_sync.rs"]
 mod window_sync;
+
+#[path = "ssh_integration/resume.rs"]
+mod resume;

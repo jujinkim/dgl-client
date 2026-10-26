@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
     override fun onResume() {
         super.onResume()
         volumeKeys.resumed = true
+        if (::holder.isInitialized) holder.app.connections.value.forEach { it.onResume() }
         if (::holder.isInitialized) holder.app.foreground = hasWindowFocus()
         if (::holder.isInitialized) holder.app.languageChanged(holder.app.local.value.preferences.language)
         if (::holder.isInitialized) holder.app.cloudSync?.sync()

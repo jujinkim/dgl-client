@@ -6,6 +6,37 @@
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 14, scrollback = 5000, enabled = true, smooth = false;
   const send = message => window.dgl.postMessage(JSON.stringify(message));
+  // One rendered window, independent of pane snapshot timers and changing layouts.
+  // Compose draws the 45% black dim and status above this frozen viewport.
+  let recoveryScreen = null;
+  window.setConnectionRecovery = active => {
+    if (active !== true) {
+      recoveryScreen?.remove(); recoveryScreen = null;
+      return;
+    }
+    if (recoveryScreen) return;
+    const previous = canvas.cloneNode(true);
+    previous.removeAttribute('id');
+    for (const element of previous.querySelectorAll('[id]')) {
+      if (element.id === 'shell') element.classList.add('recovery-shell');
+      element.removeAttribute('id');
+    }
+    // cloneNode does not copy a canvas backing store if a renderer uses one.
+    const originals = canvas.querySelectorAll('canvas'), copies = previous.querySelectorAll('canvas');
+    for (let i = 0; i < originals.length; ++i) {
+      copies[i].width = originals[i].width; copies[i].height = originals[i].height;
+      copies[i].getContext('2d')?.drawImage(originals[i], 0, 0);
+    }
+    const bounds = canvas.getBoundingClientRect();
+    Object.assign(previous.style, {
+      position: 'absolute', left: `${-root.scrollLeft}px`, top: `${-root.scrollTop}px`,
+      width: `${bounds.width}px`, height: `${bounds.height}px`, minWidth: '100%', minHeight: '100%',
+    });
+    recoveryScreen = document.createElement('div');
+    recoveryScreen.className = 'connection-cache';
+    recoveryScreen.setAttribute('aria-hidden', 'true'); recoveryScreen.inert = true;
+    recoveryScreen.appendChild(previous); document.body.appendChild(recoveryScreen);
+  };
   function createPane(pane, host) {
   const api = {};
   const post = message => send(message.type === 'input' || message.type === 'input-binary'
