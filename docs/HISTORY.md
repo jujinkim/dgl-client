@@ -178,6 +178,14 @@ Android 재사용 렌더러의 IME 세대와 스냅샷 복원 중 조합 위치�
 JVM 예상 skip 9·Rust SSH ignore 6·Keychain ignore 1과 Android Debug/계측 APK/lint를 확인했습니다.
 실제 GUI/IME·SSH/TUI·물리 기기·Windows 네이티브 검사는 수행하지 않았습니다.
 
+## 2026-10-26: tmux 제목·탭 이름
+
+기존 메타데이터 구독으로 세션·활성 창/pane 제목과 전환을 GUI 탭·Android 연결 선택 이름에 반영했습니다.
+빈 값·중복·제어 문자를 정리하고, 데스크톱 말줄임·툴팁과 재접속·세션 소실 중 마지막 이름 보존을 추가했습니다.
+당시 Rust 데스크톱 64·JVM 77·Python 98 통과, Keychain ignore 1·JVM 예상 skip 9와
+격리 SSH/tmux 3.7c 제목 구독 1개·Android Debug APK의 ID/버전/SDK/네 ABI/서명을 확인했습니다.
+Android lint·계측·실제 GUI/IME와 Windows 네이티브·macOS GUI 인수는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

@@ -4,23 +4,24 @@
 검사 명령은 [DEVELOPMENT.md](DEVELOPMENT.md), 남은 작업은 [TASKS.md](../TASKS.md)를 따릅니다.
 과거 실행 로그·시도별 결과는 [HISTORY.md](HISTORY.md)와 Git 이력에 요약·보존합니다.
 
-## 현재 변경 검사 (2026-10-26)
+## 현재 변경 검사 (2026-10-27)
 
-기존 tmux 메타데이터 구독을 GUI 탭·Android 연결 선택 이름에 연결했습니다.
-세션·활성 창·활성 pane 제목 변경과 전환을 반영하며 빈 값·중복 이름·제어 문자를 정리합니다.
-데스크톱에는 긴 이름의 말줄임·툴팁을 추가하고, 재접속·세션 소실 중 마지막 이름 보존을 검사했습니다.
+dagali의 앱 아이콘을 둥근 ㄱ자 엔터 머리와 두 pane의 터미널 얼굴로 갱신했습니다.
+공통 도형·디자인 명세에서 원본·미리보기·Android 컬러/단색·macOS ICNS·Windows ICO를 재생성했습니다.
 이전 변경의 검증 이력은 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust 데스크톱 | 64 통과, 대화형 Keychain 1개는 기본 ignore. 제목·창/pane 전환·다른 세션 분리·빈 값/중복/Unicode 정리, 제목 변경·세션 소실 시 탭/터미널/연결 동일성과 기존 GPUI 회귀 확인 |
-| JVM·결과 검증기 | 77 통과, 외부 SSH/Windows 환경 9개는 명시적 예상 skip. Rust와 같은 제목·전환·분리·정리 사례와 기존 회귀 확인. 명시적 검사 이름 목록 갱신 |
-| 격리 SSH/tmux 3.7c | `hierarchy_titles_all_sessions_without_screen_reset` 1개 통과. 실제 OSC 제목·tmux 이름·활성 창/pane 변경을 메타데이터 구독으로 수신하고 화면 재캡처·입력 대상 변경 없이 처리하는 기존 코어 경로 확인 |
-| Android Debug APK | `:androidApp:assembleDebug` 통과. 원본 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 갱신. `collect_rust_android.py`로 앱 ID·버전·SDK·Rust 네 ABI·서명 검증. lint·계측은 수행하지 않음 |
-| Python·기본 검사 | 스크립트 98 통과. JVM 이름 목록·예상 skip 결과 검증과 diff 공백·대시보드 등록 검증 통과. 문서는 기존 등록 `docs/` 경로에 포함되어 등록 정보 변경 없음 |
+| 원본·재생성 | `generate_app_icons.py --check` 통과. 1024px RGBA 원본과 master 일치, 플랫폼 출력 갱신 확인 |
+| 정적 미리보기 | 128·48·32·16px에서 ㄱ자 윤곽·눈·입 확인. 16px에서는 눈의 세부 형태가 단순화됨. Android 원형·둥근 사각형·단색에서 잘림·얼굴 소실 없음. [크기별](../assets/app-icon/preview-sizes.png)·[Android](../assets/app-icon/preview-android.png) 미리보기 참고 |
+| Android 안전 영역·패키지 | 공통 컬러/단색 윤곽 반경 31.956dp 미만, 다섯 밀도의 불투명 영역(alpha ≥240) 반경 32dp 이내. 리샘플링 경계의 반투명 픽셀은 제외. APK에 포함된 다섯 컬러 전경의 픽셀이 생성 파일과 일치 |
+| Android Debug·lint | `:androidApp:assembleDebug :androidApp:lintDebug` 통과. lint 오류 0·기존 의존성/대상 API 경고 12. 원본 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 갱신, `collect_rust_android.py`의 ID·버전·SDK·Rust 네 ABI·서명 검사 통과 |
+| macOS 패키징 | ARM64 Debug 빌드·로컬 ad-hoc 서명·strict 검증 통과. 번들의 ICNS 바이트·`CFBundleIconFile` 연결과 16·32·64·128·256·512·1024px/Retina 항목 확인 |
+| Windows ICO | 16·24·32·48·64·128·256px의 7개 항목과 이미지 디코딩 확인. 네이티브 빌드·GUI는 수행하지 않음 |
+| Python·문서·대시보드 | 스크립트 98 통과. 변경 문서의 로컬 링크·diff 공백·대시보드 스키마 검사 통과. 아이콘·문서 경로·앱 버전이 같아 등록 정보 변경 없음 |
 
-UI 동작 결과는 GPUI 이벤트 주입 검사입니다.
-Android 실제 GUI/IME·계측은 수행하지 않았습니다.
+이번 아이콘 검사는 생성된 정적 이미지·패키지 리소스를 대상으로 했습니다.
+Android 실제 런처·계측과 macOS Dock/Finder 표시는 수행하지 않았습니다.
 삼성 키보드를 열자마자 한글을 입력할 때의 조합 위치·최종 문자열, 영문/숫자 비교와 FAB의 실제 키보드 유지 확인은 남아 있습니다.
 Windows 네이티브 빌드·DPAPI·GUI, 실제 사용자 서버/TUI, 전체 Android API 계측·장시간 반복은 이번 범위에 포함하지 않았습니다.
 
