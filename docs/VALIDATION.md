@@ -6,7 +6,8 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-Android 복귀 시 연결 응답 확인·터미널 복원과 Android/데스크톱 공통 3회·1초 재시도 정책 검사입니다.
+Android 복귀 시 연결 응답 확인·터미널 복원과 Android/데스크톱 공통 3회·1초 재시도 정책,
+후속 플랫 앱 아이콘 변경 검사입니다.
 이전 작업 공간·연결 수명 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
@@ -18,6 +19,8 @@ Android 복귀 시 연결 응답 확인·터미널 복원과 Android/데스크�
 | JVM | 67 통과·외부 SSH/Windows 예상 skip 9개. 새 3개는 중복 복귀·현재 구독/모든 pane 스냅샷 완료·이전 구독/주기 거부·shell·실패 dim 유지·resize 단독 제외를 검사. 명시적 결과 검증기 갱신 |
 | Python·JavaScript | Python 98·터미널 JavaScript 13 통과. 격리 실행기의 Cargo `--` 구분자 전달도 실제 SSH 명령으로 확인 |
 | Android 빌드 | Debug·계측 APK·lint 통과. 기존 검토 진단 12개 일치. 네 ABI Rust payload·Debug 서명 확인과 전달용 APK 수집 |
+| 앱 아이콘 | 배경 포함 차콜·아이보리·라임 3색 단색 면과 경계 안티앨리어싱. 128·48·32·16px 및 Android 원형·둥근 사각형·단색 미리보기 확인. 공통 도형에서 원본·파생 파일 재생성 후 `--check` 일치 |
+| 아이콘 패키징 | 새 아이콘으로 Android Debug·lint 재통과, 검토 진단 12개 일치·서명 및 전달 APK 수집. APK 내 전경 5밀도의 픽셀이 새 원본 리소스와 일치하고 adaptive 안전 원 안에 배치됨. macOS 패키징·로컬 ad-hoc 서명/검증과 번들 ICNS 복사·plist 연결 확인. `iconutil`로 ICNS 10항목, Pillow로 ICO 7크기 디코딩 확인. Python 98개·대시보드 등록 검증 통과 |
 | API36 선택 계측 | `AndroidConnectionLifetimeTest`와 `AndroidPlatformTest`의 창 렌더러 선택, 총 2개 통과. IME·홈 복귀/응답 확인·화면 준비 후 dim 해제 상태·Activity 재생성·알림 Intent·task 제거와 원격 PID 보존·새 실행 시 빈 연결 목록·실제 HOME 런처에서 시작한 루트 뒤로가기/복귀 확인. 기존 45% dim 아래 창 전체 보관·원래 pane 삭제/부분 복원/스냅샷 취소 중 기존 화면 유지·표시 완료 뒤 보관 해제 확인 |
 | 무결성·문서 | 한국어/영어·생성 번역/자리표시자, 요구사항 SHA-256·Wrapper·diff 공백·로컬 대시보드 등록 검증. JSON Git 제외 유지 |
 

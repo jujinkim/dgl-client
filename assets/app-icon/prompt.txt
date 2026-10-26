@@ -1,9 +1,10 @@
-Use case: stylized-concept
-Asset type: DGL application icon, transparent master artwork, square 1024 x 1024.
-Primary request: A single press of Enter stamps out a polished-looking but defective AI-made app. One large ivory keyboard Enter keycap sits on top of and presses into fluorescent lime slime shaped like a melting rounded-square app tile. The slime droops and bulges out below the keycap, unmistakably a collapsed app icon, physically touching and fused into one compact silhouette.
-Style/medium: Glossy premium 3D toy render, bold simple forms, gently viewed from above. The irony is an over-polished AI slop product.
-Subject details: The ivory keycap occupies the upper half. Its top face has one very large, thick dark charcoal Return arrow glyph, exactly “↵”, clearly showing the descending stroke and leftward arrowhead. The lower half is a rounded square of vivid lime slime with a few broad molten drips. Put exactly one oversized four-point ivory sparkle on the front face of the slime, with thick points and no tiny decoration.
-Composition/framing: Centered single connected object, almost front-facing with a subtle top view, minimal perspective so the arrow stays legible at 32px. All meaningful artwork fits within the central 76% of the square with generous clean transparent margins. Large arrow and distinct ivory top / lime bottom color blocks.
-Lighting/materials: Smooth glossy molded plastic keycap and thick shiny slime, soft studio highlights, controlled broad reflections. Clean crisp silhouette.
-Scene/backdrop: True transparent background with alpha. No background panel or floor, no floating cast shadow outside the object. This artwork will later be composited onto #11151B.
-Constraints: Only one ivory keycap, one attached melting lime app tile, and one four-point sparkle. No face, eyes, mouth, lettering, words, logos, hands, machinery, extra keys, extra parts, extra sparkles, frame, or watermark. Do not draw a background or checkerboard.
+Use case: deterministic geometric application icon.
+Asset type: DGL application icon, transparent 1024 x 1024 RGBA master artwork.
+Production: Pillow renders the shared M/L/C/Z contours in monochrome.json. This file records the design brief; no image generation service is called.
+Primary request: Make DGL's icon clean and flat while conveying a keyboard click (딸깍), AI, SSH, and tmux.
+View: Straight down onto a single slightly wide rounded rectangular Enter keycap. No perspective, visible side faces, bevels, shadows, highlights, textures, slime, drips, or gradients.
+Composition: Center the ivory keycap with generous transparent margins. Inset two charcoal terminal panes separated by a narrow ivory vertical divider. Use a thicker bottom rim to retain the keycap silhouette. A large lime Return arrow, exactly “↵”, starts in the right pane, bends down and left, and crosses the divider into the left pane. Add exactly one small lime four-point AI sparkle at the upper right, separate from the arrow.
+Meaning: The keycap and Return arrow convey 딸깍. The two panes convey tmux. The arrow joining panes suggests SSH connection and terminal input. The single sparkle conveys AI.
+Palette: Charcoal #11151B for the background and terminal panes; ivory #F3EBDD for the keycap and divider; lime #C7F43B for the arrow and sparkle. Three solid paint colors including the background, with edge antialiasing and transparent outer margins allowed.
+Small sizes: Keep the keycap and Return arrow readable at 16px. Preserve the pane divider at 32px and above. The sparkle is secondary. Do not add words, labels, additional terminal glyphs, extra keys, or decoration.
+Platform output: Composite onto the charcoal background for Windows and the dashboard. Preserve the existing macOS rounded tile and transparent margin. Fit both Android color and monochrome artwork inside the same central 64dp circle of the 108dp layer.
