@@ -6,24 +6,23 @@
 
 ## 현재 변경 검사 (2026-10-27)
 
-dagali의 앱 아이콘을 둥근 ㄱ자 엔터 머리와 두 pane의 터미널 얼굴로 갱신했습니다.
-공통 도형·디자인 명세에서 원본·미리보기·Android 컬러/단색·macOS ICNS·Windows ICO를 재생성했습니다.
+탭 제목을 앞 20글자와 생략 기호로 제한하고 호스트 배지를 별도 줄로 분리했습니다.
+Android 좁은 창의 중복 상태·관리 줄을 없애고 연결 메뉴에 tmux 관리·패널 도구 표시 전환을 넣었습니다.
+세션·창 이름과 활성 pane 제목을 두 줄로 나누고 개수 배지·오른쪽 펼침 버튼·최상위 왼쪽 정렬을 적용했습니다.
 이전 변경의 검증 이력은 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 원본·재생성 | `generate_app_icons.py --check` 통과. 1024px RGBA 원본과 master 일치, 플랫폼 출력 갱신 확인 |
-| 정적 미리보기 | 128·48·32·16px에서 ㄱ자 윤곽·눈·입 확인. 16px에서는 눈의 세부 형태가 단순화됨. Android 원형·둥근 사각형·단색에서 잘림·얼굴 소실 없음. [크기별](../assets/app-icon/preview-sizes.png)·[Android](../assets/app-icon/preview-android.png) 미리보기 참고 |
-| Android 안전 영역·패키지 | 공통 컬러/단색 윤곽 반경 31.956dp 미만, 다섯 밀도의 불투명 영역(alpha ≥240) 반경 32dp 이내. 리샘플링 경계의 반투명 픽셀은 제외. APK에 포함된 다섯 컬러 전경의 픽셀이 생성 파일과 일치 |
-| Android Debug·lint | `:androidApp:assembleDebug :androidApp:lintDebug` 통과. lint 오류 0·기존 의존성/대상 API 경고 12. 원본 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 갱신, `collect_rust_android.py`의 ID·버전·SDK·Rust 네 ABI·서명 검사 통과 |
-| macOS 패키징 | ARM64 Debug 빌드·로컬 ad-hoc 서명·strict 검증 통과. 번들의 ICNS 바이트·`CFBundleIconFile` 연결과 16·32·64·128·256·512·1024px/Retina 항목 확인 |
-| Windows ICO | 16·24·32·48·64·128·256px의 7개 항목과 이미지 디코딩 확인. 네이티브 빌드·GUI는 수행하지 않음 |
-| Python·문서·대시보드 | 스크립트 98 통과. 변경 문서의 로컬 링크·diff 공백·대시보드 스키마 검사 통과. 아이콘·문서 경로·앱 버전이 같아 등록 정보 변경 없음 |
+| Rust 데스크톱 | `cargo test --locked -p dgl-desktop` 64 통과·Keychain 1 ignore. 19/20/21글자·한글·결합 문자·이모지/국기·제어 문자, 공통 계층 fixture, 활성 제목 갱신·복구 중 제목 유지 검사 포함 |
+| GPUI 배치·조작 | 위 데스크톱 검사에 포함. 240/272/360px 목록의 경계·들여쓰기·메뉴, 2줄 탭·긴 호스트 배지, 분할 도구 고정, 탭 드래그·선택·연결/터미널 동일성, 복구 중 목록 위치·펼침·스크롤 유지 통과 |
+| Kotlin/JVM | `:app:desktopTest` 77 통과·예상 환경 skip 9. 글자 단위 제한·공통 계층 fixture·제목 갱신·연결별 제목 캐시의 복구/대상 변경 검사 포함. `verify_test_results.py --mode linux` 결과 목록·skip 검증 통과 |
+| Android 빌드·lint | Debug APK·계측 APK 컴파일·`lintDebug` 통과. lint 오류 0·기존 진단 12를 `verify_lint.py`로 확인. 계측 코드는 새 메뉴 경로·중복 정보 부재·2줄 목록에 맞춰 갱신 |
+| Android APK | 원본 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 갱신. `collect_rust_android.py`의 ID·버전·SDK·Rust 네 ABI·서명 검사 통과. APK 복사본 생성 없음 |
+| 문서·정적 검사 | UI 번역 목록·자리표시자, 변경 문서의 로컬 링크·diff 공백·대시보드 스키마 검사 통과. 문서/출력 경로·앱 버전·배포 방식이 같아 등록 정보 변경 없음 |
 
-이번 아이콘 검사는 생성된 정적 이미지·패키지 리소스를 대상으로 했습니다.
-Android 실제 런처·계측과 macOS Dock/Finder 표시는 수행하지 않았습니다.
-삼성 키보드를 열자마자 한글을 입력할 때의 조합 위치·최종 문자열, 영문/숫자 비교와 FAB의 실제 키보드 유지 확인은 남아 있습니다.
-Windows 네이티브 빌드·DPAPI·GUI, 실제 사용자 서버/TUI, 전체 Android API 계측·장시간 반복은 이번 범위에 포함하지 않았습니다.
+연결된 Android 기기가 없어 계측은 실행하지 않았습니다. 계측 APK 컴파일을 실제 조작·48dp 터치 영역·기기 접근성 검증으로 계산하지 않습니다.
+macOS 실제 GUI·IME·Keychain, Windows 네이티브 빌드·DPAPI·GUI와 전체 Android API 계측·장시간 반복은 수행하지 않았습니다.
+삼성 키보드의 한글 조합 위치·최종 문자열과 FAB의 실제 키보드 유지 확인은 남아 있습니다.
 
 ## 남은 한계
 

@@ -366,6 +366,7 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
             }
             let session_x = ui.debug_bounds("session-$1").unwrap().left();
             let window_x = ui.debug_bounds("window-$1-@1").unwrap().left();
+            assert_eq!(session_x, px(0.));
             assert_eq!(window_x - session_x, px(20.));
             assert!(ui.debug_bounds("pane-$1-@1-%1").is_none());
             let pane = ui.debug_bounds("window-$1-@2").unwrap();
@@ -393,12 +394,12 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
     preview.read_with(ui, |p, _| {
         assert!(
             super::hierarchy::session_label(&p.state.remote, &p.state.remote.sessions[0])
-                .title
+                .subtitle
                 .contains("메타데이터 갱신 🚀")
         );
         assert!(
             super::hierarchy::window_label(&p.state.remote, &p.state.remote.windows[0])
-                .title
+                .subtitle
                 .contains("메타데이터 갱신 🚀")
         );
     });
@@ -1535,7 +1536,10 @@ fn tab_drag_splits_at_each_edge_and_preview_matches_result(cx: &mut TestAppConte
         let to = match edge {
             DockEdge::Left => point(before.left() + px(8.), before.center().y),
             DockEdge::Right => point(before.right() - px(8.), before.center().y),
-            DockEdge::Top => point(before.center().x, before.top() + px(40.)),
+            DockEdge::Top => point(
+                before.center().x,
+                cx.debug_bounds("group-header-1").unwrap().bottom() + px(8.),
+            ),
             DockEdge::Bottom => point(before.center().x, before.bottom() - px(8.)),
         };
         begin_tab_drag(cx);
@@ -1663,9 +1667,20 @@ fn split_emoji_buttons_stay_at_right_of_overflowing_tab_bar(cx: &mut TestAppCont
     for _ in 0..8 {
         add_terminal(&view, cx);
     }
+    view.update(cx, |s, _| {
+        s.tabs[0].host.alias = "긴 호스트 이름".repeat(8);
+        s.tabs[0].session = Some("$long-title".into());
+        s.tabs[0].session_title = Some("한".repeat(20) + " 제목 뒷부분");
+    });
     cx.simulate_resize(gpui::size(px(640.), px(480.)));
     redraw(cx);
     let header = cx.debug_bounds("group-header-1").unwrap();
+    let title = cx.debug_bounds("tab-title-1").unwrap();
+    let badge = cx.debug_bounds("tab-host-1").unwrap();
+    assert!(title.bottom() <= badge.top());
+    assert!(title.top() >= header.top() && badge.bottom() <= header.bottom());
+    assert!(badge.size.width <= px(120.));
+    assert!(view.read_with(cx, |s, _| s.tabs[0].label().ends_with("제목 뒷부분")));
     let tools = cx.debug_bounds("group-tools-1").unwrap();
     let horizontal = cx.debug_bounds("split-1-Horizontal").unwrap();
     let vertical = cx.debug_bounds("split-1-Vertical").unwrap();

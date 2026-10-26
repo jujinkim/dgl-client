@@ -67,8 +67,12 @@ class AndroidHierarchyTest {
                     app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", showAllHierarchy = false, mobilePaneToolbarVisible = false)) }
                     freshAgents(); app.connections.value = listOf(first, second); app.selected.value = first
                 }
-                click("tmux 관리")
-                val compact = "개발 · 작업\n3: 편집 · 패널 1개"
+                await("연결 하나 · 개발")
+                assertNull(node("현재 세션: 개발"))
+                assertNull(node("tmux 관리"))
+                click("호스트")
+                click("현재 호스트 연결 하나 연결 메뉴"); click("tmux 관리")
+                val compact = "개발\n3: 편집 · 작업\n패널 1개"
                 await(compact)
                 assertNull(node("$compact 펼치기"))
                 click("$compact 메뉴")
@@ -97,7 +101,7 @@ class AndroidHierarchyTest {
                 assertNotNull(node("패널로 이동"))
                 click("닫기"); await(compact)
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = true, theme = "dark")) } }
-                var session = "개발 · 작업\n창 1개 · 패널 1개"; var window = "편집 · 작업\n창 3 · 패널 1개"; val pane = "작업\nsh · 80×24"
+                var session = "개발\n작업\n창 1개 · 패널 1개"; var window = "편집\n작업\n창 3 · 패널 1개"; val pane = "작업\nsh · 80×24"
                 click("$session 펼치기")
                 await(window)
                 val sx = bounds(await(session)).left; val wx = bounds(await(window)).left
@@ -123,17 +127,17 @@ class AndroidHierarchyTest {
                     assertNull(node("목록 대기 중"))
                 }
                 scenario.onActivity { first.remote.value = first.remote.value.copy(panes = first.remote.value.panes.map { it.copy(title = "갱신 제목") }) }
-                session = "개발 · 갱신 제목\n창 1개 · 패널 1개"
-                window = "편집 · 갱신 제목\n창 3 · 패널 1개"
+                session = "개발\n갱신 제목\n창 1개 · 패널 1개"
+                window = "편집\n갱신 제목\n창 3 · 패널 1개"
                 instrumentation.waitForIdleSync()
                 await(window)
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = false)) } }
-                await("개발 · 갱신 제목\n3: 편집 · 패널 1개")
+                await("개발\n3: 편집 · 갱신 제목\n패널 1개")
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = true)) } }
                 await(window)
                 assertTrue(first.targets.isEmpty()); assertTrue(first.writes.isEmpty()); assertTrue(first.commands.isEmpty())
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = false)) } }
-                click("개발 · 갱신 제목\n3: 편집 · 패널 1개")
+                click("개발\n3: 편집 · 갱신 제목\n패널 1개")
                 assertEquals(listOf(listOf("$1", "@1", null)), first.targets)
                 click("터미널로 돌아가기")
                 // Check the unobscured terminal too: the fixed progress slot must not shift it.

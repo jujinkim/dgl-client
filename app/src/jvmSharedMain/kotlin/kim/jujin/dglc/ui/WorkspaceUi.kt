@@ -20,11 +20,33 @@ import androidx.compose.ui.unit.*
 import kim.jujin.dglc.*
 import kim.jujin.dglc.core.*
 
-@Composable internal fun workspaceTabTitle(client: ClientConnection): String {
+@Composable internal fun workspaceTabTitle(client: ClientConnection, sessionOnly: Boolean = false): String {
     val session by client.session.collectAsState()
     val remote by client.remote.collectAsState()
-    return displayTreeText(client.host.alias) + " · " +
-        (remote.sessions.firstOrNull { it.id == session }?.let { remote.sessionTabTitle(it) } ?: session ?: t("연결 선택"))
+    val localCache = remember(client) { SessionTitleCache() }
+    return (LocalAppModel.current?.connectionTitles(client) ?: localCache).title(remote, session, sessionOnly)
+}
+
+@Composable internal fun InfoBadge(text: String, modifier: Modifier = Modifier) {
+    Text(text, modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+        .padding(horizontal = 4.dp, vertical = 1.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 12.sp,
+        maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun ConnectionTitle(client: ClientConnection, sessionOnly: Boolean = false, draggable: Boolean = false) {
+    val title = workspaceTabTitle(client, sessionOnly)
+    val host = displayTreeText(client.host.alias)
+    val full = "$host · $title"
+    TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(full) } }, state = rememberTooltipState(), enableUserInput = !draggable) {
+        Column(Modifier.clearAndSetSemantics { contentDescription = full },
+            horizontalAlignment = Alignment.Start) {
+            Text(compactTabTitle(title), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+            InfoBadge(host, Modifier.widthIn(max = 120.dp))
+        }
+    }
 }
 
 @Composable internal fun WorkspaceInputBlock(model: AppModel, owner: Any, blocked: Boolean) {
@@ -133,7 +155,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                         Row(Modifier.fillMaxWidth().height(48.dp).background(MaterialTheme.colorScheme.surfaceContainer), verticalAlignment = Alignment.CenterVertically) {
                             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
                                 group.tabs.forEach { tab -> key(tab) { model.tabClient(tab)?.let { client ->
-                                    val title = workspaceTabTitle(client)
+                                    val title = displayTreeText(client.host.alias) + " · " + workspaceTabTitle(client)
                                     var bounds by remember { mutableStateOf(Rect.Zero) }
                                     Row(Modifier.onGloballyPositioned { bounds = it.boundsInRoot(); tabBounds[tab] = bounds }
                                         .background(if (group.selected == tab) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)
@@ -142,9 +164,9 @@ private data class TabDrag(val tab: String, val position: Offset)
                                             if (moving != null && target != null) model.changeWorkspace { it.drop(moving.tab, target, width, height) }
                                             drag = null
                                         }, { drag = null }), verticalAlignment = Alignment.CenterVertically) {
-                                        TextButton({ model.selectConnection(client) }, modifier = Modifier.widthIn(max = 220.dp).height(48.dp)
+                                        TextButton({ model.selectConnection(client) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp), modifier = Modifier.widthIn(max = 220.dp).height(48.dp)
                                             .semantics { contentDescription = title; selected = group.selected == tab }) {
-                                            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            ConnectionTitle(client, draggable = true)
                                         }
                                         TreeMenu(tr("{0} 탭 메뉴", title), buildList {
                                             add(t("탭 닫기") to { model.removeConnection(client) })

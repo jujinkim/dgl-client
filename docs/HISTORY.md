@@ -186,6 +186,13 @@ JVM 예상 skip 9·Rust SSH ignore 6·Keychain ignore 1과 Android Debug/계측 
 격리 SSH/tmux 3.7c 제목 구독 1개·Android Debug APK의 ID/버전/SDK/네 ABI/서명을 확인했습니다.
 Android lint·계측·실제 GUI/IME와 Windows 네이티브·macOS GUI 인수는 수행하지 않았습니다.
 
+## 2026-10-27: 앱 아이콘 갱신
+
+dagali 아이콘을 둥근 ㄱ자 엔터 머리와 두 pane의 터미널 얼굴로 갱신하고 공통 원본·미리보기·Android 컬러/단색·macOS ICNS·Windows ICO를 재생성했습니다.
+당시 재생성 일치·정적 크기별 미리보기·Android 안전 영역과 APK 픽셀 일치, Debug·lint(오류 0·기존 경고 12),
+APK ID/버전/SDK/네 ABI/서명, macOS ARM64 ad-hoc 패키징·strict 서명과 ICNS 연결, Windows ICO 7개 크기를 확인했습니다.
+Python 98·문서 링크·대시보드 스키마 검사는 통과했으며 실제 Android 런처·macOS Dock/Finder·Windows 네이티브·GUI 검사는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

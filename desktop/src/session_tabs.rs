@@ -67,12 +67,12 @@ impl Tab {
     }
     pub(super) fn label(&self) -> String {
         let alias = hierarchy::display_text(&self.host.alias);
+        format!("{alias} · {}", self.title())
+    }
+    pub(super) fn title(&self) -> String {
         match self.session.as_deref() {
-            Some(id) => format!(
-                "{alias} · {}",
-                hierarchy::display_text(self.session_title.as_deref().unwrap_or(id))
-            ),
-            None => tr!("{0} · 세션 선택", alias),
+            Some(id) => hierarchy::display_text(self.session_title.as_deref().unwrap_or(id)),
+            None => t("세션 선택").into(),
         }
     }
 }

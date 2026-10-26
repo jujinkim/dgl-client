@@ -6,6 +6,12 @@ import kotlin.test.*
 
 class HierarchyTest {
     @Test fun tabTitlesFollowActiveWindowAndPaneAndIgnoreOtherSessions() {
+        listOf("a", "한", "e\u0301", "한", "😀", "👩🏽‍💻", "🇰🇷").forEach { glyph ->
+            listOf(19, 20, 21).forEach { count ->
+                assertEquals(if (count > 20) glyph.repeat(20) + "…" else glyph.repeat(count), compactTabTitle(glyph.repeat(count)))
+            }
+        }
+        assertEquals("", compactTabTitle("\n\u202e"))
         val fixture = javaClass.getResourceAsStream("/migration/hierarchy-v2.json")!!.use {
             Json.parseToJsonElement(it.reader(Charsets.UTF_8).readText()).jsonArray
         }
@@ -15,12 +21,19 @@ class HierarchyTest {
         fun title() = remote.sessionTabTitle(remote.sessions[0])
         fun pane(index: Int, text: String) { remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i == index) p.copy(title = text) else p }) }
         assertEquals("개발 · 편집 · 작업", title())
+        val cached = SessionTitleCache()
+        assertEquals(title(), cached.title(remote, "$1"))
+        assertEquals("개발 · 편집 · 작업", cached.title(RemoteState(), "$1"))
+        assertEquals("개발", cached.title(RemoteState(), null, sessionOnly = true))
         pane(2, "Hidden"); pane(4, "Other session")
         assertEquals("개발 · 편집 · 작업", title())
         remote = remote.copy(sessions = remote.sessions.mapIndexed { i, s -> if (i == 0) s.copy(name = " 프로젝트\n") else s },
             windows = remote.windows.mapIndexed { i, w -> if (i == 0) w.copy(name = "Editor") else w })
         pane(0, "Building 😀\u202e\n")
         assertEquals("프로젝트 · Editor · Building 😀", title())
+        assertEquals(title(), cached.title(remote, "$1"))
+        assertEquals(title(), cached.title(RemoteState(), "$1"))
+        assertEquals("$2", cached.title(RemoteState(), "$2"))
         remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i < 2) p.copy(active = i == 1) else p })
         pane(1, "Review")
         assertEquals("프로젝트 · Editor · Review", title())
@@ -48,25 +61,27 @@ class HierarchyTest {
             panes = remote.panes.mapIndexed { i, p -> p.copy(active = i != 1 && i != 3) })
         fun keys() = remote.hierarchyRows(true).map { it.key to it.children.map { child -> child.key } }
         val originalKeys = keys()
-        fun title() = remote.sessionLabel(remote.sessions[0]).title
+        fun title() = remote.sessionLabel(remote.sessions[0]).subtitle
         fun pane(index: Int, text: String) { remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i == index) p.copy(title = text) else p }) }
-        assertEquals("개발 · 작업", title())
+        assertEquals("작업", title())
         pane(0, "Building 😀\u202e\n")
-        assertEquals("개발 · Building 😀", title())
-        assertEquals("편집 · Building 😀", remote.windowLabel(remote.windows[0]).title)
+        assertEquals("Building 😀", title())
+        assertEquals("Building 😀", remote.windowLabel(remote.windows[0]).subtitle)
         remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i < 2) p.copy(active = i == 1) else p })
         pane(1, "Review")
-        assertEquals("개발 · Review", title())
+        assertEquals("Review", title())
         remote = remote.copy(windows = remote.windows.mapIndexed { i, w -> if (i < 2) w.copy(active = i == 1) else w })
         pane(2, "Tests")
-        assertEquals("개발 · Tests", title())
-        assertEquals("편집 · Review", remote.windowLabel(remote.windows[0]).title)
+        assertEquals("Tests", title())
+        assertEquals("Review", remote.windowLabel(remote.windows[0]).subtitle)
         pane(4, "Other session")
-        assertEquals("개발 · Other session", remote.sessionLabel(remote.sessions[1]).title)
+        assertEquals("Other session", remote.sessionLabel(remote.sessions[1]).subtitle)
         pane(2, "")
-        assertEquals("개발", title())
+        assertEquals("", title())
         pane(2, "개발")
-        assertEquals("개발", title())
+        assertEquals("", title())
+        assertEquals("개발", remote.sessionLabel(remote.sessions[0]).title)
+        assertEquals("편집", remote.windowLabel(remote.windows[0]).title)
         assertEquals("개발", remote.sessions[0].name)
         assertEquals("편집", remote.windows[0].name)
         assertEquals(originalKeys, keys())
@@ -77,7 +92,7 @@ class HierarchyTest {
         }
         fun flatten(rows: List<HierarchyRow>, depth: Int = 0): List<JsonElement> = rows.flatMap { r ->
             listOf(buildJsonArray {
-                add(r.key); add(depth); add(r.label.title); add(r.label.detail)
+                add(r.key); add(depth); add(r.label.title); add(r.label.subtitle); add(r.label.detail)
                 add(r.window?.let(::JsonPrimitive) ?: JsonNull); add(r.pane?.let(::JsonPrimitive) ?: JsonNull); add(r.children.isNotEmpty())
             }) + flatten(r.children, depth + 1)
         }

@@ -1,7 +1,7 @@
 use super::*;
 use workspace::{DIVIDER, DockEdge};
 
-const TAB_BAR_HEIGHT: f32 = 32.;
+const TAB_BAR_HEIGHT: f32 = 48.;
 
 #[derive(Clone, Copy)]
 struct TabDropTarget {
@@ -370,6 +370,14 @@ impl Desktop {
                     + &state.error.map(|e| format!(" · {e}")).unwrap_or_default()
             })
             .unwrap_or_else(|| t("빈 그룹 · 왼쪽 호스트를 선택하여 연결").into());
+        let status_host = self
+            .active_tab()
+            .map(|tab| hierarchy::display_text(&tab.host.alias));
+        let status_detail = status_host
+            .as_ref()
+            .and_then(|host| status.strip_prefix(&format!("{host} · ")))
+            .unwrap_or(&status)
+            .to_string();
         let mut shortcuts = div()
             .id("shortcut-bar")
             .debug_selector(|| "shortcut-bar".into())
@@ -639,12 +647,19 @@ impl Desktop {
                                     .debug_selector(|| "connection-status".into())
                                     .flex_1()
                                     .min_w_0()
-                                    .truncate()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
                                     .tooltip({
                                         let status = status.clone();
                                         move |_, cx| cx.new(|_| Tip(status.clone())).into()
                                     })
-                                    .child(status),
+                                    .when_some(status_host, |d, host| {
+                                        d.child(self.info_badge(host).max_w(px(120.)))
+                                    })
+                                    .child(
+                                        div().flex_1().min_w_0().truncate().child(status_detail),
+                                    ),
                             )
                             .child(
                                 div()
@@ -853,17 +868,31 @@ impl Desktop {
                     })
                     .when(selected == Some(tab_id), |d| d.bg(rgb(p.selection)))
                     .child(
-                        self.button(
-                            format!("tab-{tab_id}"),
-                            label.clone(),
-                            cx,
-                            move |s, w, cx| {
-                                s.workspace.select(id, tab_id);
-                                s.group_focus(id, w, cx);
-                            },
-                        )
+                        self.button_base(format!("tab-{tab_id}"), cx, move |s, w, cx| {
+                            s.workspace.select(id, tab_id);
+                            s.group_focus(id, w, cx);
+                        })
+                        .h_full()
+                        .flex()
+                        .flex_col()
+                        .justify_center()
+                        .items_start()
+                        .min_w_0()
                         .max_w(px(320.))
-                        .truncate()
+                        .child(
+                            div()
+                                .debug_selector(move || format!("tab-title-{tab_id}"))
+                                .w_full()
+                                .truncate()
+                                .text_size(px(14.))
+                                .line_height(px(18.))
+                                .child(hierarchy::tab_title(&tab.title())),
+                        )
+                        .child(
+                            self.info_badge(hierarchy::display_text(&tab.host.alias))
+                                .debug_selector(move || format!("tab-host-{tab_id}"))
+                                .max_w(px(120.)),
+                        )
                         .tooltip({
                             let label = label.clone();
                             move |_, cx| cx.new(|_| Tip(label.clone())).into()
@@ -1238,7 +1267,7 @@ impl Desktop {
                     } else {
                         FontWeight::BOLD
                     })
-                    .line_clamp(2)
+                    .line_clamp(1)
                     .text_ellipsis()
                     .child(label.title),
             )
@@ -1247,12 +1276,35 @@ impl Desktop {
                     .id(ElementId::Name(detail_id.clone().into()))
                     .debug_selector(move || detail_id)
                     .w_full()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .min_w_0()
                     .text_size(px(12.))
                     .line_height(px(17.))
                     .text_color(rgb(self.palette.muted))
-                    .truncate()
-                    .child(label.detail),
+                    .when(!label.subtitle.is_empty(), |d| {
+                        d.child(div().flex_1().min_w_0().truncate().child(label.subtitle))
+                    })
+                    .child(
+                        self.info_badge(label.detail)
+                            .flex_shrink()
+                            .min_w_0()
+                            .max_w(px(124.)),
+                    ),
             )
+    }
+    fn info_badge(&self, text: impl Into<SharedString>) -> Div {
+        div()
+            .px_1()
+            .rounded_sm()
+            .border_1()
+            .border_color(rgb(self.palette.line))
+            .text_color(rgb(self.palette.muted))
+            .text_size(px(10.))
+            .line_height(px(14.))
+            .truncate()
+            .child(text.into())
     }
     fn render_tree(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(tab) = self.active_tab() else {
@@ -1369,17 +1421,17 @@ impl Desktop {
             line = line.child(
                 div()
                     .absolute()
-                    .left(px(guide as f32 * 20. + 14.))
+                    .left(px(guide as f32 * 20. + 4.))
                     .top_0()
                     .bottom_0()
                     .w(px(1.))
                     .bg(rgb(p.line)),
             );
         }
-        line = if row.children.is_empty() {
-            line.child(div().w(px(28.)).flex_shrink_0())
+        let expand_button = if row.children.is_empty() {
+            None
         } else {
-            line.child(
+            Some(
                 self.button(
                     format!("expand-{expand}"),
                     if self.expanded.contains(&expand) {
@@ -1423,6 +1475,7 @@ impl Desktop {
                     }
                 },
             ))
+            .when_some(expand_button, |d, button| d.child(button))
             .child(
                 self.button(menu_id.clone(), "…", cx, move |s, _, _| {
                     s.toggle_menu(menu.clone())
@@ -1461,7 +1514,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Div {
         let mut menu = div()
-            .pl(px(depth as f32 * 20. + 28.))
+            .pl(px(depth as f32 * 20.))
             .flex()
             .flex_wrap()
             .text_xs();

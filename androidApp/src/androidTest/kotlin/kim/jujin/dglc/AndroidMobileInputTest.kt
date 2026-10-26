@@ -75,18 +75,18 @@ class AndroidMobileInputTest {
                 withTimeout(10000) { while (first.surface == null) delay(20) }
                 first.surface!!.write("MOBILE INPUT\r\n한글 😀 여러 줄 작성".encodeToByteArray())
                 stage = "toolbar preference"
-                click("패널 도구 접기"); awaitNode("패널 도구 펼치기")
+                clickToolbarAction("패널 도구 접기"); assertToolbarAction("패널 도구 펼치기")
                 assertFalse(app.local.value.preferences.mobilePaneToolbarVisible)
                 assertFalse(app.repository.read().preferences.mobilePaneToolbarVisible)
                 val restarted = createEngine(instrumentation.targetContext.applicationContext as android.app.Application)
                 try { assertFalse(restarted.local.value.preferences.mobilePaneToolbarVisible) } finally { restarted.close() }
                 scenario.onActivity { app.selected.value = second }
-                awaitNode("패널 도구 펼치기")
-                click("패널 도구 펼치기"); awaitNode("패널 도구 접기")
+                assertToolbarAction("패널 도구 펼치기")
+                clickToolbarAction("패널 도구 펼치기"); assertToolbarAction("패널 도구 접기")
                 scenario.onActivity { app.selected.value = first }
-                awaitNode("패널 도구 접기")
+                assertToolbarAction("패널 도구 접기")
                 scenario.recreate()
-                awaitNode("패널 도구 접기")
+                assertToolbarAction("패널 도구 접기")
                 scenario.onActivity { assertSame(app, (it.application as DglApplication).connections().app) }
                 stage = "fixed geometry"
                 delay(300)
@@ -310,6 +310,24 @@ class AndroidMobileInputTest {
             }
             delay(25)
         }
+    }
+    private suspend fun openConnectionMenu() {
+        withTimeout(5000) {
+            while (true) {
+                instrumentation.uiAutomation.clearCache()
+                val label = find(instrumentation.uiAutomation.rootInActiveWindow) {
+                    it.contentDescription?.toString()?.let { text -> text.startsWith("현재 호스트 ") && text.endsWith(" 연결 메뉴") } == true
+                }?.contentDescription?.toString()
+                if (label != null) { click(label); return@withTimeout }
+                delay(25)
+            }
+        }
+    }
+    private suspend fun clickToolbarAction(label: String) { openConnectionMenu(); click(label) }
+    private suspend fun assertToolbarAction(label: String) {
+        openConnectionMenu(); awaitNode(label)
+        instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        instrumentation.waitForIdleSync()
     }
     private suspend fun waitIme(scenario: ActivityScenario<MainActivity>, visible: Boolean) = withTimeout(5000) {
         while (true) {

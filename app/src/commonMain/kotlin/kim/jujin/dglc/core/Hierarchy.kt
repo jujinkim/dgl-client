@@ -1,21 +1,45 @@
 package kim.jujin.dglc.core
 
-data class TreeLabel(val title: String, val detail: String) {
-    val fullText: String get() = "$title\n$detail"
+data class TreeLabel(val title: String, val detail: String, val subtitle: String = "") {
+    val fullText: String get() = listOf(title, subtitle, detail).filter { it.isNotEmpty() }.joinToString("\n")
+}
+private val grapheme = Regex("\\X")
+/** A display limit, independent of UTF-16 length and terminal cell width. */
+fun compactTabTitle(value: String): String {
+    val text = displayTreeText(value)
+    val overflow = grapheme.findAll(text).drop(20).firstOrNull() ?: return text
+    return text.substring(0, overflow.range.first) + "…"
+}
+/** Keep names across recovery and view recreation; a different session clears the cache. */
+class SessionTitleCache {
+    private var sessionId: String? = null
+    private var sessionName: String? = null
+    private var fullTitle: String? = null
+    fun title(remote: RemoteState, session: String?, sessionOnly: Boolean = false): String {
+        if (session != null && session != sessionId) {
+            sessionId = session; sessionName = null; fullTitle = null
+        }
+        remote.sessions.firstOrNull { it.id == session }?.let {
+            sessionName = named(it.name, t("이름 없는 세션"))
+            fullTitle = remote.sessionTabTitle(it)
+        }
+        return (if (sessionOnly) sessionName else fullTitle) ?: session ?: t("연결 선택")
+    }
 }
 fun displayTreeText(value: String): String = value.map { c ->
     if (c.isISOControl() || c in '\u2028'..'\u202e' || c in '\u2066'..'\u2069') ' ' else c
 }.joinToString("").trim()
 private fun named(value: String, fallback: String) = displayTreeText(value).ifEmpty { fallback }
-private fun RemoteState.liveTitle(name: String, fallback: String, window: RemoteWindow?): String {
+private fun RemoteState.liveSubtitle(name: String, fallback: String, window: RemoteWindow?): String {
     val base = named(name, fallback)
     val title = window?.let { w -> panes.firstOrNull { it.window == w.id && it.active } }?.title?.let(::displayTreeText).orEmpty()
-    return if (title.isEmpty() || title == base) base else "$base · $title"
+    return title.takeUnless { it == base }.orEmpty()
 }
 fun RemoteState.sessionLabel(session: RemoteSession): TreeLabel {
     val children = windows.filter { it.session == session.id }
     val count = panes.count { p -> children.any { it.id == p.window } }
-    return TreeLabel(liveTitle(session.name, t("이름 없는 세션"), children.firstOrNull { it.active }), tr("창 {0}개 · 패널 {1}개", children.size, count))
+    return TreeLabel(named(session.name, t("이름 없는 세션")), tr("창 {0}개 · 패널 {1}개", children.size, count),
+        liveSubtitle(session.name, t("이름 없는 세션"), children.firstOrNull { it.active }))
 }
 fun RemoteState.sessionTabTitle(session: RemoteSession): String {
     val window = windows.firstOrNull { it.session == session.id && it.active }
@@ -23,8 +47,9 @@ fun RemoteState.sessionTabTitle(session: RemoteSession): String {
     return (listOf(named(session.name, t("이름 없는 세션"))) + listOfNotNull(window?.name, pane?.title).map(::displayTreeText))
         .filter { it.isNotEmpty() }.distinct().joinToString(" · ")
 }
-fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(liveTitle(window.name, t("이름 없는 창"), window),
-    tr("창 {0} · 패널 {1}개", window.index, panes.count { it.window == window.id }))
+fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(named(window.name, t("이름 없는 창")),
+    tr("창 {0} · 패널 {1}개", window.index, panes.count { it.window == window.id }),
+    liveSubtitle(window.name, t("이름 없는 창"), window))
 fun RemotePane.treeLabel(): TreeLabel {
     val command = named(command, t("프로세스 미확인"))
     val mode = displayTreeText(mode).let { if (it.isEmpty()) "" else " · $it" }
@@ -48,7 +73,9 @@ fun RemoteState.hierarchyRows(showAll: Boolean): List<HierarchyRow> = sessions.m
     if (!showAll && children.size == 1) {
         val w = children.single()
         HierarchyRow(TreeKind.Session, s.id, s.id, w.window, null,
-            sessionLabel(s).copy(detail = "${windows.single().index}: ${named(windows.single().name, t("이름 없는 창"))} · " + tr("패널 {0}개", panes.count { it.window == w.window })), emptyList())
+            sessionLabel(s).let { label -> label.copy(
+                subtitle = listOf("${windows.single().index}: ${named(windows.single().name, t("이름 없는 창"))}", label.subtitle.takeUnless { it == named(windows.single().name, t("이름 없는 창")) }.orEmpty()).filter { it.isNotEmpty() }.joinToString(" · "),
+                detail = tr("패널 {0}개", panes.count { it.window == w.window })) }, emptyList())
     } else HierarchyRow(TreeKind.Session, s.id, s.id, null, null, sessionLabel(s), children)
 }
 

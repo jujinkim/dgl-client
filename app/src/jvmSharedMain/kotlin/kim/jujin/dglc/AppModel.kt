@@ -35,6 +35,8 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     private val reservations = mutableMapOf<Pair<String, String>, ClientConnection>()
     private val sessionJobs = java.util.IdentityHashMap<ClientConnection, Job>()
     private val shortcutInputs = java.util.IdentityHashMap<ClientConnection, ShortcutInput>()
+    private val sessionTitles = java.util.IdentityHashMap<ClientConnection, SessionTitleCache>()
+    @Synchronized fun connectionTitles(client: ClientConnection) = sessionTitles.getOrPut(client) { SessionTitleCache() }
     @Synchronized fun shortcutInput(client: ClientConnection) = shortcutInputs.getOrPut(client) { ShortcutInput(client) }
     @Synchronized fun clearShortcutModifiers() { shortcutInputs.values.forEach { it.clear() } }
     @Synchronized fun blockInput(owner: Any, blocked: Boolean) {
@@ -45,6 +47,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     @Synchronized fun tabClient(id: String?) = tabClients[id]
     @Synchronized fun tabId(client: ClientConnection) = tabClients.entries.firstOrNull { it.value === client }?.key
     @Synchronized fun reconcileWorkspace() {
+        sessionTitles.keys.removeAll { client -> connections.value.none { it === client } }
         tabClients.filterValues { it !in connections.value }.keys.toList().forEach { id ->
             workspace.value = workspace.value.close(id); tabClients.remove(id)
         }
@@ -220,6 +223,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             if (selected.value == connection) selected.value = tabClient(workspace.value.activeTab)
             shortcutInputs.remove(connection)?.clear()
             terminalFonts.remove(connection)
+            sessionTitles.remove(connection)
             composers.remove(connection)
         }
         // Native state polling can call modify(); never close a native owner under this lock.
@@ -232,7 +236,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             agentScope.cancel()
             val owned = composers.values.toList() to connections.value
             composers.clear(); terminalFonts.clear(); shortcutInputs.clear(); connections.value = emptyList(); selected.value = null; visibleConnection = null; visibleConnections = emptySet()
-            tabClients.clear(); reservations.clear(); sessionJobs.clear(); inputBlocks.value = emptySet()
+            tabClients.clear(); reservations.clear(); sessionJobs.clear(); sessionTitles.clear(); inputBlocks.value = emptySet()
             chooseSyncFile = {}; sendAgentNotification = {}; foreground = false
             owned
         }

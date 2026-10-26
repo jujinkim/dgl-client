@@ -61,6 +61,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     var agentDetails by remember { mutableStateOf<Pair<ClientConnection, String?>?>(null) }
     var notifications by remember { mutableStateOf(false) }
     var switching by remember { mutableStateOf(false) }
+    var tmuxNavigationClient by remember { mutableStateOf<ClientConnection?>(null) }
     val agentNav by model.agentNavigation.collectAsState()
     val agentError by model.agentNavigationError.collectAsState()
     val agentNotices by model.agentNotifications.collectAsState()
@@ -70,7 +71,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     SideEffect { model.hostEditing = adding || edit != null || deletion != null }
     LaunchedEffect(agentNav) {
         if (agentNav > 0) {
-            explorer = false; switching = false; notifications = false; agentDetails = null
+            explorer = false; switching = false; notifications = false; agentDetails = null; tmuxNavigationClient = null
             settings = false; adding = false; edit = null; deletion = null; error = null
         }
     }
@@ -124,21 +125,27 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
             }
             Column(Modifier.fillMaxSize()) {
                 if (!workspaceMode) Row(Modifier.fillMaxWidth().padding(horizontal = if (mobileLayout) 4.dp else 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("dgl", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.width(if (mobileLayout) 4.dp else 8.dp))
+                    if (!mobileLayout || selected == null) {
+                        Text("dgl", style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.width(if (mobileLayout) 4.dp else 8.dp))
+                    }
                     if (mobileLayout) Box(Modifier.weight(1f)) {
                         TextButton({ switching = true }, enabled = connections.isNotEmpty(), modifier = Modifier.fillMaxWidth()
                             .semantics { contentDescription = t("서버 선택") }, contentPadding = PaddingValues(4.dp)) {
                             Column(Modifier.weight(1f)) {
-                                Text(selected?.let { workspaceTabTitle(it) } ?: t("연결 선택"), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                selected?.let { ConnectionTitle(it, sessionOnly = true) } ?: Text(t("연결 선택"))
                             }
                             Text(" ▾")
                         }
                         DropdownMenu(switching, { switching = false }) {
-                            connections.forEach { connection -> DropdownMenuItem(text = { Text(workspaceTabTitle(connection), maxLines = 2, overflow = TextOverflow.Ellipsis) }, onClick = { model.selectConnection(connection); explorer = false; switching = false }) }
+                            connections.forEach { connection -> DropdownMenuItem(text = { ConnectionTitle(connection) }, onClick = { model.selectConnection(connection); explorer = false; switching = false }) }
                         }
                     } else Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                    selected?.let { HostConnectionMenu(it, model) }
+                    selected?.let { client -> HostConnectionMenu(client, model, if (mobileLayout) listOf(
+                        t("tmux 관리") to { if (model.selected.value === client) { explorer = false; tmuxNavigationClient = client } },
+                        t(if (local.preferences.mobilePaneToolbarVisible) "패널 도구 접기" else "패널 도구 펼치기") to {
+                            model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
+                        }) else emptyList()) }
                     TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(if (explorer) t("터미널") else t("호스트")) }
                     TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
                     TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
@@ -195,7 +202,8 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
                                 if (workspaceMode) WorkspaceContent(model, local.preferences, { client, pane -> agentDetails = client to pane })
                                 else if (selected != null) key(selected) {
                                     val client = selected!!
-                                    ConnectionScreen(client, local.preferences, mobileLayout, model, { agentDetails = client to it }) {
+                                    ConnectionScreen(client, local.preferences, mobileLayout, model, { agentDetails = client to it },
+                                        openNavigation = tmuxNavigationClient === client, onNavigationOpened = { tmuxNavigationClient = null }) {
                                         model.selected.value === client && (wide || !explorer) &&
                                             !notifications && !switching && agentError == null && agentDetails == null && !settings && !adding && edit == null && deletion == null && error == null
                                     }
@@ -212,7 +220,13 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
                 }
                 if (workspaceMode) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     val status = selected?.status?.collectAsState()?.value
-                    Text(listOfNotNull(selected?.host?.alias, status?.message).joinToString(" · "), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                    selected?.let { InfoBadge(displayTreeText(it.host.alias), Modifier.widthIn(max = 120.dp)) }
+                    Spacer(Modifier.width(8.dp))
+                    Text(listOfNotNull(status?.phase?.displayLabel(), selected?.let { client ->
+                        val remote by client.remote.collectAsState(); val session by client.session.collectAsState(); val pane by client.pane.collectAsState()
+                        remote.targetLabel(session, pane)
+                    }, status?.message?.takeIf { status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) }).filter { it.isNotEmpty() }.distinct().joinToString(" · "),
+                        Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                     selected?.let { HostConnectionMenu(it, model) }
                     TextButton({ notifications = true }) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
                     TextButton({ settings = true }) { Text(t("설정")) }
@@ -239,7 +253,8 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, model: AppModel, showAgents: (String) -> Unit, workspace: Boolean = false, sharedFocus: TerminalFocus? = null, inputAllowed: () -> Boolean) {
+@Composable internal fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, model: AppModel, showAgents: (String) -> Unit, workspace: Boolean = false, sharedFocus: TerminalFocus? = null,
+    openNavigation: Boolean = false, onNavigationOpened: () -> Unit = {}, inputAllowed: () -> Boolean) {
     val status by client.status.collectAsState()
     val remote by client.remote.collectAsState()
     val refreshing by client.refreshing.collectAsState()
@@ -259,6 +274,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     val tmuxProblem by client.tmuxProblem.collectAsState()
     var tmuxDetails by remember(tmuxProblem) { mutableStateOf(false) }
     var navigation by remember { mutableStateOf(!mobileLayout && !workspace) }
+    LaunchedEffect(openNavigation) { if (openNavigation) { navigation = true; onNavigationOpened() } }
     val navigationSheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     LaunchedEffect(navigation, mobileLayout) {
         if (mobileLayout && navigation) {
@@ -327,17 +343,13 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
         }
     }
     Column(Modifier.fillMaxSize()) {
-        if (!workspace && mobileLayout) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("현재 세션: {0}", sessionLabel), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton({ navigation = !navigation }, contentPadding = PaddingValues(0.dp)) { Text(t("tmux 관리"), maxLines = 1) }
-            }
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text(statusLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
-            }
-            PaneToolbarToggle(preferences.mobilePaneToolbarVisible) {
-                model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
+        if (!workspace && mobileLayout) {
+            if (status.phase != Phase.Ready && !(status.phase == Phase.Restoring && !status.showsConnectionProgress)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(listOf(status.phase.displayLabel(), statusDetail).filter { it.isNotEmpty() }.distinct().joinToString(" · "),
+                        Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                    if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
+                }
             }
         } else if (!workspace) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -408,10 +420,11 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { TextButton({ client.notice.value = null }) { Text(t("닫기")) } }) }
 }
 
-@Composable private fun HostConnectionMenu(client: ClientConnection, model: AppModel) {
+@Composable private fun HostConnectionMenu(client: ClientConnection, model: AppModel, extraActions: List<Pair<String, () -> Unit>> = emptyList()) {
     val status by client.status.collectAsState()
     val hostId = client.host.id
     val actions = buildList<Pair<String, () -> Unit>> {
+        addAll(extraActions)
         if (!status.canRetryNow) add(t("재접속") to { model.reconnectSelected(client, hostId) })
         add(t("연결 종료") to { model.disconnectSelected(client, hostId) })
     }
@@ -472,28 +485,30 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     }
     Row(Modifier.fillMaxWidth().background(background).drawBehind {
         repeat(depth) { level ->
-            val x = (level * 20 + 24).dp.toPx()
+            val x = (level * 20 + 4).dp.toPx()
             drawLine(guideColor, androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height), 1.dp.toPx())
         }
     }.padding(start = (depth * 20).dp).semantics { selected = active }, verticalAlignment = Alignment.CenterVertically) {
-        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("{0} {1}", label.fullText, if (expanded) t("접기") else t("펼치기")) }) { Text(if (expanded) "▾" else "▸") }
-        else Spacer(Modifier.width(48.dp))
         Box(Modifier.weight(1f)) {
             TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
                 tooltip = { PlainTooltip { Text(label.fullText) } }, state = rememberTooltipState(), modifier = Modifier.fillMaxWidth()) {
                 TextButton(select, enabled = enabled, shape = RectangleShape, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .semantics { contentDescription = label.fullText }) {
                     Column(Modifier.fillMaxWidth().clearAndSetSemantics {}) {
-                        Text(label.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        Text(label.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             fontSize = if (depth < 2) 16.sp else 14.sp,
                             lineHeight = if (depth < 2) 22.sp else 19.sp,
                             fontWeight = if (depth < 2) FontWeight.Bold else FontWeight.Medium)
-                        Text(label.detail, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            fontSize = 12.sp, lineHeight = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (label.subtitle.isNotEmpty()) Text(label.subtitle, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                fontSize = 12.sp, lineHeight = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            InfoBadge(label.detail, Modifier.widthIn(max = 124.dp).then(if (label.subtitle.isEmpty()) Modifier else Modifier.weight(1f, fill = false)))
+                        }
                     }
                 }
             }
         }
+        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("{0} {1}", label.fullText, if (expanded) t("접기") else t("펼치기")) }) { Text(if (expanded) "▾" else "▸") }
         TreeMenu(tr("{0} 메뉴", label.fullText), actions, enabled)
         status()
     }

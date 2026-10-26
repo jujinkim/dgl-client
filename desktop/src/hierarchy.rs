@@ -4,15 +4,29 @@ use dgl_core::{
     model::{RemotePane, RemoteSession, RemoteState, RemoteWindow},
 };
 use dgl_core::{i18n::t, tr};
+use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Label {
     pub title: String,
+    pub subtitle: String,
     pub detail: String,
 }
 impl Label {
     pub fn full_text(&self) -> String {
-        format!("{}\n{}", self.title, self.detail)
+        [&self.title, &self.subtitle, &self.detail]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+pub fn tab_title(text: &str) -> String {
+    let text = display_text(text);
+    match text.grapheme_indices(true).nth(20) {
+        Some((end, _)) => format!("{}…", &text[..end]),
+        None => text,
     }
 }
 pub fn display_text(text: &str) -> String {
@@ -36,7 +50,7 @@ fn named(text: &str, fallback: &str) -> String {
         text
     }
 }
-fn live_title(
+fn live_subtitle(
     state: &RemoteState,
     name: &str,
     fallback: &str,
@@ -47,11 +61,7 @@ fn live_title(
         .and_then(|w| state.panes.iter().find(|p| p.window == w.id && p.active))
         .map(|p| display_text(&p.title))
         .unwrap_or_default();
-    if title.is_empty() || title == name {
-        name
-    } else {
-        format!("{name} · {title}")
-    }
+    if title == name { String::new() } else { title }
 }
 pub fn session_label(state: &RemoteState, session: &RemoteSession) -> Label {
     let windows: Vec<_> = state
@@ -65,7 +75,8 @@ pub fn session_label(state: &RemoteState, session: &RemoteSession) -> Label {
         .filter(|p| windows.iter().any(|w| w.id == p.window))
         .count();
     Label {
-        title: live_title(
+        title: named(&session.name, t("이름 없는 세션")),
+        subtitle: live_subtitle(
             state,
             &session.name,
             t("이름 없는 세션"),
@@ -98,7 +109,8 @@ pub fn session_tab_title(state: &RemoteState, session: &RemoteSession) -> String
 pub fn window_label(state: &RemoteState, window: &RemoteWindow) -> Label {
     let count = state.panes.iter().filter(|p| p.window == window.id).count();
     Label {
-        title: live_title(state, &window.name, t("이름 없는 창"), Some(window)),
+        title: named(&window.name, t("이름 없는 창")),
+        subtitle: live_subtitle(state, &window.name, t("이름 없는 창"), Some(window)),
         detail: tr!("창 {0} · 패널 {1}개", window.index, count),
     }
 }
@@ -107,6 +119,7 @@ pub fn pane_label(pane: &RemotePane) -> Label {
     let mode = display_text(&pane.mode);
     Label {
         title: named(&pane.title, &command),
+        subtitle: String::new(),
         detail: format!(
             "{command} · {}×{}{}",
             pane.width,
@@ -182,18 +195,28 @@ pub fn rows(state: &RemoteState, show_all: bool) -> Vec<Row> {
                 let window = row.children.remove(0);
                 row.window = window.window;
                 row.pane = None;
-                row.label.detail = format!(
-                    "{}: {} · {}",
-                    windows[0].index,
-                    named(&windows[0].name, t("이름 없는 창")),
-                    tr!(
-                        "패널 {0}개",
-                        state
-                            .panes
-                            .iter()
-                            .filter(|p| p.window == windows[0].id)
-                            .count()
-                    )
+                if row.label.subtitle == named(&windows[0].name, t("이름 없는 창")) {
+                    row.label.subtitle.clear();
+                }
+                row.label.subtitle = [
+                    format!(
+                        "{}: {}",
+                        windows[0].index,
+                        named(&windows[0].name, t("이름 없는 창")),
+                    ),
+                    row.label.subtitle,
+                ]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+                row.label.detail = tr!(
+                    "패널 {0}개",
+                    state
+                        .panes
+                        .iter()
+                        .filter(|p| p.window == windows[0].id)
+                        .count()
                 );
                 row.children = window.children;
             }
@@ -243,6 +266,20 @@ mod tests {
     use super::*;
     #[test]
     fn tab_titles_follow_active_window_and_pane_and_ignore_other_sessions() {
+        for glyph in ["a", "한", "e\u{301}", "한", "😀", "👩🏽‍💻", "🇰🇷"] {
+            for count in [19, 20, 21] {
+                let input = glyph.repeat(count);
+                assert_eq!(
+                    tab_title(&input),
+                    if count > 20 {
+                        format!("{}…", glyph.repeat(20))
+                    } else {
+                        input
+                    }
+                );
+            }
+        }
+        assert_eq!(tab_title("\n\u{202e}"), "");
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v2.json"))
                 .unwrap();
@@ -300,46 +337,36 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(
-            session_label(&state, &state.sessions[0]).title,
-            "개발 · 작업"
-        );
+        assert_eq!(session_label(&state, &state.sessions[0]).subtitle, "작업");
         state.panes[0].title = "Building 😀\u{202e}\n".into();
         assert_eq!(
-            session_label(&state, &state.sessions[0]).title,
-            "개발 · Building 😀"
+            session_label(&state, &state.sessions[0]).subtitle,
+            "Building 😀"
         );
         assert_eq!(
-            window_label(&state, &state.windows[0]).title,
-            "편집 · Building 😀"
+            window_label(&state, &state.windows[0]).subtitle,
+            "Building 😀"
         );
         state.panes[0].active = false;
         state.panes[1].active = true;
         state.panes[1].title = "Review".into();
-        assert_eq!(
-            session_label(&state, &state.sessions[0]).title,
-            "개발 · Review"
-        );
+        assert_eq!(session_label(&state, &state.sessions[0]).subtitle, "Review");
         state.windows[0].active = false;
         state.windows[1].active = true;
         state.panes[2].title = "Tests".into();
-        assert_eq!(
-            session_label(&state, &state.sessions[0]).title,
-            "개발 · Tests"
-        );
-        assert_eq!(
-            window_label(&state, &state.windows[0]).title,
-            "편집 · Review"
-        );
+        assert_eq!(session_label(&state, &state.sessions[0]).subtitle, "Tests");
+        assert_eq!(window_label(&state, &state.windows[0]).subtitle, "Review");
         state.panes[4].title = "Other session".into();
         assert_eq!(
-            session_label(&state, &state.sessions[1]).title,
-            "개발 · Other session"
+            session_label(&state, &state.sessions[1]).subtitle,
+            "Other session"
         );
         state.panes[2].title.clear();
-        assert_eq!(session_label(&state, &state.sessions[0]).title, "개발");
+        assert_eq!(session_label(&state, &state.sessions[0]).subtitle, "");
         state.panes[2].title = "개발".into();
+        assert_eq!(session_label(&state, &state.sessions[0]).subtitle, "");
         assert_eq!(session_label(&state, &state.sessions[0]).title, "개발");
+        assert_eq!(window_label(&state, &state.windows[0]).title, "편집");
         assert_eq!(state.sessions[0].name, "개발");
         assert_eq!(state.windows[0].name, "편집");
         assert_eq!(
@@ -364,6 +391,7 @@ mod tests {
                     r.key,
                     depth,
                     r.label.title,
+                    r.label.subtitle,
                     r.label.detail,
                     r.window,
                     r.pane,
