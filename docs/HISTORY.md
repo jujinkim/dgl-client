@@ -135,6 +135,14 @@ iOS/Swift/Xcode 타깃은 저장소에 없었으며 Windows/macOS·물리 Androi
 API36 작업 공간/입력/볼륨키/계층 선택 8개와 실제 Rust 연결 수명 1개를 통과했습니다.
 화면·IME 설정은 원복했으며 전체 API 계측·Windows/macOS GUI·물리 Android 인수로 확대하지 않았습니다.
 
+## 2026-10-26: Android 복귀 응답 확인·제한 재시도
+
+별도 SSH exec의 3초 응답 검사, 중복 검사 병합·검사 중 오래된 입력 취소,
+공통 네트워크 재시도 3회·1초 간격과 Android의 이전 창 보관·복구 표시를 도입했습니다.
+당시 Rust 코어/UniFFI 31·데스크톱 60·JVM 67·Python 98·웹 13 통과,
+격리 SSH/tmux 3.7c 복귀 검사와 API36 선택 2개·Android Debug/계측 APK/lint를 확인했습니다.
+정상 확인도 전체 캡처·dim을 수행하던 동작은 후속 변경으로 분리했습니다. 상세는 Git 이력에서 찾습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

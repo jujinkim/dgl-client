@@ -45,16 +45,20 @@ class RustClientConnection(
     @Volatile private var native: NativeConnection? = null
     private var stateJob: Job? = null
     private var outputJob: Job? = null
+    private var outputFailed = false
     private var subscription: ULong? = null
     @Volatile private var surface: TerminalSurface? = null
     @Volatile private var epoch = 0L
     @Volatile private var adapterGeneration = 0L
     private var nativeGeneration: Long? = null
+    private var appliedSequence = -1L
     override val generation: Long get() = adapterGeneration
     private var lastSession = host.lastSession
     private var lastPane = host.lastPane
     private val resizes = TerminalResizeQueue()
     private val recovery = TerminalRecovery()
+    private val backgroundResume = BackgroundResume()
+    private var userStopped = false
     private val inputRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<ULong>()
     private val inputCompletions = mutableMapOf<ULong, CompletableDeferred<InputCompletion>>()
     private val resumeRequests = mutableSetOf<ULong>()
@@ -64,12 +68,17 @@ class RustClientConnection(
 
     @Synchronized override fun connect() {
         if (closed) return
+        val restoring = (native != null && status.value.phase != Phase.TrustRequired) || recovery.pending ||
+            (surface != null && session.value != null)
+        backgroundResume.cancel(); userStopped = false
         detach()
+        if (restoring) recovery.begin()
+        outputFailed = false
         notice.value = null
         inputRequests.clear()
         val current = ++epoch
         ++adapterGeneration; nativeGeneration = null
-        status.value = ConnectionStatus(Phase.Connecting, t("SSH 연결 중…"))
+        status.value = ConnectionStatus(Phase.Connecting, t("SSH 연결 중…"), recovering = recovery.pending)
         stateJob = scope.launch {
             try {
                 val credential = credentials.read(host.credentialRef) ?: error("Storage")
@@ -118,6 +127,11 @@ class RustClientConnection(
         }
     }
     private fun applyState(s: JsonObject) {
+        val sequence = s.getValue("sequence").jsonPrimitive.long
+        // State and output pollers can finish out of order. Equal sequences still
+        // need to re-evaluate render acknowledgements, older ones must not restart recovery.
+        if (sequence < appliedSequence) return
+        appliedSequence = sequence
         s["generation"]?.jsonObject?.get("connection")?.jsonPrimitive?.longOrNull?.let { next ->
             val previous = nativeGeneration
             if (previous != null && previous > 0 && previous != next) ++adapterGeneration
@@ -135,9 +149,10 @@ class RustClientConnection(
         val checking = s["checking"]?.jsonPrimitive?.boolean == true
         val connecting = retry?.get("connecting")?.jsonPrimitive?.boolean == true
         val resizing = s["resizing"]?.jsonPrimitive?.boolean == true
-        val targets = s["render_targets"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+        val targets = if (phase == Phase.Shell) native?.targetJson()?.let { mapOf("shell" to it) } ?: emptyMap()
+            else s["render_targets"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
         val recovering = recovery.update(checking, phase, connecting, targets)
-        val canStopRetrying = checking || phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting) ||
+        val canStopRetrying = phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting) ||
             (phase == Phase.Restoring && retry?.get("connecting")?.jsonPrimitive?.boolean == true)
         val canRetryNow = canStopRetrying || (phase == Phase.Failed && (error == "Network" || stopped))
         val retryMessage = when {
@@ -198,10 +213,11 @@ class RustClientConnection(
             try {
                 terminal.cancelSnapshot()
                 while (isActive && current == epoch) {
-                    val cycle = synchronized(this@RustClientConnection) { recovery.cycle }
                     val state = json.parseToJsonElement(c.stateJson()).jsonObject
+                    synchronized(this@RustClientConnection) {
+                        if (current == epoch && subscription == id) applyState(state)
+                    }
                     val preserve = synchronized(this@RustClientConnection) { recovery.pending } ||
-                        state["checking"]?.jsonPrimitive?.boolean == true ||
                         state["phase"]?.jsonPrimitive?.content == "Reconnecting" ||
                         (state["phase"]?.jsonPrimitive?.content == "Restoring" &&
                             state["retry"]?.jsonObject?.get("connecting")?.jsonPrimitive?.boolean == true)
@@ -210,6 +226,7 @@ class RustClientConnection(
                         terminal.connectionRecovery(preserve)
                         preserving = preserve
                     }
+                    val cycle = synchronized(this@RustClientConnection) { recovery.cycle }
                     val sequence = state.getValue("sequence").toString()
                     if (sequence != layoutSequence) {
                         layoutSequence = sequence
@@ -228,7 +245,6 @@ class RustClientConnection(
                     if (event == null) {
                         synchronized(this@RustClientConnection) {
                             if (current == epoch && subscription == id && state["checking"]?.jsonPrimitive?.boolean != true) {
-                                recovery.rendered(id.toLong(), cycle)
                                 applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
                             }
                         }
@@ -239,8 +255,22 @@ class RustClientConnection(
                         terminal.outputPane(target, event.targetJson)
                         when (event.kind) {
                             "Resize" -> {
-                                if (displayed[target] != null && displayed[target] != event.targetJson) terminal.beginSnapshot()
+                                val shellRecovery = target == "shell" && synchronized(this@RustClientConnection) { recovery.pending }
+                                if (shellRecovery || (displayed[target] != null && displayed[target] != event.targetJson)) terminal.beginSnapshot()
+                                // A shell resize can supersede its initial Reset events before
+                                // the renderer polls them. Render an empty new shell at the
+                                // current generation rather than waiting for a discarded ResetEnd.
+                                if (shellRecovery && displayed[target] == null) terminal.reset(byteArrayOf(27, 99))
                                 terminal.resizeRemote(Size(event.columns.toInt(), event.rows.toInt()))
+                                if (shellRecovery) {
+                                    terminal.endSnapshot(); displayed[target] = event.targetJson
+                                    synchronized(this@RustClientConnection) {
+                                        if (current == epoch && subscription == id && c.acceptsOutput(event.targetJson)) {
+                                            recovery.rendered(id.toLong(), cycle, target, event.targetJson)
+                                            applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                                        }
+                                    }
+                                }
                             }
                             "ResetBegin" -> {
                                 if (displayed[target] != null || synchronized(this@RustClientConnection) { recovery.pending }) terminal.beginSnapshot()
@@ -262,19 +292,23 @@ class RustClientConnection(
                     c.acknowledge(id, event.sequence)
                     synchronized(this@RustClientConnection) {
                         if (current == epoch && subscription == id && state["checking"]?.jsonPrimitive?.boolean != true) {
-                            recovery.rendered(id.toLong(), cycle)
                             applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
                         }
                     }
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { synchronized(this@RustClientConnection) {
-                if (current == epoch && subscription == id && surface === terminal) {
-                    recovery.begin(); recovery.unbind()
-                    status.value = status.value.copy(recovering = true)
-                    notice.value = t("터미널 출력 구독이 종료되었습니다. 재연결하세요.")
+            catch (_: Exception) {
+                val failed = synchronized(this@RustClientConnection) {
+                    if (current == epoch && subscription == id && surface === terminal) {
+                        recovery.begin(); recovery.unbind()
+                        outputFailed = true
+                        status.value = status.value.copy(recovering = true)
+                        notice.value = t("터미널 출력 구독이 종료되었습니다. 재연결하세요.")
+                        true
+                    } else false
                 }
-            } }
+                if (failed) { terminal.connectionRecovery(true); preserving = true }
+            }
             finally {
                 withContext(NonCancellable) {
                     if (surface !== terminal || (current == epoch && subscription == id)) {
@@ -303,13 +337,45 @@ class RustClientConnection(
         } catch (_: Exception) { notice.value = t("호스트키를 보호 저장소에 저장하지 못했습니다. 연결을 중단했습니다."); disconnect() }
     }
     private fun action(value: JsonObject) { try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") } }
-    override fun retryNow() = action(buildJsonObject { put("action", "retryNow") })
-    override fun stopRetrying() = action(buildJsonObject { put("action", "stopRetrying") })
+    @Synchronized override fun retryNow() {
+        backgroundResume.cancel(); userStopped = false
+        action(buildJsonObject { put("action", "retryNow") })
+    }
+    @Synchronized override fun stopRetrying() {
+        backgroundResume.cancel(); userStopped = true
+        action(buildJsonObject { put("action", "stopRetrying") })
+    }
+    @Synchronized override fun suspendForBackground() {
+        if (closed || backgroundResume.pending) return
+        // Read the current native phase so an unpolled auth/host-key failure cannot
+        // be turned into a fresh automatic connection by backgrounding the app.
+        val state = native?.let { json.parseToJsonElement(it.stateJson()).jsonObject }
+        if (state != null) applyState(state)
+        if (status.value.phase in setOf(Phase.Disconnected, Phase.Failed)) return
+        val stopped = userStopped || state?.get("retry")?.jsonObject?.get("stopped")?.jsonPrimitive?.boolean == true
+        backgroundResume.suspend(status.value.phase, stopped, session.value ?: lastSession, pane.value ?: lastPane)
+        agents.value = AgentSnapshot(); ++epoch; ++adapterGeneration
+        detach()
+        status.value = ConnectionStatus()
+    }
     @Synchronized override fun onResume() {
-        val c = native ?: return
         if (closed) return
-        if (surface != null && outputJob?.isActive != true) bindOutput()
+        backgroundResume.take()?.let {
+            lastSession = it.session; lastPane = it.pane
+            connect()
+            recovery.begin()
+            status.value = status.value.copy(recovering = true)
+            return
+        }
+        val c = native ?: return
+        if (userStopped) return
         try {
+            applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+            // A renderer failure must not bypass a native auth/trust/user stop.
+            if (outputFailed && status.value.phase in setOf(Phase.Ready, Phase.Shell, Phase.Selecting, Phase.Restoring)) {
+                connect(); return
+            }
+            if (surface != null && outputJob?.isActive != true) bindOutput()
             resumeRequests.add(c.submitAction(buildJsonObject { put("action", "checkConnection") }.toString()))
             applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
         } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") }
@@ -405,6 +471,7 @@ class RustClientConnection(
         failInputs()
         resumeRequests.clear()
         resizes.reset()
+        appliedSequence = -1L
         recovery.reset()
         refreshRequest = null; refreshing.value = false
         cleanup.removeAll { it.isCompleted }
@@ -412,7 +479,7 @@ class RustClientConnection(
         val id = subscription; subscription = null
         state?.cancel(); output?.cancel(); if (old != null) { id?.let(old::unsubscribe); old.stop(); cleanup += scope.launch(NonCancellable) { state?.join(); output?.join(); try { old.shutdown() } finally { old.close() } } }
     }
-    @Synchronized override fun disconnect() { agents.value = AgentSnapshot(); ++epoch; ++adapterGeneration; detach(); status.value = ConnectionStatus() }
+    @Synchronized override fun disconnect() { backgroundResume.cancel(); agents.value = AgentSnapshot(); ++epoch; ++adapterGeneration; detach(); status.value = ConnectionStatus() }
     @Synchronized override fun close() { if (closed) return; closed = true; disconnect(); surface = null; val pending = cleanup.toList(); scope.launch { pending.forEach { it.join() }; scope.cancel() } }
 
     private fun message(code: String) = when (code) {

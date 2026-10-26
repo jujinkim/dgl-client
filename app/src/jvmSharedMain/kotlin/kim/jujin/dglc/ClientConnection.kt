@@ -22,6 +22,8 @@ interface ClientConnection {
     fun connect()
     /** Activity resume only; implementations coalesce checks and retain explicit user stops. */
     fun onResume() {}
+    /** Background policy stop only; a later resume may reconnect this same tab once. */
+    fun suspendForBackground() = disconnect()
     fun retryNow() = connect()
     fun stopRetrying() = disconnect()
     fun trust()

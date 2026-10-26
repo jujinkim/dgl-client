@@ -66,11 +66,10 @@ data class ConnectionStatus(
 ) {
     val acceptsInput get() = !checking && !recovering && (phase == Phase.Ready || phase == Phase.Shell)
     val recoveryMessage get() = when {
-        checking -> t("연결 확인 중…")
         recovering -> if (phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired)) message else t("연결 복구 중…")
         else -> null
     }
-    val showsConnectionProgress get() = checking || phase == Phase.Connecting || phase == Phase.Authenticating ||
+    val showsConnectionProgress get() = phase == Phase.Connecting || phase == Phase.Authenticating ||
         phase == Phase.Reconnecting || (phase == Phase.Restoring && canStopRetrying)
 }
 object RetryPolicy {

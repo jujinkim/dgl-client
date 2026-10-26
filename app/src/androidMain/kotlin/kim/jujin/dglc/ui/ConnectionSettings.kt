@@ -36,7 +36,8 @@ import kim.jujin.dglc.core.t
         Text(t("백그라운드에서 연결 유지"), Modifier.weight(1f))
         AccentSwitch(local.preferences.keepConnectionsInBackground, onCheckedChange = null)
     }
-    Text(t("홈 이동·화면 잠금 중에도 연결을 유지합니다. 최근 앱에서 닫으면 모든 연결을 종료하며 원격 tmux 작업은 유지합니다."), style = MaterialTheme.typography.bodySmall)
+    Text(t("켜면 홈 이동·화면 잠금 중에도 연결을 유지하며 배터리를 더 사용할 수 있습니다. 끄면 백그라운드에서 연결을 끊고 복귀 시 이전 tmux 세션에 자동 재연결합니다."), style = MaterialTheme.typography.bodySmall)
+    Text(t("최근 앱에서 닫으면 모든 연결을 종료하며 원격 tmux 작업은 유지합니다. 일반 SSH는 재연결 시 새 셸을 엽니다."), style = MaterialTheme.typography.bodySmall)
     Text(t(if (unrestricted) "배터리 최적화 제외됨" else "배터리 최적화 적용 중 · 기기 설정에 따라 연결이 제한될 수 있습니다."), style = MaterialTheme.typography.bodySmall)
     TextButton({
         val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)

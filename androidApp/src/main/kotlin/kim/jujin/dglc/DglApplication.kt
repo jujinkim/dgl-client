@@ -38,7 +38,7 @@ class AndroidConnectionRuntime(private val application: DglApplication) {
             app.backgroundConnectionError.value = null
         },
         wake = { wanted -> wakeWanted = wanted; service?.setAwake(wanted) },
-        disconnect = app::disconnectAll,
+        suspendForBackground = { app.connections.value.forEach { it.suspendForBackground() } },
         dispose = { app.close(); scope.cancel() },
     )
     init {

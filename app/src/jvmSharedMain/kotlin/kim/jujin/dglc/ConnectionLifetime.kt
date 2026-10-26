@@ -7,7 +7,7 @@ class ConnectionLifetime(
     private val startService: () -> Boolean,
     private val stopService: () -> Unit,
     private val wake: (Boolean) -> Unit,
-    private val disconnect: () -> Unit,
+    private val suspendForBackground: () -> Unit,
     private val dispose: () -> Unit,
 ) {
     var serviceRequested = false; private set
@@ -26,7 +26,7 @@ class ConnectionLifetime(
         }
         wake(wanted && available && !visible && phases.any { it !in setOf(Phase.Disconnected, Phase.Failed, Phase.TrustRequired) })
         if (visible || keep || !active) backgroundDisconnected = false
-        else if (!backgroundDisconnected) { backgroundDisconnected = true; disconnect() }
+        else if (!backgroundDisconnected) { backgroundDisconnected = true; suspendForBackground() }
     }
 
     /** A rejected start must not reconnect SSH or spin on every status update. */

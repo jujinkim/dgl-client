@@ -6,31 +6,22 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-Android 복귀 시 연결 응답 확인·터미널 복원과 Android/데스크톱 공통 3회·1초 재시도 정책,
-후속 플랫 앱 아이콘 변경 검사입니다.
-이전 작업 공간·연결 수명 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+Android의 정상 복귀 확인과 실제 복구 표시를 분리하고, 백그라운드 유지 설정을 끈 연결의
+일회성 자동 재연결을 검사했습니다. 이전 복귀·아이콘 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust 전체 | 코어/UniFFI 31·데스크톱 60, 총 91 통과. 외부 SSH 6·Keychain 1은 기본 ignore이며 통과로 계산하지 않음 |
-| Rust 복구 | 가상 시계로 999ms 동안 재시도 없음/정확히 1초마다 최대 3회·소진 후 복귀 재시작·성공 후 예산 초기화·사용자 정지 보존·중복 검사 병합·별도 제어 슬롯·검사 중 입력 차단/종료 확인 |
-| 격리 SSH/tmux 3.7c | 새 복귀 검사 1개 통과. 정상 복귀에서 SSH/tmux client 유지·별도 exec 확인·출력 큐 포화와 열린 소켓 무응답 중 3초 판정·동일 pane PID/화면/입력 복구·오래된 구독/대상/검사 결과와 입력 재전송 거부 |
-| 일반 SSH | 로컬 russh 서버의 비밀번호/일반 shell 검사 통과. 응답 확인 뒤 연결·pane 세대 유지와 입력 재개 포함 |
-| JVM | 67 통과·외부 SSH/Windows 예상 skip 9개. 새 3개는 중복 복귀·현재 구독/모든 pane 스냅샷 완료·이전 구독/주기 거부·shell·실패 dim 유지·resize 단독 제외를 검사. 명시적 결과 검증기 갱신 |
-| Python·JavaScript | Python 98·터미널 JavaScript 13 통과. 격리 실행기의 Cargo `--` 구분자 전달도 실제 SSH 명령으로 확인 |
-| Android 빌드 | Debug·계측 APK·lint 통과. 기존 검토 진단 12개 일치. 네 ABI Rust payload·Debug 서명 확인과 전달용 APK 수집 |
-| 앱 아이콘 | 배경 포함 차콜·아이보리·라임 3색 단색 면과 경계 안티앨리어싱. 128·48·32·16px 및 Android 원형·둥근 사각형·단색 미리보기 확인. 공통 도형에서 원본·파생 파일 재생성 후 `--check` 일치 |
-| 아이콘 패키징 | 새 아이콘으로 Android Debug·lint 재통과, 검토 진단 12개 일치·서명 및 전달 APK 수집. APK 내 전경 5밀도의 픽셀이 새 원본 리소스와 일치하고 adaptive 안전 원 안에 배치됨. macOS 패키징·로컬 ad-hoc 서명/검증과 번들 ICNS 복사·plist 연결 확인. `iconutil`로 ICNS 10항목, Pillow로 ICO 7크기 디코딩 확인. Python 98개·대시보드 등록 검증 통과 |
-| API36 선택 계측 | `AndroidConnectionLifetimeTest`와 `AndroidPlatformTest`의 창 렌더러 선택, 총 2개 통과. IME·홈 복귀/응답 확인·화면 준비 후 dim 해제 상태·Activity 재생성·알림 Intent·task 제거와 원격 PID 보존·새 실행 시 빈 연결 목록·실제 HOME 런처에서 시작한 루트 뒤로가기/복귀 확인. 기존 45% dim 아래 창 전체 보관·원래 pane 삭제/부분 복원/스냅샷 취소 중 기존 화면 유지·표시 완료 뒤 보관 해제 확인 |
-| 무결성·문서 | 한국어/영어·생성 번역/자리표시자, 요구사항 SHA-256·Wrapper·diff 공백·로컬 대시보드 등록 검증. JSON Git 제외 유지 |
+| Rust 코어/UniFFI | 31 통과. 외부 SSH 6개는 기본 ignore이며 통과로 계산하지 않음. 일반 SSH 비밀번호·shell·응답 확인 검사 포함 |
+| 격리 SSH/tmux 3.7c | 복귀/무응답 검사 1개 통과. 정상 확인 시 SSH/tmux client·입력/렌더링 대상 세대 유지와 Reset 없음, 명시적 snapshot 유지. 출력 큐 포화·열린 소켓 무응답의 3초 판정, 동일 pane PID/화면 복구와 실패 입력 무재전송 확인 |
+| JVM | 69 통과·외부 SSH/Windows 예상 skip 9개. 정상 확인의 화면/입력 분리, 현재 구독·주기·세대의 모든 pane 표시 완료, 오래된 구독/주기 거부, shell 표시 조건·실패 dim 유지·resize 단독 제외. 자동 복귀 예약의 일회성 소비·수동 취소·실패/삭제 세션 제외 포함. 명시적 결과 검증기 일치 |
+| Python·JavaScript | Python 98·터미널 JavaScript 13 통과 |
+| Android 빌드 | Debug·계측 APK·lint 통과. 기존 검토 진단 12개 일치. 원본 Debug APK 네 ABI Rust payload·개발용 서명 확인; APK 복사본 생성 없음 |
+| API36 연결 수명 | 전용 `Dgl_API36` 한 대에서 `AndroidConnectionLifetimeTest` 1개 통과(39초). IME·정상 복귀의 복구 표시/버튼 없음·SSH/tmux client 유지·Activity 재생성·알림 Intent·유지 끔의 연결/서비스 종료와 같은 탭/세션/pane/PID 복귀·중복 복귀의 단일 client·수동 종료/재시도 정지/task 제거의 예약 취소·최근 앱 제거 후 빈 연결 목록·루트 뒤로가기·삭제 세션/인증 실패 보존 확인 |
+| 무결성·문서 | 한국어/영어·생성 번역/자리표시자, 요구사항 SHA-256·Wrapper·변경 Rust 서식·diff 공백·문서 링크·로컬 대시보드 등록 검증. JSON Git 제외 유지 |
 
-데스크톱 첫 전체 실행의 런처 메뉴 검사는 가짜 연결의 재시도 세대가 클릭 중 바뀌어 실패했습니다.
-해당 레이아웃 fixture를 종료된 연결로 고정한 뒤 전체 60개가 통과했습니다.
-API36 초기 뒤로가기 검사는 instrumentation 시작을 HOME 시작으로 취급해 실패했습니다.
-[Android 16의 기본 루트 뒤로가기](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/services/core/java/com/android/server/wm/ActivityClientController.java)는 HOME 실행 출처를 검사하므로 실제 런처 아이콘에서 시작하도록 검사를 고쳤습니다.
-제품의 뒤로가기 처리는 재정의하지 않았습니다.
-
-API36은 전용 `Dgl_API36` 한 대만 사용했으며 IME·글꼴 설정과 fixture를 실행기의 `finally`에서 원복했습니다.
+계측의 IME·글꼴 설정과 SSH fixture를 실행기의 `finally`에서 원복했습니다.
+Android 일반 SSH의 새 셸 복귀·실제 출력 구독 실패 주입은 이번 기기 계측에 포함하지 않았습니다.
+일반 SSH 엔진과 표시 완료 조건은 Rust/JVM 단위 검사 범위입니다.
 실제 손가락 최근 앱 swipe·화면 잠금/기기 절전·물리 네트워크 전환, 전체 API matrix·장시간 반복 계측,
 Windows 네이티브 빌드·DPAPI·GUI와 macOS GUI는 수행하지 않았습니다.
 

@@ -58,8 +58,15 @@ Android의 `DglApplication`이 `AppModel`/Rust 연결을 소유하고 Activity�
 설정 중단·연결 종료·재시도 소진·서비스 파괴·최근 앱 제거 시 wake lock과 갱신 작업을 해제합니다.
 `MainActivity.onResume`은 런타임의 각 연결에 `checkConnection`을 전달합니다. 중복 검사는 합치고 접속 중에는 중복 시작하지 않습니다.
 포커스·IME 변경은 검사 계기가 아닙니다. 별도 exec 채널의 `:` 응답을 3초 제한으로 검사하며,
-터미널 명령·출력 역압력과 독립적으로 실패를 판정합니다. 정상 응답 후 actor가 목록·대상·snapshot을 갱신합니다.
-Rust `checking`과 Android의 구독/세대별 표시 완료 조건으로 입력·45% dim 해제를 제어합니다.
+터미널 명령·출력 역압력과 독립적으로 실패를 판정합니다. 정상 응답 후 actor는 목록·대상을 확인하고
+변경·일시정지된 pane만 캡처합니다. 새 WebView 구독·실제 재접속에는 전체 캡처를 유지합니다.
+Rust `checking`은 입력 차단·오래된 입력 취소에만 사용하며 정상 확인에는 복구 표시를 시작하지 않습니다.
+실제 재접속·출력 구독 실패에는 이전 화면·45% dim을 유지하고, 현재 구독/복구 주기/세대의 모든 pane이
+렌더링 완료를 알려야 입력과 dim을 해제합니다. 일반 SSH도 새 셸의 초기 렌더링을 기다립니다.
+유지 설정을 끄면 `ConnectionLifetime`이 각 어댑터의 `suspendForBackground()`를 호출합니다.
+`BackgroundResume`은 자동 중지한 연결의 직전 세션·pane을 메모리에만 보관하고 `onResume()`에서 한 번 소비합니다.
+사용자 종료·탭 닫기·재시도 정지·task 제거는 예약을 취소하며 인증/호스트키 실패·삭제된 세션은 예약하지 않습니다.
+백그라운드 자동 중지는 서비스·wake lock을 해제하며 프로세스 재실행으로 예약을 복원하지 않습니다.
 Android·데스크톱 재시도는 네트워크 오류에 최대 3회, 각 시도 전 1초 대기입니다. 최초·수동 접속은 즉시 시작합니다.
 Android 복귀 시 네트워크 소진은 새 주기를 시작하지만 사용자 정지는 유지합니다.
 루트 뒤로가기는 [Android 기본 백그라운드 전환](https://developer.android.com/guide/components/activities/tasks-and-back-stack#back-press-behavior)을 사용합니다.

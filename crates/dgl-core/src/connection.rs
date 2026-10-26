@@ -1587,8 +1587,9 @@ async fn connected(
                         return Err(Error::Cancelled);
                     }
                     if let Some(c) = control.as_mut() {
-                        c.refresh().await?;
-                        c.snapshot(false).await?;
+                        // A healthy resume keeps the existing renderer and stream.
+                        // Only changed/paused panes need a fresh capture.
+                        c.refresh_screen_if_needed(false).await?;
                     } else if tmux {
                         let remote = list(ssh).await?;
                         shared.update(|s| s.remote = remote);

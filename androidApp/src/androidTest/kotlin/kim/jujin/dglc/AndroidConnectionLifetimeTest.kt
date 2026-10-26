@@ -14,6 +14,7 @@ import androidx.test.runner.lifecycle.Stage
 import kim.jujin.dglc.core.*
 import kim.jujin.dglc.ssh.SshjTransport
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -66,6 +67,7 @@ class AndroidConnectionLifetimeTest {
                 suspend fun restored() {
                     withTimeout(10_000) { client.status.first { it.phase == Phase.Ready && it.acceptsInput && it.recoveryMessage == null } }
                 }
+                restored()
                 stage = "IME"
                 for (show in listOf(true, false)) {
                     scenario.onActivity { activity ->
@@ -84,7 +86,7 @@ class AndroidConnectionLifetimeTest {
                         }
                     }
                     delay(500)
-                    withTimeout(10_000) { client.status.first { it.phase == Phase.Ready } }
+                    restored()
                     assertEquals(target, client.captureInputTarget())
                 }
                 stage = "root back and home resume"
@@ -99,6 +101,8 @@ class AndroidConnectionLifetimeTest {
                     waitUntil { scenario.state !in setOf(Lifecycle.State.RESUMED, Lifecycle.State.STARTED) }
                     assertEquals("$key must background the root Activity", Lifecycle.State.CREATED, scenario.state)
                     assertSame(app, (context.applicationContext as DglApplication).currentConnections()!!.app)
+                    val resumeStates = mutableListOf<ConnectionStatus>()
+                    val observing = launch(Dispatchers.Unconfined) { client.status.collect { resumeStates += it } }
                     val checked = async(Dispatchers.Unconfined) { withTimeout(10_000) { client.status.first { it.checking } } }
                     shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n kim.jujin.dglc/.MainActivity")
                     stage = "$key foreground"
@@ -106,6 +110,10 @@ class AndroidConnectionLifetimeTest {
                     stage = "$key restoration"
                     checked.await()
                     restored()
+                    observing.cancelAndJoin()
+                    assertTrue("A healthy return keeps the screen without recovery controls: $resumeStates", resumeStates.none {
+                        it.recovering || it.recoveryMessage != null || it.showsConnectionProgress || it.canRetryNow || it.canStopRetrying
+                    })
                     scenario.onActivity { assertSame(warmActivity, it) }
                     assertEquals(target, client.captureInputTarget())
                     assertEquals(sshClients, admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString())
@@ -130,6 +138,51 @@ class AndroidConnectionLifetimeTest {
                 instrumentation.runOnMainSync { activity.intent = launchIntent }
                 assertEquals(before, client.captureInputTarget())
                 assertEquals(sshClients, admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString())
+                stage = "background with maintenance disabled"
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(keepConnectionsInBackground = false)) } }
+                waitUntil { notification() == null }
+                scenario.moveToState(Lifecycle.State.CREATED)
+                withTimeout(10_000) { client.status.first { it.phase == Phase.Disconnected } }
+                assertTrue("The same tab stays open", app.connections.value.any { it === client })
+                waitUntil { admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString().isBlank() }
+                assertNotNull(client.sendInput(target, "must-not-replay".encodeToByteArray()).error)
+                scenario.onActivity { client.suspendForBackground() }
+                scenario.moveToState(Lifecycle.State.RESUMED)
+                scenario.onActivity { client.onResume(); client.onResume() }
+                restored()
+                val resumedTarget = client.captureInputTarget()!!
+                assertNotEquals(target.epoch, resumedTarget.epoch)
+                assertEquals(session, client.session.value)
+                assertEquals(pane, client.pane.value)
+                assertEquals(pid, admin.execute("tmux display-message -p -t '$pane' '#{pane_pid}'").decodeToString())
+                val resumedClients = admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString()
+                assertEquals("duplicate resumes must open only one tmux client", 1, resumedClients.trim().lines().size)
+                assertNotEquals(sshClients, resumedClients)
+                assertNull(notification())
+                stage = "manual stop cancels background resume"
+                scenario.moveToState(Lifecycle.State.CREATED)
+                withTimeout(10_000) { client.status.first { it.phase == Phase.Disconnected } }
+                scenario.onActivity { client.disconnect() }
+                scenario.moveToState(Lifecycle.State.RESUMED)
+                scenario.onActivity { client.onResume() }
+                delay(300)
+                assertEquals(Phase.Disconnected, client.status.value.phase)
+                assertNull(client.captureInputTarget())
+                waitUntil { admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString().isBlank() }
+                stage = "retry stop cancels background resume"
+                scenario.onActivity { client.connect() }
+                restored()
+                scenario.moveToState(Lifecycle.State.CREATED)
+                withTimeout(10_000) { client.status.first { it.phase == Phase.Disconnected } }
+                scenario.onActivity { client.stopRetrying() }
+                scenario.moveToState(Lifecycle.State.RESUMED)
+                delay(300)
+                assertEquals(Phase.Disconnected, client.status.value.phase)
+                stage = "task removal cancels background resume"
+                scenario.onActivity { client.connect() }
+                restored()
+                scenario.moveToState(Lifecycle.State.CREATED)
+                withTimeout(10_000) { client.status.first { it.phase == Phase.Disconnected } }
                 stage = "task removal"
                 scenario.onActivity { it.finishAndRemoveTask() }
                 waitUntil { app.connections.value.isEmpty() && notification() == null }
@@ -182,6 +235,30 @@ class AndroidConnectionLifetimeTest {
             checked.await()
             withTimeout(10_000) { client.status.first { it.acceptsInput && it.recoveryMessage == null } }
             assertEquals(target, client.captureInputTarget())
+            stage = "deleted session stays missing after automatic resume"
+            instrumentation.runOnMainSync { app.modify { it.copy(preferences = it.preferences.copy(keepConnectionsInBackground = false)) } }
+            shell("input keyevent KEYCODE_HOME")
+            withTimeout(10_000) { client.status.first { it.phase == Phase.Disconnected } }
+            admin.execute("tmux " + TmuxCommand.killSession(session).wire)
+            shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n kim.jujin.dglc/.MainActivity")
+            withTimeout(10_000) { client.status.first { it.phase == Phase.MissingSession } }
+            instrumentation.runOnMainSync { client.onResume(); client.onResume() }
+            delay(200)
+            assertEquals(Phase.MissingSession, client.status.value.phase)
+            assertNull(client.pane.value)
+            assertTrue(client.remote.value.sessions.none { it.id == session })
+            stage = "authentication failure cannot reserve automatic resume"
+            instrumentation.runOnMainSync {
+                app.credentials.write(host.id, Credential(privateKey = "invalid-private-key"))
+                client.connect()
+            }
+            withTimeout(10_000) { client.status.first { it.phase == Phase.Failed } }
+            val failedGeneration = client.generation
+            instrumentation.runOnMainSync { client.suspendForBackground(); client.onResume(); client.onResume() }
+            delay(200)
+            assertEquals(Phase.Failed, client.status.value.phase)
+            assertEquals(failedGeneration, client.generation)
+            assertFalse(client.status.value.canRetryNow)
             instrumentation.runOnMainSync { assertEquals(Lifecycle.State.RESUMED, warm.lifecycle.currentState); warm.finishAndRemoveTask() }
         } catch (error: Exception) { throw AssertionError("Lifecycle smoke failed at $stage", error) }
         finally {

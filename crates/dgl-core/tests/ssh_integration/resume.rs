@@ -111,7 +111,17 @@ async fn healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_i
         })
     };
     let drain = collect(sub);
+    until(&c, |_| {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.kind == OutputKind::ResetEnd)
+    })
+    .await;
+    events.lock().unwrap().clear();
     let before = c.target().unwrap();
+    let render_targets = c.state().render_targets;
     let check = c.action(Action::CheckConnection).unwrap();
     assert!(c.state().checking);
     assert_eq!(
@@ -121,19 +131,31 @@ async fn healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_i
     c.action(Action::CheckConnection).unwrap();
     completion(&c, check).await;
     assert!(!c.state().checking);
-    assert!(before.same_input_destination(&c.target().unwrap()));
+    assert_eq!(before, c.target().unwrap());
+    assert_eq!(render_targets, c.state().render_targets);
     assert_eq!(count.load(Ordering::SeqCst), 1);
     assert_eq!(
         tmux(&["list-clients", "-t", &session, "-F", "#{client_pid}"]),
         client_pid
     );
     assert!(
+        !events.lock().unwrap().iter().any(|e| matches!(
+            e.kind,
+            OutputKind::ResetBegin | OutputKind::ResetChunk | OutputKind::ResetEnd
+        )),
+        "healthy checks must preserve the renderer without a Reset"
+    );
+
+    // A new renderer still gets a complete capture on explicit subscription sync.
+    completion(&c, c.action(Action::Snapshot).unwrap()).await;
+    until(&c, |_| {
         events
             .lock()
             .unwrap()
             .iter()
             .any(|e| e.kind == OutputKind::ResetEnd)
-    );
+    })
+    .await;
 
     drain.abort();
     let _ = drain.await;
