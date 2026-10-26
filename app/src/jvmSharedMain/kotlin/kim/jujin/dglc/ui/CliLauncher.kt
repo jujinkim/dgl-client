@@ -112,9 +112,9 @@ private object AboveLauncher : PopupPositionProvider {
                         contentDescription = if (imeVisible) t("키보드 닫기") else t("키보드 열기")
                         stateDescription = if (imeVisible) t("표시됨") else t("숨김")
                     }) { KeyboardIcon() }
-                TerminalToolButton(openComposer, enabled = available, containerColor = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.height(buttonHeight).widthIn(min = 40.dp).semantics { contentDescription = t("텍스트 작성 열기") },
-                    contentPadding = PaddingValues(horizontal = 8.dp)) { Text(t("텍스트 작성"), fontSize = 11.sp, maxLines = 1) }
+                TerminalToolButton(openComposer, enabled = available,
+                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("텍스트 작성 열기") },
+                    contentPadding = PaddingValues(0.dp)) { Text("📝", fontSize = 18.sp) }
             }
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
