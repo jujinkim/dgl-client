@@ -429,8 +429,8 @@ class AndroidVolumeKeyTest {
             var node = find(root) { it.text?.toString() == text || it.contentDescription?.toString() == text }
             while (node != null && !node.isClickable) node = node.parent
             if (node?.isEnabled == true && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) break
-            find(root) { it.isScrollable && it.className?.toString() != "android.widget.HorizontalScrollView" }
-                ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            find(root) { it.isScrollable && it.actionList.any { action -> action.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id } }
+                ?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id)
             delay(100)
         }
     }
@@ -447,8 +447,8 @@ class AndroidVolumeKeyTest {
         while (true) {
             val root = automation.rootInActiveWindow
             if (find(root) { it.text?.toString() == text }?.isVisibleToUser == true) break
-            find(root) { it.isScrollable && it.className?.toString() != "android.widget.HorizontalScrollView" }
-                ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            find(root) { it.isScrollable && it.actionList.any { action -> action.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id } }
+                ?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id)
             delay(100)
         }
     }

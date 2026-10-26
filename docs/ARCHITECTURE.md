@@ -41,7 +41,7 @@ Android Keystore, macOS Keychain, Windows CURRENT_USER DPAPI를 플랫폼 어댑
 
 Android는 `noBackupFilesDir/rust-candidate-v1`, 데스크톱은
 `desktop/src/platform.rs`가 정한 후보 디렉터리를 사용합니다. 이전 앱의 데이터는 자동 이전하지 않습니다.
-`workspace-layout.json`은 데스크톱 그룹 구조·비율만 저장하고 재실행 시 연결은 비워 둡니다.
+`workspace-layout.json`은 각 기기의 그룹 구조·비율만 저장하고 재실행 시 연결은 비워 둡니다.
 `host-order.json`은 데스크톱 호스트 ID 순서·연결 시작 구간·수동 배치 여부만 기기에 저장하며 동기화하지 않습니다.
 동기화 허용 필드와 민감정보 제외는 [CLOUD_SYNC.md](CLOUD_SYNC.md)를 따릅니다.
 
@@ -62,3 +62,15 @@ IME 콜백은 [키보드 동기화 문서](https://developer.android.com/develop
 
 Android 터미널 assets는 `web/bundle.mjs`로 갱신하며 CI에서 소스와 번들 차이를 검사합니다.
 기술 선택의 과거 경위는 [HISTORY.md](HISTORY.md)에 요약합니다.
+
+## Android 작업 공간과 렌더러 소유권
+
+`WorkspaceState`는 Kotlin의 순수 분할 트리·그룹별 탭·선택 모델이고 `AppModel`은 탭 ID와 Rust 연결 어댑터를 연결합니다.
+호스트/세션 예약은 연결 시작 전에 이루어지며 알림·탐색기·모바일 시트가 같은 탭 경로를 사용합니다.
+`ClientConnection.generation`은 지연된 대상 선택에 쓰는 읽기 전용 어댑터 세대입니다. Rust wire·UniFFI 형식은 유지합니다.
+
+`App(androidInput = true)`는 창의 사용 가능한 너비 840dp를 기준으로 화면을 선택합니다. Android 입력 기능은
+화면 배치와 별개이며 입력 도구·볼륨키는 활성 탭에만 등록합니다. 여러 표면의 모달 입력 차단은 모델의 소유자 집합으로 공유합니다.
+`AndroidTerminalResources`는 Activity 안에서 연결별 WebView를 보관합니다. 숨긴 표면은 unbind하고 입력·크기 요청을 막으며,
+탭 닫기와 Activity 해제 때 WebView를 정리합니다. 프로세스 소유 Rust 엔진과 연결 수명은 그대로 유지합니다.
+`WorkspaceRepository`는 별도 기기 로컬 `workspace-layout.json`에 그룹 구조·비율만 원자적으로 저장합니다.

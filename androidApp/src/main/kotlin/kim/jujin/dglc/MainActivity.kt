@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
                     window.insetsController?.setSystemBarsAppearance(appearance, mask)
                 }
             }
-            App(holder.app, mobileLayout = true)
+            kim.jujin.dglc.ui.AndroidTerminalResources(holder.app) { App(holder.app, androidInput = true) }
         }
     }
     override fun onStart() { super.onStart(); if (::holder.isInitialized) holder.setVisible(true) }

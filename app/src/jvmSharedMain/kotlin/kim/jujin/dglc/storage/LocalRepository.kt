@@ -7,6 +7,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 class LocalRepository(private val directory: File) {
+    val workspace = WorkspaceRepository(directory)
     private val file = File(directory, "settings.json")
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     @Synchronized fun read(): LocalState {

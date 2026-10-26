@@ -121,6 +121,20 @@ ANDROID_SERIAL=emulator-5554 python3 scripts/integration.py --command python3 sc
 성능·자원 측정은 [PERFORMANCE.md](PERFORMANCE.md)의 표본·종료 조건을 먼저 정합니다.
 에이전트 실제 CLI 검사에는 설치·로그인과 경우에 따라 유료 호출이 필요하므로 [AGENT_STATUS.md](AGENT_STATUS.md)의 범위를 따릅니다.
 
+Android 작업 공간과 기존 모바일 입력·볼륨키·계층을 전용 API36 한 대에서 짧게 검사할 때:
+
+```sh
+./gradlew :androidApp:assembleDebug :androidApp:assembleDebugAndroidTest :androidApp:lintDebug
+ANDROID_SERIAL=emulator-5554 python3 scripts/workspace_android.py
+```
+
+839/840dp 경계·넓은 분할·키보드와 높이 부족 시 임시 확대·탭 이동/폭 전환 전후 WebView 동일성·
+활성 그룹 입력·전역 모달 차단·드래그 확정/취소를 검사합니다. 화면 크기·밀도·IME·글꼴·애니메이션 설정은
+`finally`에서 복원합니다. 결과는 `artifacts/android-workspace/`에 남기며 명시적 검사 이름 목록과 대조합니다.
+JVM 기본 검사에는 분할·이동·합치기·선택·최소 공간/최대 그룹·배치 저장·세션 예약·오래된 연결 대상 거부가 포함됩니다.
+`--section workspace`, `--section mobile-input`, `--section compact`로 필요한 구간만 재검사할 수 있습니다.
+전체 Android API matrix로 확대하지 않습니다.
+
 ## 의존성·배포 검사
 
 ```sh

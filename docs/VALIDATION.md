@@ -6,27 +6,26 @@
 
 ## 현재 변경 검사 (2026-10-26)
 
-iOS 구현 유무 확인과 Kotlin 패키지·소스 경로·계측/검증 도구의 `kim.jujin.dglc` 통일 검사입니다.
-이전 Android 연결 수명·IME 개선 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+Android 창 크기에 반응하는 탐색기·세션 탭·분할 작업 공간과 입력/렌더러 수명 분리 검사입니다.
+이전 패키지 정리와 연결 수명 검사 결과는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| iOS 대상 확인 | Git 관리 소스·Gradle 모듈·플랫폼 경계를 확인. iOS/iPadOS 앱, Swift 소스, Xcode 타깃·submodule이 없어 iOS 연결 수명·IME 수정/실기 검사 대상이 없음. Android 동작을 iOS에서 검증했다고 기록하지 않음 |
-| 패키지 정리 | 제품·JVM/Android 검사와 참조 엔진의 Kotlin/Java 루트·import·디렉터리를 `kim.jujin.dglc`로 이동. 모바일 Rust 어댑터도 같은 루트 사용. Gradle 리소스 namespace는 `.shared`·`.mobile`·`.bindings` |
-| 실행·수집 경로 | Manifest·테스트 provider/runner·CLI main class·계측 선택/이름 검증기·렌더러/Perfetto 레이어 식별·번역 생성 경로·사용 문서 갱신. APK 수집기는 새 Rust 클래스와 이전 Kotlin namespace·참조 엔진 제외를 검사 |
-| 저장 호환성 | applicationId·데이터 경로·설정 형식 유지. 기존 Android Keystore 별칭·macOS Keychain 서비스·Windows DPAPI entropy 바이트는 변경하지 않음. 보존 이유를 소스·아키텍처/코어 문서에 명시 |
-| Rust workspace | 코어·계약·UniFFI 30·데스크톱 60 통과. 기본 SSH 통합 5 ignore·대화형 Keychain 1 ignore는 통과에 포함하지 않음 |
-| JVM | clean 후 57 통과·외부 SSH/Windows 환경의 예상 skip 9개. 새 클래스명으로 명시적 결과 검증기 통과 |
-| Python | 98 통과. 소스와 JVM/Android 결과 이름 목록·새 DEX 클래스 요구·이전 namespace와 참조 엔진 거절·분석 fixture 경로 확인 |
-| Android 빌드 | 네 모듈 clean 후 Debug·미서명 Release·계측 APK 빌드 통과. lint 기존 검토 진단 12개 일치. Debug/Release Manifest·백업/네트워크 정책·assets·네 ABI Rust payload 검사 통과 |
-| API36 선택 계측 | 새 패키지에서 연결 수명·IME·짧은 복귀·Activity 재생성·알림 인텐트·task 제거와 원격 프로세스 보존, Keystore 왕복·변조 거절·백업 제외를 확인하는 2개 선택 검사 통과(약 14초) |
-| 무결성·문서 | 번역 목록/생성 파일·자리표시자, 원문 요구사항 SHA-256·Gradle wrapper·diff 공백 검사. 로컬 대시보드 등록 검증·Git 제외 유지 |
+| Kotlin 작업 공간 | 분할·이동·합치기·선택/빈 그룹·최소 280×180dp/최대 16그룹·비율 제한·드래그 검증/취소·구조만 저장/잘못된 파일 대체 |
+| 세션·알림 | 연결 전 호스트/세션 예약·그룹을 넘어선 기존 탭 재사용·독립 연결·창/pane 유지·오래된 연결 세대의 지연 선택 거부·실제 보이는 여러 연결의 알림 처리 |
+| JVM | 64 통과·외부 SSH/Windows 환경의 예상 skip 9개. 작업 공간 새 검사 7개와 명시적 결과 검증기 포함 |
+| Python·JavaScript | Python 98·터미널 JavaScript 12 통과. 새 계측 이름 목록과 소스 목록 일치 확인 |
+| Android 빌드 | Debug·계측 APK·lint 통과. lint 기존 검토 진단 12개 일치. Debug 네 ABI Rust payload·서명 검사 및 전달용 APK 수집 |
+| API36 작업 공간·회귀 | 작업 공간 1·기존 모바일 입력 1·볼륨키 5·계층 1, 총 8개 통과. 839/840dp·넓은 분할·탭 메뉴/드래그 이동 및 취소·WebView 동일성·키보드 유지·높이 부족 시 임시 확대/복원·활성 입력·전역 모달 차단 확인 |
+| 실제 Rust 연결 수명 | 격리 SSH/tmux 3.7c fixture의 API36 선택 1개 통과(약 11초). IME·Activity 재생성·짧은 복귀·알림 Intent·task 제거와 원격 프로세스 보존 확인. 전체 API 계측으로 확대하지 않음 |
+| 무결성·문서 | 번역 목록/생성 파일·자리표시자, 요구사항 SHA-256·Gradle wrapper·diff 공백 확인. 사용·작업 공간·입력·구조·검사 문서와 로컬 대시보드 등록 갱신/검증, JSON Git 제외 유지 |
 
-보존 원문과 보호 저장 호환 식별자, 이전 APK 차단용 검사 문자열에는 예전 이름을 남깁니다.
-제품 패키지·import·실행 경로에는 예전 Kotlin 패키지를 사용하지 않습니다.
-Windows MSVC 네이티브·DPAPI·GUI와 macOS 실제 GUI·Keychain 접근, 물리 Android의 잠금·절전·최근 앱 swipe는 이번에 실행하지 않았습니다.
-iOS 앱이 이 저장소에 없으므로 iOS의 실제 연결 동작을 평가하거나 수정하지 않았습니다.
-전체 Android API matrix·장시간 계측은 수행하지 않았으며 Windows 빌드·ZIP·수동 CI 경로는 유지합니다.
+API36은 전용 `Dgl_API36` 에뮬레이터 한 대만 사용합니다. UI 검사는 결정적 연결과 실제 Compose/WebView/IME를 사용하며,
+이를 실제 원격 SSH나 물리 기기의 입력·백그라운드 정책 검사로 계산하지 않습니다.
+화면 크기·밀도·IME·글꼴·애니메이션 설정은 실행기의 `finally`에서 원복합니다.
+기존 계측 도구는 세로 스크롤 방향과 IME 커밋 뒤 접근성 선택 상태를 기다리도록 보완했으며, 실패·skip을 허용하거나 검사를 생략하지 않았습니다.
+Rust wire·UniFFI 계약과 Windows 빌드·ZIP·수동 CI 경로는 유지합니다.
+전체 Android API matrix·장시간 반복 계측·Windows/macOS GUI·물리 Android 인수는 수행하지 않았습니다.
 
 ## 남은 한계
 

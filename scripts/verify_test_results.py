@@ -5,6 +5,10 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'WorkspaceTest': ['splitMoveMergeSelectionAndEmptyGroups', 'minimumSpaceGroupLimitAndResizePreserveLayout',
+                      'validatedDropsAndCancelledDragsDoNotMutateState', 'geometryOnlyPersistenceAndMalformedFilesStartEmpty',
+                      'sessionsReserveBeforeConnectAndReuseAcrossGroups', 'staleConnectionGenerationsRejectDelayedTargetsAndModalGates',
+                      'notificationsReuseSessionTabsAndObserveEveryVisibleConnection'],
     'ConnectionLifetimeTest': ['homeLockAndRecreationReuseConnectionsUntilTaskRemoval',
                                'disablingMaintenanceAndRetryExhaustionReleaseResources',
                                'rejectedOrLostServiceDoesNotReconnectOrLoop',

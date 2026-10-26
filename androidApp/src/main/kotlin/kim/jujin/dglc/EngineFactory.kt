@@ -13,6 +13,7 @@ internal fun createEngine(application: Application): AppModel {
     return AppModel(LocalRepository(directory), AndroidCredentialStore(application, directory), "Android Keystore", kim.jujin.dglc.RustKeyTools, kim.jujin.dglc.RustAgentInbox()) { host, credentials, local, update ->
         kim.jujin.dglc.RustClientConnection(host, credentials, local, update)
     }.also { model ->
+        model.workspaceEnabled = true
         model.languageChanged = ::configureLanguage
         model.cloudSync = kim.jujin.dglc.RustFileSync(application, directory, model)
     }

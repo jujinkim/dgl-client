@@ -48,6 +48,9 @@ class RustClientConnection(
     private var subscription: ULong? = null
     @Volatile private var surface: TerminalSurface? = null
     @Volatile private var epoch = 0L
+    @Volatile private var adapterGeneration = 0L
+    private var nativeGeneration: Long? = null
+    override val generation: Long get() = adapterGeneration
     private var lastSession = host.lastSession
     private var lastPane = host.lastPane
     private val resizes = TerminalResizeQueue()
@@ -63,6 +66,7 @@ class RustClientConnection(
         notice.value = null
         inputRequests.clear()
         val current = ++epoch
+        ++adapterGeneration; nativeGeneration = null
         status.value = ConnectionStatus(Phase.Connecting, t("SSH 연결 중…"))
         stateJob = scope.launch {
             try {
@@ -111,6 +115,11 @@ class RustClientConnection(
         }
     }
     private fun applyState(s: JsonObject) {
+        s["generation"]?.jsonObject?.get("connection")?.jsonPrimitive?.longOrNull?.let { next ->
+            val previous = nativeGeneration
+            if (previous != null && previous > 0 && previous != next) ++adapterGeneration
+            nativeGeneration = next
+        }
         fun text(name: String) = s[name]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
         agents.value = s["agents"]?.let { json.decodeFromJsonElement(AgentSnapshot.serializer(), it) } ?: AgentSnapshot()
         agentSetup.value = s["agent_setup"]?.takeUnless { it is JsonNull }?.toString()
@@ -262,6 +271,7 @@ class RustClientConnection(
     // Called only by the current connection's polling loop while holding the owner lock.
     // No timer can outlive detach(), and native completions bound us to one request in flight.
     private fun submitResize(connection: NativeConnection) {
+        if (surface == null) return
         val now = System.nanoTime() / 1_000_000
         val value = resizes.next(now) ?: return
         try {
@@ -333,7 +343,7 @@ class RustClientConnection(
         val id = subscription; subscription = null
         state?.cancel(); output?.cancel(); if (old != null) { id?.let(old::unsubscribe); old.stop(); cleanup += scope.launch(NonCancellable) { state?.join(); output?.join(); try { old.shutdown() } finally { old.close() } } }
     }
-    @Synchronized override fun disconnect() { agents.value = AgentSnapshot(); ++epoch; detach(); status.value = ConnectionStatus() }
+    @Synchronized override fun disconnect() { agents.value = AgentSnapshot(); ++epoch; ++adapterGeneration; detach(); status.value = ConnectionStatus() }
     @Synchronized override fun close() { if (closed) return; closed = true; disconnect(); surface = null; val pending = cleanup.toList(); scope.launch { pending.forEach { it.join() }; scope.cancel() } }
 
     private fun message(code: String) = when (code) {

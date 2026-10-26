@@ -1,6 +1,6 @@
 # 세션·창 탐색과 tmux 창 표시
 
-Mac·Windows GPUI 탐색기와 Android tmux 관리 시트는 **세션 → 창**까지만 표시한다.
+Mac·Windows GPUI 탐색기와 Android 대화면 탐색기·좁은 창 tmux 관리 시트는 **세션 → 창**까지만 표시한다.
 어떤 표시 설정에서도 pane 행은 만들지 않는다. 창을 선택하면 보이는 pane 전체를 터미널 영역에 표시한다.
 
 설정의 **단일 창도 표시**는 기존 `showAllHierarchy` / `show_all_hierarchy` 저장 키를 그대로 사용한다.

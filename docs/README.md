@@ -8,7 +8,7 @@
 | 연결·재접속·tmux 조작 | [사용 안내](USAGE.md) |
 | 인증·개인키 가져오기 | [호스트 인증](HOST_AUTH.md) |
 | 세션·창 목록과 pane 표시 | [계층 표시](SESSION_HIERARCHY.md), [창 동기화](TMUX_WINDOW_SYNC.md) |
-| 탭·분할·포커스·배치 저장 | [데스크톱 작업 공간](UX_WORKSPACE.md) |
+| 탭·분할·포커스·배치 저장 | [작업 공간](UX_WORKSPACE.md) |
 | 키보드·마우스·모바일 텍스트 작성 | [터미널 입력](TERMINAL_INPUT.md) |
 | 설정 파일 동기화 | [클라우드 동기화](CLOUD_SYNC.md) |
 | 테마·강조 색상·제목 표시줄 | [앱 스타일](APPEARANCE.md) |

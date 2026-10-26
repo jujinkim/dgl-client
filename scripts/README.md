@@ -53,6 +53,7 @@ JVM·Android 테스트를 추가/삭제하면 `verify_test_results.py` / `verify
 | `integration.py` | 임시 OpenSSH·키·독립 tmux socket 생성/정리. 기본 JVM 검사, `--command`로 Rust/Android 지정 |
 | `android_integration.py` | fixture 안에서 APK 빌드·설치·전체 기본 runner 실행·이름별 결과 검증 |
 | `rust_android_integration.py` | 빌드된 APK의 API36 후보 검사·화면 수집. 기본 11개; fixture 안에서 실행 |
+| `workspace_android.py` | 전용 API36 한 대에서 839/840dp·분할·WebView 동일성·IME 임시 확대·활성 입력/모달 차단·드래그와 기존 모바일 회귀 검사. 화면/키보드 설정 원복, `artifacts/android-workspace/` 출력 |
 | `mobile_input_android.py` | 전용 API36의 모바일 입력·WebView 4개 검사·화면 수집 |
 | `verify_android_matrix.py` | API별 전용 AVD 실행·결과 수집. 명시적으로 전체 범위를 요청할 때만 실행 |
 | `verify_agent_cli.py` | 격리된 환경에서 실제 Claude/Codex 훅 검사; 설치·인증·호출 범위 확인 필요 |

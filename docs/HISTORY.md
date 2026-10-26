@@ -121,6 +121,13 @@ Android 계측 실행·Windows/macOS 실기 인수는 수행하지 않았습니�
 Android Debug·미서명 Release·lint·API36 단일 연결 수명 계측과 격리 tmux 3.7c 재접속 검사를 통과했습니다.
 실제 손가락 swipe·화면 잠금·물리 기기 절전 정책과 Windows/macOS 실기 인수는 남겼습니다.
 
+## 2026-10-26: Kotlin 패키지 정리
+
+Kotlin/Java 제품·참조·검사를 `kim.jujin.dglc`로 통일하고 보호 저장 호환 식별자는 보존했습니다.
+당시 Rust 코어/UniFFI 30·데스크톱 60·JVM 57·Python 98 통과, JVM 예상 skip 9·Rust ignore 6을 기록했습니다.
+Android Debug·미서명 Release·계측 APK·lint와 API36 선택 2개 검사를 확인했습니다.
+iOS/Swift/Xcode 타깃은 저장소에 없었으며 Windows/macOS·물리 Android 인수는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

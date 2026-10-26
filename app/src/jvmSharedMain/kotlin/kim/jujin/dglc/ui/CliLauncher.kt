@@ -62,6 +62,7 @@ internal class CliLaunchRequest(private val client: ClientConnection) {
 }
 
 internal class TerminalFocus {
+    var activate: () -> Unit = {}
     var request: () -> Unit = {}
     var keyboard: () -> Unit = {}
     var imeVisible by mutableStateOf(false)
@@ -78,15 +79,19 @@ private object AboveLauncher : PopupPositionProvider {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalKey>, allowed: () -> Boolean, terminalFocus: TerminalFocus,
-    mobile: Boolean = false, openComposer: () -> Unit = {}) {
+    mobile: Boolean = false, openComposer: () -> Unit = {}, workspace: Boolean = false, inputGate: kim.jujin.dglc.AppModel? = null) {
     val status by client.status.collectAsState()
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
-    val available = allowed()
+    val menuOwner = remember { Any() }
+    val blocks = inputGate?.inputBlocks?.collectAsState()?.value
+    val menuAllowed = { allowed() && (blocks == null || inputGate?.inputBlocked(menuOwner) != true) }
+    val available = menuAllowed()
     // A target/phase/dialog change discards the request before painting or handling another click.
     var request by remember(client, status.phase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
-    val dismiss = { request = null; terminalFocus.request() }
-    val buttonHeight = if (mobile) 40.dp else 48.dp
+    if (inputGate != null) WorkspaceInputBlock(inputGate, menuOwner, request != null)
+    val dismiss = { request = null; inputGate?.blockInput(menuOwner, false); terminalFocus.request() }
+    val buttonHeight = if (mobile && !workspace) 40.dp else 48.dp
     val imeVisible = terminalFocus.imeVisible
     val viewConfiguration = LocalViewConfiguration.current
     val compactConfiguration = remember(viewConfiguration) { object : ViewConfiguration by viewConfiguration {
@@ -112,7 +117,7 @@ private object AboveLauncher : PopupPositionProvider {
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 shortcuts.distinct().forEach { shortcut ->
                     TerminalToolButton({
-                        if (allowed() && client.status.value.acceptsInput) {
+                        if (menuAllowed() && client.status.value.acceptsInput) {
                             client.input(shortcut.bytes())
                             terminalFocus.request()
                         }
@@ -139,7 +144,8 @@ private object AboveLauncher : PopupPositionProvider {
                             val launch: (CliCommand) -> Unit = { command ->
                                 if (request === opened) {
                                     request = null
-                                    opened.send(command, client, allowed())
+                                    inputGate?.blockInput(menuOwner, false)
+                                    opened.send(command, client, menuAllowed())
                                     terminalFocus.request()
                                 }
                             }

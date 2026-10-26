@@ -508,5 +508,20 @@
   "확인 명령 실패": "Probe command failed",
   "확인 중": "Checking",
   "확인 후 호스트에 다시 연결하면 tmux를 다시 탐지합니다.": "Reconnect to the host after checking to detect tmux again.",
-  "확인된 버전: {0}": "Detected version: {0}"
+  "확인된 버전: {0}": "Detected version: {0}",
+  "작업 공간 배치를 저장하지 못했습니다.": "Could not save the workspace layout.",
+  "분할 작업 공간": "Split workspace",
+  "터미널 그룹 {0}": "Terminal group {0}",
+  "{0} 탭 메뉴": "{0} tab menu",
+  "탭 닫기": "Close tab",
+  "탭 앞으로": "Move tab earlier",
+  "탭 뒤로": "Move tab later",
+  "그룹 {0}으로 이동": "Move to group {0}",
+  "앱 화면 분할 메뉴": "App split menu",
+  "앱 화면 좌우 분할": "Split app left and right",
+  "앱 화면 상하 분할": "Split app top and bottom",
+  "인접 그룹과 합치기": "Merge with adjacent group",
+  "호스트나 세션을 선택하여 여기에 연결하세요.": "Select a host or session to connect here.",
+  "분할 경계 조절": "Resize split boundary",
+  "탭 배치 미리보기": "Tab placement preview"
 }

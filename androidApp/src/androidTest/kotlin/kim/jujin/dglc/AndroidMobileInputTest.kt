@@ -291,8 +291,12 @@ class AndroidMobileInputTest {
             putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, start)
             putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, end)
         }
-        assertTrue(awaitAction("전송할 텍스트", AccessibilityNodeInfo.ACTION_SET_SELECTION)
-            .performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments))
+        // Native IME commits reach the model before the accessibility text snapshot.
+        // Require the real selection action to succeed on a refreshed node.
+        withTimeout(5000) {
+            while (!awaitAction("전송할 텍스트", AccessibilityNodeInfo.ACTION_SET_SELECTION)
+                    .performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)) delay(25)
+        }
         instrumentation.waitForIdleSync()
     }
     private suspend fun click(text: String) = withTimeout(5000) {

@@ -4,6 +4,8 @@ import kim.jujin.dglc.core.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
 interface ClientConnection {
+    /** Adapter lifetime generation; read-only and independent of terminal size changes. */
+    val generation: Long get() = 0L
     val agents: MutableStateFlow<AgentSnapshot> get() = MutableStateFlow(AgentSnapshot())
     val agentSetup: MutableStateFlow<String?> get() = MutableStateFlow(null)
     fun configureAgents(operation: String, token: String? = null) {}

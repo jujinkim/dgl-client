@@ -21,6 +21,7 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import kim.jujin.dglc.ClientConnection
+import kim.jujin.dglc.AppModel
 import kim.jujin.dglc.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -33,20 +34,58 @@ import java.lang.ref.WeakReference
 internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.DialogProperties(
     usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
 
+private class TerminalEntry(val terminal: AndroidTerminal) {
+    var focus = TerminalFocus()
+    var visible = false
+    var restoreIme = false
+}
+private class TerminalResources {
+    val entries = java.util.IdentityHashMap<ClientConnection, TerminalEntry>()
+    fun remove(client: ClientConnection) { entries.remove(client)?.let { client.unbindSurface(it.terminal); it.terminal.close() } }
+    fun close() { entries.keys.toList().forEach(::remove) }
+}
+private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?> { null }
+
+/** Activity-owned renderers, independent of group membership and window width. */
+@Composable fun AndroidTerminalResources(model: AppModel, content: @Composable () -> Unit) {
+    val resources = remember(model) { TerminalResources() }
+    val clients = model.connections.collectAsState().value
+    SideEffect { resources.entries.keys.toList().filter { it !in clients }.forEach(resources::remove) }
+    DisposableEffect(resources) { onDispose { resources.close() } }
+    CompositionLocalProvider(LocalTerminalResources provides resources, content = content)
+}
+
 @Composable actual fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier) {
     val context = LocalContext.current
     val composeView = LocalView.current
     val focus = LocalTerminalFocus.current
-    val terminal = remember(client, preferences.fontSize, preferences.scrollback) {
-        AndroidTerminal(context, preferences, { if (focus.inputAllowed()) client.input(it) }, client::resize,
-            { pane, target, bytes -> if (focus.inputAllowed()) client.paneInput(pane, target, bytes) }, client::focusPane, client::resizePane)
+    val resources = LocalTerminalResources.current
+    val entry = remember(client, resources) {
+        fun create(): TerminalEntry {
+            lateinit var entry: TerminalEntry
+            entry = TerminalEntry(AndroidTerminal(context, preferences,
+                { if (entry.visible && entry.focus.inputAllowed()) client.input(it) },
+                { if (entry.visible) client.resize(it) },
+                { pane, target, bytes -> if (entry.visible && entry.focus.inputAllowed()) client.paneInput(pane, target, bytes) },
+                { pane, target -> if (entry.visible) { entry.focus.activate(); if (entry.focus.inputAllowed()) client.focusPane(pane, target) } },
+                { pane, target, size -> if (entry.visible && entry.focus.inputAllowed()) client.resizePane(pane, target, size) }))
+            return entry
+        }
+        resources?.entries?.getOrPut(client, ::create) ?: create()
     }
+    val terminal = entry.terminal
+    SideEffect { entry.focus = focus }
     val allowed = focus.inputAllowed()
     LaunchedEffect(terminal, allowed) { terminal.setInputEnabled(allowed) }
     LaunchedEffect(terminal, preferences.smoothTerminalTransitions) {
         terminal.setSmoothTransitions(preferences.smoothTerminalTransitions)
     }
     DisposableEffect(terminal, focus, composeView) {
+        terminal.view.setOnTouchListener { _, event ->
+            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) entry.focus.activate()
+            false
+        }
+        terminal.view.onFocusChangeListener = android.view.View.OnFocusChangeListener { _, hasFocus -> if (hasFocus) entry.focus.activate() }
         // Read the same native insets used at click time. Compose's target IME visibility
         // can lag a cancelled show/hide animation while the WebView owns input focus.
         var observing = true
@@ -84,23 +123,40 @@ internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.D
             }
         })
         terminal.view.post { updateIme() }
-        focus.request = { terminal.focus() }
+        focus.request = { terminal.focus { entry.visible && entry.focus.inputAllowed() } }
         focus.keyboard = { terminal.keyboard(terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) != true, focus.inputAllowed) }
         focus.preparePaste = terminal::preparePaste
         onDispose {
+            entry.restoreIme = entry.focus.inputAllowed() && focus.imeVisible
             observing = false
             if (treeObserver.isAlive) treeObserver.removeOnPreDrawListener(observer)
             terminal.view.setOnApplyWindowInsetsListener(null)
             terminal.view.setWindowInsetsAnimationCallback(null)
+            terminal.view.setOnTouchListener(null)
+            terminal.view.onFocusChangeListener = null
             focus.request = {}; focus.keyboard = {}; focus.imeVisible = false
             focus.preparePaste = { _, _ -> error(t("터미널이 닫혔습니다.")) }
         }
     }
     DisposableEffect(terminal) {
+        entry.visible = true
         client.bindSurface(terminal)
-        onDispose { client.unbindSurface(terminal); terminal.close() }
+        if (entry.restoreIme) {
+            entry.restoreIme = false
+            terminal.view.post { terminal.view.postOnAnimation {
+                if (entry.visible) terminal.keyboard(true) { entry.visible && entry.focus.inputAllowed() }
+            } }
+        }
+        onDispose {
+            entry.restoreIme = entry.restoreIme || (entry.focus.inputAllowed() && terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) == true)
+            entry.visible = false; client.unbindSurface(terminal); if (resources == null) terminal.close()
+        }
     }
-    key(terminal) { AndroidView(factory = { terminal.view }, modifier = modifier) }
+    LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback) { terminal.configure(preferences) }
+    key(terminal) { AndroidView(factory = {
+        (terminal.view.parent as? android.view.ViewGroup)?.removeView(terminal.view)
+        terminal.view
+    }, modifier = modifier) }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -193,8 +249,11 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
     override suspend fun write(bytes: ByteArray) { deliver(bytes, false) }
     override suspend fun reset(bytes: ByteArray) { deliver(bytes, true) }
-    fun focus() { view.post {
-        if (!closed) { view.requestFocus(); view.evaluateJavascript("window.focusTerminal && window.focusTerminal()", null) }
+    fun focus(allowed: () -> Boolean = { true }) { view.post {
+        scope.launch {
+            withTimeoutOrNull(15_000) { ready.await() } ?: return@launch
+            if (!closed && allowed()) { view.requestFocus(); view.evaluateJavascript("window.focusTerminal && window.focusTerminal()", null) }
+        }
     } }
     fun keyboard(show: Boolean, allowed: () -> Boolean = { true }) {
         if (closed) return
@@ -217,6 +276,10 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     suspend fun setInputEnabled(enabled: Boolean) {
         withTimeout(15_000) { ready.await() }
         withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setInputEnabled($enabled)", null) }
+    }
+    suspend fun configure(preferences: Preferences) {
+        withTimeout(15_000) { ready.await() }
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.configure(${preferences.fontSize.coerceIn(10, 28)},${preferences.scrollback.coerceIn(100, 10000)})", null) }
     }
     suspend fun preparePaste(text: String, enter: Boolean): ByteArray = withTimeout(15_000) {
         ready.await()
