@@ -40,3 +40,15 @@ class ConnectionLifetime(
         dispose()
     }
 }
+
+/** Configuration changes leave visibility true; only a real stop/start resumes connections. */
+class ConnectionVisibility {
+    private var visible = false
+    private var started = false
+    fun update(next: Boolean): Boolean {
+        val resume = next && !visible && started
+        visible = next
+        if (next) started = true
+        return resume
+    }
+}

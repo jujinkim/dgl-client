@@ -63,7 +63,7 @@ class ProtocolTest {
     @Test fun retryAndInputGates() {
         assertTrue(RetryPolicy.retryable(Failure.Network))
         for (failure in Failure.entries.filter { it != Failure.Network }) assertFalse(RetryPolicy.retryable(failure))
-        assertEquals(1000, RetryPolicy.delayMillis(0))
+        assertEquals(0, RetryPolicy.delayMillis(0))
         assertEquals(1000, RetryPolicy.delayMillis(20))
         for (phase in Phase.entries) assertEquals(phase == Phase.Ready || phase == Phase.Shell, ConnectionStatus(phase).acceptsInput)
     }

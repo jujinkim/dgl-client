@@ -22,7 +22,7 @@ interface ClientConnection {
     /** Fast title queries are enabled only while this connection is visible in the foreground. */
     fun setTitleUpdatesEnabled(enabled: Boolean) {}
     fun connect()
-    /** Activity resume only; implementations coalesce checks and retain explicit user stops. */
+    /** Actual process background-to-foreground transition only; implementations coalesce checks and retain explicit user stops. */
     fun onResume() {}
     /** Background policy stop only; a later resume may reconnect this same tab once. */
     fun suspendForBackground() = disconnect()
@@ -36,6 +36,8 @@ interface ClientConnection {
     fun manage(command: TmuxCommand)
     fun refresh()
     fun paneInput(pane: String, target: String?, bytes: ByteArray) { input(bytes) }
+    fun inputBlocked() {}
+    fun pointerInput(pane: String, target: String?, bytes: ByteArray) { if (status.value.acceptsPointer) paneInput(pane, target, bytes) }
     fun focusPane(pane: String, target: String?) { selectPane(pane) }
     fun resizePane(pane: String, target: String?, size: Size) {}
     /** Product adapters use the Rust encoder. Null means the legacy protocol cannot encode this input. */

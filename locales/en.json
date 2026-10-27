@@ -571,5 +571,8 @@
   "열린 연결 탭": "Open connection tabs",
   "{0} 닫기": "Close {0}",
   "읽음": "Read",
-  "읽지 않음": "Unread"
+  "읽지 않음": "Unread",
+  "재접속 실패": "Reconnection failed",
+  "다시 재접속 시도": "Try reconnecting again",
+  "연결 확인·복구 중에는 입력할 수 없습니다. 입력을 다시 전송하지 않습니다.": "Input is unavailable while checking or restoring the connection. Rejected input is not replayed."
 }

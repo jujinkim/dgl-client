@@ -1026,7 +1026,7 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
     });
     let wait = |predicate: fn(&State) -> bool| {
         runtime.block_on(async {
-            tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::time::timeout(Duration::from_secs(4), async {
                 while !predicate(&connection.state()) {
                     tokio::time::sleep(Duration::from_millis(5)).await;
                 }
@@ -1057,13 +1057,44 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
     redraw(cx);
     assert!(cx.debug_bounds("stop-retry-1").is_some());
     assert_eq!(connection.state().handle, handle);
-    assert_eq!(connection.state().retry.attempt, 0);
+    assert_eq!(connection.state().retry.attempt, 1);
     assert!(view.read_with(cx, |s, _| {
         s.tabs.len() == 1
             && s.tabs[0].id == tab
             && s.tabs[0].terminal.entity_id() == terminal.entity_id()
     }));
     assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
+    wait(|s| s.retry_exhausted());
+    for width in [320., 900.] {
+        cx.simulate_resize(gpui::size(px(width), px(500.)));
+        view.update(cx, |_, cx| cx.notify());
+        redraw(cx);
+        let retry = cx.debug_bounds("retry-center-1").unwrap();
+        assert!(
+            retry.left() >= px(0.) && retry.right() <= px(width),
+            "width={width} retry={retry:?} area={:?}",
+            cx.debug_bounds("terminal-area-1")
+        );
+        assert!(retry.top() > px(100.) && retry.bottom() < px(500.));
+    }
+    view.update(cx, |s, cx| {
+        assert!(
+            s.workspace
+                .split(1, super::workspace::Axis::Horizontal, 900., 500.)
+        );
+        s.workspace.active = 1;
+        cx.notify();
+    });
+    redraw(cx);
+    let area = cx.debug_bounds("terminal-area-1").unwrap();
+    let retry = cx.debug_bounds("retry-center-1").unwrap();
+    assert!(retry.left() >= area.left() && retry.right() <= area.right());
+    assert!((retry.center().x - area.center().x).abs() <= px(1.));
+    cx.simulate_click(retry.center(), Modifiers::default());
+    cx.simulate_click(retry.center(), Modifiers::default());
+    wait(|s| !s.retry_exhausted() && s.retry.wait_seconds == Some(1));
+    assert_eq!(connection.state().retry.attempt, 1);
+    assert_eq!(connection.state().handle, handle);
     connection.close();
     runtime.block_on(connection.join());
 }

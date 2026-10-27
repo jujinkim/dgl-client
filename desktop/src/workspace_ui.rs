@@ -1075,7 +1075,7 @@ impl Desktop {
             let terminal = tab.terminal.clone();
             let state = tab.connection.state();
             body = body.child(self.render_pane_toolbar(tab, cx));
-            if state.can_retry_now() {
+            if state.can_retry_now() && !state.retry_exhausted() && !state.checking {
                 let retry_connection = tab.connection.clone();
                 let stop_connection = tab.connection.clone();
                 let mut retry_controls = div().flex().flex_wrap().text_xs().child(self.button(
@@ -1110,7 +1110,7 @@ impl Desktop {
             }
             if state.phase == Phase::TrustRequired {
                 let host = tab.host.clone();
-                let fingerprint = state.fingerprint.unwrap_or_default();
+                let fingerprint = state.fingerprint.clone().unwrap_or_default();
                 body = body
                     .child(div().p_3().child(tr!(
                         "처음 연결하는 서버 · {0}\n{1}\n관리자에게 받은 SHA-256 지문과 비교하세요.",
@@ -1145,7 +1145,56 @@ impl Desktop {
                         },
                     ));
             }
-            body = body.child(div().flex_1().min_h_0().child(terminal));
+            let mut area = div()
+                .debug_selector(move || format!("terminal-area-{id}"))
+                .relative()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .overflow_hidden()
+                .child(terminal);
+            if state.retry_exhausted() {
+                let connection = tab.connection.clone();
+                area = area.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .w_full()
+                                .max_w(px(240.))
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .gap_2()
+                                .p_2()
+                                .rounded_md()
+                                .bg(rgb(p.panel))
+                                .text_color(rgb(p.fg))
+                                .child(t("재접속 실패"))
+                                .child(
+                                    self.button(
+                                        format!("retry-center-{id}"),
+                                        t("다시 재접속 시도"),
+                                        cx,
+                                        move |s, _, _| {
+                                            s.submit(&connection, Action::RetryNow);
+                                        },
+                                    )
+                                    .w_full()
+                                    .max_w_full()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis(),
+                                ),
+                        ),
+                );
+            }
+            body = body.child(area);
         } else {
             body = body.child(
                 div()

@@ -23,7 +23,7 @@ fn tmux(args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap().trim().into()
 }
 
-async fn until(c: &Connection, predicate: impl Fn(&dgl_core::connection::State) -> bool) {
+async fn until(c: &Connection, mut predicate: impl FnMut(&dgl_core::connection::State) -> bool) {
     tokio::time::timeout(Duration::from_secs(10), async {
         while !predicate(&c.state()) {
             tokio::time::sleep(Duration::from_millis(5)).await;
@@ -157,6 +157,55 @@ async fn healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_i
     })
     .await;
 
+    drain.abort();
+    let _ = drain.await;
+    while let Some(event) = queue.poll(sub).unwrap() {
+        queue.ack(sub, event.sequence).unwrap();
+    }
+    // Hold a size-only capture behind a full renderer queue. Keys admitted here
+    // must be sent once, in order, after the capture, with the same destination.
+    let render = c.state().render_targets[&pane].clone();
+    for _ in 0..MAX_EVENTS {
+        queue
+            .try_push(
+                sub,
+                render.clone(),
+                OutputKind::Live,
+                Size::default(),
+                vec![],
+            )
+            .unwrap();
+    }
+    c.action(Action::Resize {
+        columns: 100,
+        rows: 35,
+    })
+    .unwrap();
+    until(&c, |s| s.resizing).await;
+    assert!(c.state().accepts_input());
+    assert!(!c.state().accepts_pointer());
+    let origin = c.target().unwrap();
+    let first = c
+        .input(origin.clone(), "한글-".as_bytes().to_vec())
+        .unwrap();
+    let second = c.input(origin, b"english-paste\r".to_vec()).unwrap();
+    let drain = collect(sub);
+    let mut completed = std::collections::HashSet::new();
+    until(&c, |_| {
+        for result in c.completions() {
+            if result.request_id == first || result.request_id == second {
+                assert_eq!(result.error, None);
+                completed.insert(result.request_id);
+            }
+        }
+        completed.len() == 2
+    })
+    .await;
+    until(&c, |_| {
+        std::fs::read_to_string(&received).unwrap_or_default() == "한글-english-paste\n"
+    })
+    .await;
+    std::fs::write(&received, "").unwrap();
     drain.abort();
     let _ = drain.await;
     while let Some(event) = queue.poll(sub).unwrap() {

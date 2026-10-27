@@ -56,7 +56,8 @@ Android의 `DglApplication`이 `AppModel`/Rust 연결을 소유하고 Activity�
 `specialUse` 포어그라운드 서비스는 사용자 시작 SSH 유지 용도를 명시하며 `START_NOT_STICKY`로 실행합니다.
 홈 이동·잠금 중 통신에 partial wake lock을 사용하고, 10분 제한을 유지 수명 안에서 5분마다 갱신합니다.
 설정 중단·연결 종료·재시도 소진·서비스 파괴·최근 앱 제거 시 wake lock과 갱신 작업을 해제합니다.
-`MainActivity.onResume`은 런타임의 각 연결에 `checkConnection`을 전달합니다. 중복 검사는 합치고 접속 중에는 중복 시작하지 않습니다.
+`MainActivity.onStart/onStop`의 실제 표시 전환을 프로세스 런타임에서 판정해 각 연결에 `checkConnection`을 전달합니다.
+회전은 표시 상태를 유지합니다. 중복 검사는 합치고 검사·접속 중에는 중복 시작하지 않습니다.
 포커스·IME 변경은 검사 계기가 아닙니다. 별도 exec 채널의 `:` 응답을 3초 제한으로 검사하며,
 터미널 명령·출력 역압력과 독립적으로 실패를 판정합니다. 정상 응답 후 actor는 목록·대상을 확인하고
 변경·일시정지된 pane만 캡처합니다. 새 WebView 구독·실제 재접속에는 전체 캡처를 유지합니다.
@@ -67,7 +68,9 @@ Rust `checking`은 입력 차단·오래된 입력 취소에만 사용하며 정
 `BackgroundResume`은 자동 중지한 연결의 직전 세션·pane을 메모리에만 보관하고 `onResume()`에서 한 번 소비합니다.
 사용자 종료·탭 닫기·재시도 정지·task 제거는 예약을 취소하며 인증/호스트키 실패·삭제된 세션은 예약하지 않습니다.
 백그라운드 자동 중지는 서비스·wake lock을 해제하며 프로세스 재실행으로 예약을 복원하지 않습니다.
-Android·데스크톱 재시도는 네트워크 오류에 최대 3회, 각 시도 전 1초 대기입니다. 최초·수동 접속은 즉시 시작합니다.
+Android·데스크톱 재시도는 네트워크 오류에 최대 3회, 첫 시도 즉시·이후 각각 1초 간격입니다.
+수동 재시도는 새 3회 주기를 즉시 시작합니다. Android는 프로세스 표시 상태 전환으로 복귀를 판정하고,
+데스크톱은 창 활성화 전환과 3초 이상의 UI tick 간격으로 전면·절전 복귀를 감지합니다.
 Android 복귀 시 네트워크 소진은 새 주기를 시작하지만 사용자 정지는 유지합니다.
 루트 뒤로가기는 [Android 기본 백그라운드 전환](https://developer.android.com/guide/components/activities/tasks-and-back-stack#back-press-behavior)을 사용합니다.
 최근 앱 제거는 앱 모델·연결·관측/동기화 작업을 닫으며 원격 tmux에는 종료 명령을 보내지 않습니다.

@@ -63,8 +63,10 @@ data class ConnectionStatus(
     val window: String? = null,
     val checking: Boolean = false,
     val recovering: Boolean = false,
+    val retryExhausted: Boolean = false,
 ) {
-    val acceptsInput get() = !checking && !recovering && (phase == Phase.Ready || phase == Phase.Shell)
+    val acceptsInput get() = !checking && !recovering && (phase == Phase.Ready || phase == Phase.Shell || (phase == Phase.Restoring && resizing && !canStopRetrying))
+    val acceptsPointer get() = acceptsInput && !resizing
     val recoveryMessage get() = when {
         recovering -> if (phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired)) message else t("연결 복구 중…")
         else -> null
@@ -76,7 +78,7 @@ object RetryPolicy {
     fun retryable(failure: Failure) = failure == Failure.Network
     fun delayMillis(attempt: Int, jitter: Double = 0.5): Long {
         require(attempt >= 0 && jitter in 0.0..1.0)
-        return 1_000L
+        return if (attempt == 0) 0L else 1_000L
     }
 }
 class ClientFailure(val kind: Failure, val safeMessage: String, val diagnosticCode: String? = null) : Exception(safeMessage)

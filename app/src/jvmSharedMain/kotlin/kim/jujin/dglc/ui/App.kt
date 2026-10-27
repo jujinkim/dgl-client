@@ -380,7 +380,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
         if (mobileLayout && preferences.mobilePaneToolbarVisible) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
             deletion = tr("패널 {0}", remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: t("제목 미확인")) to { client.manage(TmuxCommand.killPane(target)) }
         }
-        if (status.canRetryNow || status.canStopRetrying) {
+        if (!status.retryExhausted && (status.canRetryNow || status.canStopRetrying)) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                 if (status.canRetryNow) TextButton({ client.retryNow() }) { Text(t("새로고침 재시도")) }
                 if (status.canStopRetrying) TextButton({ client.stopRetrying() }) { Text(t("재시도 정지")) }
@@ -402,6 +402,16 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
             CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
                 PlatformTerminal(client, preferences, Modifier.fillMaxSize())
+            }
+            if (status.retryExhausted) {
+                Surface(Modifier.align(Alignment.Center).padding(12.dp), shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(t("재접속 실패"), style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        Button({ client.retryNow() }) { Text(t("다시 재접속 시도")) }
+                    }
+                }
             }
             TimedSnackbar(client.inputNotice, Modifier.align(Alignment.BottomCenter))
         }

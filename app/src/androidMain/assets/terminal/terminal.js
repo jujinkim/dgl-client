@@ -5,7 +5,8 @@
   const panes = new Map();
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 14, scrollback = 5000, enabled = true, smooth = false;
-  let fontGesture = false;
+  let fontGesture = false, pointerEnabled = true;
+  window.setPointerEnabled = enabled => { pointerEnabled = enabled === true; if (!pointerEnabled) cancelTouchScroll(); };
   let touchSelection = null;
   let geometryObserver = null;
   const cancelTouchScroll = () => { for (const p of panes.values()) p.cancelTouchScroll(); };
@@ -68,7 +69,7 @@
   let smoothTransitions = false;
   let cachedSize = null;
   let animations = [];
-  let snapshotUpdating = false;
+  let snapshotUpdating = false, snapshotInputModes = null;
   // Use the rendered cursor, with public buffer coordinates as the fallback.
   // CSS variables take precedence over xterm's deferred composition positioning.
   const syncInputPosition = () => {
@@ -109,7 +110,7 @@
     cachedScreen?.remove(); cachedScreen = null;
     cachedSize = null;
     reconnectSnapshot = false;
-    snapshotUpdating = false;
+    snapshotUpdating = false; snapshotInputModes = null;
     syncInputPosition();
     if (renderAck !== null) post({ type: 'ack', id: renderAck });
     renderAck = null;
@@ -117,6 +118,7 @@
   api.cancelSnapshot = clearCache;
   api.beginSnapshot = () => {
     syncInputPosition();
+    if (!snapshotUpdating) snapshotInputModes = { ...term.modes };
     snapshotUpdating = true;
     const buffer = term.buffer?.active;
     if (buffer && buffer.viewportY < buffer.baseY) savedScroll = buffer.viewportY;
@@ -151,7 +153,7 @@
   api.endSnapshot = id => {
     if (savedScroll !== null) { term.scrollToLine(savedScroll); savedScroll = null; }
     if (!Number.isSafeInteger(id) || id <= 0) return;
-    if (!cachedScreen) { snapshotUpdating = false; syncInputPosition(); post({ type: 'ack', id }); return; }
+    if (!cachedScreen) { snapshotUpdating = false; snapshotInputModes = null; syncInputPosition(); post({ type: 'ack', id }); return; }
     const version = cacheVersion;
     renderAck = id;
     renderListener?.dispose();
@@ -161,7 +163,7 @@
       // and a paint opportunity before exposing the replacement screen.
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (cacheVersion !== version || !cachedScreen) return;
-        snapshotUpdating = false;
+        snapshotUpdating = false; snapshotInputModes = null;
         syncInputPosition();
         const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
         // Resize, pane changes and ordinary snapshots swap atomically without motion.
@@ -197,10 +199,11 @@
   let wheelOrigin = null;
   let keyOrigin = null, textOrigin = false, textTarget = null, composing = false, compositionPending = false, compositionVersion = 0, pasting = false;
   const keyboard = (key, text, modifiers = {}, target = pane === active ? inputTarget : null) => {
-    if (!inputEnabled || fontGesture) return;
+    if (fontGesture) return;
+    if (!inputEnabled) { post({ type: 'blocked-input' }); return; }
     post({ type: 'keyboard', key, text, target, control: modifiers.ctrlKey === true,
       shift: modifiers.shiftKey === true, alt: modifiers.altKey === true,
-      applicationCursor: term.modes?.applicationCursorKeysMode === true });
+      applicationCursor: (snapshotInputModes || term.modes)?.applicationCursorKeysMode === true });
   };
   // Public APIs only. onKey runs before the corresponding onData, so that event
   // is encoded from its semantic key rather than transforming terminal bytes.
@@ -241,9 +244,14 @@
     // Wheel reports belong to the gesture's destination, independently of a
     // pending key/IME origin. xterm emits these synchronously during dispatch.
     if (wheelOrigin) {
-      if (inputEnabled && !fontGesture && new TextEncoder().encode(data).length <= 65536)
-        post({ type: 'input', data, target: wheelOrigin.target });
+      if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !fontGesture && new TextEncoder().encode(data).length <= 65536)
+        post({ type: 'input', data, target: wheelOrigin.target, pointer: true });
       return;
+    }
+    if (pasting && snapshotInputModes) {
+      const currentBracketed = term.modes?.bracketedPasteMode === true;
+      if (currentBracketed && data.startsWith('\x1b[200~') && data.endsWith('\x1b[201~')) data = data.slice(6, -6);
+      if (snapshotInputModes.bracketedPasteMode) data = '\x1b[200~' + data + '\x1b[201~';
     }
     const captured = keyOrigin, origin = captured?.event; keyOrigin = null;
     if (new TextEncoder().encode(data).length > 65536) return;
@@ -259,12 +267,15 @@
       keyboard('text', data, {}, textTarget); textOrigin = composing; compositionPending = composing;
     } else if (!pasting && textOrigin && ['\r', '\t', '\x7f'].includes(data)) {
       keyboard({ '\r': 'enter', '\t': 'tab', '\x7f': 'backspace' }[data], null, {}, textTarget); textOrigin = composing; compositionPending = composing;
-    } else if (inputEnabled && !fontGesture) post({ type: 'input', data });
+    } else if (inputEnabled && !fontGesture) {
+      const pointer = /^\x1b\[([<M])/.test(data);
+      if (!pointer || (pointerEnabled && !snapshotUpdating && !imeAnimating)) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}) });
+    } else if (!fontGesture) post({ type: 'blocked-input' });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
   term.onBinary(data => {
-    if (inputEnabled && !fontGesture && data.length <= 65536)
-      post({ type: 'input-binary', data, target: wheelOrigin ? wheelOrigin.target : pane === active ? inputTarget : null });
+    if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !fontGesture && data.length <= 65536)
+      post({ type: 'input-binary', data, pointer: true, target: wheelOrigin ? wheelOrigin.target : pane === active ? inputTarget : null });
   });
   api.setInputEnabled = enabled => {
     inputEnabled = enabled === true;
@@ -276,7 +287,10 @@
     if (typeof text !== 'string' || text.length === 0) throw new Error('Empty paste');
     pasteCapture = [];
     try {
-      term.paste(text);
+      if (snapshotInputModes) {
+        const normalized = text.replace(/\r?\n/g, '\r');
+        pasteCapture.push(snapshotInputModes.bracketedPasteMode ? '\x1b[200~' + normalized + '\x1b[201~' : normalized);
+      } else term.paste(text);
       const data = pasteCapture.join('') + (enter === true ? '\r' : '');
       if (new TextEncoder().encode(data).length > 65536) throw new Error('Paste exceeds 64 KiB');
       return data;
@@ -322,14 +336,14 @@
       if (host.hasPointerCapture?.(previous.id)) host.releasePointerCapture(previous.id);
     }
   };
-  const canScroll = gesture => inputEnabled && !fontGesture && !recoveryScreen &&
+  const canScroll = gesture => inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !fontGesture && !recoveryScreen &&
     !draggingBoundary && pane === active && gesture.target === inputTarget;
   host.addEventListener('pointerdown', event => {
     if (event.pointerType !== 'touch') { suppressTouchClick = false; return; }
     if (event.isPrimary === false || touch) { cancelTouchScroll(); return; }
     suppressTouchClick = false;
     touchSelection = null;
-    if (!inputEnabled || fontGesture || recoveryScreen || draggingBoundary) return;
+    if (!inputEnabled || !pointerEnabled || snapshotUpdating || imeAnimating || fontGesture || recoveryScreen || draggingBoundary) return;
     touch = { id: event.pointerId, x: event.clientX, y: event.clientY, lastY: event.clientY,
       remainder: 0, dragging: false, selected: pane === active, target: inputTarget };
   }, true);
@@ -530,7 +544,7 @@
         Object.assign(b.style, horizontal ? { left: `${edge * cell.width}px`, top: `${spec.top * cell.height}px`, width: `${cell.width}px`, height: `${spec.height * cell.height}px` }
           : { left: `${spec.left * cell.width}px`, top: `${edge * cell.height}px`, width: `${spec.width * cell.width}px`, height: `${cell.height}px` });
         b.addEventListener('pointerdown', e => {
-          if (fontGesture) return;
+          if (fontGesture || !pointerEnabled || imeAnimating) return;
           e.preventDefault(); b.setPointerCapture(e.pointerId); draggingBoundary = true;
           b.onpointercancel = () => { draggingBoundary = false; arrange(); };
           const start = horizontal ? e.clientX : e.clientY;

@@ -43,6 +43,11 @@ class AndroidMobileInputTest {
         override fun bindSurface(value: TerminalSurface?) { surface = value }
         override fun unbindSurface(expected: TerminalSurface) { if (surface === expected) surface = null }
         override fun connect() { connects++ }
+        override fun retryNow() {
+            if (!status.value.retryExhausted) return
+            connects++
+            status.value = ConnectionStatus(Phase.Reconnecting, canStopRetrying = true)
+        }
         override fun trust() {}
         override fun selectTarget(session: String, window: String?, pane: String?) {}
         override fun selectSession(id: String) {}
@@ -54,6 +59,51 @@ class AndroidMobileInputTest {
         override fun restore() {}
         override fun disconnect() {}
         override fun close() { closes++ }
+    }
+
+    @Test fun exhaustedRetryIsCenteredAndRetainsTheTerminal() = runBlocking<Unit> {
+        val client = Connection("retry")
+        lateinit var app: AppModel
+        lateinit var previous: LocalState
+        lateinit var workspace: WorkspaceState
+        var oldConnections = emptyList<ClientConnection>()
+        var oldSelected: ClientConnection? = null
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity {
+                    app = (it.application as DglApplication).connections().app
+                    previous = app.local.value; workspace = app.workspace.value
+                    oldConnections = app.connections.value; oldSelected = app.selected.value
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false)) }
+                    app.connections.value = listOf(client); app.selected.value = client; app.reconcileWorkspace()
+                }
+                withTimeout(5000) { while (client.surface == null) delay(20) }
+                val surface = client.surface
+                scenario.onActivity {
+                    client.status.value = ConnectionStatus(Phase.Failed, canRetryNow = true, retryExhausted = true)
+                }
+                val button = bounds(awaitNode("다시 재접속 시도"))
+                awaitNode("재접속 실패")
+                assertNull(node("새로고침 재시도"))
+                scenario.onActivity {
+                    val web = (surface as kim.jujin.dglc.ui.AndroidTerminal).view
+                    val area = Rect(); assertTrue(web.getGlobalVisibleRect(area))
+                    assertTrue(area.contains(button))
+                    assertTrue(kotlin.math.abs(button.centerX() - area.centerX()) <= 2)
+                    assertTrue(kotlin.math.abs(button.centerY() - area.centerY()) < 64 * it.resources.displayMetrics.density)
+                }
+                click("다시 재접속 시도")
+                withTimeout(5000) { while (client.connects != 1) delay(20) }
+                assertSame(surface, client.surface)
+                assertEquals(1, app.connections.value.size)
+                assertTrue(client.writes.isEmpty())
+            } finally {
+                scenario.onActivity {
+                    app.connections.value = oldConnections; app.selected.value = oldSelected
+                    app.workspace.value = workspace; app.modify { previous }
+                }
+            }
+        }
     }
 
     @Test fun compactTabsAndNotificationPopupPreserveInputAndFocus() = runBlocking<Unit> {

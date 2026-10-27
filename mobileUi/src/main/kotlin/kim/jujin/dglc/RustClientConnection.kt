@@ -37,7 +37,7 @@ class RustClientConnection(
     override val notice = MutableStateFlow<String?>(null)
     override val inputNotice = SnackbarState()
     private val rejections = InputRejections()
-    private fun rejectInput(code: String) { rejections.reject(code)?.let { inputNotice.show(it, if (code == "InvalidArgument") SnackbarDuration.Normal else SnackbarDuration.Long) } }
+    private fun rejectInput(code: String) { rejections.reject(code)?.let { inputNotice.show(it, if (code == "InvalidArgument") SnackbarDuration.Normal else SnackbarDuration.Short) } }
     private fun inputCode(error: Exception) = (error as? CoreException.Failure)?.code ?: "Unknown"
     override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -112,7 +112,7 @@ class RustClientConnection(
                         synchronized(this@RustClientConnection) {
                             if (current == epoch) {
                                 val id = record["request_id"]?.jsonPrimitive?.content?.toULongOrNull()
-                                if (id != null) resizes.complete(id, record["error"] == null || record["error"] is JsonNull)
+                                if (id != null) resizes.complete(id, record["error"] == null || record["error"] is JsonNull, System.nanoTime() / 1_000_000)
                                 if (id == refreshRequest) { refreshRequest = null; refreshing.value = false }
                                 val code = record["error"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
                                 val completion = inputCompletions.remove(id)
@@ -174,7 +174,7 @@ class RustClientConnection(
             Phase.Selecting -> t("tmux 세션을 선택하거나 만드세요."); Phase.Restoring -> if (resizing) t("연결됨 · tmux") else t("터미널 복원 중…"); Phase.Ready -> t("연결됨 · tmux")
             Phase.Shell -> t("일반 SSH · tmux 탐지 실패"); Phase.Reconnecting -> t("연결 복구 중…"); Phase.MissingSession -> t("이전 세션이 삭제되었습니다. 직접 선택하세요.")
             else -> t("연결 종료")
-        }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering)
+        }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering, phase == Phase.Failed && error == "Network" && !stopped && attempt >= 3)
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         val r = s.getValue("remote").jsonObject
         fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
@@ -197,7 +197,7 @@ class RustClientConnection(
             }, probes.firstNotNullOfOrNull { it.optional("path") }), version?.optional("version"), version?.optional("exit_status")?.toIntOrNull())
         } else null
         // Publish readiness only after its matching target and trust details are visible.
-        rejections.phase(phase)
+        rejections.status(nextStatus)
         status.value = nextStatus
         if (phase == Phase.Ready && (lastSession != session.value || lastPane != pane.value)) {
             lastSession = session.value; lastPane = pane.value
@@ -418,7 +418,7 @@ class RustClientConnection(
             val id = connection.submitAction(buildJsonObject {
                 put("action", "resize"); put("columns", value.columns); put("rows", value.rows)
             }.toString())
-            resizes.submitted(id, value)
+            resizes.submitted(id, value, now)
         } catch (_: Exception) {
             // A full request queue must not tear down a healthy SSH connection.
             resizes.defer(now)
@@ -433,11 +433,16 @@ class RustClientConnection(
         // A size-only change keeps the destination; submit against the latest grid generation.
         try { inputRequests.add(c.submitInput(current, bytes)) } catch (error: Exception) { rejectInput(inputCode(error)) }
     }
+    @Synchronized override fun inputBlocked() { if (!status.value.acceptsInput) rejectInput("NotReady") }
+    @Synchronized override fun pointerInput(pane: String, target: String?, bytes: ByteArray) {
+        if (!status.value.acceptsPointer || resizes.pending || target == null || native?.targetJson() != target) return
+        paneInput(pane, target, bytes)
+    }
     @Synchronized override fun focusPane(pane: String, target: String?) {
-        if (target != null && native?.targetJson()?.let { inputTargetIdentity(it) == inputTargetIdentity(target) } == true) selectPane(pane)
+        if (status.value.acceptsPointer && !resizes.pending && target != null && native?.targetJson() == target) selectPane(pane)
     }
     @Synchronized override fun resizePane(pane: String, target: String?, size: Size) {
-        if (target == null || native?.targetJson() != target) return
+        if (!status.value.acceptsPointer || resizes.pending || target == null || native?.targetJson() != target) return
         action(buildJsonObject { put("action", "manage"); put("operation", buildJsonObject {
             put("op", "resizePaneTo"); put("target", pane); put("columns", size.columns); put("rows", size.rows)
         }) })

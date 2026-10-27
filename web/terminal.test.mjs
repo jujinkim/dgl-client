@@ -60,11 +60,11 @@ test('terminal bridge forwards text and raw mouse input through distinct channel
   assert.deepEqual(messages.splice(0), [{ type: 'ready' }]);
   for (const data of ['한글😀', '\x1b[1;6D', '\x1b[<35;1;1M', '\x1b[<64;1;1M']) {
     listeners.data(data);
-    assert.deepEqual(messages.splice(0), [{ type: 'input', data, pane: 'shell', target: null }]);
+    assert.deepEqual(messages.splice(0), [{ type: 'input', data, ...(/^\x1b\[</.test(data) ? { pointer: true } : {}), pane: 'shell', target: null }]);
   }
   const data = '\x1b[M \x85\xff';
   listeners.binary(data);
-  assert.deepEqual(messages.splice(0), [{ type: 'input-binary', data, pane: 'shell', target: null }]);
+  assert.deepEqual(messages.splice(0), [{ type: 'input-binary', data, pointer: true, pane: 'shell', target: null }]);
   assert.deepEqual([...messages], []);
   listeners.binary('a'.repeat(65537));
   listeners.data('한'.repeat(21846));
@@ -97,7 +97,7 @@ test('composer captures the renderer paste once, blocks background input and enf
   assert.equal(window.preparePaste('한글😀\n둘', false), '한글😀\r둘');
   bracketed = true;
   assert.equal(window.preparePaste('한글😀\n둘', true), '\x1b[200~한글😀\r둘\x1b[201~\r');
-  assert.deepEqual(messages, []);
+  assert.deepEqual(messages.splice(0), [{ type: 'blocked-input' }]);
   assert.throws(() => window.preparePaste('', false));
   assert.throws(() => window.preparePaste('한'.repeat(21846), false));
   assert.equal(window.preparePaste('a'.repeat(65524), false).length, 65536);
@@ -155,7 +155,7 @@ function cachedRenderer() {
     element = root; cols = 10; rows = 5; parser = { registerOscHandler() {} };
     buffer = { active: { cursorX: 3, cursorY: 2, baseY: 10, viewportY: 10 } };
     constructor() { terminal = this; }
-    loadAddon() {} open() {} onData() {} onBinary() {} onResize() {} refresh() {}
+    loadAddon() {} open() {} onData(callback) { this.data = callback; } onBinary() {} onResize() {} refresh() {}
     resize(columns, rows) { this.cols = columns; this.rows = rows; }
     onRender(callback) { renders.add(callback); return { dispose() { renders.delete(callback); } }; }
   }
@@ -798,7 +798,7 @@ test('semantic keys use the shared encoder channel once and preserve cursor mode
   ]);
   r.messages.length = 0;
   r.window.setInputEnabled(false); r.key('c', 'c'); r.window.sendShortcut('left', false, false, false);
-  assert.deepEqual(r.messages, []);
+  assert.deepEqual(r.messages, [{ type: 'blocked-input' }, { type: 'blocked-input' }]);
 });
 
 test('IME commits once while paste mouse and protocol responses bypass semantic input', () => {
@@ -818,8 +818,8 @@ test('IME commits once while paste mouse and protocol responses bypass semantic 
     { type: 'input', data: '\x1b[0n', pane: 'shell', target: null },
     { type: 'keyboard', key: 'text', text: '한😀', control: false, shift: false, alt: false, applicationCursor: false, pane: 'shell', target: null },
     { type: 'input', data: 'pasted text', pane: 'shell', target: null },
-    { type: 'input', data: '\x1b[<0;1;1M', pane: 'shell', target: null },
-    { type: 'input-binary', data: '\x1b[M \x85\xff', pane: 'shell', target: null },
+    { type: 'input', data: '\x1b[<0;1;1M', pointer: true, pane: 'shell', target: null },
+    { type: 'input-binary', data: '\x1b[M \x85\xff', pointer: true, pane: 'shell', target: null },
   ]);
 });
 
@@ -844,4 +844,40 @@ test('delayed IME commit retains the original target across pane or reconnect ch
   r.window.setLayout({ window: null, active: 'shell', inputTarget: 'generation-three', panes: [] });
   r.events.input({ inputType: 'insertText', data: 'next' }); r.listeners.data('next');
   assert.equal(r.messages[3].target, 'generation-three');
+});
+
+
+test('size synchronization preserves keyboard input while discarding coordinate reports', () => {
+  const r = keyboardRenderer();
+  r.window.setPointerEnabled(false);
+  r.key('ArrowLeft', '\x1b[D');
+  r.events.compositionstart(); r.events.compositionend(); r.listeners.data('한글');
+  r.events.paste(); r.listeners.data('english paste');
+  r.timers.splice(0).forEach(callback => callback());
+  r.listeners.data('\x1b[<0;3;4M'); r.listeners.binary('\x1b[M !!');
+  assert.equal(r.messages.length, 3);
+  assert.equal(r.messages[0].key, 'left');
+  assert.equal(r.messages[1].text, '한글');
+  assert.equal(r.messages[2].data, 'english paste');
+  r.window.setPointerEnabled(true);
+  assert.equal(r.messages.length, 3, 'discarded pointer events are never replayed');
+});
+
+
+test('snapshot reset preserves cursor keys paste mode and composition until the replacement renders', () => {
+  const r = cachedRenderer();
+  r.terminal.modes = { applicationCursorKeysMode: true, bracketedPasteMode: true };
+  r.event('compositionstart');
+  r.window.beginSnapshot();
+  r.terminal.modes = { applicationCursorKeysMode: false, bracketedPasteMode: false };
+  r.window.sendShortcut('left', false, false, false);
+  r.event('compositionend'); r.terminal.data('한글');
+  assert.equal(r.messages[0].applicationCursor, true);
+  assert.equal(r.messages[1].text, '한글');
+  assert.equal(r.window.preparePaste('a\nb', true), '\x1b[200~a\rb\x1b[201~\r');
+  r.event('paste'); r.terminal.data('paste');
+  assert.equal(r.messages[2].data, '\x1b[200~paste\x1b[201~');
+  r.window.endSnapshot(42); r.render(); r.frame(); r.frame();
+  r.window.sendShortcut('left', false, false, false);
+  assert.equal(r.messages.at(-1).applicationCursor, false);
 });

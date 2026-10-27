@@ -26,14 +26,15 @@ import kim.jujin.dglc.core.t
         }
     }
     if (remaining != null && remaining!! <= 0f) return
-    Column(modifier) {
-        Snackbar(action = {
+    Column(modifier.widthIn(max = 480.dp).padding(8.dp)) {
+        Snackbar(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface, action = {
             TextButton({ state.dismiss(displayed.id) }) { Text(t("닫기")) }
-        }) { Text(displayed.message) }
+        }) { Text(displayed.message, style = MaterialTheme.typography.bodySmall) }
         remaining?.let { fraction ->
-            val color = MaterialTheme.colorScheme.inverseOnSurface
+            val color = MaterialTheme.colorScheme.onSurface
             Box(Modifier.fillMaxWidth().height(3.dp)
-                .background(MaterialTheme.colorScheme.inverseSurface).clearAndSetSemantics { }) {
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh).clearAndSetSemantics { }) {
                 Box(Modifier.fillMaxSize().background(color.copy(alpha = 0.2f)))
                 Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(color))
             }

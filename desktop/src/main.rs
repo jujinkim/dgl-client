@@ -21,6 +21,7 @@ mod notification_panel;
 mod notifications;
 mod pane_toolbar;
 mod platform;
+mod resume;
 mod session_tabs;
 mod settings;
 mod snackbar;
@@ -135,6 +136,7 @@ struct Desktop {
     snackbar: SnackbarState,
     focus: FocusHandle,
     inbox: dgl_core::agent::Inbox,
+    resume: resume::ResumeDetector,
     agent_tick: u64,
     notification_status: String,
     notification_anchor: Rc<RefCell<Bounds<Pixels>>>,
@@ -225,6 +227,7 @@ impl Desktop {
             snackbar,
             focus: cx.focus_handle(),
             inbox: Default::default(),
+            resume: Default::default(),
             agent_tick: 0,
             notification_status: String::new(),
             notification_anchor: Default::default(),
@@ -246,6 +249,14 @@ impl Desktop {
                 .unwrap_or(false)
         });
         self.sync_title_updates(foreground);
+        if self.resume.update(foreground, SystemTime::now()) {
+            let mut checked = HashSet::new();
+            for tab in &self.tabs {
+                if checked.insert(tab.connection.state().handle) {
+                    let _ = tab.connection.action(Action::CheckConnection);
+                }
+            }
+        }
         #[cfg(debug_assertions)]
         if self
             .notification_probe_at
@@ -350,14 +361,14 @@ impl Desktop {
                             dgl_core::Error::Cancelled | dgl_core::Error::StaleGeneration
                         ))
                 {
-                    self.snackbar.show_snackbar_with_duration(
-                        tr!("요청 실패: {0}", e),
-                        if input {
-                            SnackbarDuration::Long
-                        } else {
-                            SnackbarDuration::Normal
-                        },
-                    );
+                    if input {
+                        tab.terminal.update(cx, |t, _| t.reject_input(e));
+                    } else {
+                        self.snackbar.show_snackbar_with_duration(
+                            tr!("요청 실패: {0}", e),
+                            SnackbarDuration::Normal,
+                        );
+                    }
                     changed = true;
                 }
             }

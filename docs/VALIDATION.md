@@ -6,24 +6,26 @@
 
 ## 현재 변경 검사 (2026-10-27)
 
-Android 터미널의 렌더 후 자동 맞춤을 제거하고 원격 행·열을 유지합니다. 전체 컨테이너 너비로
-원격 크기 변경을 요청하며 xterm·바깥 컨테이너·WebView의 스크롤바를 숨깁니다.
-세로 터치는 행 단위 휠·로컬 이력 스크롤로 전달하고, 비활성 pane의 첫 드래그는 선택만 수행합니다.
-대상 변경·입력 차단·재접속·핀치·취소 시 미전송 이동량을 폐기합니다. Rust API·저장 설정·의존성 버전은 유지합니다.
-이전 변경의 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+같은 대상의 크기 변경 중 키·텍스트 입력을 기존 제한된 큐로 받고, 최초 크기 변경 즉시 제출·이후
+최소 50ms 병합·실패 후 150ms 재시도를 적용했습니다. 실제 연결 확인·복구와 좌표 입력은 분리합니다.
+첫 자동 재시도는 즉시, 이후 1초 간격으로 최대 3회이며 소진 시 터미널 중앙에서 다시 시도합니다.
+Android는 실제 표시 전환, 데스크톱은 전면 전환·UI tick 간격으로 복귀를 검사합니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 웹 | `npm test --prefix web`: 32 통과·skip 0. 원격 열 수·분할 pane·컨테이너 측정, 방향·행 단위 누적·소수 픽셀, TUI 모드·원본 대상, IME 분리·캡처 이동·합성 클릭·취소와 기존 회귀 검사 |
-| Android 빌드 | JDK 17·SDK 36의 `assembleDebug`·`assembleDebugAndroidTest`·`lintDebug` 통과. `verify_lint.py`: 기존 검토 진단 12개 일치 |
-| API36 전용 에뮬레이터 | WebView 133.0.6943.137에서 터미널 관련 계측 2개·기존 핀치/가로 경계 검사 1개, 총 3개 통과·skip 0. 실제 번들 xterm의 80열·분할 마지막 열·줄바꿈, 스크롤바 숨김, SGR·128 이상 바이너리 좌표·방향키 대체·로컬 이력, 실제 손가락 세로/가로 드래그·IME 미표시, 비활성 pane 선택·대상 변경과 기존 pane 화면·복구 회귀 검사. 명시적 이름 목록 대조 통과 |
-| 원본 APK | `collect_rust_android.py`: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`의 ID·버전·SDK·네 ABI·Rust payload·v2 서명 검증 통과. 경로·해시는 `artifacts/rust-candidate/android/build.json` |
-| 정적 검사 | Python 검사 이름 목록·결과 검증기 6개, 변경 문서 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과 |
+| Rust·UniFFI·데스크톱 | `cargo test --locked --workspace`: 116 통과. 격리 환경/Keychain용 기본 ignore 7개는 통과로 계산하지 않음. 가상 시간 즉시·1초·1초 재시도, 중복 검사/접속·사용자 정지, 크기만 바뀐 입력 대상, 좁은 창·분할의 중앙 버튼 위치/연속 클릭, IME 조합·입력 모드 유지 포함 |
+| 격리 SSH | tmux 3.7c의 `resume::healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_input` 1개 통과. 정상 SSH 재사용, 무응답·출력 역압력 중 3초 판정, 동일 tmux PID, 실패 입력 미재전송, 크기 캡처 지연 중 한글·영문 입력 순서/중복 확인 |
+| JVM | 83 통과·외부 SSH/Windows 환경 예상 skip 9. 결과 검증기 명시적 목록 대조 통과 |
+| 웹 | 34 통과·skip 0. 연속 크기·IME 세대, 조합 위치, 스냅샷 중 방향키/붙여넣기 모드, 좌표 보고 차단 중 키·텍스트 수신과 무재전송 포함 |
+| Android | Debug·계측 APK·lint 빌드 통과. 기존 검토 lint 진단 12개 일치. API36 전용 `AndroidConnectionLifetimeTest`와 `AndroidMobileInputTest#exhaustedRetryIsCenteredAndRetainsTheTerminal` 2개 통과·skip 0 |
+| Python·정적 검사 | 98 통과. 번역 생성 일치·원문 체크섬·Wrapper·문서 링크·diff 공백·대시보드 메타데이터 검사 통과 |
 
-계측 결과는 `artifacts/android-terminal-scroll/`에 있으며 핀치 검사의 화면·IME 설정은 복원했습니다. 검사 작성 중 DOM 커서 공백·WebView의
-스크롤바 CSS 지원 차이·주입 손가락 종류·보존된 이력 위치를 반영해 fixture를 수정했습니다.
-실제 터치의 캡처가 xterm 셀에서 pane으로 이동할 때 발생하는 자식의 캡처 해제를 취소로 처리하지 않도록 보강했습니다.
-Rust·JVM·데스크톱 검사·실제 SSH/원격 TUI 수신·물리 Android·Windows 네이티브·전체 API matrix·장시간 검사는 이번 변경에서 수행하지 않았습니다.
+API36 연결 수명 검사는 홈·백그라운드 복귀, IME, Activity 재생성, 유지 설정 켜짐/꺼짐,
+수동 종료·재시도 정지·task 제거, 삭제된 세션·인증 실패 보존을 확인했습니다. 중앙 버튼 검사는
+화면 안 중앙 배치·상단 중복 버튼 없음·클릭 후 연결/터미널 유지를 확인했습니다.
+로그는 `artifacts/recovery-sync/`, 원본 APK 검사 결과는 `artifacts/rust-candidate/android/build.json`에 있습니다.
+Windows 빌드 경로는 유지했으며 Windows 네이티브·물리 Android 키보드·macOS 실기 절전/GUI·전체 API matrix·장시간 검사는 수행하지 않았습니다.
+데스크톱 절전 복귀는 3초 이상의 UI tick 간격을 사용하므로 긴 UI 정지도 연결 검사 계기가 됩니다.
 
 ## 남은 한계
 

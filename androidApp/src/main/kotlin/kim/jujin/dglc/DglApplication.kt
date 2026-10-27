@@ -22,6 +22,7 @@ class AndroidConnectionRuntime(private val application: DglApplication) {
     val app = createEngine(application)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val visible = MutableStateFlow(false)
+    private val visibility = ConnectionVisibility()
     private var wakeWanted = false
     private var service: ConnectionService? = null
     private val lifetime = ConnectionLifetime(
@@ -61,7 +62,11 @@ class AndroidConnectionRuntime(private val application: DglApplication) {
                 .collect { (keep, foreground, states) -> lifetime.update(keep, foreground, states) }
         }
     }
-    fun setVisible(value: Boolean) { visible.value = value }
+    fun setVisible(value: Boolean) {
+        val resumed = visibility.update(value)
+        visible.value = value
+        if (resumed) app.connections.value.forEach { it.onResume() }
+    }
     fun attach(service: ConnectionService): Boolean {
         if (!lifetime.serviceRequested) return false
         this.service = service; service.setAwake(wakeWanted)

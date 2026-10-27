@@ -4,6 +4,18 @@ import kim.jujin.dglc.core.*
 import kotlin.test.*
 
 class ConnectionLifetimeTest {
+    @Test fun onlyActualBackgroundTransitionsResumeOnce() {
+        val visibility = ConnectionVisibility()
+        assertFalse(visibility.update(true), "initial launch")
+        repeat(3) { assertFalse(visibility.update(true), "rotation, IME and dialogs stay visible") }
+        assertFalse(visibility.update(false))
+        assertFalse(visibility.update(false))
+        assertTrue(visibility.update(true), "home/lock return")
+        assertFalse(visibility.update(true))
+        assertFalse(visibility.update(false))
+        assertTrue(visibility.update(true))
+    }
+
     private class Fixture(val startSucceeds: Boolean = true) {
         var starts = 0; var stops = 0; var disconnects = 0; var disposals = 0; var awake = false
         val lifetime = ConnectionLifetime({ starts++; startSucceeds }, { stops++ }, { awake = it }, { disconnects++ }, { disposals++ })

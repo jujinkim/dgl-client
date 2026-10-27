@@ -33,7 +33,7 @@ npm test --prefix web
 ```
 
 단축키 회귀 검사는 Rust 공통 인코더·UniFFI, Kotlin 저장 호환/조합키 수명, 웹 키·IME 출처/붙여넣기·마우스 비간섭/지연된 대상 검사를 포함합니다.
-크기·폰트 회귀 검사는 실패 후 동일 크기 재시도·최신 크기 병합, 렌더러 소유 IME 세대의 취소·재부착,
+크기·폰트 회귀 검사는 즉시 제출·50ms 제한·실패 후 150ms 재시도·최신 크기 병합, 렌더러 소유 IME 세대의 취소·재부착,
 지연된 폰트 측정·숨김 후 표시, 조합 중 스냅샷 교체·커서 좌표와 입력 보조 요소 캐시 제외를 포함합니다.
 모바일 웹 검사는 원격 열 수 유지·전체 컨테이너 측정, 세로 드래그 방향·행 단위 누적,
 비활성 pane 선택·대상 세대·취소·핀치·IME 분리와 합성 클릭 차단도 확인합니다.
@@ -132,7 +132,8 @@ python3 scripts/build_test_tmux.py 3.7c
 python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command cargo test --locked -p dgl-core --test ssh_integration isolated_auth_management_input_reconnect -- --ignored --exact
 ```
 
-복귀 응답 확인·소켓을 닫지 않는 무응답·출력 역압력 중 3초 판정·동일 tmux 작업/입력 복원은 아래 한 검사로 확인합니다.
+복귀 응답 확인·소켓을 닫지 않는 무응답·출력 역압력 중 3초 판정·동일 tmux 작업/입력 복원과
+크기 변경 중 큐 입력의 한글·영문 순서/중복 여부는 아래 한 검사로 확인합니다.
 `--command` 이후 인수와 Cargo의 `--` 구분자는 자식 명령에 그대로 전달합니다.
 
 ```sh

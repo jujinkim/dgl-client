@@ -67,6 +67,17 @@ pub struct State {
     pub agent_setup: Option<serde_json::Value>,
 }
 impl State {
+    pub fn accepts_input(&self) -> bool {
+        !self.checking
+            && (matches!(self.phase, Phase::Ready | Phase::Shell)
+                || (self.phase == Phase::Restoring && self.resizing && !self.retry.connecting))
+    }
+    pub fn accepts_pointer(&self) -> bool {
+        self.accepts_input() && !self.resizing
+    }
+    pub fn retry_exhausted(&self) -> bool {
+        self.resume_exhausted() && self.retry.attempt >= MAX_RETRIES
+    }
     fn can_check(&self) -> bool {
         matches!(
             self.phase,
@@ -161,6 +172,7 @@ enum RequestKind {
         target: PaneTarget,
         bytes: Vec<u8>,
         revision: u64,
+        coordinates: bool,
     },
     Action(Action),
 }
@@ -207,6 +219,7 @@ struct Shared {
     requests: Mutex<HashSet<u64>>,
     input_revision: AtomicU64,
     check_request: AtomicU64,
+    retry_request: AtomicU64,
     title_visibility: Mutex<TitleVisibility>,
     title_changed: Notify,
 }
@@ -291,6 +304,9 @@ impl Shared {
         }
     }
     fn complete(&self, mut r: Request, error: Option<Error>) {
+        let _ = self
+            .retry_request
+            .compare_exchange(r.id, 0, Ordering::SeqCst, Ordering::SeqCst);
         self.cancelled.lock().unwrap().remove(&r.id);
         self.results.lock().unwrap().push_back((
             Completion {
@@ -387,6 +403,7 @@ impl Connection {
             requests: Mutex::new(HashSet::new()),
             input_revision: AtomicU64::new(0),
             check_request: AtomicU64::new(0),
+            retry_request: AtomicU64::new(0),
             title_visibility: Mutex::new(TitleVisibility::default()),
             title_changed: Notify::new(),
         });
@@ -478,6 +495,18 @@ impl Connection {
         if self.shared.cancel.load(Ordering::SeqCst) || self.shared.done.load(Ordering::SeqCst) {
             return Err(Error::Closed);
         }
+        let retry = matches!(&kind, RequestKind::Action(Action::RetryNow));
+        // Serialize admission so repeated clicks cannot cancel/restart a handshake.
+        let retry_guard = retry.then(|| self.shared.state.lock().unwrap());
+        if retry {
+            if retry_guard.as_ref().unwrap().checking {
+                return Ok(self.shared.check_request.load(Ordering::SeqCst));
+            }
+            let pending = self.shared.retry_request.load(Ordering::SeqCst);
+            if pending != 0 {
+                return Ok(pending);
+            }
+        }
         let controls = matches!(
             &kind,
             RequestKind::Action(Action::CheckConnection | Action::RetryNow | Action::StopRetrying)
@@ -495,6 +524,23 @@ impl Connection {
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| x.checked_add(1))
             .map_err(|_| Error::Closed)?;
         self.shared.requests.lock().unwrap().insert(id);
+        if retry {
+            if retry_guard.as_ref().unwrap().retry.connecting {
+                drop(retry_guard);
+                self.shared.complete(
+                    Request {
+                        id,
+                        kind,
+                        permit: Some(permit),
+                        owner: Arc::downgrade(&self.shared),
+                    },
+                    None,
+                );
+                return Ok(id);
+            }
+            self.shared.retry_request.store(id, Ordering::SeqCst);
+        }
+        drop(retry_guard);
         if matches!(&kind, RequestKind::Action(Action::CheckConnection)) {
             let mut state = self.shared.state.lock().unwrap();
             if state.checking {
@@ -548,6 +594,12 @@ impl Connection {
             owner: Arc::downgrade(&self.shared),
         }) {
             error.into_inner().permit.take();
+            let _ = self.shared.retry_request.compare_exchange(
+                id,
+                0,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            );
             self.shared.requests.lock().unwrap().remove(&id);
             return Err(Error::QueueFull);
         }
@@ -557,24 +609,26 @@ impl Connection {
         if bytes.is_empty() || bytes.len() > 65536 {
             return Err(Error::InvalidArgument);
         }
+        // Existing raw-input ABI: mouse reports retain their exact grid generation.
+        let coordinates = bytes.starts_with(b"\x1b[M") || bytes.starts_with(b"\x1b[<");
         let revision = self.shared.input_revision.load(Ordering::SeqCst);
         let s = self.state();
         if s.phase == Phase::Closed {
             return Err(Error::Closed);
         }
-        if s.checking || !matches!(s.phase, Phase::Ready | Phase::Shell) {
+        if !s.accepts_input() || (coordinates && !s.accepts_pointer()) {
             return Err(Error::NotReady);
         }
-        if self
-            .target()
-            .is_none_or(|current| !current.same_input_destination(&target))
-        {
+        if self.target().is_none_or(|current| {
+            !current.same_input_destination(&target) || (coordinates && current != target)
+        }) {
             return Err(Error::StaleGeneration);
         }
         self.submit(RequestKind::Input {
             target,
             bytes,
             revision,
+            coordinates,
         })
     }
     pub fn action(&self, action: Action) -> Result<u64> {
@@ -844,8 +898,13 @@ impl Control {
         Ok(())
     }
     async fn refresh_screen_if_needed(&mut self, resizing: bool) -> Result<()> {
+        let before = self.shared.target();
         self.refresh().await?;
-        self.sync_screens(resizing, false).await
+        let same = before
+            .as_ref()
+            .zip(self.shared.target().as_ref())
+            .is_some_and(|(a, b)| a.same_input_destination(b));
+        self.sync_screens(resizing && same, false).await
     }
     async fn select_pane(&mut self, id: String) -> Result<()> {
         let state = self.shared.state.lock().unwrap().clone();
@@ -1281,7 +1340,11 @@ fn apply_retry_control(shared: &Shared, request: Request) -> bool {
     shared.update(|s| {
         s.checking = false;
         if retry {
-            s.retry = RetryState::default();
+            s.retry = RetryState {
+                attempt: 1,
+                connecting: true,
+                ..RetryState::default()
+            };
             s.phase = Phase::Reconnecting;
             s.error = None;
         } else {
@@ -1300,7 +1363,7 @@ fn schedule_retry(shared: &Shared, error: Error) -> Option<Duration> {
         s.retry.wait_seconds = None;
         s.retry.connecting = false;
         if error == Error::Network && s.retry.attempt < MAX_RETRIES {
-            let seconds = 1;
+            let seconds = if s.retry.attempt == 0 { 0 } else { 1 };
             s.phase = Phase::Reconnecting;
             s.retry.wait_seconds = Some(seconds);
             delay = Some(Duration::from_secs(seconds));
@@ -1323,7 +1386,9 @@ async fn wait_for_retry(
     loop {
         let timer = async {
             if let Some(delay) = delay {
-                tokio::time::sleep(delay).await;
+                if !delay.is_zero() {
+                    tokio::time::sleep(delay).await;
+                }
             } else {
                 std::future::pending::<()>().await;
             }
@@ -1754,13 +1819,13 @@ async fn connected(
                 }
                 let result = async {
                     match &r.kind {
-                        RequestKind::Input { target, bytes, revision } => {
+                        RequestKind::Input { target, bytes, revision, coordinates } => {
                             if *revision != shared.input_revision.load(Ordering::SeqCst) { return Err(Error::Cancelled); }
-                            if shared.target().is_none_or(|current| !current.same_input_destination(target)) {
+                            if shared.target().is_none_or(|current| !current.same_input_destination(target) || (*coordinates && &current != target)) {
                                 return Err(Error::StaleGeneration);
                             }
                             let state = shared.state.lock().unwrap().clone();
-                            if state.checking || !matches!(state.phase, Phase::Ready | Phase::Shell) {
+                            if !state.accepts_input() || (*coordinates && !state.accepts_pointer()) {
                                 return Err(Error::NotReady);
                             }
                             if let Some(sh) = &shell {
@@ -1769,7 +1834,8 @@ async fn connected(
                                     .map_err(|_| Error::Network)?;
                             } else if let Some(c) = control.as_mut() {
                                 for chunk in bytes.chunks(256) {
-                                    if shared.state.lock().unwrap().checking || *revision != shared.input_revision.load(Ordering::SeqCst) { return Err(Error::NotReady); }
+                                    if !shared.state.lock().unwrap().accepts_input() || *revision != shared.input_revision.load(Ordering::SeqCst) { return Err(Error::NotReady); }
+                                    if shared.target().is_none_or(|current| !current.same_input_destination(target) || (*coordinates && &current != target)) { return Err(Error::StaleGeneration); }
                                     if shared.cancelled.lock().unwrap().contains(&r.id) {
                                         return Err(Error::Cancelled);
                                     }
@@ -2051,7 +2117,7 @@ mod tests {
         panic!("connection did not reach the expected state");
     }
     #[tokio::test(start_paused = true)]
-    async fn three_one_second_retries_resume_exhaustion_and_preserve_user_stop() {
+    async fn immediate_then_two_one_second_retries_preserve_user_stop() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let accepted = Arc::new(AtomicU64::new(0));
@@ -2070,7 +2136,13 @@ mod tests {
         );
         let handle = c.state().handle;
         until(|| c.state().retry.wait_seconds == Some(1)).await;
-        for (attempt, seconds) in [1, 1, 1].into_iter().enumerate() {
+        assert_eq!(
+            accepted.load(Ordering::SeqCst),
+            2,
+            "first retry needs no clock advance"
+        );
+        for attempt in 1..3 {
+            let seconds = 1;
             assert_eq!(c.state().retry.attempt as usize, attempt);
             assert_eq!(c.state().retry.wait_seconds, Some(seconds));
             tokio::time::advance(Duration::from_millis(999)).await;
@@ -2092,12 +2164,9 @@ mod tests {
         tokio::task::yield_now().await;
         assert_eq!(accepted.load(Ordering::SeqCst), 4);
 
-        // Foreground recovery starts a fresh delayed budget, coalescing duplicate resumes.
+        // Foreground recovery starts immediately, coalescing duplicate resumes.
         let retry = c.action(Action::CheckConnection).unwrap();
         c.action(Action::CheckConnection).unwrap();
-        until(|| c.state().retry.wait_seconds == Some(1)).await;
-        assert_eq!(accepted.load(Ordering::SeqCst), 4);
-        tokio::time::advance(Duration::from_secs(1)).await;
         until(|| accepted.load(Ordering::SeqCst) == 5 && c.state().retry.wait_seconds == Some(1))
             .await;
         assert_eq!(c.state().retry.attempt, 1);
@@ -2107,7 +2176,8 @@ mod tests {
                 .any(|r| r.request_id == retry && r.error.is_none())
         );
         // Manual retry also skips an existing delay, without advancing the clock.
-        c.action(Action::RetryNow).unwrap();
+        let manual = c.action(Action::RetryNow).unwrap();
+        assert_eq!(c.action(Action::RetryNow).unwrap(), manual);
         until(|| accepted.load(Ordering::SeqCst) == 6 && c.state().retry.wait_seconds == Some(1))
             .await;
         let stop = c.action(Action::StopRetrying).unwrap();
@@ -2156,6 +2226,16 @@ mod tests {
         });
         until(|| accepted.load(Ordering::SeqCst)).await;
         let before = tokio::time::Instant::now();
+        let retry = c.action(Action::RetryNow).unwrap();
+        assert!(
+            c.completions()
+                .iter()
+                .any(|r| r.request_id == retry && r.error.is_none())
+        );
+        assert!(
+            !closed.load(Ordering::SeqCst),
+            "retry must reuse an in-flight handshake"
+        );
         c.action(Action::StopRetrying).unwrap();
         until(|| c.state().retry.stopped && closed.load(Ordering::SeqCst)).await;
         assert_eq!(tokio::time::Instant::now(), before);
@@ -2193,6 +2273,7 @@ mod tests {
         for _ in 0..10 {
             assert_eq!(c.action(Action::CheckConnection).unwrap(), check);
         }
+        assert_eq!(c.action(Action::RetryNow).unwrap(), check);
         assert!(c.state().checking);
         assert_eq!(c.input(c.target().unwrap(), vec![1]), Err(Error::NotReady));
         c.close();
@@ -2201,6 +2282,51 @@ mod tests {
         assert_eq!(results.len(), 33);
         assert!(results.iter().all(|r| r.error == Some(Error::Cancelled)));
         assert_eq!(c.action(Action::CheckConnection), Err(Error::Closed));
+    }
+    #[tokio::test]
+    async fn size_only_restore_accepts_bounded_input_and_rejects_recovery_or_changed_target() {
+        let c = Connection::start(host(1), Credential::default(), None);
+        c.shared.update(|s| {
+            s.phase = Phase::Restoring;
+            s.resizing = true;
+            s.retry.connecting = false;
+            s.pane = Some("%1".into());
+        });
+        let target = c.target().unwrap();
+        assert!(c.state().accepts_input());
+        assert!(!c.state().accepts_pointer());
+        c.shared.update(|s| s.generation.size += 1);
+        c.input(target.clone(), "한글abc\u{1b}[A".as_bytes().to_vec())
+            .unwrap();
+        assert_eq!(
+            c.input(c.target().unwrap(), b"\x1b[<0;1;1M".to_vec()),
+            Err(Error::NotReady)
+        );
+        c.shared.phase(Phase::Ready);
+        assert_eq!(
+            c.input(target.clone(), b"\x1b[<0;1;1M".to_vec()),
+            Err(Error::StaleGeneration)
+        );
+        c.shared.update(|s| {
+            s.phase = Phase::Restoring;
+            s.resizing = true;
+        });
+        c.shared.update(|s| s.generation.pane += 1);
+        assert_eq!(c.input(target, vec![1]), Err(Error::StaleGeneration));
+        c.shared.update(|s| s.resizing = false);
+        assert_eq!(c.input(c.target().unwrap(), vec![1]), Err(Error::NotReady));
+        c.shared.update(|s| {
+            s.resizing = true;
+            s.checking = true;
+        });
+        assert_eq!(c.input(c.target().unwrap(), vec![1]), Err(Error::NotReady));
+        c.close();
+        c.join().await;
+        assert!(
+            c.completions()
+                .iter()
+                .all(|r| r.error == Some(Error::Cancelled))
+        );
     }
     #[tokio::test]
     async fn bounded_requests_cancel_and_close_before_connect() {

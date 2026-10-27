@@ -246,6 +246,12 @@ Android 계측·실제 SSH/CLI·macOS GUI·Windows 네이티브·장시간 반�
 전용 API36의 workspace 2·mobile-input 2·compact 6 검사와 원본 APK 네 ABI·서명을 확인했습니다.
 실제 SSH/CLI·물리 Android·macOS GUI·Windows 네이티브·장시간 검사는 수행하지 않았습니다.
 
+## 2026-10-27: Android 원격 열 수·터치 스크롤
+
+xterm의 자동 맞춤을 제거해 원격 행·열을 유지하고, 전체 컨테이너 측정·스크롤바 숨김·행 단위 터치
+스크롤·비활성 pane 선택을 적용했습니다. 당시 웹 32개, API36 터미널/핀치 계측 3개와 Android
+Debug·계측 APK·lint 및 원본 APK payload 검사를 통과했습니다. 현재 검사는 [VALIDATION.md](VALIDATION.md)를 따릅니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

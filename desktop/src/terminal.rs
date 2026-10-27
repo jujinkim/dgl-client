@@ -64,7 +64,9 @@ pub struct Terminal {
     last_mouse: Option<(CellPoint, u8)>,
     scroll: ScrollAccumulator,
     displayed_pane: Option<String>,
+    snapshot_modes: Option<TermMode>,
     pub enabled: bool,
+    pointer_enabled: bool,
     #[cfg(test)]
     pub sent: Vec<Vec<u8>>,
     pub notice: Option<SnackbarRequest>,
@@ -116,7 +118,9 @@ impl Terminal {
             last_mouse: None,
             scroll: ScrollAccumulator::default(),
             displayed_pane: None,
+            snapshot_modes: None,
             enabled: true,
+            pointer_enabled: true,
             #[cfg(test)]
             sent: Vec::new(),
             notice: None,
@@ -126,7 +130,15 @@ impl Terminal {
             modifier_phase: None,
         }
     }
+    fn input_modes(&self) -> TermMode {
+        self.snapshot_modes.unwrap_or(*self.term.mode())
+    }
     fn begin_snapshot(&mut self, pane: &str, reset: &[u8]) {
+        if self.displayed_pane.as_deref() != Some(pane) {
+            self.snapshot_modes = None;
+        } else if self.snapshot_modes.is_none() {
+            self.snapshot_modes = Some(*self.term.mode());
+        }
         self.dragging = false;
         self.mouse_button = None;
         self.last_mouse = None;
@@ -163,6 +175,14 @@ impl Terminal {
         }
         #[cfg(test)]
         self.sent.push(bytes.clone());
+        if self.connection.target().is_none() {
+            self.notice = Some(SnackbarRequest::new(
+                dgl_core::i18n::t(
+                    "연결 확인·복구 중에는 입력할 수 없습니다. 입력을 다시 전송하지 않습니다.",
+                ),
+                SnackbarDuration::Short,
+            ));
+        }
         if let Some(t) = self
             .connection
             .target()
@@ -175,7 +195,7 @@ impl Terminal {
                 Err(e) => {
                     self.notice = Some(SnackbarRequest::new(
                         tr!("입력을 보내지 못했습니다: {0}", e),
-                        SnackbarDuration::Long,
+                        SnackbarDuration::Short,
                     ))
                 }
             }
@@ -216,7 +236,7 @@ impl Terminal {
             TerminalShortcut::Key(k) => {
                 if let Some(bytes) = k.encode(
                     self.modifiers,
-                    self.term.mode().contains(TermMode::APP_CURSOR),
+                    self.input_modes().contains(TermMode::APP_CURSOR),
                 ) {
                     self.modifiers = KeyModifiers::default();
                     self.send(bytes);
@@ -233,7 +253,7 @@ impl Terminal {
             key,
             text,
             self.modifiers.union(physical),
-            self.term.mode().contains(TermMode::APP_CURSOR),
+            self.input_modes().contains(TermMode::APP_CURSOR),
         ) {
             self.modifiers = KeyModifiers::default();
             self.send(bytes);
@@ -286,7 +306,7 @@ impl Terminal {
             if let Some(text) = cx.read_from_clipboard().and_then(|i| i.text()) {
                 let bytes = input::paste_bytes(
                     &text,
-                    self.term.mode().contains(TermMode::BRACKETED_PASTE),
+                    self.input_modes().contains(TermMode::BRACKETED_PASTE),
                     false,
                 );
                 self.send(bytes);
@@ -300,7 +320,7 @@ impl Terminal {
             return;
         }
         self.sync_modifiers();
-        if let Some(bytes) = key_sequence(k, *self.term.mode()) {
+        if let Some(bytes) = key_sequence(k, self.input_modes()) {
             if self.modifiers == KeyModifiers::default() {
                 self.send(bytes);
             } else {
@@ -322,7 +342,11 @@ impl Terminal {
         self.enabled && !modifiers.shift && self.term.mode().intersects(TermMode::MOUSE_MODE)
     }
     fn mouse_report(&mut self, p: Point<Pixels>, code: u8, release: bool, modifiers: Modifiers) {
-        if !self.enabled {
+        if !self.enabled
+            || !self.pointer_enabled
+            || self.connection.state().resizing
+            || self.connection.state().checking
+        {
             return;
         }
         let mut cell = self.point(p);
@@ -344,7 +368,11 @@ impl Terminal {
         }
     }
     fn mouse_down(&mut self, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.enabled {
+        if !self.enabled
+            || !self.pointer_enabled
+            || self.connection.state().resizing
+            || self.connection.state().checking
+        {
             return;
         }
         let Some(code) = button_code(e.button) else {
@@ -376,7 +404,11 @@ impl Terminal {
         cx.notify();
     }
     fn mouse_move(&mut self, e: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.enabled {
+        if !self.enabled
+            || !self.pointer_enabled
+            || self.connection.state().resizing
+            || self.connection.state().checking
+        {
             return;
         }
         if self.dragging && e.pressed_button == Some(MouseButton::Left) {
@@ -435,7 +467,11 @@ impl Terminal {
             cx.stop_propagation();
             return;
         }
-        if !self.enabled {
+        if !self.enabled
+            || !self.pointer_enabled
+            || self.connection.state().resizing
+            || self.connection.state().checking
+        {
             return;
         }
         let mode = *self.term.mode();
@@ -546,7 +582,7 @@ impl EntityInputHandler for Terminal {
             self.sync_modifiers();
             self.notice = Some(SnackbarRequest::new(
                 dgl_core::i18n::t("연결·세션·패널이 변경되어 입력을 취소했습니다."),
-                SnackbarDuration::Long,
+                SnackbarDuration::Short,
             ));
             cx.notify();
             return;
@@ -820,7 +856,18 @@ mod tests {
             let history = t.term.history_size();
             let offset = t.term.grid().display_offset();
             assert!(history > 20);
+            t.snapshot_modes = None;
+            t.parser.advance(&mut t.term, b"\x1b[?1h\x1b[?2004h");
+            t.marked = "한".into();
             t.begin_snapshot("%1", b"\x1bc");
+            assert!(
+                t.input_modes()
+                    .contains(TermMode::APP_CURSOR | TermMode::BRACKETED_PASTE)
+            );
+            assert_eq!(
+                t.marked, "한",
+                "size snapshots preserve the live IME composition"
+            );
             assert_eq!(t.term.history_size(), history);
             assert_eq!(t.term.grid().display_offset(), offset);
             assert_eq!(t.term.grid()[Line(-1)][Column(0)].c, 'r');

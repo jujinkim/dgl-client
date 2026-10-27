@@ -24,5 +24,13 @@ class InputRejectionsTest {
         gate.phase(Phase.Reconnecting)
         assertNotNull(gate.reject("NotReady"))
         assertNull(gate.reject("NotReady"))
+        gate.phase(Phase.Restoring)
+        gate.phase(Phase.Failed)
+        assertNull(gate.reject("Closed"), "restore and exhausted failure belong to the same cycle")
+        gate.status(ConnectionStatus(phase = Phase.Ready))
+        gate.status(ConnectionStatus(phase = Phase.Ready, checking = true))
+        assertNotNull(gate.reject("NotReady"))
+        gate.phase(Phase.Reconnecting)
+        assertNull(gate.reject("NotReady"), "failed check and reconnect belong to the same cycle")
     }
 }

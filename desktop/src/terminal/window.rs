@@ -18,6 +18,8 @@ pub struct WindowTerminal {
     applied_size: Option<Size>,
     resize_request: Option<(u64, Size)>,
     resize_due: Instant,
+    last_display: Option<dgl_core::connection::State>,
+    rejection_shown: bool,
     drag: Option<(RemotePane, Point<Pixels>, bool, PaneTarget)>,
     pub enabled: bool,
     pub notice: Option<SnackbarRequest>,
@@ -56,6 +58,8 @@ impl WindowTerminal {
             applied_size: None,
             resize_request: None,
             resize_due: Instant::now(),
+            last_display: None,
+            rejection_shown: false,
             drag: None,
             enabled: true,
             notice: None,
@@ -103,12 +107,19 @@ impl WindowTerminal {
                     .term
                     .resize(GridSize(e.size.columns as usize, e.size.rows as usize)),
                 OutputKind::ResetBegin => t.begin_snapshot(&e.target.pane_id, &e.bytes),
+                OutputKind::ResetEnd => {
+                    t.parser.advance(&mut t.term, &e.bytes);
+                    t.snapshot_modes = None;
+                }
                 _ => t.parser.advance(&mut t.term, &e.bytes),
             }
             cx.notify();
         });
     }
     pub fn tick(&mut self, cx: &mut Context<Self>) {
+        if self.connection.state().accepts_input() {
+            self.rejection_shown = false;
+        }
         if self.resize_request.is_none()
             && self.applied_size != Some(self.requested)
             && Instant::now() >= self.resize_due
@@ -117,7 +128,10 @@ impl WindowTerminal {
                 columns: self.requested.columns,
                 rows: self.requested.rows,
             }) {
-                Ok(id) => self.resize_request = Some((id, self.requested)),
+                Ok(id) => {
+                    self.resize_request = Some((id, self.requested));
+                    self.resize_due = Instant::now() + Duration::from_millis(50);
+                }
                 Err(_) => self.resize_due = Instant::now() + Duration::from_millis(150),
             }
         }
@@ -134,12 +148,27 @@ impl WindowTerminal {
         for t in self.panes.values() {
             t.update(cx, |t, _| {
                 t.enabled = self.enabled;
+                t.pointer_enabled =
+                    self.resize_request.is_none() && self.applied_size == Some(self.requested);
                 t.sync_modifiers();
                 if let Some(n) = t.notice.take() {
-                    self.notice = Some(n);
+                    if !self.rejection_shown {
+                        self.notice = Some(n);
+                        self.rejection_shown = true;
+                    }
                 }
             });
         }
+    }
+    pub fn reject_input(&mut self, error: dgl_core::Error) {
+        if self.rejection_shown {
+            return;
+        }
+        self.rejection_shown = true;
+        self.notice = Some(SnackbarRequest::new(
+            tr!("입력을 보내지 못했습니다: {0}", error),
+            SnackbarDuration::Short,
+        ));
     }
     pub fn send(&mut self, bytes: Vec<u8>) {
         if !self.enabled {
@@ -147,13 +176,13 @@ impl WindowTerminal {
         }
         #[cfg(test)]
         self.sent.push(bytes.clone());
+        if self.connection.target().is_none() {
+            self.reject_input(dgl_core::Error::NotReady);
+        }
         if let Some(target) = self.connection.target()
             && let Err(e) = self.connection.input(target, bytes)
         {
-            self.notice = Some(SnackbarRequest::new(
-                dgl_core::tr!("입력을 보내지 못했습니다: {0}", e),
-                SnackbarDuration::Long,
-            ));
+            self.reject_input(e);
         }
     }
     pub fn clear_modifiers(&mut self, cx: &mut App) {
@@ -198,8 +227,7 @@ impl WindowTerminal {
         ))?;
         let bracketed = pane
             .read(cx)
-            .term
-            .mode()
+            .input_modes()
             .contains(TermMode::BRACKETED_PASTE);
         let bytes = input::paste_bytes(text, bracketed, enter);
         if bytes.is_empty() || bytes.len() > 65536 {
@@ -262,7 +290,23 @@ impl Focusable for WindowTerminal {
 }
 impl Render for WindowTerminal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.connection.state();
+        let current = self.connection.state();
+        if current.pane.is_some()
+            && matches!(
+                current.phase,
+                dgl_core::connection::Phase::Ready
+                    | dgl_core::connection::Phase::Restoring
+                    | dgl_core::connection::Phase::Shell
+            )
+        {
+            self.last_display = Some(current.clone());
+        }
+        // Keep the previous pane layout while transport recovery clears its input target.
+        let state = if current.pane.is_none() && current.can_retry_now() {
+            self.last_display.clone().unwrap_or(current)
+        } else {
+            current
+        };
         let font_size = self.font.effective();
         let cell = (font_size as f32 * 0.61, font_size as f32 * 1.4);
         let remote_window = state.remote.windows.iter().find(|w| {
@@ -291,6 +335,8 @@ impl Render for WindowTerminal {
             t.update(cx, |t, _| {
                 t.set_font(font_size);
                 t.enabled = self.enabled;
+                t.pointer_enabled =
+                    self.resize_request.is_none() && self.applied_size == Some(self.requested);
                 t.sync_modifiers();
             });
             content = content.child(t);
@@ -300,6 +346,8 @@ impl Render for WindowTerminal {
             terminal.update(cx, |t, _| {
                 t.set_font(font_size);
                 t.enabled = self.enabled;
+                t.pointer_enabled =
+                    self.resize_request.is_none() && self.applied_size == Some(self.requested);
                 t.sync_modifiers();
             });
             content = content.child(
@@ -349,6 +397,9 @@ impl Render for WindowTerminal {
                     MouseButton::Left,
                     cx.listener(move |this, e: &MouseDownEvent, _, cx| {
                         if this.enabled
+                            && this.connection.state().accepts_pointer()
+                            && this.resize_request.is_none()
+                            && this.applied_size == Some(this.requested)
                             && let Some(generation) = generation.clone()
                         {
                             this.drag = Some((pane.clone(), e.position, horizontal, generation));
@@ -393,7 +444,11 @@ impl Render for WindowTerminal {
                 MouseButton::Left,
                 cx.listener(move |this, e: &MouseUpEvent, _, cx| {
                     if let Some((pane, origin, horizontal, generation)) = this.drag.take() {
-                        if this.connection.state().render_targets.get(&pane.id) != Some(&generation)
+                        if !this.connection.state().accepts_pointer()
+                            || this.resize_request.is_some()
+                            || this.applied_size != Some(this.requested)
+                            || this.connection.state().render_targets.get(&pane.id)
+                                != Some(&generation)
                         {
                             return;
                         }
@@ -437,7 +492,6 @@ impl Render for WindowTerminal {
                             };
                             if this.requested != requested {
                                 this.requested = requested;
-                                this.resize_due = Instant::now() + Duration::from_millis(150);
                             }
                         });
                     },
@@ -642,6 +696,9 @@ mod tests {
             t.complete(request.0 + 100, true, cx);
             assert_eq!(t.resize_request, Some(request));
             t.complete(request.0, true, cx);
+            t.tick(cx);
+            assert!(t.resize_request.is_none(), "minimum 50 ms start interval");
+            t.resize_due = std::time::Instant::now();
             t.tick(cx);
             assert_ne!(t.resize_request, Some(request));
             let latest = t.resize_request.unwrap();

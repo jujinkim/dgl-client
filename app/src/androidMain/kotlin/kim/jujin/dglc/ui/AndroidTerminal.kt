@@ -100,6 +100,8 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                 { pane, target -> if (entry.visible) { entry.focus.activate(); if (entry.focus.inputAllowed()) client.focusPane(pane, target) } },
                 { pane, target, size -> if (entry.visible && entry.focus.inputAllowed()) client.resizePane(pane, target, size) },
                 resources?.model?.terminalFont(client) ?: TerminalFontSize(preferences.fontSize),
+                blockedInput = { if (entry.visible) client.inputBlocked() },
+                pointerInput = { pane, target, bytes -> if (entry.visible && entry.focus.inputAllowed()) client.pointerInput(pane, target, bytes) },
                 keyboardInput = { pane, target, key, text, physical, cursor ->
                     if (entry.visible && entry.focus.inputAllowed() && target != null &&
                         client.captureInputTarget()?.identity == kim.jujin.dglc.inputTargetIdentity(target)) {
@@ -113,6 +115,8 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     val terminal = entry.terminal
     SideEffect { entry.focus = focus }
     val allowed = focus.inputAllowed()
+    val connectionStatus by client.status.collectAsState()
+    LaunchedEffect(terminal, connectionStatus.acceptsPointer) { terminal.setPointerEnabled(connectionStatus.acceptsPointer) }
     LaunchedEffect(terminal, allowed) { terminal.setInputEnabled(allowed) }
     LaunchedEffect(terminal, preferences.smoothTerminalTransitions) {
         terminal.setSmoothTransitions(preferences.smoothTerminalTransitions)
@@ -214,7 +218,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                         stateDescription = tr("현재 글자 크기: {0}", size)
                     }, shape = androidx.compose.foundation.shape.CircleShape) { Text("↺") }
         }
-        status.recoveryMessage?.let { message ->
+        status.recoveryMessage?.takeUnless { status.retryExhausted }?.let { message ->
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .45f)), contentAlignment = Alignment.Center) {
                 Text(message, color = Color.White, modifier = Modifier.padding(24.dp))
             }
@@ -228,6 +232,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private val focusPane: (String, String?) -> Unit = { _, _ -> },
     private val resizePane: (String, String?, Size) -> Unit = { _, _, _ -> },
     private val font: TerminalFontSize = TerminalFontSize(preferences.fontSize),
+    private val blockedInput: () -> Unit = {},
+    private val pointerInput: ((String, String?, ByteArray) -> Unit)? = null,
     private val keyboardInput: (String, String?, String, String?, TerminalModifiers, Boolean) -> Unit = { _, _, _, _, _, _ -> }) : TerminalSurface {
     val fontSizeOverride get() = font.overrideSize
     private var scrollback = preferences.scrollback.coerceIn(100, 10000)
@@ -306,7 +312,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                 fun target() = json.optString("target").takeUnless { it.isEmpty() || it == "null" }
                 fun inputForPane(bytes: ByteArray) {
                     if (bytes.size <= 65536) {
-                        if (paneInput != null) paneInput.invoke(json.getString("pane"), target(), bytes) else input(bytes)
+                        if (json.optBoolean("pointer") && pointerInput != null) pointerInput.invoke(json.getString("pane"), target(), bytes)
+                        else if (paneInput != null) paneInput.invoke(json.getString("pane"), target(), bytes) else input(bytes)
                     }
                 }
                 when (json.getString("type")) {
@@ -314,6 +321,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                         applyConfiguration()
                         ready.complete(Unit)
                     }
+                    "blocked-input" -> blockedInput()
                     "input" -> {
                         val bytes = json.getString("data").toByteArray(Charsets.UTF_8)
                         inputForPane(bytes)
@@ -382,6 +390,10 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     suspend fun setInputEnabled(enabled: Boolean) {
         withTimeout(15_000) { ready.await() }
         withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setInputEnabled($enabled)", null) }
+    }
+    suspend fun setPointerEnabled(enabled: Boolean) {
+        withTimeout(15_000) { ready.await() }
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setPointerEnabled($enabled)", null) }
     }
     suspend fun configure(preferences: Preferences) {
         withTimeout(15_000) { ready.await() }
