@@ -42,7 +42,8 @@ class AndroidWorkspaceTest {
         override fun createSession(name: String) {}
         override fun manage(command: TmuxCommand) {}
         override fun refresh() {}
-        override fun resize(value: Size) {}
+        val sizes = java.util.Collections.synchronizedList(mutableListOf<Size>())
+        override fun resize(value: Size) { sizes += value }
         override fun restore() {}
         override fun disconnect() {}
         override fun close() {}
@@ -133,15 +134,20 @@ class AndroidWorkspaceTest {
                 eventually { first.surface != null && second.surface != null }
                 assertSame("Height change must retain the Activity renderer", secondRenderer, second.surface)
                 val geometry = model.workspace.value.root
-                stage = "IME temporary expansion"
+                delay(300)
+                val firstSizes = first.sizes.toList(); val secondSizes = second.sizes.toList()
+                stage = "IME keeps both split groups and logical sizes"
                 click("키보드 열기"); waitIme(scenario, true)
-                stage = "IME projection surface detach"
-                eventually { first.surface == null && second.surface != null }
+                delay(300)
+                assertSame(firstRenderer, first.surface)
+                assertEquals(firstSizes, first.sizes.toList()); assertEquals(secondSizes, second.sizes.toList())
                 assertEquals(geometry, model.workspace.value.root)
                 assertSame(secondRenderer, second.surface)
-                // The active view and keyboard survive the temporary single-group projection.
+                // Both renderers stay attached throughout keyboard visibility changes.
                 waitIme(scenario, true)
                 click("키보드 닫기"); waitIme(scenario, false)
+                delay(300)
+                assertEquals(firstSizes, first.sizes.toList()); assertEquals(secondSizes, second.sizes.toList())
                 resize(scenario, 1200, 1000)
                 eventually { first.surface != null && second.surface != null }
                 assertSame(firstRenderer, first.surface); assertSame(secondRenderer, second.surface)

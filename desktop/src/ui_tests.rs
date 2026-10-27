@@ -12,8 +12,14 @@ use std::{
 };
 
 pub(super) fn setup(cx: &mut TestAppContext) -> (Entity<Desktop>, &mut VisualTestContext) {
+    setup_with_runtime(cx, Arc::new(tokio::runtime::Runtime::new().unwrap()))
+}
+
+fn setup_with_runtime(
+    cx: &mut TestAppContext,
+    runtime: Arc<tokio::runtime::Runtime>,
+) -> (Entity<Desktop>, &mut VisualTestContext) {
     cx.update(text_input::bind_keys);
-    let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let path = std::env::temp_dir()
         .join(format!(
             "dgl-ui-{}-{}",
@@ -1014,8 +1020,26 @@ fn host_disconnect_only_closes_the_selected_connection(cx: &mut TestAppContext) 
 fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
     use dgl_core::connection::State;
     use std::time::Duration;
-    let (view, cx) = setup(cx);
-    let terminal = add_terminal(&view, cx);
+    let runtime = Arc::new(
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .start_paused(true)
+            .build()
+            .unwrap(),
+    );
+    let (port, server) = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            loop {
+                let (socket, _) = listener.accept().await.unwrap();
+                drop(socket);
+            }
+        });
+        (port, server)
+    });
+    let (view, cx) = setup_with_runtime(cx, runtime);
+    let terminal = add_terminal_at_port(&view, cx, port);
     let (runtime, connection, group, tab) = view.read_with(cx, |s, _| {
         (
             s.runtime.clone(),
@@ -1024,24 +1048,30 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
             s.tabs[0].id,
         )
     });
-    let wait = |predicate: fn(&State) -> bool| {
+    let wait = |stage: &str, predicate: &dyn Fn(&State) -> bool| {
         runtime.block_on(async {
-            tokio::time::timeout(Duration::from_secs(4), async {
-                while !predicate(&connection.state()) {
-                    tokio::time::sleep(Duration::from_millis(5)).await;
-                }
-            })
-            .await
-            .unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            while !predicate(&connection.state()) {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{stage}: connection did not settle; state={:?}",
+                    connection.state()
+                );
+                // Keep the paused runtime runnable while real loopback I/O progresses.
+                // A Tokio sleep/timeout here would auto-advance the retry clock.
+                tokio::task::yield_now().await;
+            }
         });
     };
-    wait(|s| s.retry.wait_seconds.is_some());
+    wait("initial automatic retry", &|s| {
+        s.retry.wait_seconds == Some(1)
+    });
     let handle = connection.state().handle;
     redraw(cx);
     assert_eq!(group, 1);
     let stop = cx.debug_bounds("stop-retry-1").unwrap();
     cx.simulate_click(stop.center(), Modifiers::default());
-    wait(|s| s.retry.stopped);
+    wait("stop retrying", &|s| s.retry.stopped);
     view.update(cx, |_, cx| cx.notify());
     redraw(cx);
     // GPUI keeps old debug bounds after removing an element. Its old location
@@ -1052,7 +1082,9 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
     assert!(!connection.state().can_stop_retrying());
     let retry = cx.debug_bounds("retry-now-1").unwrap();
     cx.simulate_click(retry.center(), Modifiers::default());
-    wait(|s| !s.retry.stopped && s.retry.wait_seconds.is_some());
+    wait("manual retry after stop", &|s| {
+        !s.retry.stopped && s.retry.wait_seconds.is_some()
+    });
     view.update(cx, |_, cx| cx.notify());
     redraw(cx);
     assert!(cx.debug_bounds("stop-retry-1").is_some());
@@ -1064,7 +1096,13 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
             && s.tabs[0].terminal.entity_id() == terminal.entity_id()
     }));
     assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
-    wait(|s| s.retry_exhausted());
+    for attempt in 2..=3 {
+        runtime.block_on(tokio::time::advance(Duration::from_secs(1)));
+        wait(&format!("automatic retry attempt {attempt}"), &|s| {
+            s.retry.attempt == attempt && (s.retry.wait_seconds.is_some() || s.retry_exhausted())
+        });
+    }
+    wait("retry exhausted", &|s| s.retry_exhausted());
     for width in [320., 900.] {
         cx.simulate_resize(gpui::size(px(width), px(500.)));
         view.update(cx, |_, cx| cx.notify());
@@ -1092,11 +1130,17 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
     assert!((retry.center().x - area.center().x).abs() <= px(1.));
     cx.simulate_click(retry.center(), Modifiers::default());
     cx.simulate_click(retry.center(), Modifiers::default());
-    wait(|s| !s.retry_exhausted() && s.retry.wait_seconds == Some(1));
+    wait("duplicate retry clicks after exhaustion", &|s| {
+        !s.retry_exhausted() && s.retry.wait_seconds == Some(1)
+    });
     assert_eq!(connection.state().retry.attempt, 1);
     assert_eq!(connection.state().handle, handle);
     connection.close();
     runtime.block_on(connection.join());
+    server.abort();
+    runtime.block_on(async {
+        let _ = server.await;
+    });
 }
 
 #[gpui::test]
@@ -1205,12 +1249,19 @@ fn modal_focus_cycle_buttons_restore_and_occlusion(cx: &mut TestAppContext) {
 }
 
 fn add_terminal(view: &Entity<Desktop>, cx: &mut VisualTestContext) -> Entity<Terminal> {
+    add_terminal_at_port(view, cx, 1)
+}
+fn add_terminal_at_port(
+    view: &Entity<Desktop>,
+    cx: &mut VisualTestContext,
+    port: u16,
+) -> Entity<Terminal> {
     view.update(cx, |s, cx| {
         let host = HostProfile {
             id: "fixture".into(),
             alias: "fixture".into(),
             hostname: "127.0.0.1".into(),
-            port: 1,
+            port,
             username: "fixture".into(),
             auth: AuthKind::Password,
             credential_ref: "fixture".into(),

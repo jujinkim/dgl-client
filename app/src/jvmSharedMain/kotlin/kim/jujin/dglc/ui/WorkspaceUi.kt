@@ -108,7 +108,8 @@ private data class TabDrag(val tab: String, val position: Offset)
     var preview by remember { mutableStateOf<WorkspaceState?>(null) }
     val tabBounds = remember { mutableMapOf<String, Rect>() }
     SideEffect { tabBounds.keys.retainAll(workspace.groups.values.flatMap { it.tabs }.toSet()) }
-    val density = LocalDensity.current.density
+    val localDensity = LocalDensity.current
+    val density = localDensity.density
     Column(Modifier.fillMaxSize().onPreviewKeyEvent {
         if (it.type == KeyEventType.KeyDown && it.key == Key.Escape && (drag != null || preview != null)) {
             drag = null; preview = null; true
@@ -116,10 +117,12 @@ private data class TabDrag(val tab: String, val position: Offset)
     }) {
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().semantics { contentDescription = t("분할 작업 공간") }) {
             val width = maxWidth.value; val height = maxHeight.value
+            val logicalHeight = height + LocalTerminalOcclusion.current.value
             var origin by remember { mutableStateOf(Offset.Zero) }
             val layout = preview?.takeIf { it.groups == workspace.groups } ?: workspace
-            val fits = layout.fits(width, height)
-            val rects = if (fits) layout.root.rectangles(width, height) else mapOf(layout.activeGroup to WorkspaceRect(0f, 0f, width, height))
+            val projection = layout.project(width, logicalHeight, height)
+            val fits = projection.fits
+            val rects = projection.visible
             val shown = rects.keys.mapNotNull { model.tabClient(workspace.groups[it]?.selected) }.toSet()
             val visibleClients = if (blocks.isEmpty()) shown else emptySet()
             SideEffect { model.visibleConnections = visibleClients }
@@ -139,7 +142,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                     val index = workspace.groups.getValue(id).tabs.filter { it != moving.tab }.indexOfFirst {
                         tabBounds[it]?.let { bounds -> moving.position.x < bounds.center.x } == true
                     }.takeIf { it >= 0 } ?: Int.MAX_VALUE
-                    WorkspaceDrop(id, edge, index).takeIf { workspace.canDrop(moving.tab, it, width, height) && (fits || it.edge == DropEdge.Center) }
+                    WorkspaceDrop(id, edge, index).takeIf { workspace.canDrop(moving.tab, it, width, logicalHeight) && (fits || it.edge == DropEdge.Center) }
                 }
             }
             val currentCandidate by rememberUpdatedState(candidate)
@@ -161,7 +164,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                                         .background(if (group.selected == tab) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)
                                         .workspaceTabDrag(tab, { bounds.topLeft }, { drag = TabDrag(tab, it) }, { drag = drag?.copy(position = it) }, {
                                             val moving = currentDrag; val target = currentCandidate
-                                            if (moving != null && target != null) model.changeWorkspace { it.drop(moving.tab, target, width, height) }
+                                            if (moving != null && target != null) model.changeWorkspace { it.drop(moving.tab, target, width, logicalHeight) }
                                             drag = null
                                         }, { drag = null }), verticalAlignment = Alignment.CenterVertically) {
                                         TextButton({ model.selectConnection(client) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp), modifier = Modifier.widthIn(max = 220.dp).height(48.dp)
@@ -181,8 +184,8 @@ private data class TabDrag(val tab: String, val position: Offset)
                                 } } }
                             }
                             listOf(SplitAxis.Horizontal to t("앱 화면 좌우 분할"), SplitAxis.Vertical to t("앱 화면 상하 분할")).forEach { (axis, label) ->
-                                IconButton({ model.changeWorkspace { it.split(groupId, axis, width, height) } },
-                                    enabled = workspace.split(groupId, axis, width, height) != workspace,
+                                IconButton({ model.changeWorkspace { it.split(groupId, axis, width, logicalHeight) } },
+                                    enabled = workspace.split(groupId, axis, width, logicalHeight) != workspace,
                                     modifier = Modifier.size(48.dp).semantics { contentDescription = label }) {
                                     Text(if (axis == SplitAxis.Horizontal) "↔" else "↕")
                                 }
@@ -196,8 +199,13 @@ private data class TabDrag(val tab: String, val position: Offset)
                             if (client != null) key(client) {
                                 val terminalFocus = focus(client)
                                 terminalFocus.activate = { if (!model.inputBlocked()) model.selectConnection(client) }
-                                ConnectionScreen(client, preferences, false, model, { showAgents(client, it) }, workspace = true, sharedFocus = terminalFocus) {
-                                    model.selected.value === client
+                                CompositionLocalProvider(LocalTerminalOcclusion provides
+                                    with(localDensity) {
+                                        (projection.logical.getValue(groupId).height.dp.roundToPx() - rect.height.dp.roundToPx()).coerceAtLeast(0).toDp()
+                                    }) {
+                                    ConnectionScreen(client, preferences, false, model, { showAgents(client, it) }, workspace = true, sharedFocus = terminalFocus) {
+                                        model.selected.value === client
+                                    }
                                 }
                             } else Box(Modifier.fillMaxSize().clickable { model.changeWorkspace { it.activate(groupId) } }, contentAlignment = Alignment.Center) {
                                 Text(t("호스트나 세션을 선택하여 여기에 연결하세요."), Modifier.padding(16.dp))
@@ -223,7 +231,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                                 } }; preview = null }) { change, amount ->
                                 change.consume(); delta += (if (horizontal) amount.x else amount.y) / density
                                 val extent = (if (horizontal) rect.width else rect.height) - WorkspaceState.DIVIDER
-                                preview = original?.resize(id, split.ratio + delta / extent, width, height)
+                                preview = original?.resize(id, split.ratio + delta / extent, width, logicalHeight)
                             }
                         }, contentAlignment = Alignment.Center) {
                         Box((if (horizontal) Modifier.width(WorkspaceState.DIVIDER.dp).fillMaxHeight() else Modifier.height(WorkspaceState.DIVIDER.dp).fillMaxWidth())

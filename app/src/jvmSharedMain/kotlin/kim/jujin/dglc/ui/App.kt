@@ -31,6 +31,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.window.Dialog
@@ -47,6 +48,9 @@ import kotlinx.coroutines.flow.first
 @Composable expect fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit)
 expect fun copyPublicKey(value: String)
 internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
+// Height removed by IME only; system bars/cutouts already belong to the logical viewport.
+internal val LocalTerminalOcclusion = staticCompositionLocalOf { 0.dp }
+internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
 
 @Composable internal fun MobileAppIcon() {
     Image(AppIcon, contentDescription = "DaGaLi", modifier = Modifier.size(24.dp)
@@ -128,7 +132,14 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
         CompositionLocalProvider(LocalAppModel provides model, LocalAccentFill provides (rgb(raw) to rgb(onAccentColor(raw))),
             LocalTextSelectionColors provides TextSelectionColors(rgb(readable), rgb(selection))) {
         Surface(Modifier.fillMaxSize()) {
-          BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()
+          val safeInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+          val density = LocalDensity.current
+          val imeOcclusion = if (androidInput) with(density) {
+              (WindowInsets.ime.getBottom(this) - safeInsets.getBottom(this)).coerceAtLeast(0).toDp()
+          } else 0.dp
+          CompositionLocalProvider(LocalTerminalOcclusion provides imeOcclusion,
+              LocalTerminalImeVisible provides (imeOcclusion > 0.dp)) {
+          BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(safeInsets).padding(bottom = imeOcclusion)
               .onGloballyPositioned { availableBounds = it.boundsInWindow() }) {
             val workspaceMode = androidInput && maxWidth >= 840.dp
             val mobileLayout = androidInput && !workspaceMode
@@ -274,6 +285,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
             } catch (_: Exception) { error = t("자격 증명을 삭제하지 못했습니다.") }
         }, { deletion = null }) }
         error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text(t("오류")) }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text(t("닫기")) } }) }
+          }
           }
         }
         }

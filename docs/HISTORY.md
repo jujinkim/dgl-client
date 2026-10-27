@@ -281,6 +281,13 @@ APK 패키징·lint·Android 계측·실제 SSH/CLI·macOS GUI·Windows 네이�
 에뮬레이터 System UI 대화상자로 실패한 초기 실행은 통과 수에서 제외했습니다.
 로그는 `.tools/resume-fix-*`와 `artifacts/android-resume/`에 있으며 물리 Android·macOS GUI·Windows 네이티브·전체 API matrix·장시간 검사는 실행하지 않았습니다.
 
+## 2026-10-28: Android 하단 CLI 메뉴의 IME 유지
+
+하단 CLI 메뉴가 키보드 표시와 입력이 허용되는 크기 복원 중에도 유지되고, 부족한 공간에서는 내부 스크롤하도록 보강했습니다.
+당시 JVM 90 통과·예상 skip 9, evidence 6·API36 선택 계측 3개·Android Debug/계측 APK·lint를 확인했습니다.
+800×411dp 가로 화면에서 실패한 초기 계측은 통과 수에서 제외했으며 고정 입력 도구 배치 한계는 TASKS에 남겼습니다.
+로그는 `.tools/cli-menu-*`와 `artifacts/android-cli-menu/`에 보존하며 전체 API·장시간·물리 기기·Windows 네이티브는 실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

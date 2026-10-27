@@ -35,6 +35,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
@@ -208,7 +209,13 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
     val fontOverride by terminal.fontSizeOverride.collectAsState()
-    Box(modifier) {
+    val occlusion = LocalTerminalOcclusion.current
+    val imeVisible = LocalTerminalImeVisible.current
+    Box(modifier.layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        terminal.setViewport(TerminalViewport(placeable.width, placeable.height + occlusion.roundToPx(), placeable.height, imeVisible))
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }) {
         key(terminal) { AndroidView(factory = {
             (terminal.view.parent as? android.view.ViewGroup)?.removeView(terminal.view)
             terminal.view
@@ -251,6 +258,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     val fontSizeOverride get() = font.overrideSize
     private var scrollback = preferences.scrollback.coerceIn(100, 10000)
     private var consumingPinch = false
+    private var managedViewport = false
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScaleBegin(detector: ScaleGestureDetector): Boolean { font.beginGesture(); return true }
         override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -259,6 +267,13 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         }
     }).apply { isQuickScaleEnabled = false; isStylusScaleEnabled = false }
     val view = object : WebView(context) {
+        override fun onAttachedToWindow() { super.onAttachedToWindow(); refreshViewport() }
+        override fun onDetachedFromWindow() { cancelImeAnimation(); super.onDetachedFromWindow() }
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            // Standalone renderer fixtures have no Compose geometry provider.
+            if (!managedViewport && viewport.update(TerminalViewport(w, h, h, false))) dispatchViewport()
+        }
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (closed) return false
@@ -284,6 +299,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private var awaiting: Pair<Long, CompletableDeferred<Unit>>? = null
     private var closed = false
     private val imeAnimation = TerminalImeAnimation()
+    private val viewport = TerminalViewportState()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     init {
         font.configure(preferences.fontSize)
@@ -333,6 +349,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                     "ready" -> {
                         applyConfiguration()
                         ready.complete(Unit)
+                        dispatchViewport()
                     }
                     "blocked-input" -> blockedInput()
                     "input" -> {
@@ -453,13 +470,32 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     fun endImeAnimation(version: Long) {
         if (imeAnimation.end(version)) dispatchImeAnimation(false, version)
     }
-    fun cancelImeAnimation() { dispatchImeAnimation(false, imeAnimation.cancel()) }
+    fun cancelImeAnimation() {
+        dispatchImeAnimation(false, imeAnimation.cancel())
+        viewport.detach()
+        val version = viewport.version
+        if (!closed && ready.isCompleted) view.evaluateJavascript("window.detachViewport($version)", null)
+    }
     fun refreshViewport() {
-        cancelImeAnimation()
-        view.post { scope.launch {
-            withTimeoutOrNull(15_000) { ready.await() } ?: return@launch
-            if (!closed) view.evaluateJavascript("window.refreshViewport()", null)
-        } }
+        viewport.attach()
+        dispatchViewport()
+    }
+    fun setViewport(value: TerminalViewport) {
+        managedViewport = true
+        if (viewport.update(value)) dispatchViewport()
+    }
+    private fun dispatchViewport() {
+        val version = viewport.version
+        view.post {
+            val value = viewport.viewport
+            if (!closed && ready.isCompleted && viewport.accepts(version) && value != null) {
+                val density = view.resources.displayMetrics.density.toDouble()
+                val geometry = JSONObject().put("version", version).put("width", value.width / density)
+                    .put("logicalHeight", value.logicalHeight / density).put("visibleHeight", value.visibleHeight / density)
+                    .put("imeVisible", value.imeVisible)
+                view.evaluateJavascript("window.setViewport($geometry)", null)
+            }
+        }
     }
     private fun dispatchImeAnimation(active: Boolean, version: Long) {
         scope.launch {

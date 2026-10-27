@@ -8,6 +8,23 @@ import java.nio.file.Files
 import kotlin.test.*
 
 class WorkspaceTest {
+    @Test fun imeProjectionKeepsEveryGroupAndLogicalTerminalSize() {
+        val state = WorkspaceState(WorkspaceNode.Leaf("first"))
+            .split("first", SplitAxis.Vertical, 1000f, 600f, newId = "second")
+        val original = state.project(1000f, 600f, 600f)
+        for (visible in listOf(550f, 400f, 200f, 450f, 600f)) {
+            val projection = state.project(1000f, 600f, visible)
+            assertTrue(projection.fits)
+            assertEquals(original.logical, projection.logical)
+            assertEquals(setOf("first", "second"), projection.visible.keys)
+            assertEquals((visible - WorkspaceState.DIVIDER) / 2, projection.visible.getValue("first").height)
+            assertEquals(1000f, projection.visible.getValue("second").width)
+        }
+        val smallerWindow = state.project(1000f, 300f, 200f)
+        assertFalse(smallerWindow.fits)
+        assertEquals(setOf(state.activeGroup), smallerWindow.visible.keys)
+        assertEquals(300f, smallerWindow.logical.getValue(state.activeGroup).height)
+    }
     @Test fun splitMoveMergeSelectionAndEmptyGroups() {
         var state = WorkspaceState(WorkspaceNode.Leaf("first")).add("a").add("b")
         state = state.split("first", SplitAxis.Horizontal, 1200f, 800f, newId = "second")

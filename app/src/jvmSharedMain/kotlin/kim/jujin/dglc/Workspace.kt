@@ -18,6 +18,16 @@ data class WorkspaceRect(val x: Float, val y: Float, val width: Float, val heigh
 enum class DropEdge { Center, Left, Right, Top, Bottom }
 data class WorkspaceDrop(val group: String, val edge: DropEdge = DropEdge.Center, val index: Int = Int.MAX_VALUE)
 
+data class WorkspaceProjection(val fits: Boolean, val logical: Map<String, WorkspaceRect>, val visible: Map<String, WorkspaceRect>)
+
+/** IME compresses the existing tree without changing its logical sizes or hiding a group. */
+fun WorkspaceState.project(width: Float, logicalHeight: Float, visibleHeight: Float): WorkspaceProjection {
+    val fits = fits(width, logicalHeight)
+    fun rectangles(height: Float) = if (fits) root.rectangles(width, height)
+        else mapOf(activeGroup to WorkspaceRect(0f, 0f, width, height))
+    return WorkspaceProjection(fits, rectangles(logicalHeight), rectangles(visibleHeight))
+}
+
 /** Pure, immutable state. A drag only mutates this state when a validated drop is committed. */
 data class WorkspaceState(val root: WorkspaceNode = WorkspaceNode.Leaf(),
     val groups: Map<String, WorkspaceGroup> = root.leaves().associate { it.id to WorkspaceGroup() },

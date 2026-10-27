@@ -55,7 +55,8 @@ class AndroidMobileInputTest {
         override fun createSession(name: String) {}
         override fun manage(command: TmuxCommand) {}
         override fun refresh() {}
-        override fun resize(value: Size) {}
+        val sizes = java.util.Collections.synchronizedList(mutableListOf<Size>())
+        override fun resize(value: Size) { sizes += value }
         override fun restore() {}
         override fun disconnect() {}
         override fun close() { closes++ }
@@ -318,15 +319,20 @@ class AndroidMobileInputTest {
                 checkBar()
                 var web: WebView? = null
                 scenario.onActivity { web = webView(it.window.decorView) }
+                val originalSizes = first.sizes.toList()
                 repeat(3) {
                     stage = "keyboard open $it"
                     click("키보드 열기"); stage = "keyboard opened click $it"; waitIme(scenario, true); awaitNode("키보드 닫기")
                     var imeTop = 0
                     scenario.onActivity { activity -> imeTop = activity.window.decorView.height - activity.window.decorView.rootWindowInsets.getInsets(WindowInsets.Type.ime()).bottom }
                     assertTrue(bounds(awaitNode("CLI 실행 메뉴")).bottom <= imeTop + 2)
+                    delay(200)
+                    assertEquals("IME opening must preserve terminal dimensions", originalSizes, first.sizes.toList())
                     stage = "keyboard close $it"
                     click("키보드 닫기"); stage = "keyboard closed click $it"; waitIme(scenario, false)
                     scenario.onActivity { assertSame(web, webView(it.window.decorView)) }
+                    delay(200)
+                    assertEquals("IME closing must preserve terminal dimensions", originalSizes, first.sizes.toList())
                 }
                 screenshot("mobile-light-portrait")
                 stage = "landscape and hidden shortcuts"

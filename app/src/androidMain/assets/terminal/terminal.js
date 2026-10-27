@@ -9,7 +9,18 @@
   window.setPointerEnabled = enabled => { pointerEnabled = enabled === true; if (!pointerEnabled) cancelTouchScroll(); };
   let touchSelection = null;
   let geometryObserver = null;
-  const cancelTouchScroll = () => { for (const p of panes.values()) p.cancelTouchScroll(); };
+  const nativeViewport = document.body?.dataset?.nativeViewport === 'true';
+  let viewport = null, viewportVersion = 0, viewportDetached = false;
+  let panelOffset = 0, panelDragging = false, panelBar = null, panelThumb = null, barDrag = null;
+  const panelRange = () => viewport?.imeVisible ? Math.max(0, viewport.logicalHeight - viewport.visibleHeight) : 0;
+  const logicalWidth = () => viewport?.width ?? root.clientWidth;
+  const logicalHeight = () => viewport?.logicalHeight ?? root.clientHeight;
+  const cancelTouchScroll = () => {
+    for (const p of panes.values()) p.cancelTouchScroll();
+    panelDragging = false;
+    const previous = barDrag; barDrag = null;
+    if (previous && panelBar?.hasPointerCapture?.(previous.id)) panelBar.releasePointerCapture(previous.id);
+  };
   const send = message => window.dgl.postMessage(JSON.stringify(message));
   const stripInputHelpers = element => {
     for (const helper of element.querySelectorAll('.xterm-helpers, .composition-view, textarea')) helper.remove();
@@ -244,7 +255,7 @@
     // Wheel reports belong to the gesture's destination, independently of a
     // pending key/IME origin. xterm emits these synchronously during dispatch.
     if (wheelOrigin) {
-      if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !fontGesture && new TextEncoder().encode(data).length <= 65536)
+      if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !fontGesture && new TextEncoder().encode(data).length <= 65536)
         post({ type: 'input', data, target: wheelOrigin.target, pointer: true });
       return;
     }
@@ -269,12 +280,12 @@
       keyboard({ '\r': 'enter', '\t': 'tab', '\x7f': 'backspace' }[data], null, {}, textTarget); textOrigin = composing; compositionPending = composing;
     } else if (inputEnabled && !fontGesture) {
       const pointer = /^\x1b\[([<M])/.test(data);
-      if (!pointer || (pointerEnabled && !snapshotUpdating && !imeAnimating)) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}) });
+      if (!pointer || (pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging)) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}) });
     } else if (!fontGesture) post({ type: 'blocked-input' });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
   term.onBinary(data => {
-    if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !fontGesture && data.length <= 65536)
+    if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !fontGesture && data.length <= 65536)
       post({ type: 'input-binary', data, pointer: true, target: wheelOrigin ? wheelOrigin.target : pane === active ? inputTarget : null });
   });
   api.setInputEnabled = enabled => {
@@ -332,6 +343,7 @@
     const previous = touch;
     touch = null;
     if (previous) {
+      panelDragging = false;
       suppressTouchClick = true;
       if (host.hasPointerCapture?.(previous.id)) host.releasePointerCapture(previous.id);
     }
@@ -345,7 +357,7 @@
     touchSelection = null;
     if (!inputEnabled || !pointerEnabled || snapshotUpdating || imeAnimating || fontGesture || recoveryScreen || draggingBoundary) return;
     touch = { id: event.pointerId, x: event.clientX, y: event.clientY, lastY: event.clientY,
-      remainder: 0, dragging: false, selected: pane === active, target: inputTarget };
+      remainder: 0, dragging: false, selected: pane === active, target: inputTarget, panel: panelRange() > 0, offset: panelOffset };
   }, true);
   host.addEventListener('pointermove', event => {
     const gesture = touch;
@@ -358,6 +370,7 @@
       }
       if (Math.abs(dy) < 8 || Math.abs(dy) <= Math.abs(dx)) return;
       gesture.dragging = true; suppressTouchClick = true;
+      if (gesture.panel) panelDragging = true;
       if (event.isTrusted) host.setPointerCapture?.(gesture.id);
       if (!gesture.selected) {
         touchSelection = { pane, target: gesture.target };
@@ -367,6 +380,11 @@
     event.preventDefault();
     if (!gesture.selected) return; // The first drag only selects this pane.
     if (!canScroll(gesture)) { api.cancelTouchScroll(); return; }
+    if (gesture.panel) {
+      // The entire original surface moves one CSS pixel per finger pixel.
+      movePanel(gesture.offset + gesture.y - event.clientY);
+      return;
+    }
     const bounds = term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
     const rowHeight = bounds?.height / term.rows;
     if (!(rowHeight > 0)) { api.cancelTouchScroll(); return; }
@@ -395,7 +413,7 @@
   host.addEventListener('pointerup', event => {
     if (touch?.id !== event.pointerId) return;
     if (touch.dragging) event.preventDefault();
-    const previous = touch; touch = null;
+    const previous = touch; touch = null; panelDragging = false;
     if (host.hasPointerCapture?.(previous.id)) host.releasePointerCapture(previous.id);
   }, true);
   for (const name of ['pointercancel', 'lostpointercapture']) host.addEventListener(name, event => {
@@ -425,7 +443,7 @@
   window.focusTerminal = () => focused().focusTerminal();
   window.preparePaste = (...args) => focused().preparePaste(...args);
   window.sendShortcut = (...args) => focused().sendShortcut(...args);
-  window.setInputEnabled = value => { enabled = value === true; for (const p of panes.values()) p.setInputEnabled(enabled); };
+  window.setInputEnabled = value => { enabled = value === true; if (!enabled) cancelTouchScroll(); for (const p of panes.values()) p.setInputEnabled(enabled); };
   window.setSmoothTransitions = value => { smooth = value === true; for (const p of panes.values()) p.setSmoothTransitions(smooth); };
   function ensure(id) {
     if (!panes.has(id)) {
@@ -437,7 +455,7 @@
   }
   window.outputPane = (id, target) => { ensure(id); output = id; };
   let lastViewport = '';
-  let imeAnimating = false, imeAnchoring = false, imeVersion = 0, preserveReading = false;
+  let imeAnimating = false, imeVersion = 0;
   let cell = { width: 8.54, height: 19.6 }, boundaries = [], draggingBoundary = false;
   function sizeCanvas() {
     if (!canvas.style || root.clientWidth <= 0 || root.clientHeight <= 0) return;
@@ -446,10 +464,10 @@
     const width = (tmux ? layout.columns : shell.cols) * cell.width;
     const height = (tmux ? layout.rows : shell.rows) * cell.height;
     if (!(width > 0 && height > 0)) return;
-    canvas.style.width = `${Math.max(root.clientWidth, width)}px`;
-    canvas.style.height = `${Math.max(root.clientHeight, height)}px`;
+    canvas.style.width = `${Math.max(logicalWidth(), width)}px`;
+    canvas.style.height = `${Math.max(logicalHeight(), height)}px`;
     root.scrollLeft = Math.max(0, Math.min(root.scrollLeft || 0, Math.max(0, width - root.clientWidth)));
-    root.scrollTop = Math.max(0, Math.min(root.scrollTop || 0, Math.max(0, height - root.clientHeight)));
+    root.scrollTop = panelRange() > 0 ? 0 : Math.max(0, Math.min(root.scrollTop || 0, Math.max(0, height - root.clientHeight)));
   }
   window.setFontGesture = value => {
     fontGesture = value === true;
@@ -462,47 +480,87 @@
     }
     resize();
   };
-  function alignViewport() {
-    if (!canvas.style) return;
-    const height = layout?.window != null ? layout.rows * cell.height
-      : focused().term.element?.querySelector('.xterm-screen')?.getBoundingClientRect()?.height;
-    canvas.style.transform = imeAnchoring && !preserveReading && height > 0
-      ? `translateY(${root.clientHeight - height}px)` : '';
+  function movePanel(offset) {
+    panelOffset = Math.max(0, Math.min(panelRange(), offset));
+    alignViewport();
   }
+  function alignViewport() {
+    if (canvas.style) canvas.style.transform = panelRange() > 0 ? `translateY(${-panelOffset}px)` : '';
+    if (!panelBar) return;
+    const range = panelRange(), visible = viewport?.visibleHeight || 0;
+    panelBar.style.display = range > 0 && !viewportDetached ? 'block' : 'none';
+    panelBar.style.height = `${visible}px`;
+    const thumb = range > 0 ? Math.min(visible, Math.max(24, visible * visible / viewport.logicalHeight)) : visible;
+    panelThumb.style.height = `${thumb}px`;
+    panelThumb.style.top = `${range > 0 ? panelOffset / range * (visible - thumb) : 0}px`;
+  }
+  function ensurePanelBar() {
+    if (panelBar) return;
+    panelBar = document.createElement('div'); panelBar.className = 'panel-scrollbar';
+    panelBar.setAttribute('aria-hidden', 'true');
+    panelThumb = document.createElement('div'); panelThumb.className = 'panel-scrollbar-thumb';
+    panelBar.appendChild(panelThumb); document.body.appendChild(panelBar);
+    panelBar.addEventListener('pointerdown', event => {
+      if (!panelRange() || !enabled || !pointerEnabled || fontGesture || imeAnimating || recoveryScreen || barDrag || event.isPrimary === false) return;
+      cancelTouchScroll();
+      barDrag = { id: event.pointerId, y: event.clientY, offset: panelOffset, target: inputTarget };
+      panelDragging = true;
+      if (event.isTrusted) panelBar.setPointerCapture?.(event.pointerId);
+      event.preventDefault(); event.stopImmediatePropagation();
+    });
+    panelBar.addEventListener('pointermove', event => {
+      if (!barDrag || event.pointerId !== barDrag.id) return;
+      if (barDrag.target !== inputTarget || !panelRange()) { cancelTouchScroll(); return; }
+      const visible = viewport.visibleHeight;
+      const thumb = Math.min(visible, Math.max(24, visible * visible / viewport.logicalHeight));
+      const travel = visible - thumb;
+      if (travel > 0) movePanel(barDrag.offset + (event.clientY - barDrag.y) * panelRange() / travel);
+      event.preventDefault(); event.stopImmediatePropagation();
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) panelBar.addEventListener(type, event => {
+      if (barDrag?.id === event.pointerId) cancelTouchScroll();
+      event.preventDefault(); event.stopImmediatePropagation();
+    });
+    for (const type of ['mousedown', 'mouseup', 'click']) panelBar.addEventListener(type, event => {
+      event.preventDefault(); event.stopImmediatePropagation();
+    }, true);
+  }
+  window.setViewport = value => {
+    if (!value || !Number.isSafeInteger(value.version) || value.version <= viewportVersion ||
+        ![value.width, value.logicalHeight, value.visibleHeight].every(n => Number.isFinite(n) && n > 0) ||
+        value.visibleHeight > value.logicalHeight || typeof value.imeVisible !== 'boolean') return;
+    const oldRange = panelRange(), atBottom = panelOffset === oldRange;
+    cancelTouchScroll();
+    viewportVersion = value.version; viewportDetached = false; viewport = { ...value };
+    const range = panelRange();
+    panelOffset = !range ? 0 : !oldRange || atBottom ? range : Math.min(panelOffset, range);
+    ensurePanelBar();
+    resize(); alignViewport();
+  };
+  window.detachViewport = version => {
+    if (!Number.isSafeInteger(version) || version <= viewportVersion) return;
+    viewportVersion = version; viewportDetached = true;
+    cancelTouchScroll(); alignViewport();
+  };
   window.setImeAnimation = (animating, version) => {
     if (!Number.isSafeInteger(version) || version < imeVersion) return;
-    if (animating) {
-      if (!imeAnchoring) {
-        const buffer = focused().term.buffer?.active;
-        preserveReading = !!buffer && buffer.viewportY < buffer.baseY;
-      }
-      imeVersion = version; imeAnimating = true; imeAnchoring = true;
-      alignViewport();
-    } else {
-      imeVersion = version;
-      // Wait for Compose's final layout. A replacement/cancelled animation owns a newer version.
-      requestAnimationFrame(() => {
-        if (version !== imeVersion) return;
-        imeAnimating = false;
-        const previous = lastViewport;
-        resize();
-        if (lastViewport === previous) { imeAnchoring = false; alignViewport(); }
-      });
-    }
+    imeVersion = version; imeAnimating = animating === true;
+    cancelTouchScroll();
   };
-  window.refreshViewport = () => { lastViewport = ''; resize(); };
+  window.refreshViewport = () => resize();
   function resize() {
+    if (viewportDetached || (nativeViewport && !viewport)) return;
     const term = focused().term;
     const rect = term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
     if (!rect?.width || !rect?.height || !term.cols || !term.rows || root.clientWidth <= 0 || root.clientHeight <= 0) return;
     const measured = { width: rect.width / term.cols, height: rect.height / term.rows };
     const changed = measured.width !== cell.width || measured.height !== cell.height;
     cell = measured;
-    const columns = Math.max(2, Math.min(500, Math.floor(root.clientWidth / cell.width)));
-    const rows = Math.max(2, Math.min(250, Math.floor(root.clientHeight / cell.height)));
+    const columns = Math.max(2, Math.min(500, Math.floor(logicalWidth() / cell.width)));
+    const rows = Math.max(2, Math.min(250, Math.floor(logicalHeight() / cell.height)));
     const key = `${columns},${rows}`;
     alignViewport();
-    if (imeAnimating || fontGesture) {
+    if (fontGesture) {
       if (changed) arrange(); else sizeCanvas();
       return;
     }
@@ -527,7 +585,6 @@
     const tmux = layout.window !== null;
     shell.host.style.visibility = tmux ? 'hidden' : 'visible';
     boundaries.forEach(b => b.remove()); boundaries = [];
-    if (!imeAnimating && `${layout.columns},${layout.rows}` === lastViewport) imeAnchoring = false;
     alignViewport();
     for (const [id, p] of panes) {
       if (id === 'shell') continue;
@@ -579,6 +636,7 @@
   };
   // The server may keep a smaller grid than this viewport. Tapping the empty
   // container still opens the active pane's IME, just as tapping its cells does.
+  root.addEventListener('scroll', () => { if (panelRange() > 0 && root.scrollTop) root.scrollTop = 0; });
   root.addEventListener('click', event => {
     if (enabled && !fontGesture && !event.target.closest('.pane, .boundary')) focused().focusTerminal();
   });

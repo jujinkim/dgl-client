@@ -341,10 +341,10 @@ test('cancellation and a stalled renderer release the cache and pending ack', ()
   }
 });
 
-function imeRenderer({ delayedFont = false } = {}) {
+function imeRenderer({ delayedFont = false, nativeViewport = false } = {}) {
   const messages = [], frames = [], terminals = [], observed = new Set();
   const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
-  const host = () => ({ style: {}, addEventListener() {}, remove() {}, classList: { toggle() {} } });
+  const host = () => ({ style: {}, addEventListener() {}, appendChild() {}, setAttribute() {}, remove() {}, classList: { toggle() {} } });
   const canvas = { style: {}, appendChild() {} };
   let observe, render, terminal;
   class Terminal {
@@ -363,7 +363,7 @@ function imeRenderer({ delayedFont = false } = {}) {
   const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
     window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} },
-    document: { getElementById: id => id === 'terminal' ? root : id === 'window' ? canvas : host(), createElement: host, hasFocus: () => false },
+    document: { body: Object.assign(host(), { dataset: { nativeViewport: String(nativeViewport) } }), getElementById: id => id === 'terminal' ? root : id === 'window' ? canvas : host(), createElement: host, hasFocus: () => false },
     ResizeObserver: class { constructor(callback) { observe = callback; } observe(element) { observed.add(element); observe(); } unobserve(element) { observed.delete(element); } },
     requestAnimationFrame: callback => frames.push(callback),
     clearTimeout() {},
@@ -443,22 +443,17 @@ test('screen geometry observes late font metrics without a hidden shell render a
   assert.ok(!r.observed.has(visible.screen), 'disposed panes release their observer');
 });
 
-test('detach cancels IME with a newer generation and reattachment rechecks the same viewport', () => {
+test('detached surfaces and older geometry generations cannot resize or move the panel', () => {
   const r = imeRenderer();
-  r.window.setImeAnimation(true, 8);
-  r.root.clientHeight = 400; r.observe();
-  r.window.setImeAnimation(false, 9); // renderer-owned cancellation, no matching onEnd required
-  r.frame();
-  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 20 }]);
-  r.window.setImeAnimation(true, 8); // old callback cannot re-arm a detached renderer
-  r.window.setImeAnimation(false, 8); r.frame();
-  r.window.refreshViewport();
-  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 20 }]);
-  r.window.setImeAnimation(true, 10);
-  r.root.clientHeight = 300; r.observe();
+  r.window.setViewport({ version: 8, width: 1000, logicalHeight: 600, visibleHeight: 400, imeVisible: true });
+  assert.equal(r.canvas.style.transform, 'translateY(-200px)');
+  r.window.detachViewport(9);
+  r.window.setViewport({ version: 8, width: 500, logicalHeight: 400, visibleHeight: 300, imeVisible: true });
+  r.root.clientHeight = 200; r.observe(); r.window.refreshViewport();
   assert.deepEqual(r.messages, []);
-  r.window.setImeAnimation(false, 10); r.frame();
-  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 15 }]);
+  r.window.setViewport({ version: 10, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  assert.equal(r.canvas.style.transform, 'translateY(-300px)');
+  assert.deepEqual(r.messages, [], 'reattachment reuses the same logical grid');
 });
 
 test('composition and textarea stay at the displayed cursor through snapshot parsing and final render', () => {
@@ -501,65 +496,53 @@ test('composition fallback accounts for viewport history and connection caches c
   assert.equal(r.helpers.style['--dgl-input-left'], '70px', 'cancellation releases the position freeze');
 });
 
-test('IME and pinch only submit a final viewport after both gestures have ended', () => {
+test('pinch and real window changes use logical geometry while IME only changes the clip', () => {
   const r = imeRenderer();
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 400, imeVisible: true });
   r.window.setFontGesture(true); r.window.configure(28, 5000);
-  r.window.setImeAnimation(true, 1); r.root.clientHeight = 400; r.observe();
-  r.window.setFontGesture(false); r.render();
+  r.window.setImeAnimation(true, 1); r.root.clientHeight = 300; r.observe();
+  r.window.setViewport({ version: 2, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
   assert.deepEqual(r.messages, []);
-  r.window.setImeAnimation(false, 1); r.frame(); r.render();
-  assert.deepEqual(r.messages, [{ type: 'resize', columns: 50, rows: 10 }]);
+  r.window.setFontGesture(false); r.render();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 50, rows: 15 }]);
+  r.window.setImeAnimation(false, 1); r.frame();
+  assert.deepEqual(r.messages, []);
+  r.window.setViewport({ version: 3, width: 800, logicalHeight: 400, visibleHeight: 200, imeVisible: true });
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 40, rows: 10 }]);
 });
 
-test('IME show and hide anchor the existing surface and submit only the final grid', () => {
+test('IME show hide height changes and rapid reversal never request a remote resize', () => {
   const r = imeRenderer();
+  let version = 1;
+  const geometry = (visibleHeight, imeVisible) => r.window.setViewport({ version: version++, width: 1000, logicalHeight: 600, visibleHeight, imeVisible });
+  geometry(600, false);
   r.window.setImeAnimation(true, 1);
-  for (const height of [540, 480, 420, 360]) { r.root.clientHeight = height; r.observe(); }
+  for (const height of [540, 480, 420, 360]) { geometry(height, true); r.root.clientHeight = height; r.observe(); }
+  assert.equal(r.canvas.style.transform, 'translateY(-240px)');
+  assert.equal(r.canvas.style.height, '600px');
+  r.window.setImeAnimation(false, 1); r.frame();
+  geometry(300, true);
+  assert.equal(r.canvas.style.transform, 'translateY(-300px)');
+  r.window.setImeAnimation(true, 2);
+  for (const height of [420, 480, 540, 600]) { geometry(height, height !== 600); r.root.clientHeight = height; r.observe(); }
+  r.window.setImeAnimation(false, 1); // stale animation ending
+  r.window.setImeAnimation(false, 2); r.frame();
+  assert.equal(r.canvas.style.transform, '');
+  geometry(360, true);
   assert.equal(r.canvas.style.transform, 'translateY(-240px)');
   assert.deepEqual(r.messages, []);
-  r.window.setImeAnimation(false, 1); r.frame();
-  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 18 }]);
-  r.window.resizePane(100, 18); r.render();
-  assert.equal(r.canvas.style.transform, 'translateY(0px)');
-  r.window.setImeAnimation(true, 2);
-  for (const height of [420, 480, 540, 600]) { r.root.clientHeight = height; r.observe(); }
-  assert.equal(r.canvas.style.transform, 'translateY(240px)');
-  assert.deepEqual(r.messages, []);
-  r.window.setImeAnimation(false, 2); r.frame();
-  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 30 }]);
 });
 
-test('cancelled and rapidly reversed IME animations ignore old endings and settle latest geometry', () => {
-  const r = imeRenderer();
-  r.window.setImeAnimation(true, 1);
-  r.root.clientHeight = 400; r.observe();
-  r.window.setImeAnimation(false, 1);
-  r.window.setImeAnimation(true, 2);
-  r.frame();
-  assert.deepEqual(r.messages, []);
-  r.root.clientHeight = 600; r.observe();
-  r.window.setImeAnimation(false, 1); r.frame();
-  assert.deepEqual(r.messages, []);
-  r.window.setImeAnimation(false, 2); r.frame();
-  assert.equal(r.canvas.style.transform, '');
-  assert.deepEqual(r.messages, [], 'a cancelled show returns to the existing grid');
-  r.window.setImeAnimation(true, 3);
-  r.root.clientHeight = 400; r.observe();
-  r.window.setImeAnimation(false, 3); r.frame();
-  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 20 }]);
-});
-
-test('IME preserves an existing history reading position', () => {
+test('IME panel alignment preserves the independent xterm history reading position', () => {
   const r = imeRenderer();
   r.terminal.buffer.active.viewportY = 3;
-  r.window.setImeAnimation(true, 1);
-  r.root.clientHeight = 300; r.observe();
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  assert.equal(r.canvas.style.transform, 'translateY(-300px)');
+  assert.equal(r.terminal.buffer.active.viewportY, 3);
+  r.window.setViewport({ version: 2, width: 1000, logicalHeight: 600, visibleHeight: 600, imeVisible: false });
   assert.equal(r.canvas.style.transform, '');
   assert.equal(r.terminal.buffer.active.viewportY, 3);
-  r.window.setImeAnimation(false, 1); r.frame();
-  assert.equal(r.canvas.style.transform, '');
-  assert.equal(r.terminal.buffer.active.viewportY, 3);
-  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 15 }]);
+  assert.deepEqual(r.messages, []);
 });
 
 test('a replacement snapshot releases its predecessor acknowledgement and reduced durations are bundled', () => {
@@ -651,7 +634,7 @@ function touchRenderer() {
     resize(cols, rows) { this.cols = cols; this.rows = rows; }
     focus() { this.focuses++; } scrollLines(lines) { this.scrolls.push(lines); this.buffer.active.viewportY += lines; }
   }
-  const root = new Element(), canvas = new Element(), shell = new Element();
+  const root = new Element(), canvas = new Element(), shell = new Element(), body = new Element();
   const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
     window, Terminal, TextEncoder, WheelEvent: class {
@@ -659,7 +642,7 @@ function touchRenderer() {
       constructor(type, options) { this.type = type; Object.assign(this, options); }
     },
     document: { getElementById: id => ({ terminal: root, window: canvas, shell })[id], createElement: () => new Element(),
-      hasFocus: () => true, body: new Element() },
+      hasFocus: () => true, body },
     ResizeObserver: class { observe() {} unobserve() {} },
     setTimeout: callback => timers.push(callback), clearTimeout() {}, requestAnimationFrame() {},
   });
@@ -673,7 +656,7 @@ function touchRenderer() {
     const event = { type, pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: x, clientY: y, ...extra };
     term.host.dispatchEvent(event); return event;
   };
-  return { window, terminals, messages, timers, layout, pointer, canvas, root,
+  return { window, terminals, messages, timers, layout, pointer, canvas, root, body,
     drag(from, to, term = terminals[0]) {
       pointer('pointerdown', 100, from, term); pointer('pointermove', 100, to, term); pointer('pointerup', 100, to, term);
     },
@@ -884,4 +867,70 @@ test('snapshot reset preserves cursor keys paste mode and composition until the 
   r.window.endSnapshot(42); r.render(); r.frame(); r.frame();
   r.window.sendShortcut('left', false, false, false);
   assert.equal(r.messages.at(-1).applicationCursor, false);
+});
+
+test('IME body drag moves the panel pixel for pixel with limits and no remote or history input', () => {
+  const r = touchRenderer(), t = r.terminals[0];
+  const geometry = (version, visibleHeight, imeVisible = true) => r.window.setViewport({ version, width: 807, logicalHeight: 480, visibleHeight, imeVisible });
+  geometry(1, 240);
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 80, rows: 24 }]);
+  assert.equal(r.canvas.style.transform, 'translateY(-240px)');
+  assert.equal(r.canvas.style.width, '807px');
+  const bar = r.body.children[0], thumb = bar.children[0];
+  assert.equal(bar.style.display, 'block'); assert.equal(thumb.style.height, '120px'); assert.equal(thumb.style.top, '120px');
+  t.modes.mouseTrackingMode = 'vt200';
+  r.pointer('pointerdown', 100, 100); r.pointer('pointermove', 100, 107);
+  assert.equal(r.canvas.style.transform, 'translateY(-240px)');
+  r.pointer('pointermove', 100, 140);
+  assert.equal(r.canvas.style.transform, 'translateY(-200px)');
+  assert.equal(thumb.style.top, '100px');
+  t.data('\x1b[<64;1;1M'); t.binary('\x1b[M');
+  r.pointer('pointermove', 100, 500); r.pointer('pointerup', 100, 500);
+  assert.equal(r.canvas.style.transform, 'translateY(0px)');
+  for (const type of ['mousedown', 'mouseup', 'click']) assert.equal(r.pointer(type, 100, 500).stopped, true);
+  r.drag(400, -400);
+  assert.equal(r.canvas.style.transform, 'translateY(-240px)');
+  r.drag(100, 140); // leave panel away from bottom
+  geometry(2, 480, false);
+  assert.equal(r.canvas.style.transform, ''); assert.equal(bar.style.display, 'none');
+  geometry(3, 240);
+  assert.equal(r.canvas.style.transform, 'translateY(-240px)', 'reopening starts at the bottom');
+  assert.deepEqual(t.scrolls, []); assert.deepEqual(t.wheels, []); assert.deepEqual(r.messages, []);
+  geometry(4, 480, false); r.drag(100, 140);
+  assert.equal(t.wheels.length, 2, 'closing IME restores existing TUI scrolling');
+});
+
+test('IME scrollbar scales thumb drag and discards cancellation target changes and pinch', () => {
+  const r = touchRenderer();
+  r.window.setViewport({ version: 1, width: 807, logicalHeight: 480, visibleHeight: 240, imeVisible: true });
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 80, rows: 24 }]);
+  const bar = r.body.children[0];
+  const pointer = (type, y) => bar.dispatchEvent({ type, pointerId: 5, isPrimary: true, clientY: y });
+  pointer('pointerdown', 160); pointer('pointermove', 110);
+  assert.equal(r.canvas.style.transform, 'translateY(-140px)', '50px thumb travel moves 100px of panel');
+  pointer('pointermove', -500); assert.equal(r.canvas.style.transform, 'translateY(0px)');
+  pointer('pointercancel', -500); pointer('pointermove', 500);
+  assert.equal(r.canvas.style.transform, 'translateY(0px)');
+  pointer('pointerdown', 50); r.layout('replacement'); pointer('pointermove', 100);
+  assert.equal(r.canvas.style.transform, 'translateY(0px)');
+  pointer('pointerdown', 50); r.window.setFontGesture(true); pointer('pointermove', 100); r.window.setFontGesture(false);
+  assert.equal(r.canvas.style.transform, 'translateY(0px)');
+  r.pointer('pointerdown', 100, 100); r.pointer('pointermove', 180, 105);
+  assert.equal(r.canvas.style.transform, 'translateY(0px)', 'horizontal gestures remain browser panning');
+  assert.deepEqual(r.messages, []);
+  const css = readFileSync(new URL('../app/src/androidMain/assets/terminal/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.panel-scrollbar \{[^}]*width: 24px/);
+  assert.match(css, /\.panel-scrollbar-thumb \{[^}]*width: 3px/);
+});
+
+test('native WebView waits for logical geometry before measuring its initial or transient bounds', () => {
+  const r = imeRenderer({ nativeViewport: true });
+  r.root.clientHeight = 240; r.observe(); r.window.refreshViewport();
+  assert.deepEqual(r.messages, [], 'IME-sized DOM bounds cannot escape before native geometry arrives');
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 240, imeVisible: true });
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 30 }]);
+  r.window.setViewport({ version: 2, width: 0, logicalHeight: 600, visibleHeight: 240, imeVisible: true });
+  r.window.setViewport({ version: 2, width: 1000, logicalHeight: 100, visibleHeight: 240, imeVisible: true });
+  r.observe();
+  assert.deepEqual(r.messages, [], 'invalid bridge geometry leaves the current grid intact');
 });
