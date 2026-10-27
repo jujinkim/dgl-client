@@ -18,6 +18,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidVolumeKeyTest {
+    /** Give the legacy shell fixture the current renderer's guarded semantic-input contract. */
+    private class KeyboardConnection(private val delegate: ClientModel) : ClientConnection by delegate {
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        private val target = """{"connection":"fixture-cli","pane_id":null,"generation":{"connection":1,"pane":0}}"""
+        override fun captureInputTarget() = InputTarget(1, null, inputTargetIdentity(target))
+        override fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? =
+            TerminalKey.entries.firstOrNull { it.semanticInput() == (key to modifiers) }?.bytes()
+        override fun bindSurface(value: TerminalSurface?) {
+            delegate.bindSurface(value)
+            if (value != null) scope.launch { value.layout(RemoteState(), null, null, target) }
+        }
+        override fun close() { scope.cancel(); delegate.close() }
+    }
     private fun event(key: Int, action: Int = KeyEvent.ACTION_DOWN, repeat: Int = 0, time: Long = 10) =
         KeyEvent(time, time + repeat, action, key, repeat)
 
@@ -123,7 +136,7 @@ class AndroidVolumeKeyTest {
                         ancestors.joinToString { "${it.className}(enabled=${it.isEnabled}, clickable=${it.isClickable})" },
                         ancestors.any { !it.isEnabled })
                 }
-                click("현재 호스트 Volume test 연결 메뉴"); click("tmux 관리")
+                click("tmux 관리")
                 waitForText("일반 SSH · tmux 목록 확인 불가")
                 val newSession = waitForText("+")
                 assertTrue(generateSequence(newSession) { it.parent }.any { !it.isEnabled })
@@ -139,7 +152,7 @@ class AndroidVolumeKeyTest {
                 click("닫기")
                 assertEquals(Phase.Shell, first.status.value.phase)
                 assertNull(withTimeoutOrNull(200) { firstWire.writes.receive() })
-                click("현재 호스트 Volume test 연결 메뉴"); click("tmux 관리")
+                click("tmux 관리")
                 waitForText("일반 SSH · tmux 목록 확인 불가")
                 press(scenario, false)
                 click("터미널로 돌아가기"); delay(200)
@@ -149,7 +162,7 @@ class AndroidVolumeKeyTest {
                 assertArrayEquals(byteArrayOf(2), withTimeout(3000) { firstWire.writes.receive() })
                 assertNull(withTimeoutOrNull(200) { firstWire.writes.receive() })
 
-                click("설정"); waitForText("터미널 글자 크기: 14")
+                click("설정"); scrollToText("터미널 글자 크기: 14")
                 press(scenario, false); click("닫기"); delay(200)
                 click("호스트"); delay(200); press(scenario, false)
                 click("Volume test 메뉴"); click("삭제…"); waitForText("호스트 삭제"); press(scenario, false); click("취소")
@@ -200,6 +213,7 @@ class AndroidVolumeKeyTest {
             scenario.onMainActivity { app = (it.application as DglApplication).connections().app; previous = app.local.value; app.update(previous.copy(preferences = Preferences(language = "ko"))) }
             try {
                 click("설정")
+                scrollToText("볼륨 키로 단축키 실행")
                 click("볼륨 키로 단축키 실행")
                 withTimeout(3000) { while (!app.local.value.preferences.volumeKeysEnabled) delay(50) }
                 click("볼륨 위: 기본 음량 조절")
@@ -228,15 +242,15 @@ class AndroidVolumeKeyTest {
     @Test fun cliLauncherCommandsLayoutDismissalAndTargetChanges() = runBlocking<Unit> {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             lateinit var app: AppModel; lateinit var previous: LocalState
-            lateinit var first: ClientModel; lateinit var second: ClientModel
+            lateinit var first: ClientConnection; lateinit var second: ClientConnection
             val firstWire = ShellTransport(); val secondWire = ShellTransport()
             scenario.onMainActivity { activity ->
                 app = (activity.application as DglApplication).connections().app
                 previous = app.local.value
                 val store = MemoryCredentialStore().apply { write("cli-test", Credential("test")) }
                 val host = HostProfile("cli-test", "CLI test", "example.test", username = "test")
-                first = ClientModel(host, store, app.local, app::modify) { firstWire }
-                second = ClientModel(host.copy(alias = "Second CLI"), store, app.local, app::modify) { secondWire }
+                first = KeyboardConnection(ClientModel(host, store, app.local, app::modify) { firstWire })
+                second = KeyboardConnection(ClientModel(host.copy(alias = "Second CLI"), store, app.local, app::modify) { secondWire })
                 app.connections.value = listOf(first, second); app.selected.value = first
                 app.update(previous.copy(preferences = Preferences(language = "ko")))
                 first.connect(); second.connect()
@@ -244,6 +258,20 @@ class AndroidVolumeKeyTest {
             try {
                 withTimeout(10000) { first.status.first { it.phase == Phase.Shell }; second.status.first { it.phase == Phase.Shell } }
                 waitForText("CLI 실행 메뉴")
+                awaitUi("terminal renderer ready") {
+                    var ready = false
+                    while (!ready) {
+                        scenario.onMainActivity { activity ->
+                            fun web(view: android.view.View): android.webkit.WebView? {
+                                if (view is android.webkit.WebView) return view
+                                if (view is android.view.ViewGroup) for (i in 0 until view.childCount) web(view.getChildAt(i))?.let { return it }
+                                return null
+                            }
+                            web(activity.window.decorView)?.evaluateJavascript("typeof window.sendShortcut === 'function'") { ready = it == "true" }
+                        }
+                        delay(50)
+                    }
+                }
                 for ((label, wire) in listOf("Esc" to "\u001b", "Tab" to "\t", "Enter" to "\r",
                     "Shift+Tab" to "\u001b[Z", "Shift+←" to "\u001b[1;2D")) {
                     awaitUi("scroll to shortcut $label") {
@@ -430,6 +458,7 @@ class AndroidVolumeKeyTest {
     }
     private suspend fun waitForText(text: String): AccessibilityNodeInfo = awaitUi("find $text") {
         while (true) {
+            automation.clearCache()
             find(automation.rootInActiveWindow) { it.text?.toString() == text || it.contentDescription?.toString() == text }?.let { return@awaitUi it }
             delay(50)
         }
@@ -437,12 +466,14 @@ class AndroidVolumeKeyTest {
     }
     private suspend fun click(text: String) = awaitUi("click $text") {
         while (true) {
+            automation.clearCache()
             val root = automation.rootInActiveWindow
             var node = find(root) { it.text?.toString() == text || it.contentDescription?.toString() == text }
             while (node != null && !node.isClickable) node = node.parent
             if (node?.isEnabled == true && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) break
             find(root) { it.isScrollable && it.actionList.any { action -> action.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id } }
                 ?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id)
+            automation.waitForIdle(100, 2000)
             delay(100)
         }
     }
@@ -457,10 +488,12 @@ class AndroidVolumeKeyTest {
     }
     private suspend fun scrollToText(text: String) = awaitUi("scroll to $text") {
         while (true) {
+            automation.clearCache()
             val root = automation.rootInActiveWindow
             if (find(root) { it.text?.toString() == text }?.isVisibleToUser == true) break
             find(root) { it.isScrollable && it.actionList.any { action -> action.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id } }
                 ?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id)
+            automation.waitForIdle(100, 2000)
             delay(100)
         }
     }

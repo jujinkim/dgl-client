@@ -48,6 +48,22 @@ import java.lang.ref.WeakReference
 internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.DialogProperties(
     usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
 
+// Take keys/back and consume outside touches without replacing the terminal as the IME target.
+internal actual fun mobileNotificationPopupProperties() = androidx.compose.ui.window.PopupProperties(
+    flags = android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+    inheritSecurePolicy = true)
+
+@Composable internal actual fun rememberAppFocusCapture(): () -> (() -> Unit) {
+    val view = LocalView.current
+    return remember(view) { {
+        val previous = WeakReference(view.rootView.findFocus())
+        val restore: () -> Unit = {
+            view.post { previous.get()?.takeIf { it.isAttachedToWindow }?.requestFocus() }
+        }
+        restore
+    } }
+}
+
 private class TerminalEntry(val terminal: AndroidTerminal) {
     var focus = TerminalFocus()
     var visible = false
@@ -152,7 +168,10 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         onDispose {
             terminal.finishFontGesture()
             terminal.cancelImeAnimation()
-            entry.restoreIme = entry.focus.inputAllowed() && focus.imeVisible
+            // Detach effects can run in either order. Retain the native snapshot captured by
+            // the terminal effect even if Compose has already observed the IME disappearing.
+            entry.restoreIme = entry.restoreIme || (entry.focus.inputAllowed() &&
+                (focus.imeVisible || terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) == true))
             observing = false
             if (treeObserver.isAlive) treeObserver.removeOnPreDrawListener(observer)
             terminal.view.setOnApplyWindowInsetsListener(null)

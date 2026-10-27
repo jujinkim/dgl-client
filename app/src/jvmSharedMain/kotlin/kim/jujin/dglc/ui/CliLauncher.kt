@@ -95,16 +95,17 @@ private object AboveLauncher : PopupPositionProvider {
     var request by remember(client, status.phase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
     if (inputGate != null) WorkspaceInputBlock(inputGate, menuOwner, request != null)
     val dismiss = { request = null; inputGate?.blockInput(menuOwner, false); terminalFocus.request() }
-    val buttonHeight = if (mobile && !workspace) 40.dp else 48.dp
+    val compact = mobile && !workspace
+    val buttonHeight = if (compact) 30.dp else 48.dp
     val imeVisible = terminalFocus.imeVisible
     val viewConfiguration = LocalViewConfiguration.current
-    val compactConfiguration = remember(viewConfiguration) { object : ViewConfiguration by viewConfiguration {
-        override val minimumTouchTargetSize = DpSize(40.dp, 40.dp)
+    val compactConfiguration = remember(viewConfiguration, compact) { object : ViewConfiguration by viewConfiguration {
+        override val minimumTouchTargetSize = if (compact) DpSize(30.dp, 30.dp) else DpSize(40.dp, 40.dp)
     } }
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (mobile) 0.dp else LocalMinimumInteractiveComponentSize.current,
         LocalViewConfiguration provides if (mobile) compactConfiguration else viewConfiguration) {
         Row(Modifier.fillMaxWidth().semantics { contentDescription = t("터미널 입력 도구") }
-            .padding(horizontal = 4.dp, vertical = if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 4.dp, vertical = if (compact) 3.dp else if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (mobile) {
                 TerminalToolButton({ terminalFocus.keyboard() }, enabled = available,

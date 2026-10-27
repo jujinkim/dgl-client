@@ -81,7 +81,6 @@ class AndroidAppFlowTest {
                 assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, sessionLabel))
 
                 assertNotNull(findText(instrumentation.uiAutomation.rootInActiveWindow, sessionLabel))
-                clickMatching { it.contentDescription?.toString()?.let { label -> label.startsWith("현재 호스트 ") && label.endsWith(" 연결 메뉴") } == true }
                 clickText("tmux 관리")
                 clickText("터미널로 돌아가기")
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
@@ -183,7 +182,6 @@ class AndroidAppFlowTest {
                 stage = "GUI tree expansion"
                 // Expansion must not change the selected target; selecting a row is separate.
                 val beforeExpand = connection.pane.value
-                clickMatching { it.contentDescription?.toString()?.let { label -> label.startsWith("현재 호스트 ") && label.endsWith(" 연결 메뉴") } == true }
                 clickText("tmux 관리")
                 stage = "session expand"
                 clickMatching { it.contentDescription?.toString()?.let { text -> text.startsWith("$name\n") && text.endsWith(" 펼치기") } == true }
@@ -202,7 +200,6 @@ class AndroidAppFlowTest {
                 clickText("포커스 →")
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
-                clickMatching { it.contentDescription?.toString()?.let { label -> label.startsWith("현재 호스트 ") && label.endsWith(" 연결 메뉴") } == true }
                 clickText("tmux 관리")
                 clickText("세션 새로고침")
                 withTimeout(10000) { connection.refreshing.first { !it } }
@@ -221,7 +218,6 @@ class AndroidAppFlowTest {
                 stage = "GUI window creation"
                 runVolumeMacro(scenario, admin, splitPane.id)
                 assertEquals("1", admin.execute("tmux show-options -pv -t '$pane' @dgl-volume-count").decodeToString().trim())
-                clickMatching { it.contentDescription?.toString()?.let { label -> label.startsWith("현재 호스트 ") && label.endsWith(" 연결 메뉴") } == true }
                 clickText("tmux 관리")
                 stage = "session expand"
                 clickMatching { it.contentDescription?.toString()?.let { text -> text.startsWith("$name\n") && text.endsWith(" 메뉴") } == true }

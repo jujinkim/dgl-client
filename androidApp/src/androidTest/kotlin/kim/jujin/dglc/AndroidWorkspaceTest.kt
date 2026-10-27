@@ -69,14 +69,17 @@ class AndroidWorkspaceTest {
                     model.reconcileWorkspace()
                 }
                 stage = "839dp"
-                awaitNode("서버 선택"); assertNull(node("분할 작업 공간"))
+                awaitNode("열린 연결 탭"); assertNull(node("분할 작업 공간"))
                 eventually { first.surface != null }
                 val firstRenderer = first.surface as AndroidTerminal
+                click("알림 0"); awaitNode("수신한 알림이 없습니다.")
+                assertTrue(model.inputBlocked())
                 stage = "840dp"
                 resize(scenario, 840, 1000); awaitNode("분할 작업 공간")
+                eventually { !model.inputBlocked() }
                 eventually { first.surface != null }
                 assertSame(firstRenderer, first.surface)
-                assertNull(node("서버 선택"))
+                assertNull(node("열린 연결 탭"))
                 assertNotNull(node("키보드 열기"))
                 stage = "wide split"
                 resize(scenario, 1200, 1000)
@@ -120,6 +123,9 @@ class AndroidWorkspaceTest {
                 eventually { model.workspace.value.groupOf(model.tabId(second)!!) == secondGroup && second.surface != null }
                 assertSame(secondRenderer, second.surface)
                 stage = "vertical layout"
+                // Pointer activation may open the IME; establish the no-keyboard geometry first.
+                if (node("키보드 닫기") != null) click("키보드 닫기")
+                waitIme(scenario, false)
                 scenario.onActivity {
                     model.changeWorkspace { state -> state.copy(root = (state.root as WorkspaceNode.Split).copy(axis = SplitAxis.Vertical, ratio = .5f)) }
                 }
@@ -139,14 +145,14 @@ class AndroidWorkspaceTest {
                 resize(scenario, 1200, 1000)
                 eventually { first.surface != null && second.surface != null }
                 assertSame(firstRenderer, first.surface); assertSame(secondRenderer, second.surface)
-                stage = "narrow selector covers every group"
+                stage = "narrow tabs cover every group"
                 click("키보드 열기"); waitIme(scenario, true)
-                resize(scenario, 839, 1000); awaitNode("서버 선택")
+                resize(scenario, 839, 1000); awaitNode("열린 연결 탭")
                 stage = "narrow IME preservation"
                 waitIme(scenario, true)
                 assertSame(secondRenderer, second.surface)
                 click("키보드 닫기"); waitIme(scenario, false)
-                click("서버 선택"); click("first · one")
+                click("first · one")
                 eventually { model.selected.value === first && first.surface != null }
                 assertSame(firstRenderer, first.surface)
                 resize(scenario, 1200, 1000); awaitNode("분할 작업 공간")
@@ -200,7 +206,8 @@ class AndroidWorkspaceTest {
                 stage = "hidden shell overflow reproduction"
                 assertTrue(js(renderer, """(() => {
                     const r=document.querySelector('#terminal'), c=document.querySelector('#window'), s=document.querySelector('#shell');
-                    c.style.overflow='visible'; s.style.overflow='visible'; s.style.width='100vw';
+                    // Give the hidden measurement shell a known overflow instead of relying on its initial fit.
+                    c.style.overflow='visible'; s.style.overflow='visible'; s.style.width=(r.clientWidth+200)+'px';
                     const reproduced=r.scrollWidth > r.clientWidth + 100;
                     c.style.removeProperty('overflow'); s.style.removeProperty('overflow'); s.style.removeProperty('width');
                     return reproduced;

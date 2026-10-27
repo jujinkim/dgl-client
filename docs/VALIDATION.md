@@ -6,21 +6,25 @@
 
 ## 현재 변경 검사 (2026-10-27)
 
-데스크톱 하단 오류 바와 Android 입력 안내에 3초·5초·10초·영구 프리셋과 사용자 지정 ms API를 적용했습니다.
-기본값은 5초이며 현재 호출부는 중요도에 따라 3/5/10초로 배정했습니다. 영구 프리셋은 API로 제공하며 기존 호출부에는 배정하지 않습니다.
-자동 종료 스낵바 아래에 남은 시간 게이지를 추가하고 같은 문구 재호출·교체 시 시간을 다시 시작합니다.
-Android 일반 오류 대화상자는 별도 경로입니다. 이전 변경의 검사 이력은 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
+Android 840dp 미만 화면에 상단 알림·설정 아이콘과 독립 `tmux` 버튼, 버튼 아래 알림 팝업,
+터미널 아래의 36dp 열린 연결 탭·36dp 단축키 줄을 적용했습니다. 탭 닫기는 기존 연결 제거 경로를 사용합니다.
+알림 표시 중 입력 차단·키보드 유지·바깥 터치 소비·닫은 뒤 포커스 복원을 확인했으며,
+폭 전환 시 IME 복원 캡처가 해제 콜백 순서에 따라 덮어써지지 않도록 보존합니다.
+대화면 그룹·배치와 연결별 WebView를 유지합니다. 외부 API·Rust/UniFFI·설정 저장 형식은 바꾸지 않았습니다.
+이전 변경의 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust 데스크톱 | `cargo test --locked -p dgl-desktop`: 73 통과·대화형 Keychain 1 ignore. 프리셋·기본값·사용자 지정 ms·만료 경계·같은 문구 교체·오래된 닫기 거부와 GPUI 게이지 높이/위치·축소·만료·닫기/포커스·영구 노출 시 게이지 없음 포함 |
-| Kotlin/JVM | `:app:desktopTest`: 81 통과·환경상 예상 skip 9. 프리셋·사용자 지정 ms·만료 경계·동일 문구 교체·오래된 만료/닫기 거부·영구 표시와 기존 회귀 검사. `verify_test_results.py --mode linux`로 명시적 이름 목록과 대조 |
-| Android 빌드 | JDK 17·SDK 36 환경의 `assembleDebug`·`assembleDebugAndroidTest`·`lintDebug` 통과. `verify_lint.py`: 오류 0·기존 검토 진단 12개 일치. 계측 APK는 컴파일만 수행 |
-| 원본 APK | `collect_rust_android.py`: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`의 ID `kim.jujin.dglc`, 버전 `0.1.0`/`1`, min/target SDK 34/36, 네 ABI·Rust payload·v2 서명 검증 통과. 원본 경로·현재 해시는 `artifacts/rust-candidate/android/build.json`에 기록 |
-| 정적 검사 | 결과 검증기 관련 Python 6개, 번역·번호 자리표시자, 데스크톱 Rust 서식·diff 공백·변경 문서 로컬 링크·원문/Wrapper 무결성 검사 통과 |
+| Kotlin/JVM | `:app:desktopTest`: 82 통과·환경상 예상 skip 9. 팝업 오른쪽 정렬·화면 여백·키보드 경계와 기존 회귀 검사. `verify_test_results.py --mode linux`의 명시 목록 대조 통과 |
+| Android 빌드 | JDK 17·SDK 36의 `assembleDebug`·`assembleDebugAndroidTest`·`lintDebug` 통과. `verify_lint.py`: 오류 0·기존 검토 진단 12개 일치 |
+| API36 전용 에뮬레이터 | `workspace_android.py` 최종 구간별 검사: workspace 2·mobile-input 2·compact 6, 총 10 통과·skip 0. 명시적 이름 목록 대조. 320dp 상단 버튼·36dp 줄과 배치 순서, 수동 탭 스크롤·선택·닫기, 빈/긴 알림·목록 스크롤·읽음/이동·닫기/바깥 터치/뒤로 가기·입력 차단/포커스·IME 유지, 839↔840dp·분할/드래그·WebView 동일성 및 기존 입력/볼륨키/계층/폰트 회귀 포함 |
+| 계측 fixture | 구형 셸 fixture에 현재 렌더러의 대상·의미 키 입력 계약을 제공하고, WebView 준비·IME 조합 완료·설정 스크롤·키보드 표시 상태를 기다린 뒤 검사하도록 갱신. 숨긴 측정 셸 overflow는 초기 자동 맞춤에 의존하지 않는 고정 폭으로 재현 |
+| 원본 APK | `collect_rust_android.py`: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`의 ID `kim.jujin.dglc`, 버전 `0.1.0`/`1`, min/target SDK 34/36, 네 ABI·Rust payload·v2 서명 검증 통과. 경로·해시는 `artifacts/rust-candidate/android/build.json` |
+| 정적 검사 | Python 98개, 번역·번호 자리표시자, 원문/Wrapper 무결성, 변경 문서 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과 |
 
-Android 계측 실행·실제 SSH/CLI 수신·macOS GUI/패키징·Windows 네이티브·장시간 반복 검사는 이번 변경에서 수행하지 않았습니다.
-Rust 서식 검사는 데스크톱 패키지에 적용했습니다. 예상 skip·ignore와 계측 APK 컴파일은 실기 통과로 계산하지 않습니다.
+계측 결과는 `artifacts/android-workspace/`에 남기며 화면 크기·밀도·IME·글꼴·애니메이션 설정은 복원했습니다.
+Rust·데스크톱 검사·실제 SSH/CLI 수신·물리 Android·macOS GUI/패키징·Windows 네이티브·전체 API matrix·장시간 검사는 이번 변경에서 수행하지 않았습니다.
+환경상 예상 skip은 통과로 계산하지 않습니다.
 
 ## 남은 한계
 

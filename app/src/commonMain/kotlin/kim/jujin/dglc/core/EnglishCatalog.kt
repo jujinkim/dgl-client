@@ -572,5 +572,9 @@ internal object EnglishCatalog {
         "다음 연결 시 서버 키를 다시 확인해야 합니다." to "You will need to verify the server key on the next connection.",
         "Python 3 도우미·훅을 설치하고 기존 설정을 백업합니다." to "Installs the Python 3 helper and hooks, and backs up existing settings.",
         "Codex의 /hooks에서 직접 검토·신뢰하세요. 새 실행 또는 훅 수신 후 확인됩니다." to "Review and trust the hooks in Codex /hooks. A new run or received hook confirms activation.",
+        "열린 연결 탭" to "Open connection tabs",
+        "{0} 닫기" to "Close {0}",
+        "읽음" to "Read",
+        "읽지 않음" to "Unread",
     )
 }

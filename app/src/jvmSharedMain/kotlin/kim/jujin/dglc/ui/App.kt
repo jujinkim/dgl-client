@@ -4,6 +4,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -15,6 +16,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -66,7 +70,10 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     var settings by remember { mutableStateOf(false) }
     var agentDetails by remember { mutableStateOf<Pair<ClientConnection, String?>?>(null) }
     var notifications by remember { mutableStateOf(false) }
-    var switching by remember { mutableStateOf(false) }
+    val mobileTabState = rememberLazyListState()
+    val captureFocus = rememberAppFocusCapture()
+    var restoreNotificationFocus by remember { mutableStateOf<() -> Unit>({}) }
+    var availableBounds by remember { mutableStateOf(Rect.Zero) }
     var tmuxNavigationClient by remember { mutableStateOf<ClientConnection?>(null) }
     val agentNav by model.agentNavigation.collectAsState()
     val agentError by model.agentNavigationError.collectAsState()
@@ -77,12 +84,12 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     SideEffect { model.hostEditing = adding || edit != null || deletion != null }
     LaunchedEffect(agentNav) {
         if (agentNav > 0) {
-            explorer = false; switching = false; notifications = false; agentDetails = null; tmuxNavigationClient = null
+            explorer = false; notifications = false; agentDetails = null; tmuxNavigationClient = null
             settings = false; adding = false; edit = null; deletion = null; error = null
         }
     }
     DisposableEffect(model) { onDispose { model.visibleConnection = null; model.visibleConnections = emptySet(); model.hostEditing = false; model.blockInput(appInputOwner, false) } }
-    val appModal = notifications || switching || agentError != null || agentDetails != null || settings || adding || edit != null || deletion != null || error != null
+    val appModal = notifications || agentError != null || agentDetails != null || settings || adding || edit != null || deletion != null || error != null
     SideEffect { model.blockInput(appInputOwner, appModal) }
     val colors = if (dark) darkColorScheme(
         primary = Color(0xff75aaff), secondary = Color(0xff75aaff),
@@ -121,10 +128,11 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
         CompositionLocalProvider(LocalAppModel provides model, LocalAccentFill provides (rgb(raw) to rgb(onAccentColor(raw))),
             LocalTextSelectionColors provides TextSelectionColors(rgb(readable), rgb(selection))) {
         Surface(Modifier.fillMaxSize()) {
-          BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+          BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()
+              .onGloballyPositioned { availableBounds = it.boundsInWindow() }) {
             val workspaceMode = androidInput && maxWidth >= 840.dp
             val mobileLayout = androidInput && !workspaceMode
-            LaunchedEffect(workspaceMode) { if (workspaceMode) { explorer = false; switching = false } }
+            LaunchedEffect(workspaceMode) { if (workspaceMode) { explorer = false; notifications = false } }
             if (!workspaceMode) {
                 val visible = if (!explorer && inputBlocks.isEmpty()) setOfNotNull(selected) else emptySet()
                 SideEffect { model.visibleConnections = visible }
@@ -134,26 +142,31 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
                     if (mobileLayout) MobileAppIcon()
                     else Text("DaGaLi", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.width(if (mobileLayout) 4.dp else 8.dp))
-                    if (mobileLayout) Box(Modifier.weight(1f)) {
-                        TextButton({ switching = true }, enabled = connections.isNotEmpty(), modifier = Modifier.fillMaxWidth()
-                            .semantics { contentDescription = t("서버 선택") }, contentPadding = PaddingValues(4.dp)) {
-                            Column(Modifier.weight(1f)) {
-                                selected?.let { ConnectionTitle(it, sessionOnly = true) } ?: Text(t("연결 선택"))
-                            }
-                            Text(" ▾")
-                        }
-                        DropdownMenu(switching, { switching = false }) {
-                            connections.forEach { connection -> DropdownMenuItem(text = { ConnectionTitle(connection) }, onClick = { model.selectConnection(connection); explorer = false; switching = false }) }
-                        }
-                    } else Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    if (mobileLayout) Spacer(Modifier.weight(1f))
+                    else Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                     selected?.let { client -> HostConnectionMenu(client, model, if (mobileLayout) listOf(
-                        t("tmux 관리") to { if (model.selected.value === client) { explorer = false; tmuxNavigationClient = client } },
                         t(if (local.preferences.mobilePaneToolbarVisible) "패널 도구 접기" else "패널 도구 펼치기") to {
                             model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
                         }) else emptyList()) }
                     TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(if (explorer) t("터미널") else t("호스트")) }
-                    TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
-                    TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
+                    if (mobileLayout) {
+                        TextButton({ selected?.let { explorer = false; tmuxNavigationClient = it } }, enabled = selected != null,
+                            contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)
+                                .semantics { contentDescription = t("tmux 관리") }) { Text("tmux") }
+                        MobileNotificationButton(agentNotices.count { !it.read }, {
+                            restoreNotificationFocus = captureFocus()
+                            model.blockInput(appInputOwner, true)
+                            notifications = true
+                        }) { anchor ->
+                            if (notifications) MobileAgentNotifications(model, availableBounds, anchor, restoreNotificationFocus) { notifications = false }
+                        }
+                        IconButton({ settings = true }, modifier = Modifier.semantics { contentDescription = t("설정") }) {
+                            Text("⚙️", Modifier.clearAndSetSemantics {})
+                        }
+                    } else {
+                        TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
+                        TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
+                    }
                 }
                 if (!androidInput && connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                     connections.forEach { connection ->
@@ -212,9 +225,11 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
                                 else if (selected != null) key(selected) {
                                     val client = selected!!
                                     ConnectionScreen(client, local.preferences, mobileLayout, model, { agentDetails = client to it },
+                                        mobileTabs = { MobileConnectionTabs(connections, selected, mobileTabState,
+                                            { model.selectConnection(it); explorer = false }, model::removeConnection) },
                                         openNavigation = tmuxNavigationClient === client, onNavigationOpened = { tmuxNavigationClient = null }) {
                                         model.selected.value === client && (wide || !explorer) &&
-                                            !notifications && !switching && agentError == null && agentDetails == null && !settings && !adding && edit == null && deletion == null && error == null
+                                            !notifications && agentError == null && agentDetails == null && !settings && !adding && edit == null && deletion == null && error == null
                                     }
                                 }
                                 else Column(Modifier.align(Alignment.Center).padding(24.dp)) {
@@ -243,7 +258,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
             }
         if (selected == null || explorer || settings || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
         agentDetails?.let { (client, pane) -> AgentDetails(client, model, pane) { agentDetails = null } }
-        if (notifications) AgentNotifications(model) { notifications = false }
+        if (notifications && !mobileLayout) AgentNotifications(model) { notifications = false }
         agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { TextButton({ model.agentNavigationError.value = null }) { Text(t("닫기")) } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
         if (settings) SettingsDialog(model, mobileLayout, androidInput) { settings = false }
@@ -263,6 +278,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, model: AppModel, showAgents: (String) -> Unit, workspace: Boolean = false, sharedFocus: TerminalFocus? = null,
+    mobileTabs: @Composable () -> Unit = {},
     openNavigation: Boolean = false, onNavigationOpened: () -> Unit = {}, inputAllowed: () -> Boolean) {
     val status by client.status.collectAsState()
     val remote by client.remote.collectAsState()
@@ -389,6 +405,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
             }
             TimedSnackbar(client.inputNotice, Modifier.align(Alignment.BottomCenter))
         }
+        if (!workspace && mobileLayout) mobileTabs()
         if (!workspace) TerminalShortcutBar(client, preferences.terminalShortcuts, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open, inputGate = model)
     }
     if (mobileLayout && composerOpen) {

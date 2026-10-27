@@ -29,10 +29,12 @@ class AndroidMobileInputTest {
         override val notice = MutableStateFlow<String?>(null)
         override val inputNotice = SnackbarState()
         override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
+        override val agents = MutableStateFlow(AgentSnapshot())
         var surface: TerminalSurface? = null
         val writes = java.util.Collections.synchronizedList(mutableListOf<ByteArray>())
         var completion = CompletableDeferred<InputCompletion>()
         var connects = 0
+        var closes = 0
         override fun captureInputTarget() = InputTarget(1, session.value, pane.value!!)
         override suspend fun sendInput(target: InputTarget, bytes: ByteArray): InputCompletion {
             assertEquals(captureInputTarget(), target); writes += bytes; return completion.await()
@@ -51,7 +53,147 @@ class AndroidMobileInputTest {
         override fun resize(value: Size) {}
         override fun restore() {}
         override fun disconnect() {}
-        override fun close() {}
+        override fun close() { closes++ }
+    }
+
+    @Test fun compactTabsAndNotificationPopupPreserveInputAndFocus() = runBlocking<Unit> {
+        val clients = (1..8).map { Connection("tab-$it") }
+        val first = clients.first()
+        fun title(client: Connection) = "${client.host.alias} · \$1"
+        lateinit var app: AppModel; lateinit var previous: LocalState
+        lateinit var workspace: WorkspaceState
+        var oldConnections = emptyList<ClientConnection>(); var oldSelected: ClientConnection? = null
+        var stage = "setup"
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity {
+                    app = (it.application as DglApplication).connections().app
+                    previous = app.local.value; workspace = app.workspace.value
+                    oldConnections = app.connections.value; oldSelected = app.selected.value
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false,
+                        volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
+                    app.connections.value = clients; app.selected.value = first; app.reconcileWorkspace()
+                }
+                awaitNode("열린 연결 탭"); checkBar()
+                withTimeout(5000) { while (first.surface == null) delay(20) }
+                val renderer = first.surface as kim.jujin.dglc.ui.AndroidTerminal
+                val density = instrumentation.targetContext.resources.displayMetrics.density
+                val tabs = bounds(awaitNode("열린 연결 탭")); val tools = bounds(awaitNode("터미널 입력 도구"))
+                screenshot("mobile-chrome-tabs")
+                assertTrue(kotlin.math.abs(tabs.height() - 36 * density) <= 2)
+                assertEquals(tabs.bottom, tools.top)
+                scenario.onActivity {
+                    val xy = IntArray(2); renderer.view.getLocationOnScreen(xy)
+                    assertEquals(xy[1] + renderer.view.height, tabs.top)
+                }
+                assertNull(node("서버 선택"))
+                listOf("호스트", "tmux 관리", "알림 0", "설정").map { bounds(awaitNode(it)) }.zipWithNext().forEach { (a, b) -> assertTrue(a.right <= b.left) }
+                stage = "tab selection and retained renderers"
+                scenario.onActivity { app.selectConnection(clients.last()) }
+                withTimeout(5000) {
+                    while (true) {
+                        val last = node(title(clients.last()))
+                        if (last != null && generateSequence(last) { it.parent }.any { it.isSelected } && bounds(last).right <= tabs.right) break
+                        delay(25)
+                    }
+                }
+                val tabScroll = find(awaitNode("열린 연결 탭")) { it.isScrollable }!!
+                withTimeout(5000) {
+                    while (node(title(first)) == null) {
+                        assertTrue(tabScroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD))
+                        delay(100)
+                    }
+                }
+                assertSame(clients.last(), app.selected.value)
+                click(title(first))
+                withTimeout(5000) { while (first.surface == null) delay(20) }
+                assertSame(renderer, first.surface)
+                assertEquals(0, clients.sumOf { it.connects })
+                stage = "empty popup, keyboard and focus"
+                click("키보드 열기"); waitIme(scenario, true)
+                scenario.onActivity { assertTrue(renderer.view.hasFocus()) }
+                val notificationButton = bounds(awaitNode("알림 0"))
+                click("알림 0"); awaitNode("수신한 알림이 없습니다.")
+                waitIme(scenario, true)
+                val popup = find(instrumentation.uiAutomation.rootInActiveWindow) { it.paneTitle?.toString() == "알림" }!!
+                val panel = bounds(popup)
+                screenshot("mobile-chrome-popup")
+                assertTrue(panel.top >= notificationButton.bottom)
+                assertTrue(panel.left >= (8 * density).toInt())
+                assertTrue(panel.width() <= (360 * density).toInt())
+                scenario.onActivity {
+                    val decor = it.window.decorView
+                    val imeTop = decor.height - decor.rootWindowInsets.getInsets(WindowInsets.Type.ime()).bottom
+                    assertTrue(panel.bottom <= imeTop)
+                    renderer.view.evaluateJavascript("window.dgl.postMessage(JSON.stringify({type:'input',data:'blocked'}))", null)
+                    val time = android.os.SystemClock.uptimeMillis()
+                    it.dispatchKeyEvent(KeyEvent(time, time, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, 0))
+                    it.dispatchKeyEvent(KeyEvent(time, time + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_UP, 0))
+                }
+                delay(100); assertTrue(first.writes.isEmpty()); assertTrue(app.inputBlocked())
+                click("닫기")
+                withTimeout(5000) { while (app.inputBlocked()) delay(20) }
+                scenario.onActivity { assertTrue(renderer.view.hasFocus()) }
+                waitIme(scenario, true)
+                click("키보드 닫기"); waitIme(scenario, false)
+                stage = "outside tap is consumed"
+                val composer = bounds(awaitNode("텍스트 작성 열기"))
+                click("알림 0"); awaitNode("수신한 알림이 없습니다.")
+                tap(composer.centerX().toFloat(), composer.centerY().toFloat())
+                withTimeout(5000) { while (app.inputBlocked()) delay(20) }
+                assertFalse(app.composer(first).opened.value)
+                click("알림 0"); awaitNode("수신한 알림이 없습니다.")
+                instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                withTimeout(5000) { while (app.inputBlocked()) delay(20) }
+                stage = "long list and notice navigation"
+                val events = (1..30).map { n -> AgentEvent("mobile-chrome-$n", n.toLong(), "chrome-server", "chrome-run", "parent", "\$1", "@1", "%1",
+                    "Claude", "Question", "RawEventMustStayHidden", System.currentTimeMillis()) }
+                scenario.onActivity { first.agents.value = AgentSnapshot(server = "chrome-server", valid = true, observed_at = System.currentTimeMillis(), events = events,
+                    observations = listOf(AgentObservation("\$1", "@1", "%1", "chrome-run", "parent", "Claude", events.last()))) }
+                withTimeout(5000) { while (app.agentNotifications.value.size < 30) delay(20) }
+                click("알림 30"); awaitNode("최근 알림 · 30 읽지 않음")
+                val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }!!
+                assertTrue(bounds(scroll).height() < (480 * density).toInt())
+                val header = bounds(awaitNode("최근 알림 · 30 읽지 않음"))
+                assertTrue(scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)); delay(100)
+                assertEquals(header.top, bounds(awaitNode("최근 알림 · 30 읽지 않음")).top)
+                assertNull(node("RawEventMustStayHidden"))
+                click("? 질문이 발생했습니다")
+                withTimeout(5000) { while (app.agentNavigation.value == 0L || app.agentNotifications.value.none { it.read }) delay(20) }
+                assertNull(app.agentNavigationError.value)
+                assertTrue(first.writes.isEmpty())
+                stage = "closing tabs uses existing removal"
+                scenario.onActivity { clients.drop(1).forEach(app::removeConnection) }
+                awaitNode(title(first))
+                click("${title(first)} 닫기")
+                awaitNode("+ 호스트")
+                assertTrue(app.connections.value.isEmpty())
+                assertEquals(1, first.closes)
+                assertTrue(generateSequence(awaitNode("tmux 관리")) { it.parent }.any { !it.isEnabled })
+            } catch (failure: Throwable) {
+                screenshot("mobile-chrome-failure")
+                fun dump(root: AccessibilityNodeInfo?): String = if (root == null) "" else
+                    "[${root.text}|${root.contentDescription}|selected=${root.isSelected}|${bounds(root)}]" +
+                        (0 until root.childCount).joinToString { dump(root.getChild(it)) }
+                throw AssertionError("Mobile chrome stage: $stage; tree=" + dump(instrumentation.uiAutomation.rootInActiveWindow), failure)
+            } finally {
+                scenario.onActivity {
+                    clients.filter { client -> client in app.connections.value }.forEach(app::removeConnection)
+                    app.connections.value = oldConnections; app.selected.value = oldSelected
+                    app.changeWorkspace { WorkspaceState(workspace.root) }; app.selected.value = oldSelected; app.reconcileWorkspace(); app.update(previous)
+                }
+            }
+        }
+    }
+
+    private fun tap(x: Float, y: Float) {
+        val time = android.os.SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(time, android.os.SystemClock.uptimeMillis(), action, x, y, 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
+        }
+        instrumentation.waitForIdleSync()
     }
 
     @Test fun mobileLayoutImeComposerAndSharedPreference() = runBlocking<Unit> {
@@ -143,6 +285,9 @@ class AndroidMobileInputTest {
                 withTimeout(5000) { while (app.composer(first).value.value.text != "한글😀\n두 줄") delay(20) }
                 assertTrue(first.writes.isEmpty())
                 stage = "selection copy paste"
+                // Let the native IME finish its selection update after committing composition.
+                instrumentation.waitForIdleSync()
+                instrumentation.uiAutomation.waitForIdle(300, 3000)
                 selectText(0, 2)
                 withTimeout(5000) { while (app.composer(first).value.value.selection.start != 0 || app.composer(first).value.value.selection.end != 2) delay(25) }
                 val editor = awaitAction("전송할 텍스트", AccessibilityNodeInfo.ACTION_COPY)
@@ -243,9 +388,9 @@ class AndroidMobileInputTest {
         val text = bounds(awaitNode("텍스트 작성 열기")); val menu = bounds(awaitNode("CLI 실행 메뉴"))
         val density = instrumentation.targetContext.resources.displayMetrics.density
         fun near(actual: Int, dp: Int) = assertTrue("$actual px != $dp dp", kotlin.math.abs(actual - dp * density) <= 2)
-        near(keyboard.height(), 40); near(menu.height(), 40)
-        near(keyboard.left - bar.left, 4); near(keyboard.top - bar.top, 4)
-        near(bar.bottom - keyboard.bottom, 4); near(bar.right - menu.right, 4)
+        near(keyboard.height(), 30); near(menu.height(), 30); near(bar.height(), 36)
+        near(keyboard.left - bar.left, 4); near(keyboard.top - bar.top, 3)
+        near(bar.bottom - keyboard.bottom, 3); near(bar.right - menu.right, 4)
         near(text.left - keyboard.right, 4)
         assertTrue(text.right < menu.left)
     }

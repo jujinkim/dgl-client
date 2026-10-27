@@ -231,6 +231,13 @@ AGY·Grok Build의 test 배지와 구분선을 제거하고 서비스명 바로 
 당시 Rust 데스크톱 68·JVM 78 통과, Keychain ignore 1·JVM 예상 skip 9와 Android Debug·계측 APK 컴파일·lint,
 원본 APK 네 ABI·서명을 확인했습니다. Android 계측·실제 CLI/SSH·macOS GUI·Windows 네이티브는 실행하지 않았습니다.
 
+## 2026-10-27: 스낵바 시간과 게이지
+
+Rust 데스크톱·Kotlin 입력 안내에 기본 5초, 3/5/10초·영구·사용자 지정 ms API와 남은 시간 게이지를 적용했습니다.
+당시 데스크톱 73·JVM 81·Python 관련 6개 통과, Keychain ignore 1·JVM 예상 skip 9,
+Android Debug·계측 APK 컴파일·lint(오류 0·기존 진단 12)·원본 APK 네 ABI/서명을 확인했습니다.
+Android 계측·실제 SSH/CLI·macOS GUI·Windows 네이티브·장시간 반복 검사는 실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

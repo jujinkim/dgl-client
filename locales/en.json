@@ -567,5 +567,9 @@
   "삭제하면 해당 원격 프로세스가 종료됩니다.": "Deleting terminates the remote process.",
   "다음 연결 시 서버 키를 다시 확인해야 합니다.": "You will need to verify the server key on the next connection.",
   "Python 3 도우미·훅을 설치하고 기존 설정을 백업합니다.": "Installs the Python 3 helper and hooks, and backs up existing settings.",
-  "Codex의 /hooks에서 직접 검토·신뢰하세요. 새 실행 또는 훅 수신 후 확인됩니다.": "Review and trust the hooks in Codex /hooks. A new run or received hook confirms activation."
+  "Codex의 /hooks에서 직접 검토·신뢰하세요. 새 실행 또는 훅 수신 후 확인됩니다.": "Review and trust the hooks in Codex /hooks. A new run or received hook confirms activation.",
+  "열린 연결 탭": "Open connection tabs",
+  "{0} 닫기": "Close {0}",
+  "읽음": "Read",
+  "읽지 않음": "Unread"
 }

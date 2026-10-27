@@ -70,9 +70,9 @@ class AndroidHierarchyTest {
                 }
                 await("연결 하나 · 개발")
                 assertNull(node("현재 세션: 개발"))
-                assertNull(node("tmux 관리"))
+                assertNotNull(node("tmux 관리"))
                 click("호스트")
-                click("현재 호스트 연결 하나 연결 메뉴"); click("tmux 관리")
+                click("tmux 관리")
                 val compact = "개발\n3: 편집 · 작업\n패널 1개"
                 await(compact)
                 assertNull(node("$compact 펼치기"))

@@ -24,6 +24,9 @@ import java.io.*
 import javax.swing.SwingUtilities
 
 internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+internal actual fun mobileNotificationPopupProperties() = androidx.compose.ui.window.PopupProperties(focusable = true)
+
+@Composable internal actual fun rememberAppFocusCapture(): () -> (() -> Unit) = { {} }
 
 @Composable actual fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier) {
     val connector = remember(client, preferences.fontSize, preferences.scrollback) { DesktopConnector(client::input, client::resize) }

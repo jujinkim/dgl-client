@@ -2,6 +2,7 @@
 import re
 
 EXPECTED_ANDROID = {
+    'kim.jujin.dglc.AndroidMobileInputTest.compactTabsAndNotificationPopupPreserveInputAndFocus',
     'kim.jujin.dglc.AndroidWorkspaceTest.adaptiveGroupsKeepRenderersImeAndActiveInput',
     'kim.jujin.dglc.AndroidWorkspaceTest.pinchFontAndScrollBoundsStayWithTheSession',
     'kim.jujin.dglc.AndroidConnectionLifetimeTest.imeBackgroundIntentAndTaskRemovalPreserveOnlyRemoteWork',
