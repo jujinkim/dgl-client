@@ -109,17 +109,22 @@ impl AssetSource for Assets {
             "launcher/grok.svg" => Some(Cow::Borrowed(include_bytes!(
                 "../../assets/launcher/grok.svg"
             ))),
-            _ => None,
+            _ => UiIcon::ALL
+                .iter()
+                .find(|icon| icon.path() == path)
+                .map(|icon| Cow::Borrowed(icon.bytes())),
         })
     }
     fn list(&self, _: &str) -> gpui::Result<Vec<SharedString>> {
-        Ok(vec![
+        let mut paths = vec![
             "launcher/claude.svg".into(),
             "launcher/openai.svg".into(),
             "launcher/bolt.svg".into(),
             "launcher/agy.svg".into(),
             "launcher/grok.svg".into(),
-        ])
+        ];
+        paths.extend(UiIcon::ALL.iter().map(|icon| icon.path().into()));
+        Ok(paths)
     }
 }
 

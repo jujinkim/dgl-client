@@ -4,6 +4,21 @@ use dgl_core::agent::{self, Agent};
 fn endpoint(host: &HostProfile) -> String {
     format!("{}@{}", host.username, host.endpoint())
 }
+
+fn badge_kind(
+    snapshot: &agent::Snapshot,
+    unread: &[&agent::Notice],
+    now: u64,
+) -> Option<agent::Kind> {
+    if !snapshot.current(now) {
+        return None;
+    }
+    unread
+        .iter()
+        .min_by_key(|n| n.event.kind.priority())
+        .map(|n| n.event.kind)
+        .or_else(|| snapshot.display_kind(None, now))
+}
 impl Desktop {
     pub fn tick_agents(&mut self, cx: &mut Context<Self>) {
         let now = agent::now_ms();
@@ -151,7 +166,8 @@ impl Desktop {
             }
         });
         let snapshot = &filtered;
-        let mut label = snapshot.label(None, agent::now_ms());
+        let now = agent::now_ms();
+        let mut label = snapshot.label(None, now);
         let unread: Vec<_> =
             self.inbox
                 .recent
@@ -170,7 +186,7 @@ impl Desktop {
                         })
                 })
                 .collect();
-        if snapshot.current(agent::now_ms())
+        if snapshot.current(now)
             && let Some(n) = unread.iter().min_by_key(|n| n.event.kind.priority())
         {
             label = tr!(
@@ -179,19 +195,7 @@ impl Desktop {
                 unread.len()
             );
         }
-        let icon = if label.contains("? ") {
-            "?"
-        } else if label.contains("◇ ") {
-            "◇"
-        } else if label.contains("! ") {
-            "!"
-        } else if label.contains("○ ") {
-            "○"
-        } else if label.contains("↻ ") {
-            "↻"
-        } else {
-            "—"
-        };
+        let icon = UiIcon::agent(badge_kind(snapshot, &unread, now));
         let id = format!("agent-{}-{}", state.handle, pane);
         let title = host.alias.clone();
         let target_pane = pane.to_owned();
@@ -199,13 +203,13 @@ impl Desktop {
         let mut badge = self
             .button(
                 id,
-                format!(
-                    "{icon}{}",
+                (
+                    icon,
                     if unread.is_empty() {
                         String::new()
                     } else {
                         unread.len().to_string()
-                    }
+                    },
                 ),
                 cx,
                 move |s, _, _| {
@@ -274,7 +278,10 @@ impl Desktop {
                         }
                     })
                 });
-                filtered.label(None, agent::now_ms())
+                let now = agent::now_ms();
+                div().flex().items_center().gap_1()
+                    .child(UiIcon::agent(filtered.display_kind(None, now)).render(self.palette.fg))
+                    .child(div().flex_1().min_w_0().child(filtered.label(None, now)))
             });
         for o in state.agents.observations.iter().filter(|o| {
             pane.is_none_or(|p| {
@@ -320,18 +327,27 @@ impl Desktop {
                         }
                     ))
                     .child(
-                        div().text_sm().child(
-                            o.last
-                                .as_ref()
-                                .map(|e| {
-                                    tr!(
-                                        "{0} · {1}초 전",
-                                        e.kind.label(),
-                                        agent::now_ms().saturating_sub(e.at) / 1000
-                                    )
-                                })
-                                .unwrap_or_else(|| t("미연동 · 상태 미확인").into()),
-                        ),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .text_sm()
+                            .child(
+                                UiIcon::agent(o.last.as_ref().map(|e| e.kind))
+                                    .render(self.palette.fg),
+                            )
+                            .child(
+                                o.last
+                                    .as_ref()
+                                    .map(|e| {
+                                        tr!(
+                                            "{0} · {1}초 전",
+                                            e.kind.label(),
+                                            agent::now_ms().saturating_sub(e.at) / 1000
+                                        )
+                                    })
+                                    .unwrap_or_else(|| t("미연동 · 상태 미확인").into()),
+                            ),
                     ),
             );
             let target = o.clone();
@@ -502,17 +518,33 @@ impl Desktop {
                     .border_b_1()
                     .border_color(rgb(self.palette.line))
                     .native_tooltip(tip)
-                    .child(div().flex().flex_wrap().gap_1().text_sm().child(format!(
-                        "{}{} · {}{}",
-                        if n.read { "" } else { "● " },
-                        n.event.agent.label(),
-                        n.event.kind.label(),
-                        if n.event.actor != "parent" {
-                            t(" · 서브에이전트")
-                        } else {
-                            ""
-                        }
-                    )))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .flex_wrap()
+                            .gap_1()
+                            .text_sm()
+                            .when(!n.read, |d| {
+                                d.child(
+                                    div()
+                                        .id(SharedString::from(format!("notice-unread-{}", n.id())))
+                                        .native_tooltip(t("읽지 않음"))
+                                        .child(UiIcon::Unread.render(self.palette.accent)),
+                                )
+                            })
+                            .child(UiIcon::agent(Some(n.event.kind)).render(self.palette.fg))
+                            .child(format!(
+                                "{} · {}{}",
+                                n.event.agent.label(),
+                                n.event.kind.label(),
+                                if n.event.actor != "parent" {
+                                    t(" · 서브에이전트")
+                                } else {
+                                    ""
+                                }
+                            )),
+                    )
                     .child(
                         div()
                             .text_xs()
@@ -546,7 +578,7 @@ impl Desktop {
             (2, t("명시적 오류"), settings.errors),
             (3, t("OS 알림"), settings.os),
         ] {
-            body = body.child(self.button(format!("notification-setting-{i}"), format!("{} {label}", if enabled { "☑" } else { "☐" }), cx, move |s, _, _| {
+            body = body.child(self.button(format!("notification-setting-{i}"), (if enabled { UiIcon::CheckboxChecked } else { UiIcon::Checkbox }, label), cx, move |s, _, _| {
                 let settings = &mut s.local.preferences.agent_notifications;
                 match i { 0 => settings.questions = !settings.questions, 1 => settings.responses = !settings.responses, 2 => settings.errors = !settings.errors, _ => {
                     settings.os = !settings.os;
@@ -556,5 +588,82 @@ impl Desktop {
             }));
         }
         body.child(t(&self.notification_status).to_owned())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Agent, UiIcon, agent, badge_kind};
+    use agent::{AgentEvent, Kind, Notice, Observation, Snapshot};
+
+    #[test]
+    fn badge_uses_unread_priority_and_stale_observations_are_unknown() {
+        let event = AgentEvent {
+            id: "event".into(),
+            seq: 1,
+            server: "server".into(),
+            run: "run".into(),
+            actor: "parent".into(),
+            session: "$1".into(),
+            window: "@1".into(),
+            pane: "%1".into(),
+            agent: Agent::Codex,
+            kind: Kind::Question,
+            event: "Question".into(),
+            at: 1000,
+        };
+        let mut snapshot = Snapshot {
+            valid: true,
+            observed_at: 1000,
+            observations: vec![Observation {
+                session: event.session.clone(),
+                window: event.window.clone(),
+                pane: event.pane.clone(),
+                run: event.run.clone(),
+                actor: event.actor.clone(),
+                agent: event.agent,
+                last: Some(event.clone()),
+                supported: vec![],
+            }],
+            ..Default::default()
+        };
+        let response = Notice {
+            endpoint: "host".into(),
+            event: AgentEvent {
+                kind: Kind::Response,
+                ..event.clone()
+            },
+            read: false,
+        };
+        let error = Notice {
+            event: AgentEvent {
+                kind: Kind::Error,
+                ..event
+            },
+            ..response.clone()
+        };
+        assert_eq!(badge_kind(&snapshot, &[], 1001), Some(Kind::Question));
+        assert_eq!(
+            badge_kind(&snapshot, &[&response], 1001),
+            Some(Kind::Response)
+        );
+        assert_eq!(
+            badge_kind(&snapshot, &[&response, &error], 1001),
+            Some(Kind::Error)
+        );
+        assert_eq!(badge_kind(&snapshot, &[&error], 11000), None);
+        snapshot.gap = true;
+        assert_eq!(badge_kind(&snapshot, &[&error], 1001), None);
+        for (kind, icon) in [
+            (Kind::Question, UiIcon::Question),
+            (Kind::Approval, UiIcon::Approval),
+            (Kind::Error, UiIcon::Error),
+            (Kind::Response, UiIcon::Response),
+            (Kind::Activity, UiIcon::Refresh),
+            (Kind::Ended, UiIcon::Ended),
+        ] {
+            assert_eq!(UiIcon::agent(Some(kind)), icon);
+        }
+        assert_eq!(UiIcon::agent(None), UiIcon::Unknown);
     }
 }

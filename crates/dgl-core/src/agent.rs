@@ -59,12 +59,12 @@ impl Kind {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Question => t("? 질문이 발생했습니다"),
-            Self::Approval => t("◇ 승인 요청이 발생했습니다"),
-            Self::Response => t("○ 응답 종료 신호를 받았습니다"),
-            Self::Error => t("! 명시적 오류를 받았습니다"),
-            Self::Activity => t("↻ 작업 사건을 받았습니다"),
-            Self::Ended => t("— 실행 종료/중단 신호를 받았습니다"),
+            Self::Question => t("질문이 발생했습니다"),
+            Self::Approval => t("승인 요청이 발생했습니다"),
+            Self::Response => t("응답 종료 신호를 받았습니다"),
+            Self::Error => t("명시적 오류를 받았습니다"),
+            Self::Activity => t("작업 사건을 받았습니다"),
+            Self::Ended => t("실행 종료/중단 신호를 받았습니다"),
         }
     }
 }
@@ -125,6 +125,19 @@ impl Snapshot {
     }
     pub fn current(&self, now: u64) -> bool {
         self.valid && now.saturating_sub(self.observed_at) < 10_000 && !self.gap
+    }
+    /// Select by event data, independently of translated display text.
+    pub fn display_kind(&self, pane: Option<&str>, now: u64) -> Option<Kind> {
+        if !self.current(now) {
+            return None;
+        }
+        self.observations
+            .iter()
+            .filter(|o| pane.is_none_or(|p| p == o.pane))
+            .filter_map(|o| o.last.as_ref())
+            .filter(|e| e.kind != Kind::Ended)
+            .min_by_key(|e| e.kind.priority())
+            .map(|e| e.kind)
     }
     pub fn label(&self, pane: Option<&str>, now: u64) -> String {
         let observations: Vec<_> = self
@@ -510,6 +523,27 @@ mod tests {
                 .is_empty()
         );
         assert!(snapshot.label(None, 10100).contains("상태 미확인"));
+        assert_eq!(snapshot.display_kind(None, 100), Some(Kind::Response));
+        assert_eq!(snapshot.display_kind(None, 10100), None);
+        assert_eq!(snapshot.display_kind(Some("%2"), 100), None);
+        for kind in [
+            Kind::Question,
+            Kind::Approval,
+            Kind::Error,
+            Kind::Response,
+            Kind::Activity,
+            Kind::Ended,
+        ] {
+            snapshot.observations[0].last.as_mut().unwrap().kind = kind;
+            assert_eq!(
+                snapshot.display_kind(None, 100),
+                (kind != Kind::Ended).then_some(kind)
+            );
+        }
+        snapshot.gap = true;
+        assert_eq!(snapshot.display_kind(None, 100), None);
+        snapshot.gap = false;
+
         // Missing events must not revive an earlier observation on the next successful poll.
         snapshot.discard_observations_through(1);
         assert!(snapshot.label(None, 100).contains("상태 미확인"));

@@ -57,6 +57,7 @@ jobs:
       - run: python3 scripts/check_prompt.py
       - run: python3 scripts/verify_wrapper.py
       - run: python3 scripts/generate_locales.py --check
+      - run: python3 scripts/generate_ui_icons.py --check
       - name: Install pinned Rust and Android targets
         run: |
           rustup toolchain install 1.98.1 --profile minimal --target aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android

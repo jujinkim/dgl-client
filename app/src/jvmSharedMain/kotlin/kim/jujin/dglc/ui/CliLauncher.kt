@@ -129,7 +129,7 @@ private object AboveLauncher : PopupPositionProvider {
                     }) { KeyboardIcon() }
                 TerminalToolButton(openComposer, enabled = available,
                     modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("텍스트 작성 열기") },
-                    contentPadding = PaddingValues(0.dp)) { Text("📝", fontSize = 18.sp) }
+                    contentPadding = PaddingValues(0.dp)) { UiGlyph(UiIcons.compose, Modifier.size(18.dp)) }
             }
             if (mobile) {
                 if (twoRows) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { mobileTools() }
@@ -169,7 +169,7 @@ private object AboveLauncher : PopupPositionProvider {
                 .onGloballyPositioned { launcherTop = it.boundsInWindow().top.toInt() }, contentAlignment = Alignment.BottomCenter) {
                 TerminalToolButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
                     contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("CLI 실행 메뉴") }) { Text("…", fontSize = if (mobile) 18.sp else 22.sp) }
+                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("CLI 실행 메뉴") }) { UiGlyph(UiIcons.more, Modifier.size(if (mobile) 18.dp else 20.dp)) }
                 val opened = request
                 if (opened != null) {
                     // Android posts the focus request so it runs after the popup window is removed.

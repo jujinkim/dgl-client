@@ -28,6 +28,7 @@
 
 | 도구 | 용도 |
 |---|---|
+| `generate_ui_icons.py` | 공통 SVG에서 Compose 벡터·Rust 포함 목록 생성. `--check`로 SVG 형식·생성물 일치 검사; [UI 아이콘 안내](../assets/ui-icons/README.md) |
 | `check_prompt.py` / `verify_wrapper.py` | 원문 요구사항·Gradle bootstrap 무결성 |
 | `verify_test_results.py` | JVM의 모든 지정 테스트 결과·예상 skip 검사 (`linux`, `ssh`, `windows`) |
 | `verify_android_results.py` | 계측의 지정 테스트 이름·완료·실패/skip 검사; 실행 도구에서 import |

@@ -12,11 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -41,21 +36,6 @@ import kotlinx.coroutines.flow.first
 @Composable internal expect fun rememberAppFocusCapture(): () -> (() -> Unit)
 internal expect fun imePreservingPopupProperties(): PopupProperties
 
-private object MobileHeaderIcons {
-    private fun outline(name: String, path: String) = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
-        addPath(PathParser().parsePathString(path).toNodes(), fill = null, stroke = SolidColor(Color.Black),
-            strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
-    }.build()
-    val hosts = outline("Hosts", "M4 4H20V10H4Z M4 14H20V20H4Z M7 7H8 M7 17H8 M16 7H17 M16 17H17")
-    val terminal = outline("Terminal", "M3 4H21V20H3Z M7 9L10 12L7 15 M13 15H17")
-    val bell = outline("Notifications", "M18 8A6 6 0 0 0 6 8C6 15 3 16 3 17H21C21 16 18 15 18 8Z M10 21H14")
-    val chevron = outline("Expand", "M7 10L12 15L17 10")
-    val more = ImageVector.Builder("More", 24.dp, 24.dp, 24f, 24f).apply {
-        addPath(PathParser().parsePathString("M6 12A1 1 0 1 1 4 12A1 1 0 1 1 6 12Z M13 12A1 1 0 1 1 11 12A1 1 0 1 1 13 12Z M20 12A1 1 0 1 1 18 12A1 1 0 1 1 20 12Z").toNodes(),
-            fill = SolidColor(Color.Black))
-    }.build()
-}
-
 @Composable internal fun MobileHeader(hostName: String?, showingHosts: Boolean, toggleHosts: () -> Unit, openTmux: () -> Unit,
     menu: @Composable () -> Unit, notification: @Composable () -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -65,7 +45,7 @@ private object MobileHeaderIcons {
             Spacer(Modifier.width(4.dp))
             IconButton(toggleHosts, enabled = hostName != null, modifier = Modifier.size(48.dp)
                 .semantics { contentDescription = t(if (showingHosts) "터미널" else "호스트") }) {
-                Icon(if (showingHosts) MobileHeaderIcons.terminal else MobileHeaderIcons.hosts, null, Modifier.size(20.dp))
+                Icon(if (showingHosts) UiIcons.terminal else UiIcons.hosts, null, Modifier.size(20.dp))
             }
             Spacer(Modifier.weight(1f))
             menu()
@@ -81,7 +61,7 @@ private object MobileHeaderIcons {
                 .semantics { contentDescription = t("tmux 관리") }, contentPadding = PaddingValues(horizontal = 10.dp)) {
                 Text("tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.clearAndSetSemantics {})
                 Spacer(Modifier.width(4.dp))
-                Icon(MobileHeaderIcons.chevron, null, Modifier.size(14.dp))
+                Icon(UiIcons.chevronDown, null, Modifier.size(14.dp))
             }
         }
         HorizontalDivider()
@@ -96,7 +76,7 @@ private object MobileHeaderIcons {
     fun dismiss() { expanded = false; model?.blockInput(owner, false) }
     Box(Modifier.size(48.dp)) {
         IconButton({ expanded = true }, modifier = Modifier.size(48.dp).semantics { contentDescription = label }) {
-            Icon(MobileHeaderIcons.more, null, Modifier.size(20.dp))
+            Icon(UiIcons.more, null, Modifier.size(20.dp))
         }
         DropdownMenu(expanded, ::dismiss, shadowElevation = 0.dp, tonalElevation = 0.dp,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
@@ -145,7 +125,7 @@ private object MobileHeaderIcons {
                     color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                 Box(Modifier.size(30.dp).clickable(role = Role.Button, onClick = { close(client) })
                     .semantics { contentDescription = tr("{0} 닫기", title) }, contentAlignment = Alignment.Center) {
-                    Text("×", Modifier.clearAndSetSemantics {})
+                    UiGlyph(UiIcons.close, Modifier.clearAndSetSemantics {})
                 }
             }
         }
@@ -158,7 +138,7 @@ private object MobileHeaderIcons {
     Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
         IconButton(open, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("알림 {0}", unread) }) {
             Box(Modifier.size(20.dp)) {
-                Icon(MobileHeaderIcons.bell, null, Modifier.fillMaxSize())
+                Icon(UiIcons.bell, null, Modifier.fillMaxSize())
                 if (unread > 0) Box(Modifier.align(Alignment.TopEnd).size(6.dp)
                     .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape))
             }
@@ -207,7 +187,10 @@ internal class NotificationPopupPosition(private val available: IntRect, private
                                 Text(agentName(notice.event.agent), style = MaterialTheme.typography.titleSmall)
                                 Text(t(if (notice.read) "읽음" else "읽지 않음"), style = MaterialTheme.typography.labelSmall)
                             }
-                            Text(agentMessage(notice.event.kind), style = MaterialTheme.typography.bodyMedium)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                UiGlyph(agentIcon(notice.event.kind))
+                                Text(agentMessage(notice.event.kind), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            }
                             Text(displayTreeText(model.connections.value.firstOrNull { it.agentEndpoint == notice.endpoint }?.host?.alias ?: notice.endpoint),
                                 style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)

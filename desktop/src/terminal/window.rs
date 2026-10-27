@@ -527,10 +527,9 @@ impl Render for WindowTerminal {
                         .text_size(px(14.))
                         .line_height(px(20.))
                         .cursor_pointer()
-                        .child(div().text_size(px(20.)).child("A"))
-                        .child(div().text_size(px(14.)).child("A"))
+                        .child(crate::ui_icons::UiIcon::FontSize.render(0xdce1e8))
                         .child(self.font.effective().to_string())
-                        .child(div().text_size(px(16.)).child("🔄"))
+                        .child(crate::ui_icons::UiIcon::Refresh.render(0xdce1e8))
                         .native_tooltip(dgl_core::i18n::t("세션 글자 크기 초기화"))
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(cx.listener(|this, _, _, cx| {

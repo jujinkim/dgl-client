@@ -127,7 +127,7 @@ class AndroidVolumeKeyTest {
                 waitForText("Esc"); delay(200)
                 waitForText("연결됨 · 일반 SSH")
                 waitForText("tmux 패널 도구")
-                listOf("tmux 패널 분할 ↔", "tmux 패널 분할 ↕", "포커스 ←", "현재 tmux 패널 닫기").forEach { label ->
+                listOf("tmux 패널 좌우 분할", "tmux 패널 상하 분할", "왼쪽 패널로 이동", "현재 tmux 패널 닫기").forEach { label ->
                     val text = waitForText(label)
                     assertTrue("Tmux actions must remain visible: $label", text.isVisibleToUser)
                     // Compose exposes the label separately from the disabled action node.
@@ -138,7 +138,7 @@ class AndroidVolumeKeyTest {
                 }
                 click("tmux 관리")
                 waitForText("일반 SSH · tmux 목록 확인 불가")
-                val newSession = waitForText("+")
+                val newSession = waitForText("세션 만들기")
                 assertTrue(generateSequence(newSession) { it.parent }.any { !it.isEnabled })
                 press(scenario, false)
                 click("터미널로 돌아가기")

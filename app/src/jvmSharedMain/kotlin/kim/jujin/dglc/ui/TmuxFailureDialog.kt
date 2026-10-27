@@ -1,6 +1,5 @@
 package kim.jujin.dglc.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -8,9 +7,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -20,11 +16,7 @@ import kim.jujin.dglc.core.*
 @Composable internal fun TmuxInfoButton(onClick: () -> Unit) {
     val color = MaterialTheme.colorScheme.onSurfaceVariant
     IconButton(onClick, modifier = Modifier.semantics { contentDescription = t("tmux 실패 상세 정보") }) {
-        Canvas(Modifier.size(20.dp)) {
-            drawCircle(color, radius = 9.dp.toPx(), style = Stroke(1.5.dp.toPx()))
-            drawCircle(color, radius = 1.dp.toPx(), center = Offset(center.x, center.y - 4.dp.toPx()))
-            drawLine(color, Offset(center.x, center.y), Offset(center.x, center.y + 4.dp.toPx()), 1.8.dp.toPx(), StrokeCap.Round)
-        }
+        UiGlyph(UiIcons.info, tint = color)
     }
 }
 

@@ -29,6 +29,8 @@ mod storage;
 mod terminal;
 mod text_input;
 mod theme;
+mod ui_glyph;
+mod ui_icons;
 #[cfg(test)]
 mod ui_tests;
 #[cfg(target_os = "windows")]
@@ -54,6 +56,8 @@ use std::{
 };
 use terminal::WindowTerminal as Terminal;
 use text_input::TextInput;
+use ui_glyph::ButtonLabel;
+use ui_icons::UiIcon;
 use workspace::{Axis, GroupId, Layout, TabId, Workspace};
 actions!(dgl, [Quit]);
 struct Tab {
@@ -584,11 +588,41 @@ impl Desktop {
     fn button(
         &self,
         id: impl Into<SharedString>,
-        label: impl Into<SharedString>,
+        label: impl Into<ButtonLabel>,
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
-        self.button_base(id, cx, action).child(label.into())
+        let button = self.button_base(id, cx, action);
+        match label.into() {
+            ButtonLabel::Text(text) => button.child(text),
+            ButtonLabel::Icon(icon) => button
+                .flex()
+                .items_center()
+                .justify_center()
+                .native_tooltip(icon.description())
+                .child(
+                    div()
+                        .h(px(20.))
+                        .flex()
+                        .items_center()
+                        .child(icon.render(self.palette.fg)),
+                ),
+            ButtonLabel::IconText(icon, text) => button
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(icon.render(
+                    if matches!(
+                        icon,
+                        UiIcon::RadioSelected | UiIcon::CheckboxChecked | UiIcon::Star
+                    ) {
+                        self.palette.accent
+                    } else {
+                        self.palette.fg
+                    },
+                ))
+                .child(text),
+        }
     }
     fn button_base(
         &self,

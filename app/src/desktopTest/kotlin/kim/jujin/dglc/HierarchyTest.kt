@@ -122,6 +122,7 @@ class HierarchyTest {
             observations = listOf(question, response, error).map { AgentObservation(it.session, it.window, it.pane, it.run, it.actor, it.agent, it) })
         val notices = listOf(AgentNotice("first", question), AgentNotice("first", error), AgentNotice("second", response))
         val first = snapshot.panelState("%1", "first", notices, 1001)
+        assertEquals("Question", first.kind)
         assertEquals(2, first.observations.size)
         assertEquals(listOf(question), first.unread.map { it.event })
         assertTrue(first.label.contains("질문"))
@@ -129,6 +130,25 @@ class HierarchyTest {
         assertEquals("상태 미확인", snapshot.panelState("%3", "first", notices, 1001).label)
         assertEquals("상태 미확인", snapshot.panelState("%1", "first", notices, 11000).label)
         assertTrue(snapshot.panelState("%1", "other", notices, 1001).unread.isEmpty())
+        val previous = I18n.language
+        try {
+            for (language in listOf("ko", "en")) {
+                I18n.configure(language, "")
+                for (kind in listOf("Question", "Approval", "Error", "Response", "Activity", "Ended")) {
+                    val observed = event("observed", "%1", kind)
+                    val single = snapshot.copy(observations = listOf(AgentObservation(observed.session, observed.window, observed.pane, observed.run, observed.actor, observed.agent, observed)))
+                    assertEquals(kind.takeUnless { it == "Ended" }, single.panelState("%1", "first", emptyList(), 1001).kind)
+                    val unread = listOf(AgentNotice("first", observed.copy(kind = "Response")))
+                    assertEquals("Response", single.panelState("%1", "first", unread, 1001).kind)
+                    assertNull(single.panelState("%1", "first", unread, 11000).kind)
+                    assertNull(single.copy(gap = true).panelState("%1", "first", unread, 1001).kind)
+                }
+                assertEquals("Question", snapshot.panelState("@1", "first", notices, 1001).kind)
+                assertEquals("Error", snapshot.panelState("%2", "first", notices, 1001).kind)
+                assertNull(snapshot.panelState("%3", "first", notices, 1001).kind)
+            }
+        } finally { I18n.configure(if (previous == UiLanguage.Korean) "ko" else "en", "") }
+
     }
 
 }

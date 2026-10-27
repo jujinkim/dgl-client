@@ -186,7 +186,7 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
                 if (!androidInput && connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                     connections.forEach { connection ->
                         FilterChip(selected == connection, { model.selectConnection(connection); explorer = false }, label = { Text(connection.host.alias) })
-                        TextButton({ model.removeConnection(connection) }) { Text("×") }
+                        TextButton({ model.removeConnection(connection) }, modifier = Modifier.semantics { contentDescription = tr("{0} 닫기", connection.host.alias) }) { UiGlyph(UiIcons.close) }
                     }
                 }
                 val maintenanceError by model.backgroundConnectionError.collectAsState()
@@ -209,7 +209,10 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
                                     items(local.hosts.sortedWith(compareByDescending<HostProfile> { it.favorite }.thenByDescending { it.lastConnected }), key = { it.id }) { host ->
                                         Column(Modifier.fillMaxWidth()) {
                                             Column(Modifier.padding(12.dp)) {
-                                                Text((if (host.favorite) "★ " else "") + host.alias, style = MaterialTheme.typography.titleMedium)
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    if (host.favorite) Icon(UiIcons.star, t("즐겨찾기"), Modifier.size(20.dp))
+                                                    Text(host.alias, style = MaterialTheme.typography.titleMedium)
+                                                }
                                                 Text("${host.username}@${host.hostname}:${host.port}", style = MaterialTheme.typography.bodySmall)
                                                 if (host.lastConnected != 0L) Text(t("최근 연결: ") + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -361,9 +364,9 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
         Column(modifier.heightIn(max = if (mobileLayout) 480.dp else 280.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(t("세션"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                TextButton({ namePrompt = t("세션 만들기") to client::createSession }, enabled = canBrowse) { Text("+") }
+                TextButton({ namePrompt = t("세션 만들기") to client::createSession }, enabled = canBrowse, modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
                 TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), tooltip = { PlainTooltip { Text(t("세션 새로고침")) } }, state = rememberTooltipState()) {
-                    IconButton({ client.refresh() }, enabled = canBrowse && !refreshing, modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { Text("↻") }
+                    IconButton({ client.refresh() }, enabled = canBrowse && !refreshing, modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { UiGlyph(UiIcons.refresh) }
                 }
             }
             if (status.phase == Phase.Shell) Text(t("일반 SSH · tmux 목록 확인 불가"), Modifier.padding(16.dp))
@@ -510,7 +513,7 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
     val owner = remember { Any() }
     if (model != null) WorkspaceInputBlock(model, owner, menu)
     Box(Modifier.size(48.dp)) {
-        IconButton({ menu = true }, enabled = enabled, modifier = Modifier.size(48.dp).semantics { contentDescription = label }) { Text("…") }
+        IconButton({ menu = true }, enabled = enabled, modifier = Modifier.size(48.dp).semantics { contentDescription = label }) { UiGlyph(UiIcons.more) }
         DropdownMenu(menu, { menu = false; model?.blockInput(owner, false) }) {
             actions.forEach { (text, action) -> DropdownMenuItem(text = { Text(text) }, onClick = { menu = false; model?.blockInput(owner, false); action() }) }
         }
@@ -551,7 +554,7 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
                 }
             }
         }
-        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("{0} {1}", label.fullText, if (expanded) t("접기") else t("펼치기")) }) { Text(if (expanded) "▾" else "▸") }
+        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("{0} {1}", label.fullText, if (expanded) t("접기") else t("펼치기")) }) { UiGlyph(if (expanded) UiIcons.chevronDown else UiIcons.chevronRight) }
         TreeMenu(tr("{0} 메뉴", label.fullText), actions, enabled)
         status()
     }
@@ -678,7 +681,7 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
                 }
                 Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
                 TextButton({ details = true }, modifier = Modifier.fillMaxWidth().then(Modifier.focusRequester(shortcutFocus))) {
-                    Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); Text(" ›")
+                    Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
                 }
                 if (androidInput) {
                     SettingsSwitch(t("하단 단축키 두 줄로 표시"), local.preferences.mobileShortcutBarTwoRows) { enabled ->

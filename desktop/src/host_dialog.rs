@@ -396,11 +396,14 @@ impl Desktop {
         let input = field.clone();
         self.button(
             format!("show-secret-{index}"),
-            if field.read(cx).secret_visible() {
-                t("☑ 비밀번호 표시")
-            } else {
-                t("☐ 비밀번호 표시")
-            },
+            (
+                if field.read(cx).secret_visible() {
+                    UiIcon::CheckboxChecked
+                } else {
+                    UiIcon::Checkbox
+                },
+                t("비밀번호 표시"),
+            ),
             cx,
             move |_, _, cx| {
                 input.update(cx, |input, cx| input.toggle_secret_visibility(cx));
@@ -431,11 +434,14 @@ impl Desktop {
         }
         connection = connection.child(self.button(
             "favorite",
-            if favorite {
-                t("★ 즐겨찾기")
-            } else {
-                t("☆ 즐겨찾기")
-            },
+            (
+                if favorite {
+                    UiIcon::Star
+                } else {
+                    UiIcon::StarOff
+                },
+                t("즐겨찾기"),
+            ),
             cx,
             |s, _, _| {
                 if let Some(Dialog::Host { favorite, .. }) = &mut s.dialog {
@@ -455,11 +461,14 @@ impl Desktop {
             choices = choices.child(
                 self.button(
                     id,
-                    if value == key_auth {
-                        format!("● {label}")
-                    } else {
-                        format!("○ {label}")
-                    },
+                    (
+                        if value == key_auth {
+                            UiIcon::RadioSelected
+                        } else {
+                            UiIcon::Radio
+                        },
+                        label,
+                    ),
                     cx,
                     move |s, _, _| {
                         if let Some(Dialog::Host {

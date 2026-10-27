@@ -85,7 +85,7 @@ import kim.jujin.dglc.core.*
                 Row(Modifier.fillMaxWidth().background(color, RoundedCornerShape(8.dp))
                     .border(if (insertion) 2.dp else 1.dp, if (insertion) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
                     .padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("≡", Modifier.size(48.dp).semantics { contentDescription = tr("{0} 순서 이동", key.label) }
+                    Box(Modifier.size(48.dp).semantics { contentDescription = tr("{0} 순서 이동", key.label) }
                         .pointerInput(shortcuts) {
                             detectDragGestures(onDragStart = { offset ->
                                 dragging = key; destination = index
@@ -94,12 +94,12 @@ import kim.jujin.dglc.core.*
                                 if (dragging != null && destination in shortcuts.indices) update(moveShortcut(shortcuts, index, destination))
                                 dragging = null; destination = -1
                             }, onDrag = { change, amount -> change.consume(); pointerY += amount.y; locate() })
-                        }.wrapContentSize(), style = MaterialTheme.typography.titleLarge)
+                        }, contentAlignment = Alignment.Center) { UiGlyph(UiIcons.grip) }
                     Text(key.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     TextButton({ update(moveShortcut(shortcuts, index, index - 1)) }, enabled = index > 0 && dragging == null,
-                        modifier = Modifier.semantics { contentDescription = tr("{0} 위로 이동", key.label) }, contentPadding = PaddingValues(4.dp)) { Text("↑") }
+                        modifier = Modifier.semantics { contentDescription = tr("{0} 위로 이동", key.label) }, contentPadding = PaddingValues(4.dp)) { UiGlyph(UiIcons.arrowUp) }
                     TextButton({ update(moveShortcut(shortcuts, index, index + 1)) }, enabled = index < shortcuts.lastIndex && dragging == null,
-                        modifier = Modifier.semantics { contentDescription = tr("{0} 아래로 이동", key.label) }, contentPadding = PaddingValues(4.dp)) { Text("↓") }
+                        modifier = Modifier.semantics { contentDescription = tr("{0} 아래로 이동", key.label) }, contentPadding = PaddingValues(4.dp)) { UiGlyph(UiIcons.arrowDown) }
                     TextButton({ update(shortcuts.filterNot { it == key }) }, enabled = dragging == null,
                         modifier = Modifier.semantics { contentDescription = tr("{0} 제외", key.label) }, contentPadding = PaddingValues(4.dp)) { Text(t("제외")) }
                 }

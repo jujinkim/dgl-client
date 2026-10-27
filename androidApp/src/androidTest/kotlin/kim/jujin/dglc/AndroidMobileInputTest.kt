@@ -230,7 +230,7 @@ class AndroidMobileInputTest {
                 assertTrue(scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)); delay(100)
                 assertEquals(header.top, bounds(awaitNode("최근 알림 · 30 읽지 않음")).top)
                 assertNull(node("RawEventMustStayHidden"))
-                click("? 질문이 발생했습니다")
+                click("질문이 발생했습니다")
                 withTimeout(5000) { while (app.agentNavigation.value == 0L || app.agentNotifications.value.none { it.read }) delay(20) }
                 assertNull(app.agentNavigationError.value)
                 assertTrue(first.writes.isEmpty())

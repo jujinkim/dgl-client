@@ -322,21 +322,7 @@ impl Desktop {
                             palette.input
                         }))
                         .when(checked, |d| {
-                            d.child(
-                                canvas(
-                                    |_, _, _| {},
-                                    move |bounds, _, window, _| {
-                                        let mut check = PathBuilder::stroke(px(2.));
-                                        check.move_to(bounds.origin + point(px(1.), px(6.)));
-                                        check.line_to(bounds.origin + point(px(4.5), px(9.5)));
-                                        check.line_to(bounds.origin + point(px(11.), px(2.5)));
-                                        if let Ok(path) = check.build() {
-                                            window.paint_path(path, rgb(palette.on_accent));
-                                        }
-                                    },
-                                )
-                                .size(px(12.)),
-                            )
+                            d.child(UiIcon::Check.render(palette.on_accent))
                         }),
                 )
                 .child(

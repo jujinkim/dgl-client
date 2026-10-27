@@ -170,7 +170,7 @@ class AndroidAppFlowTest {
                 }
                 stage = "GUI pane split"
                 val originalPaneIds = connection.remote.value.panes.map { it.id }.toSet()
-                clickText("tmux 패널 분할 ↔")
+                clickText("tmux 패널 좌우 분할")
                 stage = "GUI split remote update"
                 val splitPane = withTimeout(10000) { connection.remote.first { state -> state.panes.any { it.id !in originalPaneIds } } }.panes.single { it.id !in originalPaneIds }
                 // The list is published before the split's target selection and snapshot finish.
@@ -193,11 +193,11 @@ class AndroidAppFlowTest {
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 clickText("터미널로 돌아가기")
                 stage = "focus left"
-                clickText("포커스 ←")
+                clickText("왼쪽 패널로 이동")
                 withTimeout(10000) { connection.pane.first { it == pane } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 stage = "focus right"
-                clickText("포커스 →")
+                clickText("오른쪽 패널로 이동")
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 clickText("tmux 관리")

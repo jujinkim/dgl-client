@@ -231,10 +231,9 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                     }, shape = androidx.compose.foundation.shape.CircleShape) {
                 Row(Modifier.padding(horizontal = 10.dp).clearAndSetSemantics {},
                     horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("A", fontSize = 20.sp, lineHeight = 20.sp)
-                    Text("A", fontSize = 14.sp, lineHeight = 20.sp)
+                    UiGlyph(UiIcons.fontSize)
                     Text(size.toString(), fontSize = 14.sp, lineHeight = 20.sp)
-                    Text("🔄", fontSize = 16.sp, lineHeight = 20.sp)
+                    UiGlyph(UiIcons.refresh)
                 }
             }
         }

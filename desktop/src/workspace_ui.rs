@@ -158,7 +158,7 @@ impl Desktop {
                     .flex()
                     .items_center()
                     .child(div().flex_1().child(t("DaGaLi · 탐색기")))
-                    .child(self.button("add", "+", cx, |s, _, cx| s.edit(None, cx))),
+                    .child(self.button("add", UiIcon::Plus, cx, |s, _, cx| s.edit(None, cx))),
             )
             .child(
                 div()
@@ -259,7 +259,11 @@ impl Desktop {
                     .child(
                         self.button(
                             format!("host-{id}"),
-                            format!("{}{}", if host.favorite { "★ " } else { "" }, host.alias),
+                            if host.favorite {
+                                ButtonLabel::IconText(UiIcon::Star, host.alias.clone().into())
+                            } else {
+                                ButtonLabel::Text(host.alias.clone().into())
+                            },
                             cx,
                             move |s, w, cx| {
                                 s.open(open.clone(), cx);
@@ -286,9 +290,11 @@ impl Desktop {
                             },
                         ),
                     )
-                    .child(self.button(menu_id.clone(), "…", cx, move |s, _, _| {
-                        s.toggle_menu(toggle.clone())
-                    })),
+                    .child(
+                        self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
+                            s.toggle_menu(toggle.clone())
+                        }),
+                    ),
             );
             if self.menu.as_ref() == Some(&menu_id) {
                 explorer = explorer.child(
@@ -705,7 +711,7 @@ impl Desktop {
                                         .child(
                                             div()
                                                 .debug_selector(|| "notification-icon".into())
-                                                .child("🔔"),
+                                                .child(UiIcon::Bell.render(p.fg)),
                                         )
                                         .when(
                                             unread > 0,
@@ -733,7 +739,7 @@ impl Desktop {
                                         ),
                                     )
                                     .child(
-                                        self.button("settings", "⚙️", cx, |s, _, _| {
+                                        self.button("settings", UiIcon::Settings, cx, |s, _, _| {
                                             s.dialog = Some(Dialog::Settings);
                                         })
                                         .w(px(28.))
@@ -932,14 +938,15 @@ impl Desktop {
                             },
                         )),
                     )
-                    .child(self.button(menu.clone(), "…", cx, move |s, _, _| {
+                    .child(self.button(menu.clone(), UiIcon::More, cx, move |s, _, _| {
                         s.toggle_menu(toggle.clone())
                     }))
-                    .child(
-                        self.button(format!("close-{tab_id}"), "×", cx, move |s, _, _| {
-                            s.close_tab(tab_id)
-                        }),
-                    ),
+                    .child(self.button(
+                        format!("close-{tab_id}"),
+                        UiIcon::Close,
+                        cx,
+                        move |s, _, _| s.close_tab(tab_id),
+                    )),
             );
         }
         let bounds = self.group_bounds.get(&id).copied().unwrap_or_default();
@@ -954,7 +961,7 @@ impl Desktop {
             .h_full();
         if self.workspace.groups.len() > 1 {
             tools = tools.child(
-                self.button(format!("merge-{id}"), "🔗", cx, move |s, w, cx| {
+                self.button(format!("merge-{id}"), UiIcon::Merge, cx, move |s, w, cx| {
                     s.workspace.merge(id);
                     s.save_layout();
                     s.group_focus(s.workspace.active, w, cx);
@@ -963,8 +970,12 @@ impl Desktop {
             );
         }
         for (axis, label, description) in [
-            (Axis::Horizontal, "↔️", t("화면 좌우 분할")),
-            (Axis::Vertical, "↕️", t("화면 상하 분할")),
+            (
+                Axis::Horizontal,
+                UiIcon::SplitHorizontal,
+                t("화면 좌우 분할"),
+            ),
+            (Axis::Vertical, UiIcon::SplitVertical, t("화면 상하 분할")),
         ] {
             let enabled = self.workspace.can_split(id, axis, width, height);
             tools = tools.child(
@@ -1410,7 +1421,7 @@ impl Desktop {
                 .px_2()
                 .child(div().flex_1().child(t("세션")))
                 .child(
-                    self.button("new-session", "+", cx, move |s, _, cx| {
+                    self.button("new-session", UiIcon::Plus, cx, move |s, _, cx| {
                         if browse {
                             s.prompt(t("세션 만들기"), PromptOp::Session, cx);
                         }
@@ -1418,7 +1429,7 @@ impl Desktop {
                     .when(!browse, |d| d.opacity(0.35)),
                 )
                 .child(
-                    self.button("refresh-sessions", "↻", cx, move |s, _, _| {
+                    self.button("refresh-sessions", UiIcon::Refresh, cx, move |s, _, _| {
                         if browse {
                             s.refresh();
                         }
@@ -1505,9 +1516,9 @@ impl Desktop {
                 self.button(
                     format!("expand-{expand}"),
                     if self.expanded.contains(&expand) {
-                        "▾"
+                        UiIcon::ChevronDown
                     } else {
-                        "▸"
+                        UiIcon::ChevronRight
                     },
                     cx,
                     move |s, _, _| s.toggle_expanded(toggle.clone()),
@@ -1547,7 +1558,7 @@ impl Desktop {
             ))
             .when_some(expand_button, |d, button| d.child(button))
             .child(
-                self.button(menu_id.clone(), "…", cx, move |s, _, _| {
+                self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
                     s.toggle_menu(menu.clone())
                 })
                 .w(px(28.))

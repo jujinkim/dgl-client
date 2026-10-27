@@ -47,7 +47,14 @@ impl Desktop {
         for (value, label) in [("system", t("시스템")), ("ko", "한국어"), ("en", "English")] {
             languages = languages.child(self.button(
                 format!("language-{value}"),
-                format!("{} {label}", if choice == value { "●" } else { "○" }),
+                (
+                    if choice == value {
+                        UiIcon::RadioSelected
+                    } else {
+                        UiIcon::Radio
+                    },
+                    label,
+                ),
                 cx,
                 move |s, _, cx| s.language(value, cx),
             ));
@@ -61,7 +68,14 @@ impl Desktop {
             let selected = self.local.preferences.theme == value;
             themes = themes.child(self.button(
                 format!("theme-{value}"),
-                format!("{} {label}", if selected { "●" } else { "○" }),
+                (
+                    if selected {
+                        UiIcon::RadioSelected
+                    } else {
+                        UiIcon::Radio
+                    },
+                    label,
+                ),
                 cx,
                 move |s, _, cx| s.theme(value, cx),
             ));
@@ -112,9 +126,12 @@ impl Desktop {
             )
             .child(self.button(
                 "edit-shortcuts",
-                tr!(
-                    "하단 단축키 · {0}개 · 순서 및 표시 편집 ›",
-                    self.local.preferences.terminal_shortcuts.len()
+                (
+                    UiIcon::ChevronRight,
+                    tr!(
+                        "하단 단축키 · {0}개 · 순서 및 표시 편집",
+                        self.local.preferences.terminal_shortcuts.len()
+                    ),
                 ),
                 cx,
                 |s, _, _| {
@@ -126,13 +143,13 @@ impl Desktop {
             .settings_card("작업 공간", "계층 표시와 화면 전환을 선택합니다.")
             .child(self.button(
                 "show-all-hierarchy",
-                tr!(
-                    "{0} 단일 창도 표시",
+                (
                     if self.local.preferences.show_all_hierarchy {
-                        "☑"
+                        UiIcon::CheckboxChecked
                     } else {
-                        "☐"
-                    }
+                        UiIcon::Checkbox
+                    },
+                    t("단일 창도 표시"),
                 ),
                 cx,
                 |s, _, _| {
@@ -333,7 +350,7 @@ impl Desktop {
                     .child(
                         self.button(
                             format!("shortcut-drag-{}", key.label()),
-                            "≡",
+                            UiIcon::Grip,
                             cx,
                             |_, _, _| {},
                         )
@@ -355,7 +372,7 @@ impl Desktop {
                     .child(
                         self.button(
                             format!("shortcut-up-{}", key.label()),
-                            "↑",
+                            UiIcon::ArrowUp,
                             cx,
                             move |s, _, _| {
                                 if index > 0 && s.settings.dragging.is_none() {
@@ -373,7 +390,7 @@ impl Desktop {
                     .child(
                         self.button(
                             format!("shortcut-down-{}", key.label()),
-                            "↓",
+                            UiIcon::ArrowDown,
                             cx,
                             move |s, _, _| {
                                 if index + 1 < count && s.settings.dragging.is_none() {

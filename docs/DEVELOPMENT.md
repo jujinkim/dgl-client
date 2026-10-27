@@ -25,6 +25,7 @@ Windows 앱만 빌드할 때 JDK·Android SDK는 필요하지 않습니다.
 python3 scripts/check_prompt.py
 python3 scripts/verify_wrapper.py
 python3 scripts/generate_locales.py --check
+python3 scripts/generate_ui_icons.py --check
 python3 -m unittest discover -s scripts/tests -v
 cargo test --locked -p dgl-core -p dgl-uniffi
 ./gradlew :app:desktopTest
@@ -85,6 +86,13 @@ Rust는 같은 JSON을 바이너리에 포함합니다. `--check`는 누락된 �
 표시 문구는 `t`, 인수가 있는 문구는 `tr!`(Rust)/`tr`(Kotlin)를 사용하며 완성된 사용자 문자열에 번역을 적용하지 않습니다.
 언어 선택은 `preferences.language`의 `system|ko|en`이며 예전 설정은 `system`, 알 수 없는 언어 선택도 시스템으로 해석합니다.
 tmux 명령·에러 코드·원격 터미널 바이트는 언어와 무관하게 유지합니다.
+
+### UI 아이콘
+
+공통 SVG 원본과 도형 규칙은 [UI 아이콘 안내](../assets/ui-icons/README.md)에 있습니다.
+`scripts/generate_ui_icons.py`로 Compose `ImageVector`와 Rust 포함 목록을 생성합니다.
+`--check`는 SVG 형식과 생성물 일치를 검사합니다. 일반 빌드에는 생성 도구·외부 SVG 파일이 필요하지 않습니다.
+에이전트 상태 아이콘은 사건 종류와 읽지 않은 사건 우선순위로 고르며, 오래된 관측은 미확인으로 표시합니다.
 
 ## Android 빌드
 

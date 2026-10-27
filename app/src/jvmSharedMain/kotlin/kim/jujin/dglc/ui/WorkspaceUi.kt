@@ -74,9 +74,9 @@ import kim.jujin.dglc.core.*
         Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(t("세션"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
             IconButton({ prompt = t("세션 만들기") to client::createSession }, enabled = enabled,
-                modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { Text("+") }
+                modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
             IconButton(client::refresh, enabled = enabled && !refreshing,
-                modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { Text("↻") }
+                modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { UiGlyph(UiIcons.refresh) }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             if (remote.sessions.isEmpty()) Text(t("세션 없음 · + 버튼으로 생성"), Modifier.padding(12.dp))
@@ -187,7 +187,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                                 IconButton({ model.changeWorkspace { it.split(groupId, axis, width, logicalHeight) } },
                                     enabled = workspace.split(groupId, axis, width, logicalHeight) != workspace,
                                     modifier = Modifier.size(48.dp).semantics { contentDescription = label }) {
-                                    Text(if (axis == SplitAxis.Horizontal) "↔" else "↕")
+                                    UiGlyph(if (axis == SplitAxis.Horizontal) UiIcons.splitHorizontal else UiIcons.splitVertical)
                                 }
                             }
                             TreeMenu(t("앱 화면 분할 메뉴"), buildList {

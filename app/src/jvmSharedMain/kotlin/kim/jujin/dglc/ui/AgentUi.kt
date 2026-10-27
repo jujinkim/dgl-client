@@ -15,16 +15,19 @@ import kotlinx.serialization.json.*
 
 @Composable internal fun AgentBadge(client: ClientConnection, pane: String? = null, notices: List<AgentNotice> = emptyList(), compact: Boolean = false, onDetails: (() -> Unit)? = null) {
     val snapshot by client.agents.collectAsState()
-    val (observations, unread, label) = snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis())
+    val (observations, unread, label, kind) = snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis())
     val description = observations.map { agentName(it.agent) }.distinct().joinToString().ifEmpty { t("터미널") } + " · " + label
     if (compact) {
-        val icon = when { label.contains("? ") -> "?"; label.contains("◇ ") -> "◇"; label.contains("! ") -> "!"; label.contains("○ ") -> "○"; label.contains("↻ ") -> "↻"; else -> "—" }
         IconButton({ onDetails?.invoke() }, enabled = onDetails != null,
             modifier = Modifier.size(48.dp).semantics { contentDescription = tr("창 에이전트 상태 · {0}", description) }) {
-            Text(icon + if (unread.isEmpty()) "" else unread.size.toString(), maxLines = 1)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                UiGlyph(agentIcon(kind))
+                if (unread.isNotEmpty()) Text(unread.size.toString(), maxLines = 1)
+            }
         }
     } else Row(Modifier.semantics { contentDescription = description }, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         observations.map { it.agent }.distinct().forEach { agent -> Icon(LauncherIcons.agent(agent), agentName(agent), Modifier.size(16.dp)) }
+        UiGlyph(agentIcon(kind))
         Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
@@ -43,7 +46,7 @@ import kotlinx.serialization.json.*
             val remote by client.remote.collectAsState()
             snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis()).observations.forEach { o ->
                 Text("${agentName(o.agent)} · ${remote.targetLabel(o.session, o.pane)}" + if (o.actor != "parent") t(" · 서브에이전트") else "")
-                Text(o.last?.let { "${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}" } ?: t("미연동 · 상태 미확인"))
+                Row { UiGlyph(agentIcon(o.last?.kind)); Text(o.last?.let { "${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}" } ?: t("미연동 · 상태 미확인")) }
                 Text(tr("진단 정보 · 세션 ID: {0} · 창 ID: {1} · 패널 ID: {2}", o.session, o.window, o.pane), style = MaterialTheme.typography.labelSmall)
                 Text(tr("수신 확인 사건: {0}", o.supported.joinToString { agentMessage(it) }.ifEmpty { t("미확인") }), style = MaterialTheme.typography.labelSmall)
                 TextButton({
@@ -85,8 +88,11 @@ import kotlinx.serialization.json.*
             Text(t("이번 앱 실행 중 최대 100건. 읽음은 질문 응답·승인 처리를 뜻하지 않습니다."))
             if (notices.isEmpty()) Text(t("수신한 알림이 없습니다."))
             notices.forEach { n ->
-                Text(tr("{0}{1} · {2}\n진단 정보 · 세션 ID: {3} · 창 ID: {4} · 패널 ID: {5}", if (n.read) "" else "● ", agentName(n.event.agent), n.endpoint, n.event.session, n.event.window, n.event.pane) + if (n.event.actor != "parent") t(" · 서브에이전트") else "")
-                Text(agentMessage(n.event.kind))
+                Row {
+                    if (!n.read) Icon(UiIcons.unread, t("읽지 않음"), Modifier.size(20.dp))
+                    Text(tr("{0} · {1}\n진단 정보 · 세션 ID: {2} · 창 ID: {3} · 패널 ID: {4}", agentName(n.event.agent), n.endpoint, n.event.session, n.event.window, n.event.pane) + if (n.event.actor != "parent") t(" · 서브에이전트") else "")
+                }
+                Row { UiGlyph(agentIcon(n.event.kind)); Text(agentMessage(n.event.kind)) }
                 Text("${n.event.event} · ${java.util.Date(n.event.at)}", style = MaterialTheme.typography.labelSmall)
                 TextButton({ model.openAgentNotice(n.id); dismiss() }) { Text(t("패널로 이동 · 읽음")) }
             }

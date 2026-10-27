@@ -295,6 +295,14 @@ Android에서 IME를 논리 크기에서 제외하고 가시 영역만 조정하
 당시 웹 36·JVM 92·데스크톱 77·evidence 6 통과, JVM 예상 skip 9·Keychain ignore 1과 Android Debug·계측 APK·lint·원본 APK 검증을 확인했습니다.
 Android 계측은 연결된 기기가 없어 컴파일만 확인했으며 로그는 `.tools/ime-*`에 보존합니다.
 
+## 2026-10-28: 모바일 하단 단축키 두 줄 배치
+
+840dp 미만 하단 단축키에 기본 두 줄(70dp)과 설정으로 복원하는 한 줄(36dp)을 추가했습니다.
+설정은 누락 시 켜지며 기기에만 저장하고 넓은 작업 공간은 한 줄을 유지합니다.
+당시 JVM 92·Rust 코어/UniFFI 42·Python 98·웹 36 통과, JVM 예상 skip 9·SSH ignore 6과
+Android Debug·계측 APK 컴파일·lint·원본 APK 검증을 확인했습니다. 연결된 기기가 없어 계측은 실행하지 않았습니다.
+로그는 `.tools/shortcut-two-rows-*`에 남겼습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

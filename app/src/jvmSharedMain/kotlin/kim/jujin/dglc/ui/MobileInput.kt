@@ -2,7 +2,6 @@ package kim.jujin.dglc.ui
 
 import kim.jujin.dglc.core.t
 import kim.jujin.dglc.core.tr
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
@@ -13,9 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -34,22 +30,12 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
         stateDescription = if (visible) t("펼침") else t("접힘")
     }) {
         val color = if (visible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-        Canvas(Modifier.size(22.dp)) {
-            drawRect(color, topLeft = Offset(1.dp.toPx(), 2.dp.toPx()), size = Size(size.width - 2.dp.toPx(), size.height - 4.dp.toPx()), style = Stroke(1.5.dp.toPx()))
-            drawLine(color, Offset(size.width / 2, 2.dp.toPx()), Offset(size.width / 2, size.height - 2.dp.toPx()), 1.5.dp.toPx())
-        }
+        UiGlyph(UiIcons.splitHorizontal, tint = color)
     }
 }
 
 @Composable internal fun KeyboardIcon() {
-    val color = LocalContentColor.current
-    Canvas(Modifier.size(20.dp)) {
-        drawRect(color, topLeft = Offset(0f, size.height * .15f), size = Size(size.width, size.height * .7f), style = Stroke(1.dp.toPx()))
-        for (row in 0..1) for (column in 0..4) {
-            drawRect(color, Offset(size.width * (.12f + column * .16f), size.height * (.3f + row * .18f)), Size(1.5.dp.toPx(), 1.5.dp.toPx()))
-        }
-        drawLine(color, Offset(size.width * .3f, size.height * .7f), Offset(size.width * .7f, size.height * .7f), 1.dp.toPx())
-    }
+    UiGlyph(UiIcons.keyboard, Modifier.size(18.dp))
 }
 
 @Composable internal fun TextInputDialog(composer: TextComposer, focus: TerminalFocus, current: () -> Boolean, ready: Boolean) {
