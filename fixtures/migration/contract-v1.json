@@ -664,7 +664,8 @@
           "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
-          "language": "system"
+          "language": "system",
+          "mobileShortcutBarTwoRows": true
         }
       }
     },
@@ -724,7 +725,68 @@
           "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
-          "language": "system"
+          "language": "system",
+          "mobileShortcutBarTwoRows": true
+        }
+      }
+    },
+    {
+      "id": "mobile-shortcut-bar-single-row",
+      "source": {
+        "preferences": {
+          "mobileShortcutBarTwoRows": false
+        }
+      },
+      "expected": {
+        "hosts": [],
+        "trust": {},
+        "preferences": {
+          "accent": {
+            "mode": "system"
+          },
+          "theme": "system",
+          "fontSize": 12,
+          "scrollback": 5000,
+          "volumeKeysEnabled": false,
+          "volumeUp": {
+            "action": "Default",
+            "steps": []
+          },
+          "volumeDown": {
+            "action": "Default",
+            "steps": []
+          },
+          "agentNotifications": {
+            "questions": true,
+            "responses": true,
+            "errors": true,
+            "os": false
+          },
+          "terminalShortcuts": [
+            "Ctrl",
+            "Shift",
+            "Alt",
+            "Escape",
+            "Tab",
+            "Enter",
+            "ShiftTab",
+            "ShiftLeft",
+            "CtrlC",
+            "CtrlD",
+            "CtrlL",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Home",
+            "End"
+          ],
+          "smoothTerminalTransitions": false,
+          "keepConnectionsInBackground": true,
+          "mobilePaneToolbarVisible": true,
+          "showAllHierarchy": false,
+          "language": "system",
+          "mobileShortcutBarTwoRows": false
         }
       }
     },
@@ -850,7 +912,8 @@
           "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
-          "language": "system"
+          "language": "system",
+          "mobileShortcutBarTwoRows": true
         }
       }
     },
@@ -934,7 +997,8 @@
           "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
-          "language": "system"
+          "language": "system",
+          "mobileShortcutBarTwoRows": true
         }
       }
     },
@@ -1042,7 +1106,8 @@
           "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
-          "language": "system"
+          "language": "system",
+          "mobileShortcutBarTwoRows": true
         }
       }
     },
@@ -1083,7 +1148,8 @@
           "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
-          "language": "system"
+          "language": "system",
+          "mobileShortcutBarTwoRows": true
         }
       }
     },
@@ -1142,7 +1208,8 @@
           "keepConnectionsInBackground": true,
           "mobilePaneToolbarVisible": false,
           "showAllHierarchy": false,
-          "language": "system"
+          "language": "system",
+          "mobileShortcutBarTwoRows": true
         }
       }
     }

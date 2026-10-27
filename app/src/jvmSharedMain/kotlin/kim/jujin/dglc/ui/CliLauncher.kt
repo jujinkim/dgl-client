@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.*
@@ -89,7 +90,8 @@ private object AboveLauncher : PopupPositionProvider {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalShortcut>, allowed: () -> Boolean, terminalFocus: TerminalFocus,
-    mobile: Boolean = false, openComposer: () -> Unit = {}, workspace: Boolean = false, inputGate: kim.jujin.dglc.AppModel? = null) {
+    mobile: Boolean = false, openComposer: () -> Unit = {}, workspace: Boolean = false, mobileShortcutBarTwoRows: Boolean = true,
+    inputGate: kim.jujin.dglc.AppModel? = null) {
     val shortcutInput = inputGate?.shortcutInput(client)
     val modifiers = shortcutInput?.modifiers?.collectAsState()?.value
     val status by client.status.collectAsState()
@@ -105,7 +107,9 @@ private object AboveLauncher : PopupPositionProvider {
     if (inputGate != null) WorkspaceInputBlock(inputGate, menuOwner, request != null)
     val dismiss: () -> Unit = { request = null; inputGate?.blockInput(menuOwner, false) }
     val compact = mobile && !workspace
+    val twoRows = compact && mobileShortcutBarTwoRows
     val buttonHeight = if (compact) 30.dp else 48.dp
+    val columnHeight = buttonHeight * 2 + 4.dp
     val imeVisible = terminalFocus.imeVisible
     val viewConfiguration = LocalViewConfiguration.current
     val compactConfiguration = remember(viewConfiguration, compact) { object : ViewConfiguration by viewConfiguration {
@@ -116,7 +120,7 @@ private object AboveLauncher : PopupPositionProvider {
         Row(Modifier.fillMaxWidth().semantics { contentDescription = t("터미널 입력 도구") }
             .padding(horizontal = 4.dp, vertical = if (compact) 3.dp else if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (mobile) {
+            val mobileTools: @Composable () -> Unit = {
                 TerminalToolButton({ terminalFocus.keyboard() }, enabled = available,
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics {
@@ -127,29 +131,42 @@ private object AboveLauncher : PopupPositionProvider {
                     modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("텍스트 작성 열기") },
                     contentPadding = PaddingValues(0.dp)) { Text("📝", fontSize = 18.sp) }
             }
+            if (mobile) {
+                if (twoRows) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { mobileTools() }
+                else Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { mobileTools() }
+            }
+            val shortcutButton: @Composable (TerminalShortcut, Modifier) -> Unit = { shortcut, modifier ->
+                TerminalToolButton({
+                    if (menuAllowed() && client.status.value.acceptsInput) {
+                        if (shortcut.key == null) shortcutInput?.toggle(shortcut)
+                        else terminalFocus.shortcut(shortcut)
+                        terminalFocus.request()
+                    }
+                }, enabled = available && status.acceptsInput,
+                    containerColor = if (modifiers?.active(shortcut) == true) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = modifier.height(buttonHeight).widthIn(min = if (mobile) 46.dp else 58.dp).semantics {
+                        if (shortcut.key == null) stateDescription = t(if (modifiers?.active(shortcut) == true) "켜짐" else "꺼짐")
+                    },
+                    contentPadding = PaddingValues(horizontal = if (mobile) 8.dp else 10.dp)) {
+                    Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
+                }
+            }
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                shortcuts.distinct().forEach { shortcut ->
-                    TerminalToolButton({
-                        if (menuAllowed() && client.status.value.acceptsInput) {
-                            if (shortcut.key == null) shortcutInput?.toggle(shortcut)
-                            else terminalFocus.shortcut(shortcut)
-                            terminalFocus.request()
+                if (twoRows) {
+                    shortcuts.distinct().chunked(2).forEach { column ->
+                        Column(Modifier.width(IntrinsicSize.Max).height(columnHeight), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            column.forEach { shortcut -> shortcutButton(shortcut, Modifier.fillMaxWidth()) }
                         }
-                    }, enabled = available && status.acceptsInput,
-                        containerColor = if (modifiers?.active(shortcut) == true) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.height(buttonHeight).widthIn(min = if (mobile) 46.dp else 58.dp).semantics {
-                            if (shortcut.key == null) stateDescription = t(if (modifiers?.active(shortcut) == true) "켜짐" else "꺼짐")
-                        },
-                        contentPadding = PaddingValues(horizontal = if (mobile) 8.dp else 10.dp)) {
-                        Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
                     }
-                }
+                } else shortcuts.distinct().forEach { shortcut -> shortcutButton(shortcut, Modifier) }
             }
             val density = LocalDensity.current
             val safeTop = WindowInsets.safeDrawing.getTop(density)
             var launcherTop by remember { mutableIntStateOf(0) }
-            Box(Modifier.onGloballyPositioned { launcherTop = it.boundsInWindow().top.toInt() }) {
+            // Anchor and height limit use the entire fixed column, including the empty upper cell.
+            Box(Modifier.height(if (twoRows) columnHeight else buttonHeight)
+                .onGloballyPositioned { launcherTop = it.boundsInWindow().top.toInt() }, contentAlignment = Alignment.BottomCenter) {
                 TerminalToolButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("CLI 실행 메뉴") }) { Text("…", fontSize = if (mobile) 18.sp else 22.sp) }
@@ -161,7 +178,8 @@ private object AboveLauncher : PopupPositionProvider {
                         properties = imePreservingPopupProperties()) {
                         val menuFocus = remember { FocusRequester() }
                         LaunchedEffect(Unit) { menuFocus.requestFocus() }
-                        Surface(shadowElevation = 8.dp, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                        Surface(modifier = Modifier.semantics { paneTitle = t("CLI 실행 메뉴") }, shadowElevation = 8.dp,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                             val heightLimit = if (mobile) Modifier.heightIn(max = with(density) {
                                 (launcherTop - safeTop).coerceAtLeast(0).toDp()
                             }) else Modifier

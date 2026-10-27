@@ -64,6 +64,7 @@ class AndroidWorkspaceTest {
                     previous = model.local.value; previousWorkspace = model.workspace.value
                     oldConnections = model.connections.value; oldSelected = model.selected.value
                     model.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false,
+                        mobileShortcutBarTwoRows = true,
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Tab))))) }
                     model.workspace.value = WorkspaceState()
                     model.connections.value = listOf(first, second); model.selected.value = first
@@ -71,6 +72,7 @@ class AndroidWorkspaceTest {
                 }
                 stage = "839dp"
                 awaitNode("열린 연결 탭"); assertNull(node("분할 작업 공간"))
+                checkShortcutRows(twoRows = true)
                 eventually { first.surface != null }
                 val firstRenderer = first.surface as AndroidTerminal
                 click("알림 0"); awaitNode("수신한 알림이 없습니다.")
@@ -82,8 +84,13 @@ class AndroidWorkspaceTest {
                 assertSame(firstRenderer, first.surface)
                 assertNull(node("열린 연결 탭"))
                 assertNotNull(node("키보드 열기"))
+                checkShortcutRows(twoRows = false)
+                scenario.onActivity { model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = false)) } }
+                instrumentation.waitForIdleSync(); checkShortcutRows(twoRows = false)
+                scenario.onActivity { model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = true)) } }
                 stage = "wide split"
                 resize(scenario, 1200, 1000)
+                checkShortcutRows(twoRows = false)
                 click("앱 화면 좌우 분할")
                 eventually { model.workspace.value.groups.size == 2 }
                 val secondGroup = model.workspace.value.activeGroup
@@ -154,6 +161,7 @@ class AndroidWorkspaceTest {
                 stage = "narrow tabs cover every group"
                 click("키보드 열기"); waitIme(scenario, true)
                 resize(scenario, 839, 1000); awaitNode("열린 연결 탭")
+                checkShortcutRows(twoRows = true)
                 stage = "narrow IME preservation"
                 waitIme(scenario, true)
                 assertSame(secondRenderer, second.surface)
@@ -394,6 +402,21 @@ class AndroidWorkspaceTest {
     }
     private suspend fun awaitNode(text: String): AccessibilityNodeInfo = withTimeout(7000) {
         while (true) { node(text)?.let { return@withTimeout it }; delay(30) }; error("unreachable")
+    }
+    private suspend fun checkShortcutRows(twoRows: Boolean) {
+        val bar = bounds(awaitNode("터미널 입력 도구"))
+        val keyboard = bounds(awaitNode(if (node("키보드 닫기") != null) "키보드 닫기" else "키보드 열기"))
+        val composer = bounds(awaitNode("텍스트 작성 열기")); val menu = bounds(awaitNode("CLI 실행 메뉴"))
+        val density = instrumentation.targetContext.resources.displayMetrics.density
+        assertTrue(kotlin.math.abs(bar.height() - (if (twoRows) 70 else 56) * density) <= 2)
+        if (twoRows) {
+            assertEquals(keyboard.left, composer.left)
+            assertTrue(keyboard.bottom < composer.top)
+            assertEquals(composer.top, menu.top)
+        } else {
+            assertEquals(keyboard.top, composer.top); assertEquals(composer.top, menu.top)
+            assertTrue(keyboard.right < composer.left)
+        }
     }
     private fun bounds(node: AccessibilityNodeInfo) = Rect().also(node::getBoundsInScreen)
     private suspend fun click(text: String) {

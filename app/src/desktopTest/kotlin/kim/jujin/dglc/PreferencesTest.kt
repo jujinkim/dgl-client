@@ -63,13 +63,15 @@ class PreferencesTest {
     @Test fun repositoryRestoresMacrosAndLegacySettings() {
         val directory = Files.createTempDirectory("dgl-preferences-").toFile()
         try {
+            assertTrue(LocalRepository(directory).read().preferences.mobileShortcutBarTwoRows)
             directory.resolve("settings.json").writeText("""{"preferences":{"fontSize":19}}""")
             val legacy = LocalRepository(directory).read()
             assertEquals(Preferences(fontSize = 19), legacy.preferences)
             assertTrue(legacy.preferences.mobilePaneToolbarVisible)
+            assertTrue(legacy.preferences.mobileShortcutBarTwoRows)
             assertTrue(legacy.preferences.keepConnectionsInBackground)
             assertFalse(legacy.preferences.showAllHierarchy)
-            val state = legacy.copy(preferences = legacy.preferences.copy(keepConnectionsInBackground = false, showAllHierarchy = true, volumeKeysEnabled = true, smoothTerminalTransitions = true, mobilePaneToolbarVisible = false,
+            val state = legacy.copy(preferences = legacy.preferences.copy(keepConnectionsInBackground = false, showAllHierarchy = true, volumeKeysEnabled = true, smoothTerminalTransitions = true, mobilePaneToolbarVisible = false, mobileShortcutBarTwoRows = false,
                 volumeUp = VolumeBinding(VolumeAction.Macro, List(65536) { MacroStep.Key(TerminalKey.Enter) }),
                 volumeDown = VolumeBinding(VolumeAction.Macro, listOf(MacroStep.Text("한".repeat(21845)), MacroStep.Key(TerminalKey.Enter)))))
             LocalRepository(directory).save(state)

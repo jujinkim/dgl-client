@@ -276,7 +276,7 @@ private data class TabDrag(val tab: String, val position: Offset)
     }
     if (preferences.mobilePaneToolbarVisible) TmuxPaneToolbar(client, { focus.request() }) { deleting = it }
     TerminalShortcutBar(client, preferences.terminalShortcuts, { model.selected.value === client }, focus, mobile = true,
-        openComposer = composer::open, workspace = true, inputGate = model)
+        openComposer = composer::open, workspace = true, mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, inputGate = model)
     if (opened) {
         DisposableEffect(composer) { onDispose { model.blockInput(owner, false); if (model.selected.value === client) focus.request() } }
         TextInputDialog(composer, focus, { model.selected.value === client && !model.inputBlocked(owner) }, status.acceptsInput)

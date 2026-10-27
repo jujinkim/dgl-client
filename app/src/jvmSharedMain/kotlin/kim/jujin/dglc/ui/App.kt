@@ -432,7 +432,8 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
             TimedSnackbar(client.inputNotice, Modifier.align(Alignment.BottomCenter))
         }
         if (!workspace && mobileLayout) mobileTabs()
-        if (!workspace) TerminalShortcutBar(client, preferences.terminalShortcuts, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open, inputGate = model)
+        if (!workspace) TerminalShortcutBar(client, preferences.terminalShortcuts, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open,
+            mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, inputGate = model)
     }
     if (mobileLayout && composerOpen) {
         DisposableEffect(composer) { onDispose { model.blockInput(composerOwner, false); if (model.selected.value === client && inputAllowed()) terminalFocus.request() } }
@@ -678,6 +679,12 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
                 Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
                 TextButton({ details = true }, modifier = Modifier.fillMaxWidth().then(Modifier.focusRequester(shortcutFocus))) {
                     Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); Text(" ›")
+                }
+                if (androidInput) {
+                    SettingsSwitch(t("하단 단축키 두 줄로 표시"), local.preferences.mobileShortcutBarTwoRows) { enabled ->
+                        model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = enabled)) }
+                    }
+                    Text(t("너비 840dp 미만의 좁은 화면에 적용합니다."), style = MaterialTheme.typography.bodySmall)
                 }
                 if (androidInput) PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
             }

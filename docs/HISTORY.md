@@ -288,6 +288,13 @@ APK 패키징·lint·Android 계측·실제 SSH/CLI·macOS GUI·Windows 네이�
 800×411dp 가로 화면에서 실패한 초기 계측은 통과 수에서 제외했으며 고정 입력 도구 배치 한계는 TASKS에 남겼습니다.
 로그는 `.tools/cli-menu-*`와 `artifacts/android-cli-menu/`에 보존하며 전체 API·장시간·물리 기기·Windows 네이티브는 실행하지 않았습니다.
 
+## 2026-10-28: Android IME 크기 보존과 데스크톱 재시도 검사
+
+Android에서 IME를 논리 크기에서 제외하고 가시 영역만 조정하며, 하단 정렬한 표면의 드래그·스크롤바와 분할 projection 검사를 보강했습니다.
+데스크톱 재시도 검사는 임의 포트 loopback 실패 fixture와 명시적으로 진행하는 Tokio 시간으로 변경했습니다.
+당시 웹 36·JVM 92·데스크톱 77·evidence 6 통과, JVM 예상 skip 9·Keychain ignore 1과 Android Debug·계측 APK·lint·원본 APK 검증을 확인했습니다.
+Android 계측은 연결된 기기가 없어 컴파일만 확인했으며 로그는 `.tools/ime-*`에 보존합니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

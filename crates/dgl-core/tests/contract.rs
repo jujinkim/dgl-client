@@ -71,7 +71,7 @@ fn event(e: Event) -> Value {
     }
 }
 #[test]
-fn contract_126_cases() {
+fn contract_127_cases() {
     let f = fixtures();
     let mut count = 0;
     for c in f["protocol"].as_array().unwrap() {
@@ -210,7 +210,7 @@ fn contract_126_cases() {
             assert_eq!(result.unwrap(), c["expected"], "{}", c["id"]);
         }
     }
-    assert_eq!(count, 126);
+    assert_eq!(count, 127);
 }
 
 #[test]
@@ -218,6 +218,12 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
     let dir = std::env::temp_dir().join(format!("dgl-rust-contract-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("settings.json");
+    assert!(
+        model::LocalState::read(&path)
+            .unwrap()
+            .preferences
+            .mobile_shortcut_bar_two_rows
+    );
     for case in fixtures()["settings"].as_array().unwrap() {
         let bytes = case["source"].to_string().into_bytes();
         std::fs::write(&path, &bytes).unwrap();
@@ -233,14 +239,22 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
     }
     let mut state = model::LocalState::default();
     assert!(state.preferences.mobile_pane_toolbar_visible);
+    assert!(state.preferences.mobile_shortcut_bar_two_rows);
     assert!(state.preferences.keep_connections_in_background);
     state.preferences.keep_connections_in_background = false;
     assert!(!state.preferences.show_all_hierarchy);
     state.preferences.show_all_hierarchy = true;
     state.preferences.mobile_pane_toolbar_visible = false;
+    state.preferences.mobile_shortcut_bar_two_rows = false;
     assert!(!state.preferences.smooth_terminal_transitions);
     state.preferences.smooth_terminal_transitions = true;
     state.save(&path).unwrap();
+    assert!(
+        !model::LocalState::read(&path)
+            .unwrap()
+            .preferences
+            .mobile_shortcut_bar_two_rows
+    );
     assert!(
         !model::LocalState::read(&path)
             .unwrap()

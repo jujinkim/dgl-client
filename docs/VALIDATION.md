@@ -6,24 +6,22 @@
 
 ## 현재 변경 검사 (2026-10-28)
 
-Android는 IME를 논리 크기에서 제외하고 가시 영역에서만 처리합니다. 키보드 표시·숨김·높이 변경은 원격 resize를
-요청하지 않으며, 하단 정렬한 표면을 본문 드래그·우측 overlay 스크롤바로 이동합니다. 태블릿 분할도 논리 크기를 유지합니다.
-데스크톱 재시도 버튼 검사는 임의 포트 loopback 실패 fixture와 명시적으로 진행하는 Tokio 시간으로 변경했습니다.
+Android 너비 840dp 미만의 하단 단축키는 기본 두 줄(70dp)로 표시하며, 설정을 끄면 기존 한 줄(36dp)로 복원합니다.
+Kotlin·Rust의 `mobileShortcutBarTwoRows`는 누락 시 `true`이고 기기에만 저장합니다. 넓은 작업 공간은 한 줄을 유지합니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 웹 | `npm test --prefix web`: 36 통과. IME 무 resize·높이 변경·빠른 반전·오래된 세대/분리된 표면·패널 범위/비례/입력 차단·재개방 하단 정렬·이력 위치·실제 창/핀치 크기 반영 |
-| JVM | `:app:desktopTest`: 92 통과·환경별 예상 skip 9. IME geometry 세대·태블릿 분할 projection 포함, 명시적 이름 목록 대조 통과 |
-| Rust 데스크톱 | 수정한 재시도 테스트 단독 통과 후 `cargo test --locked -p dgl-desktop`: 77 통과·Keychain ignore 1. 정지/즉시 재시도/중복 클릭·가상 시간 소진·버튼 배치·탭/터미널/연결 동일성 포함 |
-| Android 빌드 | Debug·계측 APK 컴파일·lint 통과. Rust 네 ABI 포함 원본 Debug APK 서명/payload 검사 통과. lint 오류 0·기존 검토 진단 12개 |
-| Python | 관련 evidence 검사 6 통과. JVM/Android 검사 이름 목록과 실패·skip·누락 거부 포함 |
-| 정적 검사 | 변경 문서의 로컬 링크·diff 공백 검사 및 기존 대시보드 메타데이터 검증 통과 |
+| JVM | `:app:desktopTest`: 92 통과·환경별 예상 skip 9. 신규/이전 설정 기본 ON·OFF 저장/재시작과 공유 설정 fixture 검증, 명시적 이름 목록 대조 통과 |
+| Rust 코어·UniFFI | `cargo test --locked -p dgl-core -p dgl-uniffi`: 42 통과·SSH/tmux ignore 6. 설정 round trip·127개 공유 contract case·클라우드 제외 검사 포함. contract 검사명 갱신 후 관련 5개 재검사 통과 |
+| Android 빌드 | Debug·계측 APK 컴파일·lint 통과. Rust 네 ABI 포함 원본 Debug APK 서명/payload 검사 통과. lint 오류 0·기존 검토 경고 12개 검증 통과 |
+| Python·웹 | `python3 -m unittest discover -s scripts/tests -v`: 98 통과. `npm test --prefix web`: 36 통과 |
+| 정적 검사 | 번역/자리표시자·킥오프 체크섬·Gradle wrapper·변경 Rust 파일 포맷·문서 로컬 링크·diff 공백·기존 대시보드 메타데이터 검증 통과 |
 
-휴대폰 키보드 반복 표시/숨김과 태블릿 분할의 크기 요청 없음·WebView 동일성 계측 assertion을 보강하고 컴파일했습니다.
-연결된 Android 기기/에뮬레이터가 없어 이번 계측은 실행하지 않았습니다. 이 결과를 실기 통과로 계산하지 않습니다.
-실행 로그는 `.tools/ime-gradle.log`, `.tools/ime-retry.log`, `.tools/ime-desktop.log`에 남겼습니다.
-APK 서명 검사의 첫 실행은 JAVA_HOME 누락으로 실패했으며 JDK 17 환경을 지정한 재실행에서 통과했습니다.
-Rust 엔진·저장 형식·UniFFI 공개 API와 제품 재접속 정책은 변경하지 않았습니다.
+기존 Android 배치 검사는 위→아래→다음 열 순서·같은 열 너비·start 정렬·고정 버튼·아랫줄 CLI 메뉴·공동 가로 스크롤,
+빈/한 개/홀수 목록 높이와 OFF 복원, 839/840dp·넓은 작업 공간의 한 줄 유지 및 전체 오른쪽 열 위 메뉴 배치를 보강했습니다.
+연결된 Android 기기/에뮬레이터가 없어 계측은 실행하지 않았으며 컴파일 결과를 실기 통과로 계산하지 않습니다.
+실행 로그는 `.tools/shortcut-two-rows-{gradle,rust,python,web}.log`와 최종 `.tools/shortcut-two-rows-final-gradle.log`에 남겼습니다.
+저장소 전체 `cargo fmt --all --check`는 기존 `crates/dgl-core/tests/password_shell.rs` 포맷 차이로 실패했고 변경한 Rust 파일은 개별 검사에서 통과했습니다.
 실제 SSH/CLI·물리 Android·macOS GUI·Windows 네이티브·전체 API matrix·장시간 반복 검사는 수행하지 않았습니다.
 
 ## 남은 한계

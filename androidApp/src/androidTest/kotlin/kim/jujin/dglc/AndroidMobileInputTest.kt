@@ -122,6 +122,7 @@ class AndroidMobileInputTest {
                     previous = app.local.value; workspace = app.workspace.value
                     oldConnections = app.connections.value; oldSelected = app.selected.value
                     app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", mobilePaneToolbarVisible = false,
+                        mobileShortcutBarTwoRows = true,
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
                     app.connections.value = clients; app.selected.value = first; app.reconcileWorkspace()
                 }
@@ -285,6 +286,7 @@ class AndroidMobileInputTest {
                     app = (it.application as DglApplication).connections().app
                     previous = app.local.value; oldConnections = app.connections.value; oldSelected = app.selected.value
                     app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", mobilePaneToolbarVisible = true,
+                        mobileShortcutBarTwoRows = true, terminalShortcuts = TerminalShortcut.defaultShortcuts,
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
                     app.connections.value = listOf(first, second); app.selected.value = first
                     it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -310,12 +312,50 @@ class AndroidMobileInputTest {
                 stage = "fixed geometry"
                 delay(300)
                 checkBar()
+                stage = "column order, equal widths and start alignment"
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(
+                    terminalShortcuts = listOf(TerminalShortcut.ShiftTab, TerminalShortcut.Ctrl, TerminalShortcut.Enter))) } }
+                instrumentation.waitForIdleSync(); checkBar()
+                val top = shortcutBounds(TerminalShortcut.ShiftTab); val bottom = shortcutBounds(TerminalShortcut.Ctrl)
+                val last = shortcutBounds(TerminalShortcut.Enter)
+                val keyboard = bounds(awaitNode("키보드 열기")); val composer = bounds(awaitNode("텍스트 작성 열기"))
+                val density = instrumentation.targetContext.resources.displayMetrics.density
+                assertEquals(top.left, bottom.left); assertEquals(top.right, bottom.right)
+                assertEquals(keyboard.top, top.top); assertEquals(composer.top, bottom.top)
+                assertTrue(kotlin.math.abs(top.left - keyboard.right - 4 * density) <= 2)
+                assertTrue(kotlin.math.abs(last.left - top.right - 4 * density) <= 2)
+                assertEquals(top.top, last.top) // The odd final key leaves its lower cell empty.
+                stage = "single row setting survives restart"
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = false)) } }
+                instrumentation.waitForIdleSync(); checkBar(twoRows = false)
+                assertEquals(shortcutBounds(TerminalShortcut.ShiftTab).top, shortcutBounds(TerminalShortcut.Ctrl).top)
+                assertFalse(app.repository.read().preferences.mobileShortcutBarTwoRows)
+                val singleRowRestart = createEngine(instrumentation.targetContext.applicationContext as android.app.Application)
+                try { assertFalse(singleRowRestart.local.value.preferences.mobileShortcutBarTwoRows) } finally { singleRowRestart.close() }
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = true, terminalShortcuts = emptyList())) } }
+                instrumentation.waitForIdleSync(); checkBar()
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = listOf(TerminalShortcut.Enter))) } }
+                instrumentation.waitForIdleSync(); checkBar()
+                assertEquals(bounds(awaitNode("키보드 열기")).top, shortcutBounds(TerminalShortcut.Enter).top)
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = TerminalShortcut.defaultShortcuts)) } }
+                instrumentation.waitForIdleSync()
                 val fixedBeforeScroll = bounds(awaitNode("텍스트 작성 열기"))
+                val keyboardBeforeScroll = bounds(awaitNode("키보드 열기")); val menuBeforeScroll = bounds(awaitNode("CLI 실행 메뉴"))
                 val shortcuts = find(awaitNode("터미널 입력 도구")) { it.isScrollable }
                 assertNotNull(shortcuts)
-                assertTrue(shortcuts!!.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
-                delay(200)
+                withTimeout(5000) {
+                    while (node(TerminalShortcut.End.label) == null) {
+                        assertTrue(shortcuts!!.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
+                        delay(200)
+                    }
+                }
                 assertEquals(fixedBeforeScroll, bounds(awaitNode("텍스트 작성 열기")))
+                assertEquals(keyboardBeforeScroll, bounds(awaitNode("키보드 열기")))
+                assertEquals(menuBeforeScroll, bounds(awaitNode("CLI 실행 메뉴")))
+                val scrolledTop = shortcutBounds(TerminalShortcut.Right); val scrolledBottom = shortcutBounds(TerminalShortcut.Home)
+                assertEquals(scrolledTop.left, scrolledBottom.left); assertEquals(scrolledTop.right, scrolledBottom.right)
+                assertEquals(keyboardBeforeScroll.top, scrolledTop.top); assertEquals(fixedBeforeScroll.top, scrolledBottom.top)
+                assertEquals(scrolledTop.top, shortcutBounds(TerminalShortcut.End).top)
                 checkBar()
                 var web: WebView? = null
                 scenario.onActivity { web = webView(it.window.decorView) }
@@ -477,6 +517,7 @@ class AndroidMobileInputTest {
                     oldConnections = app.connections.value; oldSelected = app.selected.value
                     orientation = it.requestedOrientation
                     app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false,
+                        mobileShortcutBarTwoRows = true,
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
                     app.connections.value = listOf(client); app.selected.value = client; app.reconcileWorkspace()
                     it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -487,12 +528,13 @@ class AndroidMobileInputTest {
                 val renderer = client.surface as kim.jujin.dglc.ui.AndroidTerminal
                 suspend fun checkOpen(visible: Boolean, anchor: Rect) {
                     repeat(4) {
-                        val first = bounds(awaitNode("Claude Code 실행"))
-                        assertTrue("Menu stays above its launcher", first.bottom <= anchor.top)
+                        awaitNode("Claude Code 실행")
+                        val panel = bounds(find(instrumentation.uiAutomation.rootInActiveWindow) { it.paneTitle?.toString() == "CLI 실행 메뉴" }!!)
+                        assertTrue("The entire menu stays above the shortcut column", panel.bottom <= anchor.top)
                         scenario.onActivity { activity ->
                             val insets = activity.window.decorView.rootWindowInsets
                             assertEquals(visible, insets.isVisible(WindowInsets.Type.ime()))
-                            assertTrue(first.top >= insets.getInsets(WindowInsets.Type.systemBars()).top)
+                            assertTrue(panel.top >= insets.getInsets(WindowInsets.Type.systemBars()).top)
                         }
                         assertTrue(app.inputBlocked())
                         delay(50)
@@ -511,7 +553,7 @@ class AndroidMobileInputTest {
                     stage = "open and resize with IME=$visible"
                     if (visible) click("키보드 열기")
                     waitIme(scenario, visible)
-                    val anchor = bounds(awaitNode("CLI 실행 메뉴"))
+                    val anchor = bounds(awaitNode("키보드 닫기".takeIf { visible } ?: "키보드 열기"))
                     click("CLI 실행 메뉴"); checkOpen(visible, anchor)
                     val before = client.writes.size
                     scenario.onActivity {
@@ -554,7 +596,7 @@ class AndroidMobileInputTest {
                 waitOrientation(scenario, true)
                 if (node("키보드 열기") != null) click("키보드 열기")
                 waitIme(scenario, true)
-                val anchor = bounds(awaitNode("CLI 실행 메뉴"))
+                val anchor = bounds(awaitNode("키보드 닫기"))
                 click("CLI 실행 메뉴"); checkOpen(true, anchor)
                 val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }
                 assertNotNull("Short IME viewport needs an internal menu scroll", scroll)
@@ -592,17 +634,27 @@ class AndroidMobileInputTest {
         }
     }
 
-    private suspend fun checkBar() {
+    private suspend fun checkBar(twoRows: Boolean = true) {
         val bar = bounds(awaitNode("터미널 입력 도구"))
         val keyboard = bounds(awaitNode(if (node("키보드 닫기") != null) "키보드 닫기" else "키보드 열기"))
         val text = bounds(awaitNode("텍스트 작성 열기")); val menu = bounds(awaitNode("CLI 실행 메뉴"))
         val density = instrumentation.targetContext.resources.displayMetrics.density
         fun near(actual: Int, dp: Int) = assertTrue("$actual px != $dp dp", kotlin.math.abs(actual - dp * density) <= 2)
-        near(keyboard.height(), 30); near(menu.height(), 30); near(bar.height(), 36)
+        near(keyboard.height(), 30); near(text.height(), 30); near(menu.height(), 30); near(bar.height(), if (twoRows) 70 else 36)
         near(keyboard.left - bar.left, 4); near(keyboard.top - bar.top, 3)
-        near(bar.bottom - keyboard.bottom, 3); near(bar.right - menu.right, 4)
-        near(text.left - keyboard.right, 4)
+        near(bar.bottom - menu.bottom, 3); near(bar.right - menu.right, 4)
+        if (twoRows) {
+            assertEquals(keyboard.left, text.left); assertEquals(text.top, menu.top)
+            near(text.top - keyboard.bottom, 4); near(bar.bottom - text.bottom, 3)
+        } else {
+            near(bar.bottom - keyboard.bottom, 3); near(text.left - keyboard.right, 4)
+            assertEquals(keyboard.top, text.top); assertEquals(text.top, menu.top)
+        }
         assertTrue(text.right < menu.left)
+    }
+    private suspend fun shortcutBounds(shortcut: TerminalShortcut): Rect {
+        val key = awaitNode(shortcut.label)
+        return bounds(generateSequence(key) { it.parent }.first { it.isClickable })
     }
     private fun screenshot(name: String) {
         instrumentation.waitForIdleSync()

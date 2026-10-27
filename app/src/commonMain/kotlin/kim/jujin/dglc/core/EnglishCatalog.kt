@@ -584,5 +584,7 @@ internal object EnglishCatalog {
         "재접속 실패" to "Reconnection failed",
         "다시 재접속 시도" to "Try reconnecting again",
         "연결 확인·복구 중에는 입력할 수 없습니다. 입력을 다시 전송하지 않습니다." to "Input is unavailable while checking or restoring the connection. Rejected input is not replayed.",
+        "하단 단축키 두 줄로 표시" to "Show bottom shortcuts in two rows",
+        "너비 840dp 미만의 좁은 화면에 적용합니다." to "Applies to narrow screens less than 840dp wide.",
     )
 }
