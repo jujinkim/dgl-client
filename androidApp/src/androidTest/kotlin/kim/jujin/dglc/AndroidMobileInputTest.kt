@@ -457,6 +457,135 @@ class AndroidMobileInputTest {
         }
     }
 
+    @Test fun cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput() = runBlocking<Unit> { withLauncherDisplay {
+        val client = Connection("launcher")
+        lateinit var app: AppModel; lateinit var previous: LocalState; lateinit var workspace: WorkspaceState
+        var oldConnections = emptyList<ClientConnection>(); var oldSelected: ClientConnection? = null
+        var orientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        var stage = "setup"
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity {
+                    app = (it.application as DglApplication).connections().app
+                    previous = app.local.value; workspace = app.workspace.value
+                    oldConnections = app.connections.value; oldSelected = app.selected.value
+                    orientation = it.requestedOrientation
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false,
+                        volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
+                    app.connections.value = listOf(client); app.selected.value = client; app.reconcileWorkspace()
+                    it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
+                waitOrientation(scenario, false)
+                awaitNode("CLI 실행 메뉴")
+                withTimeout(5000) { while (client.surface == null) delay(20) }
+                val renderer = client.surface as kim.jujin.dglc.ui.AndroidTerminal
+                suspend fun checkOpen(visible: Boolean, anchor: Rect) {
+                    repeat(4) {
+                        val first = bounds(awaitNode("Claude Code 실행"))
+                        assertTrue("Menu stays above its launcher", first.bottom <= anchor.top)
+                        scenario.onActivity { activity ->
+                            val insets = activity.window.decorView.rootWindowInsets
+                            assertEquals(visible, insets.isVisible(WindowInsets.Type.ime()))
+                            assertTrue(first.top >= insets.getInsets(WindowInsets.Type.systemBars()).top)
+                        }
+                        assertTrue(app.inputBlocked())
+                        delay(50)
+                    }
+                }
+                suspend fun checkClosed(visible: Boolean) {
+                    withTimeout(5000) { while (node("Claude Code 실행") != null || app.inputBlocked()) delay(25) }
+                    waitIme(scenario, visible)
+                    withTimeout(5000) {
+                        var focused = false
+                        while (!focused) { scenario.onActivity { focused = renderer.view.hasFocus() }; delay(25) }
+                    }
+                    assertSame(renderer, client.surface)
+                }
+                for (visible in listOf(false, true)) {
+                    stage = "open and resize with IME=$visible"
+                    if (visible) click("키보드 열기")
+                    waitIme(scenario, visible)
+                    val anchor = bounds(awaitNode("CLI 실행 메뉴"))
+                    click("CLI 실행 메뉴"); checkOpen(visible, anchor)
+                    val before = client.writes.size
+                    scenario.onActivity {
+                        renderer.view.evaluateJavascript("window.dgl.postMessage(JSON.stringify({type:'input',data:'blocked'}))", null)
+                        val now = android.os.SystemClock.uptimeMillis()
+                        it.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, 0))
+                        it.dispatchKeyEvent(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_UP, 0))
+                        client.status.value = ConnectionStatus(Phase.Restoring, resizing = true)
+                    }
+                    instrumentation.waitForIdleSync(); checkOpen(visible, anchor)
+                    assertEquals(before, client.writes.size)
+                    scenario.onActivity { client.status.value = ConnectionStatus(Phase.Ready) }
+                    instrumentation.waitForIdleSync(); checkOpen(visible, anchor)
+                    click("Codex 실행"); checkClosed(visible)
+                    assertEquals(before + 1, client.writes.size)
+                    assertArrayEquals("codex\r".encodeToByteArray(), client.writes.last())
+                }
+                val sent = client.writes.size
+                for (method in 0..2) {
+                    stage = "dismiss method $method with IME"
+                    val outside = bounds(awaitNode("텍스트 작성 열기"))
+                    click("CLI 실행 메뉴"); awaitNode("Claude Code 실행")
+                    when (method) {
+                        0 -> instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE)
+                        1 -> instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                        else -> tap(outside.centerX().toFloat(), outside.centerY().toFloat())
+                    }
+                    checkClosed(true)
+                    assertFalse(app.composer(client).opened.value)
+                    assertEquals(sent, client.writes.size)
+                }
+                stage = "real recovery dismisses"
+                click("CLI 실행 메뉴"); awaitNode("Claude Code 실행")
+                scenario.onActivity { client.status.value = ConnectionStatus(Phase.Reconnecting) }
+                withTimeout(5000) { while (node("Claude Code 실행") != null || app.inputBlocked()) delay(25) }
+                assertEquals(sent, client.writes.size)
+                scenario.onActivity { client.status.value = ConnectionStatus(Phase.Ready) }
+                stage = "landscape menu scrolls above IME"
+                scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+                waitOrientation(scenario, true)
+                if (node("키보드 열기") != null) click("키보드 열기")
+                waitIme(scenario, true)
+                val anchor = bounds(awaitNode("CLI 실행 메뉴"))
+                click("CLI 실행 메뉴"); checkOpen(true, anchor)
+                val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }
+                assertNotNull("Short IME viewport needs an internal menu scroll", scroll)
+                assertTrue(bounds(scroll!!).bottom <= anchor.top)
+                assertTrue(scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
+                click("Grok Build 실행 · 실험 지원"); checkClosed(true)
+                assertEquals(sent + 1, client.writes.size)
+                assertArrayEquals("grok\r".encodeToByteArray(), client.writes.last())
+            } catch (failure: Throwable) {
+                screenshot("cli-launcher-ime-failure")
+                throw AssertionError("CLI launcher IME stage: $stage", failure)
+            } finally {
+                scenario.onActivity {
+                    it.window.insetsController?.hide(WindowInsets.Type.ime())
+                    app.connections.value = oldConnections; app.selected.value = oldSelected
+                    app.workspace.value = workspace; app.update(previous); it.requestedOrientation = orientation
+                }
+            }
+        }
+    } }
+
+    private suspend fun withLauncherDisplay(test: suspend () -> Unit) {
+        fun shell(command: String) = instrumentation.uiAutomation.executeShellCommand(command).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes().decodeToString().trim()
+        }
+        val original = listOf("size", "density").associateWith { key ->
+            shell("wm $key").lineSequence().firstOrNull { it.startsWith("Override") }?.substringAfter(": ") ?: "reset"
+        }
+        try {
+            // Landscape must leave room for the fixed header/tools, but less than four menu rows.
+            shell("wm density 160"); shell("wm size 480x800")
+            test()
+        } finally {
+            original.forEach { (key, value) -> shell("wm $key $value") }
+        }
+    }
+
     private suspend fun checkBar() {
         val bar = bounds(awaitNode("터미널 입력 도구"))
         val keyboard = bounds(awaitNode(if (node("키보드 닫기") != null) "키보드 닫기" else "키보드 열기"))

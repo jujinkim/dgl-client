@@ -135,4 +135,46 @@ class CliLauncherTest {
             }
         }
     }
+
+    @Test fun viewportRestorationRetainsRequestsButRecoveryAndChangedTargetsRejectThem() {
+        val ready = ConnectionStatus(Phase.Ready)
+        val resizing = ConnectionStatus(Phase.Restoring, resizing = true)
+        for ((before, after) in listOf(ready to resizing, resizing to ready, resizing to resizing)) {
+            val client = RecordingConnection().apply { status.value = before }
+            val request = CliLaunchRequest(client)
+            client.status.value = after
+            assertTrue(request.send(CliCommand.Codex, client, true))
+            assertFalse(request.send(CliCommand.Codex, client, true))
+            assertEquals(1, client.writes.size)
+            assertContentEquals("codex\r".encodeToByteArray(), client.writes.single())
+        }
+        for (blocked in listOf(
+            resizing.copy(checking = true), resizing.copy(recovering = true),
+            resizing.copy(canStopRetrying = true), resizing.copy(resizing = false),
+            ConnectionStatus(Phase.Reconnecting),
+        )) {
+            val client = RecordingConnection()
+            val request = CliLaunchRequest(client)
+            client.status.value = blocked
+            assertFalse(request.send(CliCommand.Codex, client, true))
+            client.status.value = ready
+            assertFalse(request.send(CliCommand.Codex, client, true))
+            assertTrue(client.writes.isEmpty())
+        }
+        for (change in 0..3) {
+            val client = RecordingConnection()
+            val request = CliLaunchRequest(client)
+            client.status.value = resizing
+            when (change) {
+                0 -> client.inputTarget = client.inputTarget.copy(epoch = 2)
+                1 -> client.inputTarget = client.inputTarget.copy(identity = "connection:1:pane:2")
+                2 -> client.session.value = "\$2"
+                3 -> client.pane.value = "%2"
+            }
+            assertFalse(request.send(CliCommand.Codex, client, true))
+            client.status.value = ready
+            assertFalse(request.send(CliCommand.Codex, client, true))
+            assertTrue(client.writes.isEmpty())
+        }
+    }
 }

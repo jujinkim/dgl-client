@@ -39,7 +39,7 @@ import kotlinx.coroutines.flow.first
 
 /** Capture before opening a focusable popup; restore after its window is removed. */
 @Composable internal expect fun rememberAppFocusCapture(): () -> (() -> Unit)
-internal expect fun mobileNotificationPopupProperties(): PopupProperties
+internal expect fun imePreservingPopupProperties(): PopupProperties
 
 private object MobileHeaderIcons {
     private fun outline(name: String, path: String) = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
@@ -187,7 +187,7 @@ internal class NotificationPopupPosition(private val available: IntRect, private
     val height = with(density) { (availableBounds.bottom - anchor.bottom - margin).coerceAtLeast(0f).toDp() }.coerceAtMost(480.dp)
     DisposableEffect(Unit) { onDispose { restoreFocus() } }
     Popup(popupPositionProvider = remember(bounds, margin) { NotificationPopupPosition(bounds, margin) }, onDismissRequest = dismiss,
-        properties = mobileNotificationPopupProperties()) {
+        properties = imePreservingPopupProperties()) {
         Surface(Modifier.width(width).heightIn(max = height).semantics { paneTitle = t("알림") }, shadowElevation = 8.dp,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
             Column {

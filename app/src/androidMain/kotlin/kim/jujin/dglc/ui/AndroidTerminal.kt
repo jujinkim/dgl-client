@@ -54,7 +54,7 @@ internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.D
     usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
 
 // Take keys/back and consume outside touches without replacing the terminal as the IME target.
-internal actual fun mobileNotificationPopupProperties() = androidx.compose.ui.window.PopupProperties(
+internal actual fun imePreservingPopupProperties() = androidx.compose.ui.window.PopupProperties(
     flags = android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
     inheritSecurePolicy = true)
 

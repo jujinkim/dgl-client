@@ -182,6 +182,8 @@ ANDROID_SERIAL=emulator-5554 python3 scripts/workspace_android.py
 알림 빈/긴 목록·내부 스크롤·IME 공간·닫기/바깥 터치/뒤로 가기·입력 차단/포커스 복원, 세션 폰트 핀치·취소·최신 기본값 초기화·탭/Activity 수명과
 터미널 가로 스크롤 경계도 검사합니다. 화면 크기·밀도·IME·글꼴·애니메이션 설정은
 `finally`에서 복원합니다. 결과는 `artifacts/android-workspace/`에 남기며 명시적 검사 이름 목록과 대조합니다.
+하단 CLI 메뉴는 키보드 표시/숨김 유지·크기 변경 복원 중 메뉴 유지·명령 1회 전송·닫기 후 포커스와
+입력 차단·가로 화면의 내부 스크롤을 `AndroidMobileInputTest.cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput`으로 확인합니다.
 JVM 기본 검사에는 분할·이동·합치기·선택·최소 공간/최대 그룹·배치 저장·세션 예약·오래된 연결 대상 거부가 포함됩니다.
 `--section workspace`, `--section mobile-input`, `--section compact`로 필요한 구간만 재검사할 수 있습니다.
 전체 Android API matrix로 확대하지 않습니다.

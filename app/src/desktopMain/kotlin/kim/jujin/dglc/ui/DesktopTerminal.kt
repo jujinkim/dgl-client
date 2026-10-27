@@ -24,7 +24,7 @@ import java.io.*
 import javax.swing.SwingUtilities
 
 internal actual fun mobileInputDialogProperties() = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-internal actual fun mobileNotificationPopupProperties() = androidx.compose.ui.window.PopupProperties(focusable = true)
+internal actual fun imePreservingPopupProperties() = androidx.compose.ui.window.PopupProperties(focusable = true)
 
 @Composable internal actual fun rememberAppFocusCapture(): () -> (() -> Unit) = { {} }
 

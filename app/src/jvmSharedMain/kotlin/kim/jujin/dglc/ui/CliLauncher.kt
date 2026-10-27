@@ -11,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +25,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -31,8 +35,9 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import kim.jujin.dglc.ClientConnection
+import kim.jujin.dglc.core.ConnectionStatus
+import kim.jujin.dglc.core.Phase
 import kim.jujin.dglc.core.TerminalShortcut
 
 internal enum class CliCommand(val wire: String) {
@@ -42,9 +47,13 @@ internal enum class CliCommand(val wire: String) {
     Grok("grok\r"), GrokBypass("grok --always-approve\r")
 }
 
+/** A viewport snapshot keeps the same input destination and must not dismiss its menu. */
+private val ConnectionStatus.cliLaunchPhase: Phase
+    get() = if (phase == Phase.Restoring && resizing && acceptsInput) Phase.Ready else phase
+
 /** One selection can send once, only to the connection/pane on which it opened. */
 internal class CliLaunchRequest(private val client: ClientConnection) {
-    private val phase = client.status.value.phase
+    private val phase = client.status.value.cliLaunchPhase
     private val session = client.session.value
     private val pane = client.pane.value
     private val target = client.captureInputTarget()
@@ -54,7 +63,7 @@ internal class CliLaunchRequest(private val client: ClientConnection) {
         if (consumed) return false
         consumed = true
         if (!allowed || current !== client || !client.status.value.acceptsInput ||
-            client.status.value.phase != phase || client.session.value != session || client.pane.value != pane ||
+            client.status.value.cliLaunchPhase != phase || client.session.value != session || client.pane.value != pane ||
             client.captureInputTarget() != target) return false
         client.input(command.wire.encodeToByteArray())
         return true
@@ -92,9 +101,9 @@ private object AboveLauncher : PopupPositionProvider {
     val available = menuAllowed()
     SideEffect { shortcutInput?.sync() }
     // A target/phase/dialog change discards the request before painting or handling another click.
-    var request by remember(client, status.phase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
+    var request by remember(client, status.cliLaunchPhase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
     if (inputGate != null) WorkspaceInputBlock(inputGate, menuOwner, request != null)
-    val dismiss = { request = null; inputGate?.blockInput(menuOwner, false); terminalFocus.request() }
+    val dismiss: () -> Unit = { request = null; inputGate?.blockInput(menuOwner, false) }
     val compact = mobile && !workspace
     val buttonHeight = if (compact) 30.dp else 48.dp
     val imeVisible = terminalFocus.imeVisible
@@ -137,35 +146,44 @@ private object AboveLauncher : PopupPositionProvider {
                     }
                 }
             }
-            Box {
+            val density = LocalDensity.current
+            val safeTop = WindowInsets.safeDrawing.getTop(density)
+            var launcherTop by remember { mutableIntStateOf(0) }
+            Box(Modifier.onGloballyPositioned { launcherTop = it.boundsInWindow().top.toInt() }) {
                 TerminalToolButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("CLI 실행 메뉴") }) { Text("…", fontSize = if (mobile) 18.sp else 22.sp) }
                 val opened = request
-                if (opened != null) Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
-                    properties = PopupProperties(focusable = true)) {
-                    val menuFocus = remember { FocusRequester() }
-                    LaunchedEffect(Unit) { menuFocus.requestFocus() }
-                    Surface(shadowElevation = 8.dp, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                        Column(Modifier.width(IntrinsicSize.Max).onPreviewKeyEvent {
-                            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { dismiss(); true } else false
-                        }.focusRequester(menuFocus).focusable()) {
-                            val launch: (CliCommand) -> Unit = { command ->
-                                if (request === opened) {
-                                    request = null
-                                    inputGate?.blockInput(menuOwner, false)
-                                    opened.send(command, client, menuAllowed())
-                                    terminalFocus.request()
+                if (opened != null) {
+                    // Android posts the focus request so it runs after the popup window is removed.
+                    DisposableEffect(opened, terminalFocus) { onDispose { terminalFocus.request() } }
+                    Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
+                        properties = imePreservingPopupProperties()) {
+                        val menuFocus = remember { FocusRequester() }
+                        LaunchedEffect(Unit) { menuFocus.requestFocus() }
+                        Surface(shadowElevation = 8.dp, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                            val heightLimit = if (mobile) Modifier.heightIn(max = with(density) {
+                                (launcherTop - safeTop).coerceAtLeast(0).toDp()
+                            }) else Modifier
+                            Column(Modifier.width(IntrinsicSize.Max).then(heightLimit).verticalScroll(rememberScrollState()).onPreviewKeyEvent {
+                                if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { dismiss(); true } else false
+                            }.focusRequester(menuFocus).focusable()) {
+                                val launch: (CliCommand) -> Unit = { command ->
+                                    if (request === opened) {
+                                        request = null
+                                        inputGate?.blockInput(menuOwner, false)
+                                        opened.send(command, client, menuAllowed())
+                                    }
                                 }
+                                LauncherRow("Claude Code", LauncherIcons.claude, available && status.acceptsInput,
+                                    { launch(CliCommand.Claude) }, { launch(CliCommand.ClaudeBypass) })
+                                LauncherRow("Codex", LauncherIcons.openai, available && status.acceptsInput,
+                                    { launch(CliCommand.Codex) }, { launch(CliCommand.CodexBypass) })
+                                LauncherRow("AGY", LauncherIcons.agy, available && status.acceptsInput,
+                                    { launch(CliCommand.Agy) }, { launch(CliCommand.AgyBypass) }, experimental = true)
+                                LauncherRow("Grok Build", LauncherIcons.grok, available && status.acceptsInput,
+                                    { launch(CliCommand.Grok) }, { launch(CliCommand.GrokBypass) }, experimental = true)
                             }
-                            LauncherRow("Claude Code", LauncherIcons.claude, available && status.acceptsInput,
-                                { launch(CliCommand.Claude) }, { launch(CliCommand.ClaudeBypass) })
-                            LauncherRow("Codex", LauncherIcons.openai, available && status.acceptsInput,
-                                { launch(CliCommand.Codex) }, { launch(CliCommand.CodexBypass) })
-                            LauncherRow("AGY", LauncherIcons.agy, available && status.acceptsInput,
-                                { launch(CliCommand.Agy) }, { launch(CliCommand.AgyBypass) }, experimental = true)
-                            LauncherRow("Grok Build", LauncherIcons.grok, available && status.acceptsInput,
-                                { launch(CliCommand.Grok) }, { launch(CliCommand.GrokBypass) }, experimental = true)
                         }
                     }
                 }

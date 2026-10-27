@@ -272,6 +272,15 @@ APK 패키징·lint·Android 계측·실제 SSH/CLI·macOS GUI·Windows 네이�
 실제 SSH·물리 Android·macOS GUI·Windows 네이티브·전체 API matrix·장시간 검사는 수행하지 않았습니다.
 계측 화면·이름별 결과와 초기 실패 로그는 `artifacts/mobile-header/`에 남겼습니다.
 
+## 2026-10-27: Android 복귀 dim·출력 복구
+
+복귀 시 기존 화면 위에 연결 확인 dim을 즉시 표시하고, 출력 timeout 때 SSH를 유지한 채 구독·스냅샷을 복원하도록 보강했습니다.
+현재 표시 pane의 ACK를 모두 기다리며 늦은 ACK·취소·교체 작업 정리 순서를 검사했습니다.
+당시 JVM 89·Rust 코어/UniFFI 42·Python 98 통과, JVM 예상 skip 9·Rust ignore 6,
+격리 SSH 1개·서로 다른 API36 선택 계측 4개와 Android Debug·계측 APK·lint 및 원본 APK 검증을 확인했습니다.
+에뮬레이터 System UI 대화상자로 실패한 초기 실행은 통과 수에서 제외했습니다.
+로그는 `.tools/resume-fix-*`와 `artifacts/android-resume/`에 있으며 물리 Android·macOS GUI·Windows 네이티브·전체 API matrix·장시간 검사는 실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.
