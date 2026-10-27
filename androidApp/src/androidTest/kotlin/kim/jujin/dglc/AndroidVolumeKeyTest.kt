@@ -162,7 +162,7 @@ class AndroidVolumeKeyTest {
                 assertArrayEquals(byteArrayOf(2), withTimeout(3000) { firstWire.writes.receive() })
                 assertNull(withTimeoutOrNull(200) { firstWire.writes.receive() })
 
-                click("설정"); scrollToText("터미널 글자 크기: 12")
+                click("현재 호스트 Volume test 연결 메뉴"); click("설정"); scrollToText("터미널 글자 크기: 12")
                 press(scenario, false); click("닫기"); delay(200)
                 click("호스트"); delay(200); press(scenario, false)
                 click("Volume test 메뉴"); click("삭제…"); waitForText("호스트 삭제"); press(scenario, false); click("취소")
@@ -212,7 +212,7 @@ class AndroidVolumeKeyTest {
             lateinit var app: AppModel; lateinit var previous: LocalState
             scenario.onMainActivity { app = (it.application as DglApplication).connections().app; previous = app.local.value; app.update(previous.copy(preferences = Preferences(language = "ko"))) }
             try {
-                click("설정")
+                click("기타 메뉴"); click("설정")
                 scrollToText("볼륨 키로 단축키 실행")
                 click("볼륨 키로 단축키 실행")
                 withTimeout(3000) { while (!app.local.value.preferences.volumeKeysEnabled) delay(50) }

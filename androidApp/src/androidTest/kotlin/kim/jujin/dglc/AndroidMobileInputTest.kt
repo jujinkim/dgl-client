@@ -120,7 +120,7 @@ class AndroidMobileInputTest {
                     app = (it.application as DglApplication).connections().app
                     previous = app.local.value; workspace = app.workspace.value
                     oldConnections = app.connections.value; oldSelected = app.selected.value
-                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false,
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", mobilePaneToolbarVisible = false,
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
                     app.connections.value = clients; app.selected.value = first; app.reconcileWorkspace()
                 }
@@ -129,7 +129,6 @@ class AndroidMobileInputTest {
                 val renderer = first.surface as kim.jujin.dglc.ui.AndroidTerminal
                 val density = instrumentation.targetContext.resources.displayMetrics.density
                 val tabs = bounds(awaitNode("열린 연결 탭")); val tools = bounds(awaitNode("터미널 입력 도구"))
-                screenshot("mobile-chrome-tabs")
                 assertTrue(kotlin.math.abs(tabs.height() - 36 * density) <= 2)
                 assertEquals(tabs.bottom, tools.top)
                 scenario.onActivity {
@@ -137,9 +136,24 @@ class AndroidMobileInputTest {
                     assertEquals(xy[1] + renderer.view.height, tabs.top)
                 }
                 assertNull(node("서버 선택"))
-                listOf("호스트", "tmux 관리", "알림 0", "설정").map { bounds(awaitNode(it)) }.zipWithNext().forEach { (a, b) -> assertTrue(a.right <= b.left) }
+                val menuLabel = "현재 호스트 ${first.host.alias} 연결 메뉴"
+                val topRow = listOf("DaGaLi", "호스트", menuLabel, "알림 0").map { bounds(awaitNode(it)) }
+                topRow.zipWithNext().forEach { (a, b) -> assertTrue(a.right <= b.left) }
+                val currentHost = bounds(awaitNode("현재 호스트: ${first.host.alias}"))
+                val tmux = bounds(awaitNode("tmux 관리"))
+                assertTrue(currentHost.right <= tmux.left)
+                assertTrue(topRow.maxOf { it.bottom } <= tmux.top)
+                assertEquals(topRow.last().right, tmux.right)
+                assertNull(node("설정"))
+                click(menuLabel); awaitNode("설정")
+                assertTrue(app.inputBlocked())
+                click("설정"); awaitNode("닫기")
+                assertTrue(app.inputBlocked())
+                click("닫기")
+                withTimeout(5000) { while (app.inputBlocked()) delay(20) }
                 stage = "tab selection and retained renderers"
                 scenario.onActivity { app.selectConnection(clients.last()) }
+                awaitNode("현재 호스트: ${clients.last().host.alias}")
                 withTimeout(5000) {
                     while (true) {
                         val last = node(title(clients.last()))
@@ -159,6 +173,12 @@ class AndroidMobileInputTest {
                 withTimeout(5000) { while (first.surface == null) delay(20) }
                 assertSame(renderer, first.surface)
                 assertEquals(0, clients.sumOf { it.connects })
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(language = "en", theme = "dark")) } }
+                awaitNode("Current host: ${first.host.alias}")
+                screenshot("mobile-chrome-dark")
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(language = "ko", theme = "light")) } }
+                awaitNode("현재 호스트: ${first.host.alias}")
+                screenshot("mobile-chrome-tabs")
                 stage = "empty popup, keyboard and focus"
                 click("키보드 열기"); waitIme(scenario, true)
                 scenario.onActivity { assertTrue(renderer.view.hasFocus()) }
@@ -220,6 +240,11 @@ class AndroidMobileInputTest {
                 assertTrue(app.connections.value.isEmpty())
                 assertEquals(1, first.closes)
                 assertTrue(generateSequence(awaitNode("tmux 관리")) { it.parent }.any { !it.isEnabled })
+                awaitNode("현재 호스트: —")
+                assertTrue(generateSequence(awaitNode("터미널")) { it.parent }.any { !it.isEnabled })
+                click("기타 메뉴"); awaitNode("설정")
+                assertNull(node("재접속")); assertNull(node("연결 종료"))
+                click("설정"); awaitNode("닫기"); click("닫기")
             } catch (failure: Throwable) {
                 screenshot("mobile-chrome-failure")
                 fun dump(root: AccessibilityNodeInfo?): String = if (root == null) "" else

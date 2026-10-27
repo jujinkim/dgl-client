@@ -259,6 +259,12 @@ Debug·계측 APK·lint 및 원본 APK payload 검사를 통과했습니다. 현
 격리 SSH/tmux 3.7c 복귀/무응답 검사 1개와 API36 연결 수명·중앙 재시도 검사 2개 및 Android 빌드·lint를 확인했습니다.
 실기·Windows 네이티브·전체 API matrix·장시간 검사는 수행하지 않았으며 로그는 `artifacts/recovery-sync/`에 있습니다.
 
+## 2026-10-27: 텍스트 전송과 Enter 분리
+
+텍스트 작성의 `Enter 함께 보내기`를 텍스트 전송 성공 뒤의 독립 Enter 요청으로 분리했습니다.
+당시 Rust 데스크톱 77·JVM 86·웹 34·Python 98 통과, Keychain ignore 1·JVM 예상 skip 9와 Android 제품 Kotlin 컴파일을 확인했습니다.
+APK 패키징·lint·Android 계측·실제 SSH/CLI·macOS GUI·Windows 네이티브는 실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

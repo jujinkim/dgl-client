@@ -6,19 +6,21 @@
 
 ## 현재 변경 검사 (2026-10-27)
 
-텍스트 작성의 `Enter 함께 보내기`는 텍스트 전송 성공 후 별도 Enter 키 요청을 보냅니다.
-붙여넣기 데이터에는 추가 Enter를 합치지 않으며 각 단계의 대상 검사·완료 확인과 실패 입력 무재전송을 유지합니다.
+Android 840dp 미만 헤더를 두 줄로 구성했습니다. 윗줄은 로고·호스트/터미널 전환·기타 메뉴·알림,
+아랫줄은 현재 호스트와 tmux 버튼입니다. 설정은 기타 메뉴로 옮기고 단색 벡터 아이콘을 사용합니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust 데스크톱 | `cargo test --locked -p dgl-desktop`: 77 통과·대화형 Keychain ignore 1. 텍스트 성공 뒤 독립 Enter 요청, 각 단계 완료까지 초안/편집 잠금 유지, 큐 거절·실패·취소·대상 변경 시 Enter 차단, 크기만 바뀐 대상 허용, 현재 pane의 붙여넣기 모드·64 KiB 경계 포함 |
-| JVM | 86 통과·외부 SSH/Windows 환경 예상 skip 9. 텍스트/Enter 순서·각 단계 완료 대기·인코더 거절·큐 실패·대상 변경·초안 보존 포함. 결과 검증기 명시적 목록 대조 통과 |
-| 웹 | 34 통과·skip 0. 일반/스냅샷 bracketed paste 데이터에 추가 Enter 없음, 작성한 줄바꿈 유지, 제어 문자 포함 64 KiB 경계 포함 |
-| Android | `:app:compileAndroidMain :mobileUi:compileDebugKotlin :androidApp:compileDebugKotlin` 통과. Rust 바인딩 및 네 ABI 라이브러리 빌드 포함. APK 패키징·lint·계측은 이번 변경에서 실행하지 않음 |
-| Python·정적 검사 | 98 통과. 번역 생성 일치·원문 체크섬·Wrapper·문서 링크·diff 공백·대시보드 메타데이터 검사 통과 |
+| JVM | `:app:desktopTest --tests kim.jujin.dglc.MobileChromeTest`: 1 통과·skip 0. 알림 팝업의 버튼 기준 위치·화면/IME 경계 확인 |
+| Android 빌드 | `:androidApp:assembleDebug :androidApp:assembleDebugAndroidTest :androidApp:lintDebug` 통과. Rust 바인딩·네 ABI 포함. lint 오류 0·기존 검토 진단 12개이며 `verify_lint.py` 대조 통과 |
+| API36 선택 계측 | 3 통과·skip 0. 320dp 두 줄 헤더·긴 호스트명·설정 이동·연결 없음·알림 입력 차단/포커스 복원, 411dp 호스트/터미널 전환·tmux 시트·선택 호스트 재접속/종료, 렌더러 IME·붙여넣기·크기 변경 확인. 명시적 검사 이름 목록 대조 통과 |
+| 화면 | 라이트·다크 헤더와 알림/IME 화면의 계측 스크린샷 확인. 에뮬레이터 화면 크기·밀도·글꼴·IME·애니메이션 설정은 실행 뒤 복원 |
+| 정적 검사 | 번역 생성 일치·변경 문서의 로컬 링크·diff 공백 검사 통과 |
 
-JVM 결과는 `artifacts/jvm-tests.json`에 있습니다. 이번 변경에서 실제 SSH/CLI·Android 계측·물리 키보드·macOS GUI·Windows 네이티브·장시간 검사는 수행하지 않았습니다.
-Windows 빌드·패키징 경로는 유지했습니다. 전송 완료는 기존 입력 큐가 보고하는 결과이며 원격 애플리케이션의 처리 완료를 뜻하지 않습니다.
+계측 로그·이름별 결과·화면은 `artifacts/mobile-header/`에 있습니다. 렌더러 검사에서 발견한 초기 실패 로그도 보존했습니다.
+계측 코드에 남아 있던 이전 붙여넣기 API·키보드 입력 콜백·크기 변경 표시 기대값을 현재 동작에 맞춘 뒤 통과했습니다.
+이번 변경에서 실제 SSH/CLI·물리 Android·macOS GUI·Windows 네이티브·전체 API matrix·장시간 검사는 수행하지 않았습니다.
+Windows 빌드·패키징 경로는 유지했습니다.
 
 ## 남은 한계
 

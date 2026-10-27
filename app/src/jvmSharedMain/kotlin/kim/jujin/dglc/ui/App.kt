@@ -48,7 +48,7 @@ import kotlinx.coroutines.flow.first
 expect fun copyPublicKey(value: String)
 internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
 
-@Composable private fun MobileAppIcon() {
+@Composable internal fun MobileAppIcon() {
     Image(AppIcon, contentDescription = "DaGaLi", modifier = Modifier.size(24.dp)
         .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)))
 }
@@ -138,35 +138,39 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
                 SideEffect { model.visibleConnections = visible }
             }
             Column(Modifier.fillMaxSize()) {
-                if (!workspaceMode) Row(Modifier.fillMaxWidth().padding(horizontal = if (mobileLayout) 4.dp else 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (mobileLayout) MobileAppIcon()
-                    else Text("DaGaLi", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.width(if (mobileLayout) 4.dp else 8.dp))
-                    if (mobileLayout) Spacer(Modifier.weight(1f))
-                    else Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                    selected?.let { client -> HostConnectionMenu(client, model, if (mobileLayout) listOf(
-                        t(if (local.preferences.mobilePaneToolbarVisible) "패널 도구 접기" else "패널 도구 펼치기") to {
-                            model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
-                        }) else emptyList()) }
+                if (mobileLayout) {
+                    MobileHeader(selected?.host?.alias, explorer || selected == null, { explorer = !explorer },
+                        { selected?.let { explorer = false; tmuxNavigationClient = it } }, menu = {
+                            key(selected) {
+                                val client = selected
+                                val actions = buildList<Pair<String, () -> Unit>> {
+                                    if (client != null) {
+                                        add(t(if (local.preferences.mobilePaneToolbarVisible) "패널 도구 접기" else "패널 도구 펼치기") to {
+                                            model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
+                                        })
+                                        addAll(hostConnectionActions(client, model))
+                                    }
+                                    add(t("설정") to { settings = true })
+                                }
+                                MobileHeaderMenu(client?.let { tr("현재 호스트 {0} 연결 메뉴", it.host.alias) } ?: t("기타 메뉴"), actions)
+                            }
+                        }, notification = {
+                            MobileNotificationButton(agentNotices.count { !it.read }, {
+                                restoreNotificationFocus = captureFocus()
+                                model.blockInput(appInputOwner, true)
+                                notifications = true
+                            }) { anchor ->
+                                if (notifications) MobileAgentNotifications(model, availableBounds, anchor, restoreNotificationFocus) { notifications = false }
+                            }
+                        })
+                } else if (!workspaceMode) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("DaGaLi", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.width(8.dp))
+                    Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    selected?.let { HostConnectionMenu(it, model) }
                     TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(if (explorer) t("터미널") else t("호스트")) }
-                    if (mobileLayout) {
-                        TextButton({ selected?.let { explorer = false; tmuxNavigationClient = it } }, enabled = selected != null,
-                            contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)
-                                .semantics { contentDescription = t("tmux 관리") }) { Text("tmux") }
-                        MobileNotificationButton(agentNotices.count { !it.read }, {
-                            restoreNotificationFocus = captureFocus()
-                            model.blockInput(appInputOwner, true)
-                            notifications = true
-                        }) { anchor ->
-                            if (notifications) MobileAgentNotifications(model, availableBounds, anchor, restoreNotificationFocus) { notifications = false }
-                        }
-                        IconButton({ settings = true }, modifier = Modifier.semantics { contentDescription = t("설정") }) {
-                            Text("⚙️", Modifier.clearAndSetSemantics {})
-                        }
-                    } else {
-                        TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
-                        TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
-                    }
+                    TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
+                    TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
                 }
                 if (!androidInput && connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                     connections.forEach { connection ->
@@ -444,15 +448,17 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { TextButton({ client.notice.value = null }) { Text(t("닫기")) } }) }
 }
 
-@Composable private fun HostConnectionMenu(client: ClientConnection, model: AppModel, extraActions: List<Pair<String, () -> Unit>> = emptyList()) {
+@Composable private fun hostConnectionActions(client: ClientConnection, model: AppModel): List<Pair<String, () -> Unit>> {
     val status by client.status.collectAsState()
     val hostId = client.host.id
-    val actions = buildList<Pair<String, () -> Unit>> {
-        addAll(extraActions)
+    return buildList {
         if (!status.canRetryNow) add(t("재접속") to { model.reconnectSelected(client, hostId) })
         add(t("연결 종료") to { model.disconnectSelected(client, hostId) })
     }
-    TreeMenu(tr("현재 호스트 {0} 연결 메뉴", client.host.alias), actions)
+}
+
+@Composable private fun HostConnectionMenu(client: ClientConnection, model: AppModel) {
+    TreeMenu(tr("현재 호스트 {0} 연결 메뉴", client.host.alias), hostConnectionActions(client, model))
 }
 
 @Composable internal fun HierarchyEntry(row: HierarchyRow, depth: Int, client: ClientConnection, remote: RemoteState,

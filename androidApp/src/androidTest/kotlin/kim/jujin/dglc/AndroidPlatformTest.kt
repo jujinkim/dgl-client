@@ -43,7 +43,8 @@ class AndroidPlatformTest {
         lateinit var terminal: AndroidTerminal
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                terminal = AndroidTerminal(activity, Preferences(), { input.trySend(it) }, { sizes.trySend(it) })
+                terminal = AndroidTerminal(activity, Preferences(), { input.trySend(it) }, { sizes.trySend(it) },
+                    keyboardInput = { _, _, _, text, _, _ -> text?.let { input.trySend(it.encodeToByteArray()) }; Unit })
                 activity.setContentView(FrameLayout(activity).apply { addView(terminal.view, FrameLayout.LayoutParams(-1, -1)) })
             }
             try {
@@ -67,13 +68,13 @@ class AndroidPlatformTest {
                 }
                 terminal.setInputEnabled(false)
                 terminal.write("\u001b[?2004h".encodeToByteArray())
-                assertEquals("\u001b[200~한글😀\r두 줄\u001b[201~", terminal.preparePaste("한글😀\n두 줄", false).decodeToString())
-                assertEquals("\u001b[200~붙여넣기\u001b[201~\r", terminal.preparePaste("붙여넣기", true).decodeToString())
+                assertEquals("\u001b[200~한글😀\r두 줄\u001b[201~", terminal.preparePaste("한글😀\n두 줄").decodeToString())
+                assertEquals("\u001b[200~붙여넣기\u001b[201~", terminal.preparePaste("붙여넣기").decodeToString())
                 assertTrue("Preparing paste must never emit bridge input", input.tryReceive().isFailure)
                 terminal.write("\u001b[?2004l".encodeToByteArray())
-                assertEquals("한글😀\r두 줄\r", terminal.preparePaste("한글😀\r\n두 줄", true).decodeToString())
-                assertEquals(65536, terminal.preparePaste("a".repeat(65536), false).size)
-                try { terminal.preparePaste("a".repeat(65536), true); fail("Oversized paste accepted") } catch (_: IllegalStateException) { }
+                assertEquals("한글😀\r두 줄", terminal.preparePaste("한글😀\r\n두 줄").decodeToString())
+                assertEquals(65536, terminal.preparePaste("a".repeat(65536)).size)
+                try { terminal.preparePaste("a".repeat(65537)); fail("Oversized paste accepted") } catch (_: IllegalStateException) { }
                 terminal.setInputEnabled(true)
                 js(terminal, "window.dgl.postMessage(JSON.stringify({type:'resize',columns:-100,rows:999999})); window.dgl.postMessage('{broken'); true")
                 js(terminal, "window.location.href='https://example.invalid/'; true")
@@ -91,7 +92,8 @@ class AndroidPlatformTest {
                 delay(200)
                 assertTrue(js(terminal, "document.querySelector('.terminal-cache').textContent").contains("CACHE_BEFORE"))
                 assertFalse(js(terminal, "document.querySelector('.terminal-cache').textContent").contains("CACHE_AFTER"))
-                assertTrue(js(terminal, "getComputedStyle(document.querySelector('.terminal-cache'),'::after').opacity").contains("1"))
+                // A resize snapshot keeps the previous screen without a connection-recovery dim.
+                assertTrue(js(terminal, "getComputedStyle(document.querySelector('.terminal-cache'),'::after').opacity").contains("0"))
                 assertTrue(js(terminal, "getComputedStyle(document.querySelector('.terminal-cache')).pointerEvents").contains("none"))
                 instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
                     File(instrumentation.targetContext.cacheDir, "resize-cache.png").outputStream().use {
@@ -114,7 +116,7 @@ class AndroidPlatformTest {
                 terminal.resizeRemote(Size(60, 12))
                 terminal.reset("SMOOTH_AFTER".encodeToByteArray())
                 withTimeout(5000) { terminal.endSnapshot() }
-                assertTrue(js(terminal, "window.matchMedia('(prefers-reduced-motion: reduce)').matches || (window.__motion.length === 2 && window.__motion.every(a => a.options.duration === 240))").contains("true"))
+                assertTrue("Ordinary resize snapshots must swap without motion", js(terminal, "window.__motion.length === 0").contains("true"))
                 js(terminal, "Element.prototype.animate=window.__animate; true")
                 terminal.setSmoothTransitions(false)
                 terminal.cancelSnapshot()
