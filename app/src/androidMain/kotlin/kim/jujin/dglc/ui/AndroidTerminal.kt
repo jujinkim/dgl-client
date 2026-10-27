@@ -282,6 +282,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             mediaPlaybackRequiresUserGesture = true
         }
         view.isFocusableInTouchMode = true
+        view.isVerticalScrollBarEnabled = false
+        view.isHorizontalScrollBarEnabled = false
         view.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?) = true
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse {

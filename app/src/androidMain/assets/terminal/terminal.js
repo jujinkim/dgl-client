@@ -6,7 +6,9 @@
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 14, scrollback = 5000, enabled = true, smooth = false;
   let fontGesture = false;
+  let touchSelection = null;
   let geometryObserver = null;
+  const cancelTouchScroll = () => { for (const p of panes.values()) p.cancelTouchScroll(); };
   const send = message => window.dgl.postMessage(JSON.stringify(message));
   const stripInputHelpers = element => {
     for (const helper of element.querySelectorAll('.xterm-helpers, .composition-view, textarea')) helper.remove();
@@ -20,6 +22,7 @@
       recoveryScreen?.remove(); recoveryScreen = null;
       return;
     }
+    cancelTouchScroll();
     if (recoveryScreen) return;
     const previous = stripInputHelpers(canvas.cloneNode(true));
     previous.removeAttribute('id');
@@ -53,8 +56,6 @@
     theme: { background: '#11151b', foreground: '#dce1e8' },
     linkHandler: { activate() {}, hover() {}, leave() {} },
   });
-  const fit = new FitAddon.FitAddon();
-  term.loadAddon(fit);
   term.open(host);
   // The bundled xterm uses its DOM renderer. Keep just one rendered viewport,
   // not another terminal/scrollback buffer, while a streamed snapshot replaces it.
@@ -193,6 +194,7 @@
   term.parser.registerOscHandler(52, () => true);
   let inputEnabled = true;
   let pasteCapture = null;
+  let wheelOrigin = null;
   let keyOrigin = null, textOrigin = false, textTarget = null, composing = false, compositionPending = false, compositionVersion = 0, pasting = false;
   const keyboard = (key, text, modifiers = {}, target = pane === active ? inputTarget : null) => {
     if (!inputEnabled || fontGesture) return;
@@ -236,6 +238,13 @@
   api.sendShortcut = (key, control, shift, alt) => keyboard(key, null, { ctrlKey: control, shiftKey: shift, altKey: alt });
   term.onData(data => {
     if (pasteCapture !== null) { pasteCapture.push(data); return; }
+    // Wheel reports belong to the gesture's destination, independently of a
+    // pending key/IME origin. xterm emits these synchronously during dispatch.
+    if (wheelOrigin) {
+      if (inputEnabled && !fontGesture && new TextEncoder().encode(data).length <= 65536)
+        post({ type: 'input', data, target: wheelOrigin.target });
+      return;
+    }
     const captured = keyOrigin, origin = captured?.event; keyOrigin = null;
     if (new TextEncoder().encode(data).length > 65536) return;
     if (!pasting && origin) {
@@ -253,8 +262,14 @@
     } else if (inputEnabled && !fontGesture) post({ type: 'input', data });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
-  term.onBinary(data => { if (inputEnabled && !fontGesture && data.length <= 65536) post({ type: 'input-binary', data }); });
-  api.setInputEnabled = enabled => { inputEnabled = enabled === true; };
+  term.onBinary(data => {
+    if (inputEnabled && !fontGesture && data.length <= 65536)
+      post({ type: 'input-binary', data, target: wheelOrigin ? wheelOrigin.target : pane === active ? inputTarget : null });
+  });
+  api.setInputEnabled = enabled => {
+    inputEnabled = enabled === true;
+    if (!inputEnabled) api.cancelTouchScroll();
+  };
   // Capture xterm's own paste transformation (including current bracketed-paste mode)
   // without emitting input. Kotlin validates the target and submits one acknowledged request.
   api.preparePaste = (text, enter) => {
@@ -267,14 +282,10 @@
       return data;
     } finally { pasteCapture = null; }
   };
-  let resizingRemote = false;
-
   api.resizePane = (columns, rows) => {
     if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns < 1 || columns > 65535 || rows < 1 || rows > 65535) return;
-    resizingRemote = true;
-    try { term.resize(columns, rows); } finally { resizingRemote = false; }
+    term.resize(columns, rows);
   };
-  const resize = () => { try { fit.fit(); } catch {} };
 
   api.configure = (fontSize, scrollback) => {
     if (Number.isInteger(fontSize) && fontSize >= 10 && fontSize <= 28) term.options.fontSize = fontSize;
@@ -302,12 +313,94 @@
   // Focus after the WebView's default touch/mouse focus change. Doing this on
   // pointerdown lets the subsequent default click blur the textarea and hide IME.
   api.focusTerminal = () => term.focus();
+  let touch = null, suppressTouchClick = false;
+  api.cancelTouchScroll = () => {
+    const previous = touch;
+    touch = null;
+    if (previous) {
+      suppressTouchClick = true;
+      if (host.hasPointerCapture?.(previous.id)) host.releasePointerCapture(previous.id);
+    }
+  };
+  const canScroll = gesture => inputEnabled && !fontGesture && !recoveryScreen &&
+    !draggingBoundary && pane === active && gesture.target === inputTarget;
+  host.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'touch') { suppressTouchClick = false; return; }
+    if (event.isPrimary === false || touch) { cancelTouchScroll(); return; }
+    suppressTouchClick = false;
+    touchSelection = null;
+    if (!inputEnabled || fontGesture || recoveryScreen || draggingBoundary) return;
+    touch = { id: event.pointerId, x: event.clientX, y: event.clientY, lastY: event.clientY,
+      remainder: 0, dragging: false, selected: pane === active, target: inputTarget };
+  }, true);
+  host.addEventListener('pointermove', event => {
+    const gesture = touch;
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+    if (!gesture.dragging) {
+      if (Math.abs(dx) >= 8 && Math.abs(dx) >= Math.abs(dy)) {
+        // Let the browser pan the wider remote grid horizontally.
+        api.cancelTouchScroll(); return;
+      }
+      if (Math.abs(dy) < 8 || Math.abs(dy) <= Math.abs(dx)) return;
+      gesture.dragging = true; suppressTouchClick = true;
+      if (event.isTrusted) host.setPointerCapture?.(gesture.id);
+      if (!gesture.selected) {
+        touchSelection = { pane, target: gesture.target };
+        send({ type: 'focus', pane, target: gesture.target });
+      }
+    }
+    event.preventDefault();
+    if (!gesture.selected) return; // The first drag only selects this pane.
+    if (!canScroll(gesture)) { api.cancelTouchScroll(); return; }
+    const bounds = term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
+    const rowHeight = bounds?.height / term.rows;
+    if (!(rowHeight > 0)) { api.cancelTouchScroll(); return; }
+    gesture.remainder += gesture.lastY - event.clientY;
+    gesture.lastY = event.clientY;
+    // CSS coordinates can differ by a few floating-point ulps at a row edge.
+    const lines = Math.sign(gesture.remainder) * Math.floor((Math.abs(gesture.remainder) + 1e-6) / rowHeight);
+    gesture.remainder -= lines * rowHeight;
+    if (!lines) return;
+    if (!['vt200', 'drag', 'any'].includes(term.modes?.mouseTrackingMode) && term.buffer?.active.type !== 'alternate') {
+      term.scrollLines(lines);
+      return;
+    }
+    // One line-mode wheel per row: xterm chooses SGR/binary mouse encoding or
+    // application/normal cursor keys in a mouse-less alternate screen.
+    wheelOrigin = { target: gesture.target };
+    try {
+      for (let i = 0; i < Math.abs(lines) && touch === gesture && canScroll(gesture); ++i) {
+        term.element.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true,
+          deltaMode: WheelEvent.DOM_DELTA_LINE, deltaY: Math.sign(lines),
+          clientX: Math.max(bounds.left, Math.min(event.clientX, bounds.right - 1)),
+          clientY: Math.max(bounds.top, Math.min(event.clientY, bounds.bottom - 1)) }));
+      }
+    } finally { wheelOrigin = null; }
+  }, { capture: true, passive: false });
+  host.addEventListener('pointerup', event => {
+    if (touch?.id !== event.pointerId) return;
+    if (touch.dragging) event.preventDefault();
+    const previous = touch; touch = null;
+    if (host.hasPointerCapture?.(previous.id)) host.releasePointerCapture(previous.id);
+  }, true);
+  for (const name of ['pointercancel', 'lostpointercapture']) host.addEventListener(name, event => {
+    // Taking capture from xterm's implicitly captured cell bubbles a loss from
+    // that child. Our host still owns the pointer, so the drag must continue.
+    if (name === 'lostpointercapture' && host.hasPointerCapture?.(event.pointerId)) return;
+    if (touch?.id === event.pointerId) api.cancelTouchScroll();
+  }, true);
+  // WebView may still synthesize mouse/click events after a consumed gesture.
+  // Capture before xterm's mouse reporting and before our tap-to-focus handler.
+  for (const name of ['mousedown', 'mouseup', 'click']) host.addEventListener(name, event => {
+    if (suppressTouchClick) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }, true);
   host.addEventListener('click', () => {
     if (!inputEnabled || fontGesture) return;
     if (pane !== active) send({ type: 'focus', pane, target: inputTarget });
     api.focusTerminal();
   });
-  return { ...api, term, fit, host };
+  return { ...api, term, host };
   }
   panes.set('shell', createPane('shell', document.getElementById('shell')));
   const current = () => panes.get(output) || panes.get('shell');
@@ -347,6 +440,7 @@
   window.setFontGesture = value => {
     fontGesture = value === true;
     if (fontGesture) {
+      cancelTouchScroll();
       // Native touch cancellation also cancels pointer capture. Clear a pending
       // boundary commit now, before any delayed WebView pointer event arrives.
       for (const b of boundaries) { b.onpointerup = null; b.onpointercancel = null; }
@@ -455,6 +549,10 @@
   window.setLayout = value => {
     const ownedFocus = [...panes.values()].some(p => p.term.element?.contains?.(document.activeElement));
     const previous = active;
+    const selectedByTouch = touchSelection !== null && touchSelection.pane === value.active && touchSelection.target === inputTarget;
+    if (active !== (value.active || 'shell') || inputTarget !== value.inputTarget || layout?.window !== value.window) {
+      cancelTouchScroll(); touchSelection = null;
+    }
     layout = value; active = value.active || 'shell'; inputTarget = value.inputTarget;
     for (const p of value.panes) if (p.visible) ensure(p.id);
     for (const [id, p] of panes) if (id !== 'shell' && !value.panes.some(s => s.id === id)) {
@@ -463,7 +561,7 @@
       p.cancelSnapshot(); p.term.dispose(); p.host.remove(); panes.delete(id);
     }
     arrange();
-    if (enabled && document.hasFocus() && ownedFocus && previous !== active) focused().focusTerminal();
+    if (enabled && document.hasFocus() && ownedFocus && previous !== active && !selectedByTouch) focused().focusTerminal();
   };
   // The server may keep a smaller grid than this viewport. Tapping the empty
   // container still opens the active pane's IME, just as tapping its cells does.

@@ -6,25 +6,24 @@
 
 ## 현재 변경 검사 (2026-10-27)
 
-Android 840dp 미만 화면에 상단 알림·설정 아이콘과 독립 `tmux` 버튼, 버튼 아래 알림 팝업,
-터미널 아래의 36dp 열린 연결 탭·36dp 단축키 줄을 적용했습니다. 탭 닫기는 기존 연결 제거 경로를 사용합니다.
-알림 표시 중 입력 차단·키보드 유지·바깥 터치 소비·닫은 뒤 포커스 복원을 확인했으며,
-폭 전환 시 IME 복원 캡처가 해제 콜백 순서에 따라 덮어써지지 않도록 보존합니다.
-대화면 그룹·배치와 연결별 WebView를 유지합니다. 외부 API·Rust/UniFFI·설정 저장 형식은 바꾸지 않았습니다.
+Android 터미널의 렌더 후 자동 맞춤을 제거하고 원격 행·열을 유지합니다. 전체 컨테이너 너비로
+원격 크기 변경을 요청하며 xterm·바깥 컨테이너·WebView의 스크롤바를 숨깁니다.
+세로 터치는 행 단위 휠·로컬 이력 스크롤로 전달하고, 비활성 pane의 첫 드래그는 선택만 수행합니다.
+대상 변경·입력 차단·재접속·핀치·취소 시 미전송 이동량을 폐기합니다. Rust API·저장 설정·의존성 버전은 유지합니다.
 이전 변경의 검사는 [HISTORY.md](HISTORY.md)와 Git 이력에 있습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Kotlin/JVM | `:app:desktopTest`: 82 통과·환경상 예상 skip 9. 팝업 오른쪽 정렬·화면 여백·키보드 경계와 기존 회귀 검사. `verify_test_results.py --mode linux`의 명시 목록 대조 통과 |
-| Android 빌드 | JDK 17·SDK 36의 `assembleDebug`·`assembleDebugAndroidTest`·`lintDebug` 통과. `verify_lint.py`: 오류 0·기존 검토 진단 12개 일치 |
-| API36 전용 에뮬레이터 | `workspace_android.py` 최종 구간별 검사: workspace 2·mobile-input 2·compact 6, 총 10 통과·skip 0. 명시적 이름 목록 대조. 320dp 상단 버튼·36dp 줄과 배치 순서, 수동 탭 스크롤·선택·닫기, 빈/긴 알림·목록 스크롤·읽음/이동·닫기/바깥 터치/뒤로 가기·입력 차단/포커스·IME 유지, 839↔840dp·분할/드래그·WebView 동일성 및 기존 입력/볼륨키/계층/폰트 회귀 포함 |
-| 계측 fixture | 구형 셸 fixture에 현재 렌더러의 대상·의미 키 입력 계약을 제공하고, WebView 준비·IME 조합 완료·설정 스크롤·키보드 표시 상태를 기다린 뒤 검사하도록 갱신. 숨긴 측정 셸 overflow는 초기 자동 맞춤에 의존하지 않는 고정 폭으로 재현 |
-| 원본 APK | `collect_rust_android.py`: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`의 ID `kim.jujin.dglc`, 버전 `0.1.0`/`1`, min/target SDK 34/36, 네 ABI·Rust payload·v2 서명 검증 통과. 경로·해시는 `artifacts/rust-candidate/android/build.json` |
-| 정적 검사 | Python 98개, 번역·번호 자리표시자, 원문/Wrapper 무결성, 변경 문서 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과 |
+| 웹 | `npm test --prefix web`: 32 통과·skip 0. 원격 열 수·분할 pane·컨테이너 측정, 방향·행 단위 누적·소수 픽셀, TUI 모드·원본 대상, IME 분리·캡처 이동·합성 클릭·취소와 기존 회귀 검사 |
+| Android 빌드 | JDK 17·SDK 36의 `assembleDebug`·`assembleDebugAndroidTest`·`lintDebug` 통과. `verify_lint.py`: 기존 검토 진단 12개 일치 |
+| API36 전용 에뮬레이터 | WebView 133.0.6943.137에서 터미널 관련 계측 2개·기존 핀치/가로 경계 검사 1개, 총 3개 통과·skip 0. 실제 번들 xterm의 80열·분할 마지막 열·줄바꿈, 스크롤바 숨김, SGR·128 이상 바이너리 좌표·방향키 대체·로컬 이력, 실제 손가락 세로/가로 드래그·IME 미표시, 비활성 pane 선택·대상 변경과 기존 pane 화면·복구 회귀 검사. 명시적 이름 목록 대조 통과 |
+| 원본 APK | `collect_rust_android.py`: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`의 ID·버전·SDK·네 ABI·Rust payload·v2 서명 검증 통과. 경로·해시는 `artifacts/rust-candidate/android/build.json` |
+| 정적 검사 | Python 검사 이름 목록·결과 검증기 6개, 변경 문서 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과 |
 
-계측 결과는 `artifacts/android-workspace/`에 남기며 화면 크기·밀도·IME·글꼴·애니메이션 설정은 복원했습니다.
-Rust·데스크톱 검사·실제 SSH/CLI 수신·물리 Android·macOS GUI/패키징·Windows 네이티브·전체 API matrix·장시간 검사는 이번 변경에서 수행하지 않았습니다.
-환경상 예상 skip은 통과로 계산하지 않습니다.
+계측 결과는 `artifacts/android-terminal-scroll/`에 있으며 핀치 검사의 화면·IME 설정은 복원했습니다. 검사 작성 중 DOM 커서 공백·WebView의
+스크롤바 CSS 지원 차이·주입 손가락 종류·보존된 이력 위치를 반영해 fixture를 수정했습니다.
+실제 터치의 캡처가 xterm 셀에서 pane으로 이동할 때 발생하는 자식의 캡처 해제를 취소로 처리하지 않도록 보강했습니다.
+Rust·JVM·데스크톱 검사·실제 SSH/원격 TUI 수신·물리 Android·Windows 네이티브·전체 API matrix·장시간 검사는 이번 변경에서 수행하지 않았습니다.
 
 ## 남은 한계
 

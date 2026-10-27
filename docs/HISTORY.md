@@ -238,6 +238,14 @@ Rust 데스크톱·Kotlin 입력 안내에 기본 5초, 3/5/10초·영구·사�
 Android Debug·계측 APK 컴파일·lint(오류 0·기존 진단 12)·원본 APK 네 ABI/서명을 확인했습니다.
 Android 계측·실제 SSH/CLI·macOS GUI·Windows 네이티브·장시간 반복 검사는 실행하지 않았습니다.
 
+## 2026-10-27: 모바일 상단·알림·입력 줄
+
+좁은 화면의 알림·설정 아이콘, 독립 tmux 버튼·알림 팝업, 36dp 탭·단축키 줄을 적용했습니다.
+알림 중 입력 차단·IME 유지·닫은 뒤 포커스 복원과 폭 전환 시 IME 복원 캡처를 보강했습니다.
+당시 JVM 82 통과·예상 skip 9, Python 98, Android Debug·계측 APK·lint(기존 진단 12),
+전용 API36의 workspace 2·mobile-input 2·compact 6 검사와 원본 APK 네 ABI·서명을 확인했습니다.
+실제 SSH/CLI·물리 Android·macOS GUI·Windows 네이티브·장시간 검사는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

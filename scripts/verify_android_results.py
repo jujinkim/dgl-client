@@ -16,6 +16,7 @@ EXPECTED_ANDROID = {
     'kim.jujin.dglc.AndroidSshTest.sshKeysControlAndReconnectionKeepRemoteProcess',
     'kim.jujin.dglc.AndroidPlatformTest.keystoreRoundTripTamperingAndBackupExclusion',
     'kim.jujin.dglc.AndroidPlatformTest.bundledRendererImeBridgeResizeAndNavigationIsolation',
+    'kim.jujin.dglc.AndroidPlatformTest.bundledRendererRemoteColumnsAndTouchScrolling',
     'kim.jujin.dglc.AndroidAppFlowTest.composeTerminalKeyboardToolbarRotationAndForegroundRestore',
     'kim.jujin.dglc.AndroidVolumeKeyTest.independentKeysConsumeOnlyTheInitialPress',
     'kim.jujin.dglc.AndroidVolumeKeyTest.defaultHandlingAndLifecycleNeverReplayHeldKeys',

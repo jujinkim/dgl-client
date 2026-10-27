@@ -35,6 +35,8 @@ npm test --prefix web
 단축키 회귀 검사는 Rust 공통 인코더·UniFFI, Kotlin 저장 호환/조합키 수명, 웹 키·IME 출처/붙여넣기·마우스 비간섭/지연된 대상 검사를 포함합니다.
 크기·폰트 회귀 검사는 실패 후 동일 크기 재시도·최신 크기 병합, 렌더러 소유 IME 세대의 취소·재부착,
 지연된 폰트 측정·숨김 후 표시, 조합 중 스냅샷 교체·커서 좌표와 입력 보조 요소 캐시 제외를 포함합니다.
+모바일 웹 검사는 원격 열 수 유지·전체 컨테이너 측정, 세로 드래그 방향·행 단위 누적,
+비활성 pane 선택·대상 세대·취소·핀치·IME 분리와 합성 클릭 차단도 확인합니다.
 
 검증기의 `linux` 모드는 macOS에서도 사용하는 비 Windows·비 SSH JVM 검사 모드입니다.
 외부 SSH/Windows 환경이 필요한 JVM 검사는 예상 skip, Rust 통합/Keychain 검사는 기본 ignore입니다.
@@ -179,6 +181,13 @@ JVM 기본 검사에는 분할·이동·합치기·선택·최소 공간/최대 
 전체 Android API matrix로 확대하지 않습니다.
 삼성 키보드 실기 인수는 키보드를 열자마자 한글을 입력해 조합 글자가 커서에 붙어 있는지와 최종 문자열이 정확한지를 확인합니다.
 영문·숫자도 비교하며, 자동 좌표 검사·계측 APK 컴파일을 이 실기 결과로 계산하지 않습니다.
+
+터미널 너비·터치 스크롤만 검사할 때는 위 Debug·계측 APK를 전용 API36에 설치한 뒤
+`am instrument -w -r -e class`의 선택을
+`kim.jujin.dglc.AndroidPlatformTest#bundledRendererRemoteColumnsAndTouchScrolling,kim.jujin.dglc.AndroidPlatformTest#windowPanesKeepIndependentScreensAndOnlyTheContainerRequestsSize`로 제한합니다.
+실제 번들 xterm의 80열·분할 pane 마지막 열과 줄바꿈, 스크롤바 숨김·가로 이동,
+SGR·바이너리 휠·방향키 대체·로컬 이력 및 실제 Android 터치의 키보드 미표시를 확인합니다.
+`scripts/verify_android_results.py`의 `expected_for_selection`과 `verify`로 해당 이름의 완료·실패·skip을 대조합니다.
 
 ## 의존성·배포 검사
 

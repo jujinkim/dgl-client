@@ -11,13 +11,15 @@ test('client viewport uses container pixels and ignores zero layouts and pane gr
     cols = 80; rows = 24; options = {}; parser = { registerOscHandler() {} };
     element = { querySelector: () => ({ getBoundingClientRect: () => ({ width: this.cols * 10, height: this.rows * 20 }) }) };
     constructor() { terminal = this; }
-    loadAddon() {} open() {} onData() {} onBinary() {}
+    loadAddon(addon) { addon.term = this; } open() {} onData() {} onBinary() {}
     onRender(callback) { render = callback; }
     resize(columns, rows) { this.cols = columns; this.rows = rows; }
   }
   const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, FitAddon: { FitAddon: class { fit() { throw new Error('No pane fit'); } } },
+    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {
+      fit() { this.term.resize(Math.floor((root.clientWidth - 14) / 10), Math.floor(root.clientHeight / 20)); }
+    } },
     document: { getElementById: () => root },
     ResizeObserver: class { constructor(callback) { observe = callback; } observe() { observe(); } },
   });
@@ -30,6 +32,10 @@ test('client viewport uses container pixels and ignores zero layouts and pane gr
   assert.deepEqual(messages, [], 'server grid changes cannot request a client resize');
   root.clientHeight = 240; observe();
   assert.deepEqual(messages, [{ type: 'resize', columns: 100, rows: 12 }]);
+  messages.length = 0;
+  root.clientWidth = 807; window.resizePane(80, 12); render(); render();
+  assert.equal(terminal.cols, 80, 'a render must not subtract the hidden 14px scrollbar and shrink 80 columns to 79');
+  assert.deepEqual(messages, [{ type: 'resize', columns: 80, rows: 12 }]);
 });
 
 test('terminal bridge forwards text and raw mouse input through distinct channels', () => {
@@ -592,6 +598,192 @@ function keyboardRenderer() {
     },
   };
 }
+
+// Model pointer delivery and wheel mode routing; actual xterm encoding and DOM
+// geometry are additionally covered by AndroidPlatformTest with the bundled JS.
+function touchRenderer() {
+  const messages = [], terminals = [], timers = [];
+  class Element {
+    style = {}; children = []; events = {}; classList = { toggle() {} };
+    clientWidth = 807; clientHeight = 480;
+    addEventListener(name, callback, options) {
+      (this.events[name] ||= []).push({ callback, capture: options === true || options?.capture === true });
+    }
+    dispatchEvent(event) {
+      event.preventDefault ||= () => { event.defaultPrevented = true; };
+      event.stopImmediatePropagation ||= () => { event.stopped = true; };
+      for (const { callback } of [...this.events[event.type] || []].sort((a, b) => b.capture - a.capture)) {
+        callback(event); if (event.stopped) break;
+      }
+      return !event.defaultPrevented;
+    }
+    appendChild(child) { this.children.push(child); }
+    remove() {} setAttribute() {} removeAttribute() {}
+    cloneNode() { return new Element(); } querySelectorAll() { return []; }
+    getBoundingClientRect() { return { width: 807, height: 480 }; }
+    setPointerCapture(id) { this.captured = id; }
+    hasPointerCapture(id) { return this.captured === id; }
+    releasePointerCapture() { this.captured = null; }
+  }
+  class Terminal {
+    cols = 80; rows = 24; options = {}; parser = { registerOscHandler() {} };
+    modes = { mouseTrackingMode: 'none' }; buffer = { active: { type: 'normal', viewportY: 50, baseY: 50 } };
+    wheels = []; scrolls = []; focuses = 0;
+    screen = { getBoundingClientRect: () => ({ left: 0, top: 0, right: this.cols * 10, bottom: this.rows * 20,
+      width: this.cols * 10, height: this.rows * 20 }) };
+    element = new Element();
+    constructor() {
+      terminals.push(this);
+      this.element.querySelector = selector => selector === '.xterm-screen' ? this.screen : null;
+      this.element.contains = () => true;
+      this.element.addEventListener('wheel', event => {
+        this.wheels.push(event);
+        (this.binaryMode ? this.binary : this.data)(event.deltaY < 0 ? 'wheel-up' : 'wheel-down');
+      });
+    }
+    open(host) { this.host = host; } loadAddon() {} dispose() {}
+    onData(callback) { this.data = callback; } onBinary(callback) { this.binary = callback; }
+    onKey(callback) { this.key = callback; } onRender(callback) { this.render = callback; }
+    resize(cols, rows) { this.cols = cols; this.rows = rows; }
+    focus() { this.focuses++; } scrollLines(lines) { this.scrolls.push(lines); this.buffer.active.viewportY += lines; }
+  }
+  const root = new Element(), canvas = new Element(), shell = new Element();
+  const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
+  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
+    window, Terminal, TextEncoder, WheelEvent: class {
+      static DOM_DELTA_LINE = 1;
+      constructor(type, options) { this.type = type; Object.assign(this, options); }
+    },
+    document: { getElementById: id => ({ terminal: root, window: canvas, shell })[id], createElement: () => new Element(),
+      hasFocus: () => true, body: new Element() },
+    ResizeObserver: class { observe() {} unobserve() {} },
+    setTimeout: callback => timers.push(callback), clearTimeout() {}, requestAnimationFrame() {},
+  });
+  const layout = (target = 'one', active = 'shell', split = false) => window.setLayout({ window: split ? '@1' : null,
+    columns: 81, rows: 24, active, inputTarget: target, panes: split ? [
+      { id: '%1', visible: true, left: 0, top: 0, width: 40, height: 24 },
+      { id: '%2', visible: true, left: 41, top: 0, width: 40, height: 24 },
+    ] : [] });
+  layout(); messages.length = 0;
+  const pointer = (type, x, y, term = terminals[0], extra = {}) => {
+    const event = { type, pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: x, clientY: y, ...extra };
+    term.host.dispatchEvent(event); return event;
+  };
+  return { window, terminals, messages, timers, layout, pointer, canvas, root,
+    drag(from, to, term = terminals[0]) {
+      pointer('pointerdown', 100, from, term); pointer('pointermove', 100, to, term); pointer('pointerup', 100, to, term);
+    },
+  };
+}
+
+test('touch scroll accumulates rows, reverses direction and ends without inertia or click input', () => {
+  const r = touchRenderer(), t = r.terminals[0];
+  r.pointer('pointerdown', 100, 100);
+  assert.equal(r.pointer('pointermove', 100, 107).defaultPrevented, undefined);
+  assert.equal(r.pointer('pointermove', 100, 108).defaultPrevented, true);
+  assert.deepEqual(t.scrolls, []);
+  r.pointer('pointermove', 100, 125); r.pointer('pointermove', 100, 141);
+  r.pointer('pointermove', 100, 120);
+  assert.deepEqual(t.scrolls, [-1, -1, 1]);
+  r.pointer('pointerup', 100, 120); r.pointer('pointermove', 100, 180);
+  for (const type of ['mousedown', 'mouseup', 'click']) assert.equal(r.pointer(type, 100, 180).stopped, true);
+  assert.deepEqual(t.scrolls, [-1, -1, 1]);
+  assert.equal(t.focuses, 0); assert.deepEqual(r.messages, []);
+  r.pointer('pointerdown', 100, 100); r.pointer('pointerup', 100, 100); r.pointer('click', 100, 100);
+  assert.equal(t.focuses, 1, 'a subsequent tap still focuses the terminal');
+});
+
+test('taking pointer capture from an xterm cell does not cancel an active touch drag', () => {
+  const r = touchRenderer(), t = r.terminals[0];
+  r.pointer('pointerdown', 100, 100);
+  r.pointer('pointermove', 100, 110, t, { isTrusted: true });
+  assert.equal(t.host.captured, 1);
+  r.pointer('lostpointercapture', 100, 110); // implicit child capture moved to host
+  r.pointer('pointermove', 100, 140);
+  assert.deepEqual(t.scrolls, [-2]);
+  t.host.releasePointerCapture(); r.pointer('lostpointercapture', 100, 140);
+  r.pointer('pointermove', 100, 180); r.pointer('pointerup', 100, 180);
+  assert.deepEqual(t.scrolls, [-2], 'an actual loss still cancels the gesture');
+});
+
+test('fractional CSS row heights do not lose a step at the exact row boundary', () => {
+  const r = touchRenderer(), t = r.terminals[0];
+  const rect = t.screen.getBoundingClientRect();
+  t.screen.getBoundingClientRect = () => ({ ...rect, height: 24 * 19.6, bottom: 24 * 19.6 });
+  r.drag(100, 119.6); r.drag(100, 80.4);
+  assert.deepEqual(t.scrolls, [-1, 1]);
+});
+
+test('touch TUI wheel uses row steps, captured target and raw channels without consuming keyboard or IME origins', () => {
+  const r = touchRenderer(), t = r.terminals[0];
+  t.modes.mouseTrackingMode = 'vt200';
+  t.key({ domEvent: { key: 'c' } });
+  r.drag(100, 141);
+  assert.deepEqual(t.wheels.map(e => [e.deltaMode, e.deltaY]), [[1, -1], [1, -1]]);
+  assert.deepEqual(r.messages.splice(0).map(m => [m.type, m.target, m.data]), [['input', 'one', 'wheel-up'], ['input', 'one', 'wheel-up']]);
+  t.data('c'); assert.equal(r.messages.pop().type, 'keyboard');
+  r.pointer('compositionstart');
+  t.binaryMode = true; r.drag(100, 80);
+  assert.deepEqual(r.messages.splice(0).map(m => [m.type, m.target, m.data]), [['input-binary', 'one', 'wheel-down']]);
+  t.data('한'); assert.equal(r.messages.pop().text, '한');
+  t.modes.mouseTrackingMode = 'none'; t.binaryMode = false; t.buffer.active.type = 'alternate';
+  r.drag(100, 60);
+  assert.deepEqual(r.messages.map(m => m.type), ['input', 'input'], 'alternate screen fallback remains in xterm, not the shortcut encoder');
+  assert.deepEqual(t.scrolls, []);
+  t.buffer.active.type = 'normal'; t.modes.mouseTrackingMode = 'x10'; r.drag(100, 80);
+  assert.deepEqual(t.scrolls, [1], 'X10 does not support wheel reports');
+});
+
+test('inactive pane drag selects once without focus or scrolling, and remote split grids survive rendering', () => {
+  const r = touchRenderer(); r.layout('one', '%1', true);
+  const left = r.terminals[1], right = r.terminals[2];
+  for (const pane of ['%1', '%2']) { r.window.outputPane(pane); r.window.resizePane(40, 24); }
+  left.render(); right.render();
+  assert.deepEqual([left.cols, right.cols], [40, 40]);
+  assert.equal(r.canvas.style.width, '810px'); r.messages.length = 0;
+  r.pointer('pointerdown', 100, 100, right); r.pointer('pointermove', 100, 140, right);
+  assert.deepEqual(r.messages, [{ type: 'focus', pane: '%2', target: 'one' }]);
+  r.layout('two', '%2', true);
+  r.pointer('pointermove', 100, 180, right); r.pointer('pointerup', 100, 180, right); r.pointer('click', 100, 180, right);
+  assert.equal(right.focuses, 0); assert.deepEqual(right.scrolls, []);
+  r.drag(100, 140, right); assert.deepEqual(right.scrolls, [-2]);
+});
+
+test('horizontal drags and non-touch pointers stay outside vertical wheel handling', () => {
+  const r = touchRenderer(), t = r.terminals[0];
+  r.pointer('pointerdown', 100, 100);
+  assert.equal(r.pointer('pointermove', 120, 110).defaultPrevented, undefined);
+  r.pointer('pointermove', 120, 200); r.pointer('pointerup', 120, 200); r.pointer('click', 120, 200);
+  assert.deepEqual(t.scrolls, []); assert.equal(t.focuses, 0);
+  for (const pointerType of ['mouse', 'pen']) {
+    r.pointer('pointerdown', 100, 100, t, { pointerType });
+    r.pointer('pointermove', 100, 200, t, { pointerType });
+    r.pointer('pointerup', 100, 200, t, { pointerType });
+  }
+  assert.deepEqual(t.scrolls, []);
+});
+
+test('target changes, disabled input, recovery, pinch and cancellation discard unsent touch movement', () => {
+  for (const reason of ['target', 'disable', 'recovery', 'pinch', 'cancel', 'capture', 'second-pointer']) {
+    const r = touchRenderer(), t = r.terminals[0];
+    t.modes.mouseTrackingMode = 'any';
+    r.pointer('pointerdown', 100, 100); r.pointer('pointermove', 100, 119);
+    switch (reason) {
+      case 'target': r.layout('two'); break;
+      case 'disable': r.window.setInputEnabled(false); r.window.setInputEnabled(true); break;
+      case 'recovery': r.window.setConnectionRecovery(true); r.window.setConnectionRecovery(false); break;
+      case 'pinch': r.window.setFontGesture(true); r.window.setFontGesture(false); break;
+      case 'cancel': r.pointer('pointercancel', 100, 119); break;
+      case 'capture': r.pointer('lostpointercapture', 100, 119); break;
+      case 'second-pointer': r.pointer('pointerdown', 110, 119, t, { pointerId: 2, isPrimary: false }); break;
+    }
+    r.pointer('pointermove', 100, 160); r.pointer('pointerup', 100, 160); r.pointer('click', 100, 160);
+    assert.deepEqual(t.wheels, [], reason); assert.equal(t.focuses, 0, reason);
+    r.drag(100, 119); assert.deepEqual(t.wheels, [], `${reason}: remainder must not survive into the next gesture`);
+    r.drag(100, 120); assert.equal(t.wheels.length, 1, reason);
+    assert.equal(r.messages.filter(m => m.type === 'input').at(-1).target, reason === 'target' ? 'two' : 'one');
+  }
+});
 
 test('semantic keys use the shared encoder channel once and preserve cursor mode and physical modifiers', () => {
   const r = keyboardRenderer();
