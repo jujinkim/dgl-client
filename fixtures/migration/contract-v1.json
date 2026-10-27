@@ -624,7 +624,7 @@
             "mode": "system"
           },
           "theme": "system",
-          "fontSize": 14,
+          "fontSize": 12,
           "scrollback": 5000,
           "volumeKeysEnabled": false,
           "volumeUp": {
@@ -894,7 +894,7 @@
             "mode": "system"
           },
           "theme": "system",
-          "fontSize": 14,
+          "fontSize": 12,
           "scrollback": 5000,
           "volumeKeysEnabled": false,
           "volumeUp": {
@@ -1015,7 +1015,7 @@
             "mode": "system"
           },
           "theme": "system",
-          "fontSize": 14,
+          "fontSize": 12,
           "scrollback": 5000,
           "volumeKeysEnabled": false,
           "volumeUp": {
@@ -1061,7 +1061,7 @@
             "mode": "system"
           },
           "theme": "system",
-          "fontSize": 14,
+          "fontSize": 12,
           "scrollback": 5000,
           "volumeKeysEnabled": false,
           "volumeUp": {
@@ -1102,7 +1102,7 @@
             "mode": "system"
           },
           "theme": "system",
-          "fontSize": 14,
+          "fontSize": 12,
           "scrollback": 5000,
           "volumeKeysEnabled": false,
           "volumeUp": {

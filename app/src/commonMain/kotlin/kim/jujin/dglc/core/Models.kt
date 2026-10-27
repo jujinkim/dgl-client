@@ -29,7 +29,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
 
 @Serializable data class Preferences(
     val language: String = "system",
-    val theme: String = "system", val fontSize: Int = 14, val scrollback: Int = 5000,
+    val theme: String = "system", val fontSize: Int = 12, val scrollback: Int = 5000,
     val mobilePaneToolbarVisible: Boolean = true,
     val terminalShortcuts: List<TerminalShortcut> = TerminalShortcut.defaultShortcuts,
     val volumeKeysEnabled: Boolean = false,

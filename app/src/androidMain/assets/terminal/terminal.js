@@ -4,7 +4,7 @@
   const canvas = document.getElementById('window');
   const panes = new Map();
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
-  let fontSize = 14, scrollback = 5000, enabled = true, smooth = false;
+  let fontSize = 12, scrollback = 5000, enabled = true, smooth = false;
   let fontGesture = false, pointerEnabled = true;
   window.setPointerEnabled = enabled => { pointerEnabled = enabled === true; if (!pointerEnabled) cancelTouchScroll(); };
   let touchSelection = null;
@@ -52,7 +52,7 @@
   const post = message => send(message.type === 'input' || message.type === 'input-binary' || message.type === 'keyboard'
     ? { ...message, pane, target: 'target' in message ? message.target : pane === active ? inputTarget : null } : message);
   const term = new Terminal({
-    cursorBlink: true, scrollback: 5000, fontSize: 14,
+    cursorBlink: true, scrollback: 5000, fontSize: 12,
     fontFamily: 'monospace', allowProposedApi: false,
     theme: { background: '#11151b', foreground: '#dce1e8' },
     linkHandler: { activate() {}, hover() {}, leave() {} },

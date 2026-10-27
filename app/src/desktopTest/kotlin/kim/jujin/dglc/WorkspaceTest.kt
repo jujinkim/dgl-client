@@ -84,7 +84,7 @@ class WorkspaceTest {
             source.session.value = "\$1"; source.status.value = ConnectionStatus(Phase.Ready)
             val font = model.terminalFont(source)
             font.beginGesture(); font.scale(1.5); font.endGesture()
-            assertEquals(21, font.effective)
+            assertEquals(18, font.effective)
             model.changeWorkspace { it.split(it.activeGroup, SplitAxis.Horizontal, 1200f, 800f) }
             val secondGroup = model.workspace.value.activeGroup
             val second = model.openSession(source, "\$2") as Connection

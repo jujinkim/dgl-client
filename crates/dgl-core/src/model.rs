@@ -102,7 +102,7 @@ impl Default for Preferences {
             theme: "system".into(),
             accent: Default::default(),
             mobile_pane_toolbar_visible: true,
-            font_size: 14,
+            font_size: 12,
             scrollback: 5000,
             terminal_shortcuts: crate::input::TerminalShortcut::defaults(),
             volume_keys_enabled: false,

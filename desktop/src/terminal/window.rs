@@ -515,15 +515,22 @@ impl Render for WindowTerminal {
                         .absolute()
                         .top(px(8.))
                         .right(px(8.))
-                        .size(px(40.))
+                        .h(px(28.))
+                        .px(px(10.))
                         .rounded_full()
                         .flex()
                         .items_center()
                         .justify_center()
+                        .gap(px(6.))
                         .bg(rgb(0x39434f))
                         .text_color(rgb(0xdce1e8))
+                        .text_size(px(14.))
+                        .line_height(px(20.))
                         .cursor_pointer()
-                        .child("↺")
+                        .child(div().text_size(px(20.)).child("A"))
+                        .child(div().text_size(px(14.)).child("A"))
+                        .child(self.font.effective().to_string())
+                        .child(div().text_size(px(16.)).child("🔄"))
                         .native_tooltip(dgl_core::i18n::t("세션 글자 크기 초기화"))
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -652,7 +659,9 @@ mod tests {
             let reset = ui.debug_bounds("terminal-font-reset").unwrap();
             assert_eq!(reset.right(), area.right() - px(8.));
             assert_eq!(reset.top(), area.top() + px(8.));
-            assert_eq!(reset.size, size(px(40.), px(40.)));
+            assert_eq!(reset.size.height, px(28.));
+            assert!(reset.size.width > px(40.));
+            assert!(reset.left() >= area.left() + px(8.));
             ui.simulate_click(reset.center(), Modifiers::default());
             ui.run_until_parked();
             assert_eq!(first.read_with(ui, |t, _| t.font.override_size()), None);

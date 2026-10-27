@@ -16,16 +16,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -212,11 +217,19 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             SmallFloatingActionButton(onClick = {
                 terminal.resetFontSize(resources?.model?.local?.value?.preferences?.fontSize ?: preferences.fontSize)
             },
-                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).height(28.dp)
                     .focusProperties { canFocus = false }.semantics {
                         contentDescription = t("세션 글자 크기 초기화")
                         stateDescription = tr("현재 글자 크기: {0}", size)
-                    }, shape = androidx.compose.foundation.shape.CircleShape) { Text("↺") }
+                    }, shape = androidx.compose.foundation.shape.CircleShape) {
+                Row(Modifier.padding(horizontal = 10.dp).clearAndSetSemantics {},
+                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("A", fontSize = 20.sp, lineHeight = 20.sp)
+                    Text("A", fontSize = 14.sp, lineHeight = 20.sp)
+                    Text(size.toString(), fontSize = 14.sp, lineHeight = 20.sp)
+                    Text("🔄", fontSize = 16.sp, lineHeight = 20.sp)
+                }
+            }
         }
         status.recoveryMessage?.takeUnless { status.retryExhausted }?.let { message ->
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .45f)), contentAlignment = Alignment.Center) {
