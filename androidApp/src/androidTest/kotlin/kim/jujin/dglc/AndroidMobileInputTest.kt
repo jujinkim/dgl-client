@@ -314,7 +314,7 @@ class AndroidMobileInputTest {
                 stage = "fixed geometry"
                 delay(300)
                 checkBar()
-                stage = "row order, independent widths and start alignment"
+                stage = "shortest row placement, independent widths and start alignment"
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(
                     terminalShortcuts = listOf(TerminalShortcut.ShiftTab, TerminalShortcut.Ctrl, TerminalShortcut.Enter))) } }
                 instrumentation.waitForIdleSync(); checkBar()
@@ -326,22 +326,35 @@ class AndroidMobileInputTest {
                 assertTrue("Short lower key must keep its own width", top.width() > bottom.width())
                 assertEquals(keyboard.top, top.top); assertEquals(composer.top, bottom.top)
                 assertTrue(kotlin.math.abs(top.left - keyboard.right - 4 * density) <= 2)
-                assertTrue(kotlin.math.abs(last.left - top.right - 4 * density) <= 2)
-                assertEquals(top.top, last.top) // The odd final key leaves its lower cell empty.
+                assertTrue(kotlin.math.abs(last.left - bottom.right - 4 * density) <= 2)
+                assertEquals("The third key must fill the shorter lower row", bottom.top, last.top)
+                stage = "equal row lengths start with the upper row"
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(
+                    terminalShortcuts = listOf(TerminalShortcut.Ctrl, TerminalShortcut.Shift, TerminalShortcut.Alt))) } }
+                instrumentation.waitForIdleSync(); checkBar()
+                val equalTop = shortcutBounds(TerminalShortcut.Ctrl); val equalBottom = shortcutBounds(TerminalShortcut.Shift)
+                val equalLast = shortcutBounds(TerminalShortcut.Alt)
+                assertEquals(equalTop.width(), equalBottom.width())
+                assertEquals(equalTop.left, equalBottom.left)
+                assertEquals(keyboard.top, equalTop.top); assertEquals(composer.top, equalBottom.top)
+                assertEquals(equalTop.top, equalLast.top)
+                assertTrue(kotlin.math.abs(equalLast.left - equalTop.right - 4 * density) <= 2)
                 stage = "independent rows share one horizontal scroll"
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = listOf(
                     TerminalShortcut.ShiftTab, TerminalShortcut.Ctrl, TerminalShortcut.ShiftLeft, TerminalShortcut.Alt,
-                    TerminalShortcut.Enter, TerminalShortcut.Escape, TerminalShortcut.Tab, TerminalShortcut.Up, TerminalShortcut.PageDown))) } }
+                    TerminalShortcut.Enter, TerminalShortcut.Escape, TerminalShortcut.Tab, TerminalShortcut.Up, TerminalShortcut.PageDown,
+                    TerminalShortcut.Down, TerminalShortcut.Left))) } }
                 awaitNode(TerminalShortcut.Escape.label)
-                val beforeTop = shortcutBounds(TerminalShortcut.Enter); val beforeBottom = shortcutBounds(TerminalShortcut.Escape)
+                val beforeEnter = shortcutBounds(TerminalShortcut.Enter); val beforeEscape = shortcutBounds(TerminalShortcut.Escape)
+                assertTrue("Scroll regression must cover both rows", beforeEnter.top != beforeEscape.top)
                 val sharedScroll = find(awaitNode("터미널 입력 도구")) { it.isScrollable }!!
                 assertTrue(sharedScroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
                 withTimeout(5000) {
-                    while (shortcutBounds(TerminalShortcut.Enter).left >= beforeTop.left) delay(25)
+                    while (shortcutBounds(TerminalShortcut.Enter).left >= beforeEnter.left) delay(25)
                 }
                 instrumentation.uiAutomation.waitForIdle(100, 2000)
-                assertEquals(beforeTop.left - shortcutBounds(TerminalShortcut.Enter).left,
-                    beforeBottom.left - shortcutBounds(TerminalShortcut.Escape).left)
+                assertEquals(beforeEnter.left - shortcutBounds(TerminalShortcut.Enter).left,
+                    beforeEscape.left - shortcutBounds(TerminalShortcut.Escape).left)
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(
                     terminalShortcuts = listOf(TerminalShortcut.ShiftTab, TerminalShortcut.Ctrl, TerminalShortcut.Enter))) } }
                 stage = "single row setting survives restart"
@@ -356,13 +369,22 @@ class AndroidMobileInputTest {
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = listOf(TerminalShortcut.Enter))) } }
                 instrumentation.waitForIdleSync(); checkBar()
                 assertEquals(bounds(awaitNode("키보드 열기")).top, shortcutBounds(TerminalShortcut.Enter).top)
+                stage = "default shortcuts retain their visible anchor and scroll together"
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = TerminalShortcut.defaultShortcuts)) } }
-                awaitNode(TerminalShortcut.Ctrl.label)
+                awaitNode(TerminalShortcut.ShiftTab.label)
+                val shortcuts = find(awaitNode("터미널 입력 도구")) { it.isScrollable }
+                assertNotNull(shortcuts)
+                // Lazy items outside the viewport have no accessibility node. Return to the start
+                // after expanding the list, which keeps the previously visible Enter as its anchor.
+                withTimeout(5000) {
+                    while (node(TerminalShortcut.Ctrl.label) == null) {
+                        assertTrue(shortcuts!!.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD))
+                        delay(200)
+                    }
+                }
                 instrumentation.waitForIdleSync()
                 val fixedBeforeScroll = bounds(awaitNode("텍스트 작성 열기"))
                 val keyboardBeforeScroll = bounds(awaitNode("키보드 열기")); val menuBeforeScroll = bounds(awaitNode("CLI 실행 메뉴"))
-                val shortcuts = find(awaitNode("터미널 입력 도구")) { it.isScrollable }
-                assertNotNull(shortcuts)
                 withTimeout(5000) {
                     while (node(TerminalShortcut.End.label) == null) {
                         assertTrue(shortcuts!!.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
@@ -373,9 +395,13 @@ class AndroidMobileInputTest {
                 assertEquals(fixedBeforeScroll, bounds(awaitNode("텍스트 작성 열기")))
                 assertEquals(keyboardBeforeScroll, bounds(awaitNode("키보드 열기")))
                 assertEquals(menuBeforeScroll, bounds(awaitNode("CLI 실행 메뉴")))
-                val scrolledTop = shortcutBounds(TerminalShortcut.Right); val scrolledBottom = shortcutBounds(TerminalShortcut.Home)
-                assertEquals(keyboardBeforeScroll.top, scrolledTop.top); assertEquals(fixedBeforeScroll.top, scrolledBottom.top)
-                assertEquals(scrolledTop.top, shortcutBounds(TerminalShortcut.End).top)
+                for (shortcut in listOf(TerminalShortcut.Right, TerminalShortcut.Home, TerminalShortcut.End)) {
+                    val scrolled = shortcutBounds(shortcut)
+                    assertTrue("Scrolled key must stay in one of the two rows",
+                        scrolled.top == keyboardBeforeScroll.top || scrolled.top == fixedBeforeScroll.top)
+                    assertTrue("Scrolled key must stay inside the shortcut viewport",
+                        scrolled.left >= keyboardBeforeScroll.right && scrolled.right <= menuBeforeScroll.left)
+                }
                 checkBar()
                 var web: WebView? = null
                 scenario.onActivity { web = webView(it.window.decorView) }

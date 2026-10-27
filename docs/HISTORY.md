@@ -319,6 +319,14 @@ IME 높이를 layout 단계에서 적용하고 WebView 논리 높이·분할 그
 앱 창 프레임 p95는 167.17→193.72ms로 개선을 확인하지 못했습니다. 사용자 실기 체감과 AVD 수치를 구분합니다.
 원시는 `artifacts/android-ime/`, `artifacts/android-workspace/`에 있으며 낮은 가로 화면의 도구 접근성은 TASKS에 남겼습니다.
 
+## 2026-10-28: 앱 버전·About·알림 아이콘
+
+Cargo workspace 버전을 Android 표시·APK·데스크톱·패키징의 단일 기준으로 연결하고 설정 마지막에 About app을 추가했습니다.
+데스크톱 타이틀바와 Android 알림 아이콘도 갱신했습니다. 당시 Rust 데스크톱 80·JVM 92·Python 99 통과,
+Keychain ignore 1·JVM 예상 skip 9, Android Debug·계측 APK·lint, API36 About·알림·연결 수명 선택 계측과
+macOS ad-hoc 패키징·버전 대조를 확인했습니다. 원시는 `.tools/about-*.log`, `artifacts/about-app/`에 있으며
+초기 About/연결 수명 동시 실행 실패는 통과로 계산하지 않았습니다. Windows 네이티브와 실기 인수는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

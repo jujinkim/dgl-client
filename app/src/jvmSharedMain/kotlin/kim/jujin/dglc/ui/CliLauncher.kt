@@ -9,6 +9,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.staggeredgrid.LazyHorizontalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -154,17 +157,14 @@ private object AboveLauncher : PopupPositionProvider {
                     Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
                 }
             }
-            Box(Modifier.weight(1f).clipToBounds().horizontalScroll(rememberScrollState())) {
+            Box(Modifier.weight(1f).clipToBounds()) {
                 if (twoRows) {
-                    Column(Modifier.height(columnHeight), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        val ordered = shortcuts.distinct()
-                        repeat(2) { row ->
-                            Row(Modifier.height(buttonHeight), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                ordered.filterIndexed { index, _ -> index % 2 == row }.forEach { shortcutButton(it, Modifier) }
-                            }
-                        }
+                    LazyHorizontalStaggeredGrid(rows = StaggeredGridCells.Fixed(2),
+                        modifier = Modifier.fillMaxWidth().height(columnHeight),
+                        verticalArrangement = Arrangement.spacedBy(4.dp), horizontalItemSpacing = 4.dp) {
+                        items(shortcuts.distinct(), key = { it.name }) { shortcutButton(it, Modifier) }
                     }
-                } else Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                } else Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     shortcuts.distinct().forEach { shortcut -> shortcutButton(shortcut, Modifier) }
                 }
             }
