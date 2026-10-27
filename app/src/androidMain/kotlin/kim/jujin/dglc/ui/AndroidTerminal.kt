@@ -36,6 +36,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
@@ -210,16 +212,18 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     val status by client.status.collectAsState()
     val fontOverride by terminal.fontSizeOverride.collectAsState()
     val occlusion = LocalTerminalOcclusion.current
-    val imeVisible = LocalTerminalImeVisible.current
-    Box(modifier.layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
-        terminal.setViewport(TerminalViewport(placeable.width, placeable.height + occlusion.roundToPx(), placeable.height, imeVisible))
-        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-    }) {
+    Box(modifier.clipToBounds()) {
         key(terminal) { AndroidView(factory = {
             (terminal.view.parent as? android.view.ViewGroup)?.removeView(terminal.view)
             terminal.view
-        }, modifier = Modifier.fillMaxSize()) }
+        }, modifier = Modifier.fillMaxSize().layout { measurable, constraints ->
+            val hidden = occlusion.getBottom(this)
+            val visible = constraints.maxHeight
+            val logical = visible + hidden
+            val placeable = measurable.measure(Constraints.fixed(constraints.maxWidth, logical))
+            terminal.setViewport(TerminalViewport(placeable.width, logical, visible, hidden > 0))
+            layout(placeable.width, visible) { placeable.place(0, 0) }
+        }) }
         fontOverride?.let { size ->
             SmallFloatingActionButton(onClick = {
                 terminal.resetFontSize(resources?.model?.local?.value?.preferences?.fontSize ?: preferences.fontSize)
@@ -299,6 +303,18 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private var closed = false
     private val imeAnimation = TerminalImeAnimation()
     private val viewport = TerminalViewportState()
+    private var viewportScheduled = false
+    private val viewportFrame = Runnable {
+        viewportScheduled = false
+        val value = viewport.viewport
+        if (!closed && ready.isCompleted && viewport.accepts(viewport.version) && value != null) {
+            val density = view.resources.displayMetrics.density.toDouble()
+            val geometry = JSONObject().put("version", viewport.version).put("width", value.width / density)
+                .put("logicalHeight", value.logicalHeight / density).put("visibleHeight", value.visibleHeight / density)
+                .put("imeVisible", value.imeVisible)
+            view.evaluateJavascript("window.setViewport($geometry)", null)
+        }
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     init {
         font.configure(preferences.fontSize)
@@ -470,6 +486,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         if (imeAnimation.end(version)) dispatchImeAnimation(false, version)
     }
     fun cancelImeAnimation() {
+        view.removeCallbacks(viewportFrame); viewportScheduled = false
         dispatchImeAnimation(false, imeAnimation.cancel())
         viewport.detach()
         val version = viewport.version
@@ -484,17 +501,9 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         if (viewport.update(value)) dispatchViewport()
     }
     private fun dispatchViewport() {
-        val version = viewport.version
-        view.post {
-            val value = viewport.viewport
-            if (!closed && ready.isCompleted && viewport.accepts(version) && value != null) {
-                val density = view.resources.displayMetrics.density.toDouble()
-                val geometry = JSONObject().put("version", version).put("width", value.width / density)
-                    .put("logicalHeight", value.logicalHeight / density).put("visibleHeight", value.visibleHeight / density)
-                    .put("imeVisible", value.imeVisible)
-                view.evaluateJavascript("window.setViewport($geometry)", null)
-            }
-        }
+        if (closed || viewportScheduled) return
+        viewportScheduled = true
+        view.postOnAnimation(viewportFrame)
     }
     private fun dispatchImeAnimation(active: Boolean, version: Long) {
         scope.launch {
@@ -551,6 +560,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         }
     }
     override fun close() {
+        view.removeCallbacks(viewportFrame); viewportScheduled = false
         finishFontGesture()
         closed = true; ready.cancel(); awaiting?.second?.cancel()
         scope.launch {

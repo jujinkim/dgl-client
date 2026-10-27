@@ -16,7 +16,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -132,8 +134,9 @@ private object AboveLauncher : PopupPositionProvider {
                     contentPadding = PaddingValues(0.dp)) { UiGlyph(UiIcons.compose, Modifier.size(18.dp)) }
             }
             if (mobile) {
-                if (twoRows) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { mobileTools() }
-                else Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { mobileTools() }
+                // Keep fixed tools above partially clipped shortcut hit/accessibility bounds.
+                if (twoRows) Column(Modifier.zIndex(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) { mobileTools() }
+                else Row(Modifier.zIndex(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) { mobileTools() }
             }
             val shortcutButton: @Composable (TerminalShortcut, Modifier) -> Unit = { shortcut, modifier ->
                 TerminalToolButton({
@@ -151,15 +154,19 @@ private object AboveLauncher : PopupPositionProvider {
                     Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
                 }
             }
-            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(Modifier.weight(1f).clipToBounds().horizontalScroll(rememberScrollState())) {
                 if (twoRows) {
-                    shortcuts.distinct().chunked(2).forEach { column ->
-                        Column(Modifier.width(IntrinsicSize.Max).height(columnHeight), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            column.forEach { shortcut -> shortcutButton(shortcut, Modifier.fillMaxWidth()) }
+                    Column(Modifier.height(columnHeight), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val ordered = shortcuts.distinct()
+                        repeat(2) { row ->
+                            Row(Modifier.height(buttonHeight), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                ordered.filterIndexed { index, _ -> index % 2 == row }.forEach { shortcutButton(it, Modifier) }
+                            }
                         }
                     }
-                } else shortcuts.distinct().forEach { shortcut -> shortcutButton(shortcut, Modifier) }
+                } else Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    shortcuts.distinct().forEach { shortcut -> shortcutButton(shortcut, Modifier) }
+                }
             }
             val density = LocalDensity.current
             val safeTop = WindowInsets.safeDrawing.getTop(density)

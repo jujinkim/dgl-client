@@ -49,8 +49,7 @@ import kotlinx.coroutines.flow.first
 expect fun copyPublicKey(value: String)
 internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
 // Height removed by IME only; system bars/cutouts already belong to the logical viewport.
-internal val LocalTerminalOcclusion = staticCompositionLocalOf { 0.dp }
-internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
+internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { WindowInsets(0) }
 
 @Composable internal fun MobileAppIcon() {
     Image(AppIcon, contentDescription = "DaGaLi", modifier = Modifier.size(24.dp)
@@ -133,22 +132,20 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
             LocalTextSelectionColors provides TextSelectionColors(rgb(readable), rgb(selection))) {
         Surface(Modifier.fillMaxSize()) {
           val safeInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
-          val density = LocalDensity.current
-          val imeOcclusion = if (androidInput) with(density) {
-              (WindowInsets.ime.getBottom(this) - safeInsets.getBottom(this)).coerceAtLeast(0).toDp()
-          } else 0.dp
-          CompositionLocalProvider(LocalTerminalOcclusion provides imeOcclusion,
-              LocalTerminalImeVisible provides (imeOcclusion > 0.dp)) {
-          BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(safeInsets).padding(bottom = imeOcclusion)
-              .onGloballyPositioned { availableBounds = it.boundsInWindow() }) {
+          val imeInsets = if (androidInput) WindowInsets.ime else WindowInsets(0)
+          val imeOcclusion = imeInsets.exclude(safeInsets).only(WindowInsetsSides.Bottom)
+          CompositionLocalProvider(LocalTerminalOcclusion provides imeOcclusion) {
+          BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(safeInsets)) {
             val workspaceMode = androidInput && maxWidth >= 840.dp
+            val wideLayout = workspaceMode || (!androidInput && maxWidth >= 840.dp)
             val mobileLayout = androidInput && !workspaceMode
             LaunchedEffect(workspaceMode) { if (workspaceMode) { explorer = false; notifications = false } }
             if (!workspaceMode) {
                 val visible = if (!explorer && inputBlocks.isEmpty()) setOfNotNull(selected) else emptySet()
                 SideEffect { model.visibleConnections = visible }
             }
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().windowInsetsPadding(imeInsets)
+                .onGloballyPositioned { availableBounds = it.boundsInWindow() }) {
                 if (mobileLayout) {
                     MobileHeader(selected?.host?.alias, explorer || selected == null, { explorer = !explorer },
                         { selected?.let { explorer = false; tmuxNavigationClient = it } }, menu = {
@@ -191,8 +188,8 @@ internal val LocalTerminalImeVisible = staticCompositionLocalOf { false }
                 }
                 val maintenanceError by model.backgroundConnectionError.collectAsState()
                 maintenanceError?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                BoxWithConstraints(Modifier.weight(1f)) {
-                    val wide = workspaceMode || (!androidInput && maxWidth >= 840.dp)
+                Box(Modifier.weight(1f)) {
+                    val wide = wideLayout
                     Row(Modifier.fillMaxSize()) {
                         if (wide || selected == null || explorer) {
                             Column(if (wide) Modifier.width(272.dp).fillMaxHeight() else Modifier.fillMaxSize()) {

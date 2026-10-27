@@ -37,7 +37,8 @@ npm test --prefix web
 크기·폰트 회귀 검사는 즉시 제출·50ms 제한·실패 후 150ms 재시도·최신 크기 병합, 렌더러 소유 IME 세대의 취소·재부착,
 지연된 폰트 측정·숨김 후 표시, 조합 중 스냅샷 교체·커서 좌표와 입력 보조 요소 캐시 제외를 포함합니다.
 모바일 웹 검사는 IME 표시·숨김·높이 변경·빠른 반전의 resize 없음, 논리 크기·CSS 픽셀·렌더러 세대,
-패널 1:1 이동·범위·scrollbar 비례·입력 누출 방지·재개방 하단 정렬과 원격 열 수 유지·세로 드래그 방향·행 단위 누적,
+패널 1:1 이동·80ms 속도/250ms 감속·경계 정지·관성 취소·오래된 프레임/입력 누출 방지·scrollbar 비례·
+동일 논리 크기의 셀 측정 생략·재개방 하단 정렬과 원격 열 수 유지·세로 드래그 방향·행 단위 누적,
 비활성 pane 선택·대상 세대·취소·핀치·IME 분리와 합성 클릭 차단도 확인합니다.
 
 검증기의 `linux` 모드는 macOS에서도 사용하는 비 Windows·비 SSH JVM 검사 모드입니다.
@@ -189,7 +190,7 @@ ANDROID_SERIAL=emulator-5554 python3 scripts/workspace_android.py
 ```
 
 839/840dp 경계·넓은 분할·IME 전후 모든 그룹의 논리 크기와 WebView 유지·실제 높이 부족 시 임시 확대·탭 이동/폭 전환 전후 WebView 동일성·
-활성 그룹 입력·전역 모달 차단·드래그 확정/취소, 320dp 상단 버튼·36dp 탭·70dp 두 줄/36dp 한 줄 단축키의 순서·고정 버튼·공동 스크롤·설정 복원,
+활성 그룹 입력·전역 모달 차단·드래그 확정/취소, 320dp 상단 버튼·36dp 탭·70dp 두 줄/36dp 한 줄 단축키의 독립 폭·순서·고정 버튼·공동 스크롤·설정 복원,
 알림 빈/긴 목록·내부 스크롤·IME 공간·닫기/바깥 터치/뒤로 가기·입력 차단/포커스 복원, 세션 폰트 핀치·취소·최신 기본값 초기화·탭/Activity 수명과
 터미널 가로 스크롤 경계도 검사합니다. 화면 크기·밀도·IME·글꼴·애니메이션 설정은
 `finally`에서 복원합니다. 결과는 `artifacts/android-workspace/`에 남기며 명시적 검사 이름 목록과 대조합니다.
@@ -198,6 +199,17 @@ ANDROID_SERIAL=emulator-5554 python3 scripts/workspace_android.py
 JVM 기본 검사에는 분할·이동·합치기·선택·최소 공간/최대 그룹·배치 저장·세션 예약·오래된 연결 대상 거부가 포함됩니다.
 `--section workspace`, `--section mobile-input`, `--section compact`로 필요한 구간만 재검사할 수 있습니다.
 전체 Android API matrix로 확대하지 않습니다.
+`AndroidMobileInputTest#imeTransitionsRecordFrameDurations`는 480×800dp·애니메이션 1배에서
+키보드 열기/닫기 각 5회를 실행하고 `cache/ime-frames.json`에 `FrameMetrics.TOTAL_DURATION` 원시 ns·
+누락 콜백 수·WebView 크기 변경·원격 resize 수를 저장합니다. 디스플레이·키보드·애니메이션 설정은 복원합니다.
+독립 실행은 위와 같은 앱/계측 APK 설치 후 아래 명령을 사용합니다.
+
+```sh
+adb -s "$ANDROID_SERIAL" shell am instrument -w -r -e class kim.jujin.dglc.AndroidMobileInputTest#imeTransitionsRecordFrameDurations kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner
+adb -s "$ANDROID_SERIAL" shell run-as kim.jujin.dglc cat cache/ime-frames.json
+```
+
+앱 창의 처리 시간 진단이며 SurfaceFlinger 표시 지연·전체 성능 인수로 해석하지 않습니다.
 삼성 키보드 실기 인수는 키보드를 열자마자 한글을 입력해 조합 글자가 커서에 붙어 있는지와 최종 문자열이 정확한지를 확인합니다.
 영문·숫자도 비교하며, 자동 좌표 검사·계측 APK 컴파일을 이 실기 결과로 계산하지 않습니다.
 

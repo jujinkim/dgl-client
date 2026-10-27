@@ -12,10 +12,16 @@
   const nativeViewport = document.body?.dataset?.nativeViewport === 'true';
   let viewport = null, viewportVersion = 0, viewportDetached = false;
   let panelOffset = 0, panelDragging = false, panelBar = null, panelThumb = null, barDrag = null;
+  let panelFling = null;
+  const stopPanelFling = () => {
+    const previous = panelFling; panelFling = null;
+    if (previous && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(previous.frame);
+  };
   const panelRange = () => viewport?.imeVisible ? Math.max(0, viewport.logicalHeight - viewport.visibleHeight) : 0;
   const logicalWidth = () => viewport?.width ?? root.clientWidth;
   const logicalHeight = () => viewport?.logicalHeight ?? root.clientHeight;
   const cancelTouchScroll = () => {
+    stopPanelFling();
     for (const p of panes.values()) p.cancelTouchScroll();
     panelDragging = false;
     const previous = barDrag; barDrag = null;
@@ -128,6 +134,7 @@
   };
   api.cancelSnapshot = clearCache;
   api.beginSnapshot = () => {
+    api.cancelTouchScroll();
     syncInputPosition();
     if (!snapshotUpdating) snapshotInputModes = { ...term.modes };
     snapshotUpdating = true;
@@ -255,7 +262,7 @@
     // Wheel reports belong to the gesture's destination, independently of a
     // pending key/IME origin. xterm emits these synchronously during dispatch.
     if (wheelOrigin) {
-      if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !fontGesture && new TextEncoder().encode(data).length <= 65536)
+      if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !panelFling && !fontGesture && new TextEncoder().encode(data).length <= 65536)
         post({ type: 'input', data, target: wheelOrigin.target, pointer: true });
       return;
     }
@@ -280,12 +287,12 @@
       keyboard({ '\r': 'enter', '\t': 'tab', '\x7f': 'backspace' }[data], null, {}, textTarget); textOrigin = composing; compositionPending = composing;
     } else if (inputEnabled && !fontGesture) {
       const pointer = /^\x1b\[([<M])/.test(data);
-      if (!pointer || (pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging)) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}) });
+      if (!pointer || (pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !panelFling)) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}) });
     } else if (!fontGesture) post({ type: 'blocked-input' });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
   term.onBinary(data => {
-    if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !fontGesture && data.length <= 65536)
+    if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !panelFling && !fontGesture && data.length <= 65536)
       post({ type: 'input-binary', data, pointer: true, target: wheelOrigin ? wheelOrigin.target : pane === active ? inputTarget : null });
   });
   api.setInputEnabled = enabled => {
@@ -340,6 +347,7 @@
   api.focusTerminal = () => term.focus();
   let touch = null, suppressTouchClick = false;
   api.cancelTouchScroll = () => {
+    stopPanelFling();
     const previous = touch;
     touch = null;
     if (previous) {
@@ -350,18 +358,50 @@
   };
   const canScroll = gesture => inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !fontGesture && !recoveryScreen &&
     !draggingBoundary && pane === active && gesture.target === inputTarget;
+  const samplePanel = (gesture, event) => {
+    if (!Number.isFinite(event.timeStamp)) return;
+    const samples = gesture.samples;
+    if (samples.length && event.timeStamp <= samples.at(-1).time) return;
+    samples.push({ time: event.timeStamp, y: event.clientY });
+    while (samples.length > 2 && samples[1].time <= event.timeStamp - 80) samples.shift();
+  };
+  const flingPanel = (gesture, event) => {
+    samplePanel(gesture, event);
+    const samples = gesture.samples, last = samples.at(-1), first = samples[0];
+    if (!last || last.time <= first.time || !canScroll(gesture) || !panelRange()) return;
+    const start = Math.max(first.time, last.time - 80);
+    const next = samples[1];
+    const y = start > first.time ? first.y + (next.y - first.y) * (start - first.time) / (next.time - first.time) : first.y;
+    const velocity = (y - last.y) / (last.time - start); // CSS pixels/ms, opposite finger motion.
+    if (Math.abs(velocity) < .02) return;
+    const fling = { start: last.time, offset: panelOffset, velocity, frame: null };
+    panelFling = fling;
+    const step = now => {
+      // Cancellation revokes the object before a queued callback can apply a frame.
+      if (panelFling !== fling) return;
+      if (!canScroll(gesture) || !panelRange()) { stopPanelFling(); return; }
+      const elapsed = Math.max(0, now - fling.start), decay = Math.exp(-elapsed / 250);
+      movePanel(fling.offset + fling.velocity * 250 * (1 - decay));
+      if (panelOffset <= 0 || panelOffset >= panelRange() || Math.abs(fling.velocity * decay) < .02) { stopPanelFling(); return; }
+      fling.frame = requestAnimationFrame(step);
+    };
+    fling.frame = requestAnimationFrame(step);
+  };
   host.addEventListener('pointerdown', event => {
+    stopPanelFling();
     if (event.pointerType !== 'touch') { suppressTouchClick = false; return; }
     if (event.isPrimary === false || touch) { cancelTouchScroll(); return; }
     suppressTouchClick = false;
     touchSelection = null;
     if (!inputEnabled || !pointerEnabled || snapshotUpdating || imeAnimating || fontGesture || recoveryScreen || draggingBoundary) return;
     touch = { id: event.pointerId, x: event.clientX, y: event.clientY, lastY: event.clientY,
-      remainder: 0, dragging: false, selected: pane === active, target: inputTarget, panel: panelRange() > 0, offset: panelOffset };
+      remainder: 0, dragging: false, selected: pane === active, target: inputTarget, panel: panelRange() > 0, offset: panelOffset, samples: [] };
+    samplePanel(touch, event);
   }, true);
   host.addEventListener('pointermove', event => {
     const gesture = touch;
     if (!gesture || event.pointerId !== gesture.id) return;
+    samplePanel(gesture, event);
     const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
     if (!gesture.dragging) {
       if (Math.abs(dx) >= 8 && Math.abs(dx) >= Math.abs(dy)) {
@@ -414,6 +454,7 @@
     if (touch?.id !== event.pointerId) return;
     if (touch.dragging) event.preventDefault();
     const previous = touch; touch = null; panelDragging = false;
+    if (previous.dragging && previous.panel && previous.selected) flingPanel(previous, event);
     if (host.hasPointerCapture?.(previous.id)) host.releasePointerCapture(previous.id);
   }, true);
   for (const name of ['pointercancel', 'lostpointercapture']) host.addEventListener(name, event => {
@@ -425,8 +466,11 @@
   // WebView may still synthesize mouse/click events after a consumed gesture.
   // Capture before xterm's mouse reporting and before our tap-to-focus handler.
   for (const name of ['mousedown', 'mouseup', 'click']) host.addEventListener(name, event => {
-    if (suppressTouchClick) { event.preventDefault(); event.stopImmediatePropagation(); }
+    if (suppressTouchClick || panelFling) { event.preventDefault(); event.stopImmediatePropagation(); }
   }, true);
+  host.addEventListener('wheel', event => {
+    if (panelDragging || panelFling) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }, { capture: true, passive: false });
   host.addEventListener('click', () => {
     if (!inputEnabled || fontGesture) return;
     if (pane !== active) send({ type: 'focus', pane, target: inputTarget });
@@ -531,11 +575,13 @@
         value.visibleHeight > value.logicalHeight || typeof value.imeVisible !== 'boolean') return;
     const oldRange = panelRange(), atBottom = panelOffset === oldRange;
     cancelTouchScroll();
+    const logicalChanged = viewportDetached || !viewport || viewport.width !== value.width || viewport.logicalHeight !== value.logicalHeight;
     viewportVersion = value.version; viewportDetached = false; viewport = { ...value };
     const range = panelRange();
     panelOffset = !range ? 0 : !oldRange || atBottom ? range : Math.min(panelOffset, range);
     ensurePanelBar();
-    resize(); alignViewport();
+    if (logicalChanged) resize();
+    alignViewport();
   };
   window.detachViewport = version => {
     if (!Number.isSafeInteger(version) || version <= viewportVersion) return;
@@ -621,7 +667,10 @@
     const ownedFocus = [...panes.values()].some(p => p.term.element?.contains?.(document.activeElement));
     const previous = active;
     const selectedByTouch = touchSelection !== null && touchSelection.pane === value.active && touchSelection.target === inputTarget;
-    if (active !== (value.active || 'shell') || inputTarget !== value.inputTarget || layout?.window !== value.window) {
+    const geometryChanged = !layout || layout.columns !== value.columns || layout.rows !== value.rows ||
+      layout.panes.length !== value.panes.length || value.panes.some((p, i) =>
+        ['id', 'left', 'top', 'width', 'height', 'visible'].some(key => p[key] !== layout.panes[i][key]));
+    if (geometryChanged || active !== (value.active || 'shell') || inputTarget !== value.inputTarget || layout?.window !== value.window) {
       cancelTouchScroll(); touchSelection = null;
     }
     layout = value; active = value.active || 'shell'; inputTarget = value.inputTarget;
@@ -636,6 +685,7 @@
   };
   // The server may keep a smaller grid than this viewport. Tapping the empty
   // container still opens the active pane's IME, just as tapping its cells does.
+  root.addEventListener('pointerdown', stopPanelFling, true);
   root.addEventListener('scroll', () => { if (panelRange() > 0 && root.scrollTop) root.scrollTop = 0; });
   root.addEventListener('click', event => {
     if (enabled && !fontGesture && !event.target.closest('.pane, .boundary')) focused().focusTerminal();

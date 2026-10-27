@@ -143,6 +143,14 @@ class AndroidWorkspaceTest {
                 val geometry = model.workspace.value.root
                 delay(300)
                 val firstSizes = first.sizes.toList(); val secondSizes = second.sizes.toList()
+                val nativeSizes = listOf(firstRenderer.view, secondRenderer.view).map { it.width to it.height }
+                val nativeChanges = java.util.Collections.synchronizedList(mutableListOf<String>())
+                val observer = View.OnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
+                    if (r - l != or - ol || b - t != ob - ot) nativeChanges += "${r-l}x${b-t}"
+                }
+                scenario.onActivity {
+                    firstRenderer.view.addOnLayoutChangeListener(observer); secondRenderer.view.addOnLayoutChangeListener(observer)
+                }
                 stage = "IME keeps both split groups and logical sizes"
                 click("키보드 열기"); waitIme(scenario, true)
                 delay(300)
@@ -150,11 +158,16 @@ class AndroidWorkspaceTest {
                 assertEquals(firstSizes, first.sizes.toList()); assertEquals(secondSizes, second.sizes.toList())
                 assertEquals(geometry, model.workspace.value.root)
                 assertSame(secondRenderer, second.surface)
+                assertEquals(nativeSizes, listOf(firstRenderer.view, secondRenderer.view).map { it.width to it.height })
                 // Both renderers stay attached throughout keyboard visibility changes.
                 waitIme(scenario, true)
                 click("키보드 닫기"); waitIme(scenario, false)
                 delay(300)
                 assertEquals(firstSizes, first.sizes.toList()); assertEquals(secondSizes, second.sizes.toList())
+                scenario.onActivity {
+                    firstRenderer.view.removeOnLayoutChangeListener(observer); secondRenderer.view.removeOnLayoutChangeListener(observer)
+                }
+                assertTrue("Split IME must clip both WebViews without resizing: $nativeChanges", nativeChanges.isEmpty())
                 resize(scenario, 1200, 1000)
                 eventually { first.surface != null && second.surface != null }
                 assertSame(firstRenderer, first.surface); assertSame(secondRenderer, second.surface)

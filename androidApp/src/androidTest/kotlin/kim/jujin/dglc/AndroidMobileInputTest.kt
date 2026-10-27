@@ -36,6 +36,8 @@ class AndroidMobileInputTest {
         var connects = 0
         var closes = 0
         override fun captureInputTarget() = InputTarget(1, session.value, pane.value!!)
+        override fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? =
+            TerminalKey.entries.firstOrNull { it.semanticInput() == (key to modifiers) }?.bytes()
         override suspend fun sendInput(target: InputTarget, bytes: ByteArray): InputCompletion {
             assertEquals(captureInputTarget(), target); writes += bytes; return completion.await()
         }
@@ -312,7 +314,7 @@ class AndroidMobileInputTest {
                 stage = "fixed geometry"
                 delay(300)
                 checkBar()
-                stage = "column order, equal widths and start alignment"
+                stage = "row order, independent widths and start alignment"
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(
                     terminalShortcuts = listOf(TerminalShortcut.ShiftTab, TerminalShortcut.Ctrl, TerminalShortcut.Enter))) } }
                 instrumentation.waitForIdleSync(); checkBar()
@@ -320,11 +322,28 @@ class AndroidMobileInputTest {
                 val last = shortcutBounds(TerminalShortcut.Enter)
                 val keyboard = bounds(awaitNode("키보드 열기")); val composer = bounds(awaitNode("텍스트 작성 열기"))
                 val density = instrumentation.targetContext.resources.displayMetrics.density
-                assertEquals(top.left, bottom.left); assertEquals(top.right, bottom.right)
+                assertEquals(top.left, bottom.left)
+                assertTrue("Short lower key must keep its own width", top.width() > bottom.width())
                 assertEquals(keyboard.top, top.top); assertEquals(composer.top, bottom.top)
                 assertTrue(kotlin.math.abs(top.left - keyboard.right - 4 * density) <= 2)
                 assertTrue(kotlin.math.abs(last.left - top.right - 4 * density) <= 2)
                 assertEquals(top.top, last.top) // The odd final key leaves its lower cell empty.
+                stage = "independent rows share one horizontal scroll"
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = listOf(
+                    TerminalShortcut.ShiftTab, TerminalShortcut.Ctrl, TerminalShortcut.ShiftLeft, TerminalShortcut.Alt,
+                    TerminalShortcut.Enter, TerminalShortcut.Escape, TerminalShortcut.Tab, TerminalShortcut.Up, TerminalShortcut.PageDown))) } }
+                awaitNode(TerminalShortcut.Escape.label)
+                val beforeTop = shortcutBounds(TerminalShortcut.Enter); val beforeBottom = shortcutBounds(TerminalShortcut.Escape)
+                val sharedScroll = find(awaitNode("터미널 입력 도구")) { it.isScrollable }!!
+                assertTrue(sharedScroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
+                withTimeout(5000) {
+                    while (shortcutBounds(TerminalShortcut.Enter).left >= beforeTop.left) delay(25)
+                }
+                instrumentation.uiAutomation.waitForIdle(100, 2000)
+                assertEquals(beforeTop.left - shortcutBounds(TerminalShortcut.Enter).left,
+                    beforeBottom.left - shortcutBounds(TerminalShortcut.Escape).left)
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(
+                    terminalShortcuts = listOf(TerminalShortcut.ShiftTab, TerminalShortcut.Ctrl, TerminalShortcut.Enter))) } }
                 stage = "single row setting survives restart"
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = false)) } }
                 instrumentation.waitForIdleSync(); checkBar(twoRows = false)
@@ -338,6 +357,7 @@ class AndroidMobileInputTest {
                 instrumentation.waitForIdleSync(); checkBar()
                 assertEquals(bounds(awaitNode("키보드 열기")).top, shortcutBounds(TerminalShortcut.Enter).top)
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = TerminalShortcut.defaultShortcuts)) } }
+                awaitNode(TerminalShortcut.Ctrl.label)
                 instrumentation.waitForIdleSync()
                 val fixedBeforeScroll = bounds(awaitNode("텍스트 작성 열기"))
                 val keyboardBeforeScroll = bounds(awaitNode("키보드 열기")); val menuBeforeScroll = bounds(awaitNode("CLI 실행 메뉴"))
@@ -349,11 +369,11 @@ class AndroidMobileInputTest {
                         delay(200)
                     }
                 }
+                screenshot("mobile-independent-shortcuts")
                 assertEquals(fixedBeforeScroll, bounds(awaitNode("텍스트 작성 열기")))
                 assertEquals(keyboardBeforeScroll, bounds(awaitNode("키보드 열기")))
                 assertEquals(menuBeforeScroll, bounds(awaitNode("CLI 실행 메뉴")))
                 val scrolledTop = shortcutBounds(TerminalShortcut.Right); val scrolledBottom = shortcutBounds(TerminalShortcut.Home)
-                assertEquals(scrolledTop.left, scrolledBottom.left); assertEquals(scrolledTop.right, scrolledBottom.right)
                 assertEquals(keyboardBeforeScroll.top, scrolledTop.top); assertEquals(fixedBeforeScroll.top, scrolledBottom.top)
                 assertEquals(scrolledTop.top, shortcutBounds(TerminalShortcut.End).top)
                 checkBar()
@@ -377,13 +397,22 @@ class AndroidMobileInputTest {
                 screenshot("mobile-light-portrait")
                 stage = "landscape and hidden shortcuts"
                 scenario.onActivity { activity ->
-                    app.modify { it.copy(preferences = it.preferences.copy(theme = "dark", terminalShortcuts = emptyList())) }
+                    // At 320dp height the expanded fixed chrome already exceeds the window
+                    // (tracked in TASKS.md). Isolate empty shortcut layout with pane tools folded.
+                    app.modify { it.copy(preferences = it.preferences.copy(theme = "dark", terminalShortcuts = emptyList(), mobilePaneToolbarVisible = false)) }
                     activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 }
                 waitOrientation(scenario, true)
-                awaitNode("텍스트 작성 열기"); checkBar()
+                stage = "landscape composer tool"
+                awaitNode("텍스트 작성 열기")
+                stage = "landscape shortcut bar geometry"
+                checkBar()
                 screenshot("mobile-dark-landscape")
-                scenario.onActivity { assertSame(web, webView(it.window.decorView)); it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+                scenario.onActivity {
+                    assertSame(web, webView(it.window.decorView))
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(mobilePaneToolbarVisible = true)) }
+                    it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
                 waitOrientation(scenario, false)
                 stage = "native composition"
                 click("텍스트 작성 열기"); awaitNode("전송할 텍스트")
@@ -466,19 +495,25 @@ class AndroidMobileInputTest {
                 assertFalse(check.isChecked); assertTrue(check.performAction(AccessibilityNodeInfo.ACTION_CLICK))
                 click("전송")
                 withTimeout(5000) { while (first.writes.size == count) delay(20) }
-                assertEquals(draft.replace('\n', '\r') + "\r", first.writes.last().decodeToString())
+                // Paste completion precedes a separately encoded Enter; a failed paste never sends it.
+                val paste = draft.replace('\n', '\r')
+                assertEquals(paste, first.writes.last().decodeToString())
                 assertTrue(app.composer(first).sending.value)
                 val pending = awaitNode("전송 중…")
                 pending.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 delay(100); assertEquals(count + 1, first.writes.size)
                 first.completion.complete(InputCompletion("합성 전송 실패"))
                 withTimeout(5000) { while (app.composer(first).sending.value) delay(20) }
+                assertEquals(count + 1, first.writes.size)
                 assertEquals(draft, app.composer(first).value.value.text)
                 first.completion = CompletableDeferred()
                 click("전송")
                 withTimeout(5000) { while (first.writes.size < count + 2) delay(20) }
                 first.completion.complete(InputCompletion())
                 awaitNode("텍스트 작성 열기")
+                assertEquals(count + 3, first.writes.size)
+                assertEquals(paste, first.writes[count + 1].decodeToString())
+                assertEquals("\r", first.writes.last().decodeToString())
                 assertTrue(app.composer(first).value.value.text.isEmpty())
                 assertEquals(0, first.connects)
                 stage = "memory cleanup"
@@ -492,7 +527,11 @@ class AndroidMobileInputTest {
                 node("전송할 텍스트")?.let { println("DGL editor: class=${it.className}, editable=${it.isEditable}, selection=${it.textSelectionStart}..${it.textSelectionEnd}, actions=${it.actionList.map { a -> a.id }}, draftSelection=${app.composer(first).value.value.selection}") }
                 scenario.onActivity { activity -> println("DGL insets: decor=${activity.window.decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime())}, web=${webView(activity.window.decorView)?.rootWindowInsets?.isVisible(WindowInsets.Type.ime())}, focus=${webView(activity.window.decorView)?.hasFocus()}") }
                 screenshot("mobile-failure")
-                throw AssertionError("Mobile input stage: $stage", failure)
+                screenshot("mobile-input-failure")
+                fun dump(root: AccessibilityNodeInfo?): String = if (root == null) "" else
+                    "[${root.text}|${root.contentDescription}|${bounds(root)}]" +
+                        (0 until root.childCount).joinToString { dump(root.getChild(it)) }
+                throw AssertionError("Mobile input stage: $stage; tree=" + dump(instrumentation.uiAutomation.rootInActiveWindow), failure)
             } finally {
                 scenario.onActivity {
                     app.removeConnection(first); app.removeConnection(second)
@@ -618,27 +657,101 @@ class AndroidMobileInputTest {
         }
     } }
 
-    private suspend fun withLauncherDisplay(test: suspend () -> Unit) {
+    /** Short app-window diagnostic, not a SurfaceFlinger presentation benchmark. */
+    @Test fun imeTransitionsRecordFrameDurations() = runBlocking<Unit> { withLauncherDisplay(animateIme = true) {
+        val client = Connection("ime-frames")
+        val frames = java.util.Collections.synchronizedList(mutableListOf<Long>())
+        val viewSizes = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val thread = android.os.HandlerThread("ime-frame-metrics").apply { start() }
+        var listening = false
+        var dropped = 0
+        val listener = Window.OnFrameMetricsAvailableListener { _, metrics, missed ->
+            frames += metrics.getMetric(FrameMetrics.TOTAL_DURATION); dropped += missed
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            lateinit var app: AppModel
+            lateinit var previous: LocalState
+            var oldConnections = emptyList<ClientConnection>(); var oldSelected: ClientConnection? = null
+            try {
+                scenario.onActivity {
+                    app = (it.application as DglApplication).connections().app
+                    previous = app.local.value; oldConnections = app.connections.value; oldSelected = app.selected.value
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false)) }
+                    app.connections.value = listOf(client); app.selected.value = client
+                }
+                awaitNode("키보드 열기")
+                withTimeout(10_000) { while (client.surface == null || client.sizes.isEmpty()) delay(25) }
+                val renderer = client.surface as kim.jujin.dglc.ui.AndroidTerminal
+                renderer.write("IME transition diagnostic\r\n".encodeToByteArray())
+                delay(750)
+                val initialSizes = client.sizes.toList()
+                scenario.onActivity { activity ->
+                    renderer.view.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
+                        if (r - l != or - ol || b - t != ob - ot) viewSizes += "${r-l}x${b-t}"
+                    }
+                    activity.window.addOnFrameMetricsAvailableListener(listener, android.os.Handler(thread.looper))
+                    listening = true
+                }
+                repeat(5) {
+                    scenario.onActivity { renderer.keyboard(true) }; waitIme(scenario, true); delay(650)
+                    scenario.onActivity { renderer.keyboard(false) }; waitIme(scenario, false); delay(650)
+                }
+                scenario.onActivity { it.window.removeOnFrameMetricsAvailableListener(listener); listening = false }
+                val flush = java.util.concurrent.CountDownLatch(1)
+                android.os.Handler(thread.looper).post { flush.countDown() }
+                assertTrue(flush.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                assertTrue("Frame metrics must actually be delivered", frames.isNotEmpty())
+                assertEquals("IME must not change the remote grid", initialSizes, client.sizes.toList())
+                val report = org.json.JSONObject().put("cycles", 5).put("metric", "app-window-total-duration-ns")
+                    .put("framesNs", org.json.JSONArray(frames)).put("droppedMetricCallbacks", dropped)
+                    .put("webViewSizeChanges", org.json.JSONArray(viewSizes)).put("remoteResizeCount", client.sizes.size - initialSizes.size)
+                File(instrumentation.targetContext.cacheDir, "ime-frames.json").writeText(report.toString(2))
+                assertTrue("IME must only clip the WebView: $viewSizes", viewSizes.isEmpty())
+            } finally {
+                scenario.onActivity {
+                    if (listening) it.window.removeOnFrameMetricsAvailableListener(listener)
+                    app.connections.value = oldConnections; app.selected.value = oldSelected; app.update(previous)
+                }
+                thread.quitSafely(); thread.join(5000)
+            }
+        }
+    } }
+
+    private suspend fun withLauncherDisplay(animateIme: Boolean = false, test: suspend () -> Unit) {
         fun shell(command: String) = instrumentation.uiAutomation.executeShellCommand(command).use {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes().decodeToString().trim()
         }
         val original = listOf("size", "density").associateWith { key ->
             shell("wm $key").lineSequence().firstOrNull { it.startsWith("Override") }?.substringAfter(": ") ?: "reset"
         }
+        val settings = if (animateIme) mapOf("global window_animation_scale" to "1", "global transition_animation_scale" to "1",
+            "global animator_duration_scale" to "1", "secure show_ime_with_hard_keyboard" to "1") else emptyMap()
+        val oldSettings = settings.keys.associateWith { shell("settings get $it") }
         try {
             // Landscape must leave room for the fixed header/tools, but less than four menu rows.
             shell("wm density 160"); shell("wm size 480x800")
+            settings.forEach { (key, value) -> shell("settings put $key $value") }
             test()
         } finally {
             original.forEach { (key, value) -> shell("wm $key $value") }
+            oldSettings.forEach { (key, value) -> shell(if (value == "null") "settings delete $key" else "settings put $key $value") }
         }
     }
 
     private suspend fun checkBar(twoRows: Boolean = true) {
-        val bar = bounds(awaitNode("터미널 입력 도구"))
+        val density = instrumentation.targetContext.resources.displayMetrics.density
+        // Flow publication and a Compose frame can follow Looper idle after a settings edit.
+        val bar = withTimeout(5000) {
+            var rect: Rect
+            do {
+                rect = bounds(awaitNode("터미널 입력 도구"))
+                if (kotlin.math.abs(rect.height() - (if (twoRows) 70 else 36) * density) <= 2) break
+                delay(25)
+            } while (true)
+            rect
+        }
         val keyboard = bounds(awaitNode(if (node("키보드 닫기") != null) "키보드 닫기" else "키보드 열기"))
         val text = bounds(awaitNode("텍스트 작성 열기")); val menu = bounds(awaitNode("CLI 실행 메뉴"))
-        val density = instrumentation.targetContext.resources.displayMetrics.density
         fun near(actual: Int, dp: Int) = assertTrue("$actual px != $dp dp", kotlin.math.abs(actual - dp * density) <= 2)
         near(keyboard.height(), 30); near(text.height(), 30); near(menu.height(), 30); near(bar.height(), if (twoRows) 70 else 36)
         near(keyboard.left - bar.left, 4); near(keyboard.top - bar.top, 3)

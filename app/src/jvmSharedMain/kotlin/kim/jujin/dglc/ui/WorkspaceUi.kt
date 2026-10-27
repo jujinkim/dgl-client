@@ -13,6 +13,8 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,17 +112,26 @@ private data class TabDrag(val tab: String, val position: Offset)
     SideEffect { tabBounds.keys.retainAll(workspace.groups.values.flatMap { it.tabs }.toSet()) }
     val localDensity = LocalDensity.current
     val density = localDensity.density
+    val occlusion = LocalTerminalOcclusion.current
     Column(Modifier.fillMaxSize().onPreviewKeyEvent {
         if (it.type == KeyEventType.KeyDown && it.key == Key.Escape && (drag != null || preview != null)) {
             drag = null; preview = null; true
         } else false
     }) {
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().semantics { contentDescription = t("분할 작업 공간") }) {
+        // Subcompose only for real window changes. IME compression happens in leaf layout.
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds().layout { measurable, constraints ->
+            val logical = constraints.maxHeight + occlusion.getBottom(this)
+            val child = measurable.measure(constraints.copy(minHeight = logical, maxHeight = logical))
+            layout(child.width, constraints.maxHeight) { child.place(0, 0) }
+        }.semantics { contentDescription = t("분할 작업 공간") }) {
             val width = maxWidth.value; val height = maxHeight.value
-            val logicalHeight = height + LocalTerminalOcclusion.current.value
+            val logicalHeight = height
             var origin by remember { mutableStateOf(Offset.Zero) }
             val layout = preview?.takeIf { it.groups == workspace.groups } ?: workspace
-            val projection = layout.project(width, logicalHeight, height)
+            // Read in composition only while dragging, never for each IME frame.
+            fun visibleProjection() = layout.project(width, logicalHeight,
+                (height - occlusion.getBottom(localDensity) / density).coerceAtLeast(0f))
+            val projection = layout.project(width, logicalHeight, logicalHeight)
             val fits = projection.fits
             val rects = projection.visible
             val shown = rects.keys.mapNotNull { model.tabClient(workspace.groups[it]?.selected) }.toSet()
@@ -129,7 +140,7 @@ private data class TabDrag(val tab: String, val position: Offset)
             DisposableEffect(model) { onDispose { model.visibleConnections = emptySet() } }
             val candidate = drag?.let { moving ->
                 val point = (moving.position - origin) / density
-                rects.entries.firstOrNull { it.value.contains(point.x, point.y) }?.let { (id, rect) ->
+                visibleProjection().visible.entries.firstOrNull { it.value.contains(point.x, point.y) }?.let { (id, rect) ->
                     val local = point - Offset(rect.x, rect.y)
                     val edge = when {
                         local.y < 48f -> DropEdge.Center
@@ -151,8 +162,23 @@ private data class TabDrag(val tab: String, val position: Offset)
                 rects.forEach { (groupId, rect) -> key(groupId) {
                     val group = workspace.groups.getValue(groupId)
                     val active = workspace.activeGroup == groupId
-                    Column(Modifier.offset { IntOffset((rect.x * density).toInt(), (rect.y * density).toInt()) }
-                        .size(rect.width.dp, rect.height.dp)
+                    val groupOcclusion = remember(layout, width, logicalHeight, groupId, occlusion, density) {
+                        object : WindowInsets {
+                            override fun getLeft(density: Density, layoutDirection: LayoutDirection) = 0
+                            override fun getRight(density: Density, layoutDirection: LayoutDirection) = 0
+                            override fun getTop(density: Density) = 0
+                            override fun getBottom(density: Density): Int {
+                                val visible = visibleProjection().visible.getValue(groupId)
+                                return (with(density) { rect.height.dp.roundToPx() } -
+                                    with(density) { visible.height.dp.roundToPx() }).coerceAtLeast(0)
+                            }
+                        }
+                    }
+                    Column(Modifier.layout { measurable, _ ->
+                        val visible = visibleProjection().visible.getValue(groupId)
+                        val child = measurable.measure(Constraints.fixed(visible.width.dp.roundToPx(), visible.height.dp.roundToPx()))
+                        layout(child.width, child.height) { child.place(visible.x.dp.roundToPx(), visible.y.dp.roundToPx()) }
+                    }
                         .border(if (active) 2.dp else 1.dp, if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                         .semantics { contentDescription = tr("터미널 그룹 {0}", workspace.root.leaves().indexOfFirst { it.id == groupId } + 1); selected = active }) {
                         Row(Modifier.fillMaxWidth().height(48.dp).background(MaterialTheme.colorScheme.surfaceContainer), verticalAlignment = Alignment.CenterVertically) {
@@ -199,10 +225,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                             if (client != null) key(client) {
                                 val terminalFocus = focus(client)
                                 terminalFocus.activate = { if (!model.inputBlocked()) model.selectConnection(client) }
-                                CompositionLocalProvider(LocalTerminalOcclusion provides
-                                    with(localDensity) {
-                                        (projection.logical.getValue(groupId).height.dp.roundToPx() - rect.height.dp.roundToPx()).coerceAtLeast(0).toDp()
-                                    }) {
+                                CompositionLocalProvider(LocalTerminalOcclusion provides groupOcclusion) {
                                     ConnectionScreen(client, preferences, false, model, { showAgents(client, it) }, workspace = true, sharedFocus = terminalFocus) {
                                         model.selected.value === client
                                     }
@@ -215,14 +238,21 @@ private data class TabDrag(val tab: String, val position: Offset)
                 } }
                 if (fits) layout.root.nodeRectangles(width, height).forEach { (id, rect) ->
                     val split = findWorkspaceSplit(layout.root, id) ?: return@forEach
-                    val a = layout.root.nodeRectangles(width, height).getValue(split.first.id)
                     val horizontal = split.axis == SplitAxis.Horizontal
-                    val x = if (horizontal) a.x + a.width + WorkspaceState.DIVIDER / 2 - 24 else rect.x
-                    val y = if (horizontal) rect.y else a.y + a.height + WorkspaceState.DIVIDER / 2 - 24
                     var original: WorkspaceState? = null
                     var delta = 0f
-                    Box(Modifier.offset { IntOffset((x * density).toInt(), (y * density).toInt()) }
-                        .size(if (horizontal) 48.dp else rect.width.dp, if (horizontal) rect.height.dp else 48.dp)
+                    Box(Modifier.layout { measurable, _ ->
+                        val visibleHeight = (height - occlusion.getBottom(this) / density).coerceAtLeast(0f)
+                        val visibleRects = layout.root.nodeRectangles(width, visibleHeight)
+                        val visibleRect = visibleRects.getValue(id)
+                        val first = visibleRects.getValue(split.first.id)
+                        val vx = if (horizontal) first.x + first.width + WorkspaceState.DIVIDER / 2 - 24 else visibleRect.x
+                        val vy = if (horizontal) visibleRect.y else first.y + first.height + WorkspaceState.DIVIDER / 2 - 24
+                        val child = measurable.measure(Constraints.fixed(
+                            (if (horizontal) 48.dp else visibleRect.width.dp).roundToPx(),
+                            (if (horizontal) visibleRect.height.dp else 48.dp).roundToPx()))
+                        layout(child.width, child.height) { child.place(vx.dp.roundToPx(), vy.dp.roundToPx()) }
+                    }
                         .semantics { contentDescription = t("분할 경계 조절") }
                         .pointerInput(id, width, height, workspace.root) {
                             detectDragGestures(onDragStart = { original = workspace; delta = 0f }, onDragCancel = { preview = null },

@@ -545,6 +545,26 @@ test('IME panel alignment preserves the independent xterm history reading positi
   assert.deepEqual(r.messages, []);
 });
 
+test('IME clip updates skip cell measurement while real geometry and redisplay still measure', () => {
+  const r = imeRenderer({ nativeViewport: true });
+  let measurements = 0;
+  const original = r.terminal.screen.getBoundingClientRect;
+  r.terminal.screen.getBoundingClientRect = () => { measurements++; return original(); };
+  let version = 0;
+  const geometry = (width, logicalHeight, visibleHeight) => r.window.setViewport({
+    version: ++version, width, logicalHeight, visibleHeight, imeVisible: visibleHeight < logicalHeight,
+  });
+  geometry(1000, 600, 600);
+  const initial = measurements;
+  for (const height of [540, 480, 300, 400, 350, 500, 600]) geometry(1000, 600, height);
+  assert.equal(measurements, initial, 'IME frames only update CSS translation and scrollbar');
+  geometry(800, 400, 200);
+  assert.ok(measurements > initial, 'rotation and window changes still measure');
+  const resized = measurements;
+  r.window.detachViewport(++version); geometry(800, 400, 200);
+  assert.ok(measurements > resized, 'reattachment must measure unchanged logical dimensions');
+});
+
 test('a replacement snapshot releases its predecessor acknowledgement and reduced durations are bundled', () => {
   const r = cachedRenderer();
   r.window.beginSnapshot(); r.window.endSnapshot(11);
@@ -589,9 +609,10 @@ function keyboardRenderer() {
 // Model pointer delivery and wheel mode routing; actual xterm encoding and DOM
 // geometry are additionally covered by AndroidPlatformTest with the bundled JS.
 function touchRenderer() {
-  const messages = [], terminals = [], timers = [];
+  const messages = [], terminals = [], timers = [], frames = new Map();
+  let now = 0, nextFrame = 0;
   class Element {
-    style = {}; children = []; events = {}; classList = { toggle() {} };
+    style = {}; children = []; events = {}; classList = { toggle() {}, add() {}, remove() {} };
     clientWidth = 807; clientHeight = 480;
     addEventListener(name, callback, options) {
       (this.events[name] ||= []).push({ callback, capture: options === true || options?.capture === true });
@@ -617,7 +638,7 @@ function touchRenderer() {
     modes = { mouseTrackingMode: 'none' }; buffer = { active: { type: 'normal', viewportY: 50, baseY: 50 } };
     wheels = []; scrolls = []; focuses = 0;
     screen = { getBoundingClientRect: () => ({ left: 0, top: 0, right: this.cols * 10, bottom: this.rows * 20,
-      width: this.cols * 10, height: this.rows * 20 }) };
+      width: this.cols * 10, height: this.rows * 20 }), cloneNode: () => new Element() };
     element = new Element();
     constructor() {
       terminals.push(this);
@@ -644,7 +665,9 @@ function touchRenderer() {
     document: { getElementById: id => ({ terminal: root, window: canvas, shell })[id], createElement: () => new Element(),
       hasFocus: () => true, body },
     ResizeObserver: class { observe() {} unobserve() {} },
-    setTimeout: callback => timers.push(callback), clearTimeout() {}, requestAnimationFrame() {},
+    setTimeout: callback => timers.push(callback), clearTimeout() {},
+    requestAnimationFrame: callback => { frames.set(++nextFrame, callback); return nextFrame; },
+    cancelAnimationFrame: id => frames.delete(id),
   });
   const layout = (target = 'one', active = 'shell', split = false) => window.setLayout({ window: split ? '@1' : null,
     columns: 81, rows: 24, active, inputTarget: target, panes: split ? [
@@ -653,10 +676,17 @@ function touchRenderer() {
     ] : [] });
   layout(); messages.length = 0;
   const pointer = (type, x, y, term = terminals[0], extra = {}) => {
-    const event = { type, pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: x, clientY: y, ...extra };
+    const event = { type, pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: x, clientY: y, timeStamp: now, ...extra };
     term.host.dispatchEvent(event); return event;
   };
   return { window, terminals, messages, timers, layout, pointer, canvas, root, body,
+    advance(ms) { now += ms; },
+    frame(ms = 16) {
+      now += ms;
+      const pending = [...frames.values()]; frames.clear();
+      pending.forEach(callback => callback(now));
+    },
+    pendingFrame() { return [...frames.values()].at(-1); },
     drag(from, to, term = terminals[0]) {
       pointer('pointerdown', 100, from, term); pointer('pointermove', 100, to, term); pointer('pointerup', 100, to, term);
     },
@@ -678,6 +708,85 @@ test('touch scroll accumulates rows, reverses direction and ends without inertia
   assert.equal(t.focuses, 0); assert.deepEqual(r.messages, []);
   r.pointer('pointerdown', 100, 100); r.pointer('pointerup', 100, 100); r.pointer('click', 100, 100);
   assert.equal(t.focuses, 1, 'a subsequent tap still focuses the terminal');
+});
+
+function startPanelFling() {
+  const r = touchRenderer();
+  r.window.setViewport({ version: 1, width: 807, logicalHeight: 480, visibleHeight: 80, imeVisible: true });
+  r.messages.length = 0;
+  r.pointer('pointerdown', 100, 100);
+  r.advance(40); r.pointer('pointermove', 100, 140);
+  r.advance(40); r.pointer('pointermove', 100, 180);
+  r.pointer('pointerup', 100, 180);
+  return r;
+}
+
+test('IME panel inertia follows the last 80ms with exponential decay and stops at a boundary', () => {
+  const r = startPanelFling(), t = r.terminals[0];
+  assert.equal(r.canvas.style.transform, 'translateY(-320px)');
+  r.frame(250);
+  const expected = 320 - 250 * (1 - Math.exp(-1));
+  assert.equal(r.canvas.style.transform, `translateY(${-expected}px)`);
+  t.data('\x1b[<64;1;1M'); t.binary('\x1b[M');
+  for (const type of ['mousedown', 'mouseup', 'click', 'wheel']) assert.equal(r.pointer(type, 100, 180).stopped, true);
+  r.frame(2000);
+  const stopped = r.canvas.style.transform;
+  assert.equal(r.pendingFrame(), undefined);
+  r.frame(1000); assert.equal(r.canvas.style.transform, stopped);
+  assert.deepEqual(t.scrolls, []); assert.deepEqual(t.wheels, []); assert.deepEqual(r.messages, []);
+
+  const boundary = startPanelFling();
+  boundary.pointer('pointerdown', 100, 100);
+  boundary.advance(40); boundary.pointer('pointermove', 100, 300);
+  boundary.pointer('pointerup', 100, 300); boundary.frame(250);
+  assert.equal(boundary.canvas.style.transform, 'translateY(0px)');
+  assert.equal(boundary.pendingFrame(), undefined);
+});
+
+test('IME panel inertia ignores old velocity and a stationary release', () => {
+  const r = startPanelFling();
+  r.pointer('pointerdown', 100, 100);
+  r.advance(200); r.pointer('pointermove', 100, 200); // old fast movement falls outside the window
+  r.advance(80); r.pointer('pointermove', 100, 208);
+  r.pointer('pointerup', 100, 208);
+  const offset = 320 - 108;
+  r.frame(250);
+  assert.equal(r.canvas.style.transform, `translateY(${-(offset - .1 * 250 * (1 - Math.exp(-1)))}px)`);
+  r.pointer('pointerdown', 100, 100);
+  r.advance(40); r.pointer('pointermove', 100, 120);
+  r.advance(100); r.pointer('pointerup', 100, 120);
+  assert.equal(r.pendingFrame(), undefined, 'holding still before release produces no fling');
+});
+
+test('IME panel inertia revokes queued frames on every input and destination cancellation', () => {
+  const cancellations = [
+    r => r.pointer('pointerdown', 100, 180),
+    r => r.pointer('pointerdown', 100, 180, r.terminals[0], { pointerType: 'mouse' }),
+    r => r.pointer('pointerdown', 100, 180, r.terminals[0], { isPrimary: false }),
+    r => r.window.setImeAnimation(true, 1),
+    r => r.window.setViewport({ version: 2, width: 807, logicalHeight: 480, visibleHeight: 120, imeVisible: true }),
+    r => r.window.setViewport({ version: 2, width: 807, logicalHeight: 480, visibleHeight: 480, imeVisible: false }),
+    r => r.layout('replacement'),
+    r => r.layout('one', '%1', true),
+    r => r.window.setLayout({ window: null, active: 'shell', inputTarget: 'one', columns: 81, rows: 24,
+      panes: [{ id: '%1', left: 0, top: 0, width: 40, height: 24, visible: true }] }),
+    r => r.window.beginSnapshot(),
+    r => r.window.setInputEnabled(false),
+    r => r.window.setPointerEnabled(false),
+    r => r.window.setConnectionRecovery(true),
+    r => r.window.setFontGesture(true),
+    r => r.window.detachViewport(2),
+    r => r.body.children[0].dispatchEvent({ type: 'pointerdown', pointerId: 5, clientY: 10 }),
+  ];
+  for (const cancel of cancellations) {
+    const r = startPanelFling(), queued = r.pendingFrame();
+    assert.equal(typeof queued, 'function');
+    cancel(r);
+    const offset = r.canvas.style.transform;
+    queued(330); r.frame(250);
+    assert.equal(r.canvas.style.transform, offset, cancel.toString());
+    assert.deepEqual(r.messages.filter(m => m.type.startsWith('input')), []);
+  }
 });
 
 test('taking pointer capture from an xterm cell does not cancel an active touch drag', () => {
