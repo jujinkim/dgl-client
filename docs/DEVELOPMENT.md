@@ -153,9 +153,14 @@ python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command 
 tmux 소스 빌드에는 C 컴파일러·make·libevent·ncurses 개발 헤더가 필요합니다.
 Android 계측은 전용 에뮬레이터와 명시적인 `ANDROID_SERIAL`을 사용합니다.
 API36 후보 검사는 앱/계측 APK를 먼저 빌드하고 fixture 안에서 실행합니다.
-연결 수명·IME·정상 복귀의 복구 표시 없음·유지 끔의 자동 재연결/취소·삭제된 세션/인증 실패 보존·알림 인텐트·task 제거 후 새 실행만 짧게 확인할 때는 아래 실행에
+연결 수명·IME·정상 복귀의 즉시 확인 dim과 SSH 유지·유지 끔의 자동 재연결/취소·삭제된 세션/인증 실패 보존·알림 인텐트·task 제거 후 새 실행만 짧게 확인할 때는 아래 실행에
 `DGL_ANDROID_TEST_CLASSES=kim.jujin.dglc.AndroidConnectionLifetimeTest`를 추가합니다.
 전체 API matrix로 확장하지 않습니다.
+
+`kim.jujin.dglc.AndroidOutputRecoveryTest`는 같은 fixture에서 렌더러 ACK를 실제 15초 넘게 지연시킵니다.
+구독 종료 후 SSH 세대·tmux client·원격 프로세스 유지, 모든 표시 pane의 ACK 대기, 늦은 ACK·표면 교체,
+자동 화면 복원 실패 후 수동 재시도를 확인합니다. 물리 기기의 장시간 잠금·Doze 재현을 대신하지 않습니다.
+Debug 진단은 `adb -s "$ANDROID_SERIAL" logcat -s DglResume`으로 복귀·검사 제출/완료·구독/연결 세대·화면 ACK·입력 허용 시각을 확인합니다.
 
 ```sh
 ./gradlew :androidApp:assembleDebug :androidApp:assembleDebugAndroidTest

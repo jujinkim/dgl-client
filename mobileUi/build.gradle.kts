@@ -3,7 +3,7 @@ android {
     namespace = "kim.jujin.dglc.mobile"
     compileSdk = 36
     defaultConfig { minSdk = 34 }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 dependencies {

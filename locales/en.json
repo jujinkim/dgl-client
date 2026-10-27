@@ -421,7 +421,7 @@
   "터미널 복원 중…": "Restoring terminal…",
   "터미널 입력 도구": "Terminal input tools",
   "터미널 입력 준비 시간이 초과되었습니다. 초안은 유지됩니다.": "Timed out while preparing terminal input. Your draft is preserved.",
-  "터미널 출력 구독이 종료되었습니다. 재연결하세요.": "The terminal output subscription ended. Reconnect.",
+  "터미널 화면을 복원하지 못했습니다. 새로고침 재시도로 다시 복원하세요.": "Could not restore the terminal screen. Use Refresh / retry to try again.",
   "터미널로 돌아가기": "Return to terminal",
   "터미널이 닫혔습니다.": "The terminal has closed.",
   "터미널이 아직 준비되지 않았습니다.": "The terminal is not ready yet.",

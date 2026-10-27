@@ -479,13 +479,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
     override suspend fun endSnapshot() = mutex.withLock {
         if (closed) return@withLock
-        val ack = CompletableDeferred<Unit>()
-        val id = ++serial
-        withContext(Dispatchers.Main.immediate) {
-            awaiting = id to ack
-            view.evaluateJavascript("window.endSnapshot($id)", null)
-        }
-        withTimeout(15_000) { ack.await() }
+        acknowledged { id -> "window.endSnapshot($id)" }
     }
     override suspend fun cancelSnapshot() {
         withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.cancelSnapshot && window.cancelSnapshot()", null) }
@@ -501,15 +495,25 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         do {
             val end = minOf(offset + 16384, bytes.size)
             val encoded = Base64.getEncoder().encodeToString(bytes.copyOfRange(offset, end))
-            val ack = CompletableDeferred<Unit>()
-            val id = ++serial
-            withContext(Dispatchers.Main.immediate) {
-                awaiting = id to ack
-                view.evaluateJavascript("window.receive('$encoded',${reset && offset == 0},$id)", null)
-            }
-            withTimeout(15_000) { ack.await() }
+            acknowledged { id -> "window.receive('$encoded',${reset && offset == 0},$id)" }
             offset = end
         } while (offset < bytes.size)
+    }
+    private suspend fun acknowledged(script: (Long) -> String) {
+        val ack = CompletableDeferred<Unit>()
+        val id = ++serial
+        try {
+            withContext(Dispatchers.Main.immediate) {
+                awaiting = id to ack
+                view.evaluateJavascript(script(id), null)
+            }
+            withTimeout(15_000) { ack.await() }
+        } finally {
+            withContext(NonCancellable + Dispatchers.Main.immediate) {
+                // A delayed bridge callback cannot complete a replacement write.
+                if (awaiting?.first == id) awaiting = null
+            }
+        }
     }
     override fun close() {
         finishFontGesture()

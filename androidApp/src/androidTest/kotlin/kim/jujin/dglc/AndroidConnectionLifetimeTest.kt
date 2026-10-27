@@ -111,8 +111,14 @@ class AndroidConnectionLifetimeTest {
                     checked.await()
                     restored()
                     observing.cancelAndJoin()
-                    assertTrue("A healthy return keeps the screen without recovery controls: $resumeStates", resumeStates.none {
-                        it.recovering || it.recoveryMessage != null || it.showsConnectionProgress || it.canRetryNow || it.canStopRetrying
+                    assertTrue("A healthy return dims immediately while checking: $resumeStates", resumeStates.any {
+                        it.checking && it.recoveryMessage == t("연결 확인 중…") && !it.acceptsInput
+                    })
+                    assertTrue("A healthy return needs no SSH reconnect or retry controls: $resumeStates", resumeStates.none {
+                        it.showsConnectionProgress || it.canRetryNow || it.canStopRetrying
+                    })
+                    assertTrue("Any pending screen resync stays dimmed and blocks input: $resumeStates", resumeStates.filter { it.recovering }.all {
+                        it.recoveryMessage != null && !it.acceptsInput
                     })
                     scenario.onActivity { assertSame(warmActivity, it) }
                     assertEquals(target, client.captureInputTarget())

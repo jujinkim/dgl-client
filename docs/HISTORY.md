@@ -265,6 +265,13 @@ Debug·계측 APK·lint 및 원본 APK payload 검사를 통과했습니다. 현
 당시 Rust 데스크톱 77·JVM 86·웹 34·Python 98 통과, Keychain ignore 1·JVM 예상 skip 9와 Android 제품 Kotlin 컴파일을 확인했습니다.
 APK 패키징·lint·Android 계측·실제 SSH/CLI·macOS GUI·Windows 네이티브는 실행하지 않았습니다.
 
+## 2026-10-27: 모바일 두 줄 헤더
+
+840dp 미만 화면의 상단을 로고·호스트/터미널 전환·기타 메뉴·알림과 현재 호스트·tmux 버튼의 두 줄로 정리했습니다.
+당시 관련 JVM 1개, API36 선택 계측 3개, Android Debug·계측 APK·lint(기존 진단 12), 번역·문서 링크 검사를 확인했습니다.
+실제 SSH·물리 Android·macOS GUI·Windows 네이티브·전체 API matrix·장시간 검사는 수행하지 않았습니다.
+계측 화면·이름별 결과와 초기 실패 로그는 `artifacts/mobile-header/`에 남겼습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

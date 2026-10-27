@@ -64,6 +64,8 @@ JVM·Android 테스트를 추가/삭제하면 `verify_test_results.py` / `verify
 `DGL_ANDROID_EXPECTED_TESTS` 숫자 override는 사용하지 않습니다.
 `kim.jujin.dglc.AndroidConnectionLifetimeTest`를 선택하면 실제 Rust SSH 연결 하나로
 IME·Activity 재생성·짧은 백그라운드 복귀·알림 인텐트·task 제거와 원격 프로세스 유지만 검사합니다.
+`kim.jujin.dglc.AndroidOutputRecoveryTest`는 15초 ACK timeout·화면 구독 교체·모든 표시 pane의 ACK 대기,
+수동 복구와 SSH 세대·tmux client·원격 프로세스 유지를 검사합니다. 두 클래스는 API36 선택 검사로 실행합니다.
 
 ## 선택적 성능·자원 도구
 

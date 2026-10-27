@@ -1,5 +1,8 @@
 package kim.jujin.dglc
 
+import android.os.SystemClock
+import android.util.Log
+import kim.jujin.dglc.mobile.BuildConfig
 import kim.jujin.dglc.ClientConnection
 import kim.jujin.dglc.InputTarget
 import kim.jujin.dglc.InputCompletion
@@ -52,6 +55,9 @@ class RustClientConnection(
     private var stateJob: Job? = null
     private var outputJob: Job? = null
     private var outputFailed = false
+    private var outputRecoveryAttempted = false
+    private var tmuxOutput = false
+    private var snapshotRequest: ULong? = null
     private var subscription: ULong? = null
     @Volatile private var surface: TerminalSurface? = null
     @Volatile private var epoch = 0L
@@ -70,6 +76,10 @@ class RustClientConnection(
     private val resumeRequests = mutableSetOf<ULong>()
     @Volatile private var closed = false
     private val cleanup = mutableListOf<Job>()
+    private fun trace(event: String) {
+        if (BuildConfig.DEBUG) Log.d("DglResume", "t=${SystemClock.elapsedRealtime()} adapter=${System.identityHashCode(this)} epoch=$epoch generation=$adapterGeneration subscription=$subscription cycle=${recovery.cycle} $event")
+    }
+    private fun outputFailureMessage() = t("터미널 화면을 복원하지 못했습니다. 새로고침 재시도로 다시 복원하세요.")
     private fun trustRef() = "trust-" + MessageDigest.getInstance("SHA-256").digest(host.endpoint.toByteArray()).joinToString("") { "%02x".format(it) }
 
     @Synchronized override fun connect() {
@@ -80,6 +90,7 @@ class RustClientConnection(
         detach()
         if (restoring) recovery.begin()
         outputFailed = false
+        outputRecoveryAttempted = false
         notice.value = null
         inputRequests.clear()
         val current = ++epoch
@@ -118,6 +129,15 @@ class RustClientConnection(
                                 val completion = inputCompletions.remove(id)
                                 val input = id?.let { inputRequests.remove(it) } == true
                                 val resumed = id?.let { resumeRequests.remove(it) } == true
+                                if (resumed) trace("check-complete request=$id error=${code ?: "none"}")
+                                if (id != null && id == snapshotRequest) {
+                                    snapshotRequest = null
+                                    if (code != null && status.value.phase in setOf(Phase.Ready, Phase.Shell, Phase.Restoring) && !status.value.showsConnectionProgress) {
+                                        failOutput(connection, subscription, current)
+                                        outputJob?.cancel()
+                                        releaseOutput(connection, subscription, current)
+                                    }
+                                }
                                 if (completion != null) completion.complete(InputCompletion(code?.let(::nativeInputError)))
                                 else if (code != null && input) rejectInput(code)
                                 else if (code != null && !resumed && code !in setOf("Cancelled", "StaleGeneration")) notice.value = message(code)
@@ -141,7 +161,10 @@ class RustClientConnection(
         appliedSequence = sequence
         s["generation"]?.jsonObject?.get("connection")?.jsonPrimitive?.longOrNull?.let { next ->
             val previous = nativeGeneration
-            if (previous != null && previous > 0 && previous != next) ++adapterGeneration
+            if (previous != null && previous > 0 && previous != next) {
+                ++adapterGeneration
+                trace("native-generation previous=$previous next=$next")
+            }
             nativeGeneration = next
         }
         fun text(name: String) = s[name]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
@@ -158,10 +181,12 @@ class RustClientConnection(
         val resizing = s["resizing"]?.jsonPrimitive?.boolean == true
         val targets = if (phase == Phase.Shell) native?.targetJson()?.let { mapOf("shell" to it) } ?: emptyMap()
             else s["render_targets"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
-        val recovering = recovery.update(checking, phase, connecting, targets)
+        val recovering = recovery.update(checking || outputFailed, phase, connecting, targets)
+        if (!recovering && !outputFailed) outputRecoveryAttempted = false
+        val outputRetry = outputFailed && phase in setOf(Phase.Ready, Phase.Shell, Phase.Restoring) && !connecting
         val canStopRetrying = phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting) ||
             (phase == Phase.Restoring && retry?.get("connecting")?.jsonPrimitive?.boolean == true)
-        val canRetryNow = canStopRetrying || (phase == Phase.Failed && (error == "Network" || stopped))
+        val canRetryNow = outputRetry || canStopRetrying || (phase == Phase.Failed && (error == "Network" || stopped))
         val retryMessage = when {
             stopped -> t("재시도 정지 · 접속 정보 유지 중")
             phase == Phase.Failed && error == "Network" -> t("자동 재시도 3회 종료 · 접속 정보 유지 중")
@@ -169,13 +194,15 @@ class RustClientConnection(
             phase == Phase.Reconnecting -> tr("연결 재시도 중 · 자동 재시도 {0}/3회", attempt)
             else -> null
         }
-        val nextStatus = ConnectionStatus(phase, retryMessage ?: error?.let(::message) ?: when (phase) {
+        val nextStatus = ConnectionStatus(phase, (if (outputRetry) outputFailureMessage() else null) ?: retryMessage ?: error?.let(::message) ?: when (phase) {
             Phase.Connecting -> t("SSH 연결 중…"); Phase.Authenticating -> t("서버 확인 중…"); Phase.TrustRequired -> t("호스트키 지문을 확인하세요.")
             Phase.Selecting -> t("tmux 세션을 선택하거나 만드세요."); Phase.Restoring -> if (resizing) t("연결됨 · tmux") else t("터미널 복원 중…"); Phase.Ready -> t("연결됨 · tmux")
             Phase.Shell -> t("일반 SSH · tmux 탐지 실패"); Phase.Reconnecting -> t("연결 복구 중…"); Phase.MissingSession -> t("이전 세션이 삭제되었습니다. 직접 선택하세요.")
             else -> t("연결 종료")
         }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering, phase == Phase.Failed && error == "Network" && !stopped && attempt >= 3)
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
+        if (phase == Phase.Shell) tmuxOutput = false
+        else if (phase in setOf(Phase.Ready, Phase.Restoring) && session.value != null) tmuxOutput = true
         val r = s.getValue("remote").jsonObject
         fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
         remote.value = RemoteStateDecoder.json(r)
@@ -198,6 +225,8 @@ class RustClientConnection(
         } else null
         // Publish readiness only after its matching target and trust details are visible.
         rejections.status(nextStatus)
+        if (status.value.checking != checking) trace("checking=$checking")
+        if (status.value.acceptsInput != nextStatus.acceptsInput) trace("input-enabled=${nextStatus.acceptsInput}")
         status.value = nextStatus
         if (phase == Phase.Ready && (lastSession != session.value || lastPane != pane.value)) {
             lastSession = session.value; lastPane = pane.value
@@ -208,133 +237,157 @@ class RustClientConnection(
     @Synchronized private fun bindOutput() {
         val c = native ?: return
         val terminal = surface ?: return
-        if (notice.value == t("터미널 출력 구독이 종료되었습니다. 재연결하세요.")) notice.value = null
-        outputJob?.cancel(); subscription?.let(c::unsubscribe)
+        if (notice.value == outputFailureMessage()) notice.value = null
+        val previous = outputJob
+        previous?.cancel(); releaseOutput(c, subscription, epoch)
         val id = c.subscribe(); subscription = id
+        outputFailed = false
         recovery.bind(id.toLong())
         val current = epoch
-        outputJob = scope.launch {
+        trace("output-bind")
+        outputJob = launchTerminalOutput(scope, previous, consume = {
             val displayed = mutableMapOf<String, String>()
             var layoutSequence = ""
             var preserving: Boolean? = null
-            try {
-                terminal.cancelSnapshot()
-                while (isActive && current == epoch) {
-                    val state = json.parseToJsonElement(c.stateJson()).jsonObject
-                    synchronized(this@RustClientConnection) {
-                        if (current == epoch && subscription == id) applyState(state)
+            terminal.cancelSnapshot()
+            while (isActive && current == epoch) {
+                val state = json.parseToJsonElement(c.stateJson()).jsonObject
+                synchronized(this@RustClientConnection) {
+                    if (current == epoch && subscription == id) applyState(state)
+                }
+                val preserve = synchronized(this@RustClientConnection) { recovery.pending } ||
+                    state["phase"]?.jsonPrimitive?.content == "Reconnecting" ||
+                    (state["phase"]?.jsonPrimitive?.content == "Restoring" &&
+                        state["retry"]?.jsonObject?.get("connecting")?.jsonPrimitive?.boolean == true)
+                if (preserving != preserve) {
+                    // Capture before applying a new layout or clearing any pane.
+                    terminal.connectionRecovery(preserve)
+                    preserving = preserve
+                }
+                val cycle = synchronized(this@RustClientConnection) { recovery.cycle }
+                val sequence = state.getValue("sequence").toString()
+                if (sequence != layoutSequence) {
+                    layoutSequence = sequence
+                    fun text(key: String) = state[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+                    // Recovery clears the native input target. Keep the last visible
+                    // window underneath the dim until a replacement layout exists.
+                    if (text("phase") in setOf("Ready", "Restoring", "Shell") &&
+                        (text("phase") != "Restoring" || text("window") != null)) {
+                        terminal.layout(RemoteStateDecoder.json(state.getValue("remote").jsonObject), text("window"), text("pane"), c.targetJson())
                     }
-                    val preserve = synchronized(this@RustClientConnection) { recovery.pending } ||
-                        state["phase"]?.jsonPrimitive?.content == "Reconnecting" ||
-                        (state["phase"]?.jsonPrimitive?.content == "Restoring" &&
-                            state["retry"]?.jsonObject?.get("connecting")?.jsonPrimitive?.boolean == true)
-                    if (preserving != preserve) {
-                        // Capture before applying a new layout or clearing any pane.
-                        terminal.connectionRecovery(preserve)
-                        preserving = preserve
+                    if (text("phase") !in setOf("Ready", "Restoring", "Shell")) {
+                        displayed.clear()
                     }
-                    val cycle = synchronized(this@RustClientConnection) { recovery.cycle }
-                    val sequence = state.getValue("sequence").toString()
-                    if (sequence != layoutSequence) {
-                        layoutSequence = sequence
-                        fun text(key: String) = state[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
-                        // Recovery clears the native input target. Keep the last visible
-                        // window underneath the dim until a replacement layout exists.
-                        if (text("phase") in setOf("Ready", "Restoring", "Shell") &&
-                            (text("phase") != "Restoring" || text("window") != null)) {
-                            terminal.layout(RemoteStateDecoder.json(state.getValue("remote").jsonObject), text("window"), text("pane"), c.targetJson())
-                        }
-                        if (text("phase") !in setOf("Ready", "Restoring", "Shell")) {
-                            displayed.clear()
-                        }
-                    }
-                    val event = c.pollOutput(id)
-                    if (event == null) {
-                        synchronized(this@RustClientConnection) {
-                            if (current == epoch && subscription == id && state["checking"]?.jsonPrimitive?.boolean != true) {
-                                applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
-                            }
-                        }
-                        delay(8); continue
-                    }
-                    if (current == epoch && subscription == id && surface === terminal && c.acceptsOutput(event.targetJson)) {
-                        val target = json.parseToJsonElement(event.targetJson).jsonObject.getValue("pane_id").jsonPrimitive.content
-                        terminal.outputPane(target, event.targetJson)
-                        when (event.kind) {
-                            "Resize" -> {
-                                val shellRecovery = target == "shell" && synchronized(this@RustClientConnection) { recovery.pending }
-                                if (shellRecovery || (displayed[target] != null && displayed[target] != event.targetJson)) terminal.beginSnapshot()
-                                // A shell resize can supersede its initial Reset events before
-                                // the renderer polls them. Render an empty new shell at the
-                                // current generation rather than waiting for a discarded ResetEnd.
-                                if (shellRecovery && displayed[target] == null) terminal.reset(byteArrayOf(27, 99))
-                                terminal.resizeRemote(Size(event.columns.toInt(), event.rows.toInt()))
-                                if (shellRecovery) {
-                                    terminal.endSnapshot(); displayed[target] = event.targetJson
-                                    synchronized(this@RustClientConnection) {
-                                        if (current == epoch && subscription == id && c.acceptsOutput(event.targetJson)) {
-                                            recovery.rendered(id.toLong(), cycle, target, event.targetJson)
-                                            applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
-                                        }
-                                    }
-                                }
-                            }
-                            "ResetBegin" -> {
-                                if (displayed[target] != null || synchronized(this@RustClientConnection) { recovery.pending }) terminal.beginSnapshot()
-                                terminal.reset(event.bytes)
-                            }
-                            "ResetChunk", "Live" -> terminal.write(event.bytes)
-                            "ResetEnd" -> {
-                                terminal.endSnapshot(); displayed[target] = event.targetJson
-                                synchronized(this@RustClientConnection) {
-                                    if (current == epoch && subscription == id && c.acceptsOutput(event.targetJson)) {
-                                        recovery.rendered(id.toLong(), cycle, target, event.targetJson)
-                                        applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Payload stays charged until xterm confirms the pane's write callback.
-                    c.acknowledge(id, event.sequence)
+                }
+                val event = c.pollOutput(id)
+                if (event == null) {
                     synchronized(this@RustClientConnection) {
                         if (current == epoch && subscription == id && state["checking"]?.jsonPrimitive?.boolean != true) {
                             applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
                         }
                     }
+                    delay(8); continue
                 }
-            } catch (e: CancellationException) { throw e }
-            catch (_: Exception) {
-                val failed = synchronized(this@RustClientConnection) {
-                    if (current == epoch && subscription == id && surface === terminal) {
-                        recovery.begin(); recovery.unbind()
-                        outputFailed = true
-                        status.value = status.value.copy(recovering = true)
-                        notice.value = t("터미널 출력 구독이 종료되었습니다. 재연결하세요.")
-                        true
-                    } else false
-                }
-                if (failed) { terminal.connectionRecovery(true); preserving = true }
-            }
-            finally {
-                withContext(NonCancellable) {
-                    if (surface !== terminal || (current == epoch && subscription == id)) {
-                        terminal.cancelSnapshot()
-                        if (preserving == true && !synchronized(this@RustClientConnection) { surface === terminal && recovery.pending }) {
-                            terminal.connectionRecovery(false)
+                if (current == epoch && subscription == id && surface === terminal && c.acceptsOutput(event.targetJson)) {
+                    val target = json.parseToJsonElement(event.targetJson).jsonObject.getValue("pane_id").jsonPrimitive.content
+                    terminal.outputPane(target, event.targetJson)
+                    when (event.kind) {
+                        "Resize" -> {
+                            val shellRecovery = target == "shell" && synchronized(this@RustClientConnection) { recovery.pending }
+                            if (shellRecovery || (displayed[target] != null && displayed[target] != event.targetJson)) terminal.beginSnapshot()
+                            // A shell resize can supersede its initial Reset events before
+                            // the renderer polls them. Render an empty new shell at the
+                            // current generation rather than waiting for a discarded ResetEnd.
+                            if (shellRecovery && displayed[target] == null) terminal.reset(byteArrayOf(27, 99))
+                            terminal.resizeRemote(Size(event.columns.toInt(), event.rows.toInt()))
+                            if (shellRecovery) {
+                                terminal.endSnapshot(); displayed[target] = event.targetJson
+                                synchronized(this@RustClientConnection) {
+                                    if (current == epoch && subscription == id && c.acceptsOutput(event.targetJson)) {
+                                        recovery.rendered(id.toLong(), cycle, target, event.targetJson)
+                                        trace("screen-ack cycle=$cycle")
+                                        applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                                    }
+                                }
+                            }
+                        }
+                        "ResetBegin" -> {
+                            if (displayed[target] != null || synchronized(this@RustClientConnection) { recovery.pending }) terminal.beginSnapshot()
+                            terminal.reset(event.bytes)
+                        }
+                        "ResetChunk", "Live" -> terminal.write(event.bytes)
+                        "ResetEnd" -> {
+                            terminal.endSnapshot(); displayed[target] = event.targetJson
+                            synchronized(this@RustClientConnection) {
+                                if (current == epoch && subscription == id && c.acceptsOutput(event.targetJson)) {
+                                    recovery.rendered(id.toLong(), cycle, target, event.targetJson)
+                                    trace("screen-ack cycle=$cycle")
+                                    applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                                }
+                            }
                         }
                     }
                 }
+                // Payload stays charged until xterm confirms the pane's write callback.
+                ensureActive()
+                synchronized(this@RustClientConnection) {
+                    if (current == epoch && subscription == id) {
+                        c.acknowledge(id, event.sequence)
+                        if (state["checking"]?.jsonPrimitive?.boolean != true) applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                    }
+                }
             }
+        }, failed = { error ->
+            synchronized(this@RustClientConnection) {
+                if (surface === terminal) {
+                    trace("output-failed kind=${if (error is TimeoutCancellationException) "timeout" else "renderer"}")
+                    failOutput(c, id, current)
+                }
+            }
+        }, release = {
+            synchronized(this@RustClientConnection) { releaseOutput(c, id, current) }
+        }, cleanup = {
+            // The successor joins this cleanup before touching the same WebView.
+            // Cleanup never waits for an output ACK or delays native unsubscribe.
+            runCatching {
+                withTimeout(1_000) {
+                    val preserve = synchronized(this@RustClientConnection) { surface === terminal && recovery.pending }
+                    // Freeze the visible snapshot cache before cancelling it.
+                    if (preserve) terminal.connectionRecovery(true)
+                    terminal.cancelSnapshot()
+                    if (!preserve) terminal.connectionRecovery(false)
+                }
+            }
+        })
+        try {
+            snapshotRequest = c.submitAction(buildJsonObject { put("action", "snapshot") }.toString())
+        } catch (_: Exception) {
+            failOutput(c, id, current)
+            outputJob?.cancel()
+            releaseOutput(c, id, current)
         }
-        action(buildJsonObject { put("action", "snapshot") })
+    }
+    // All callers hold the adapter lock. Old cleanup must never clear a newer subscription.
+    private fun releaseOutput(c: NativeConnection, id: ULong?, current: Long) {
+        if (id == null || current != epoch || native !== c || subscription != id) return
+        c.unsubscribe(id)
+        subscription = null; snapshotRequest = null; recovery.unbind()
+        trace("output-release id=$id")
+    }
+    private fun failOutput(c: NativeConnection, id: ULong?, current: Long) {
+        if (id == null || current != epoch || native !== c || subscription != id) return
+        recovery.begin()
+        outputFailed = true
+        applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+        notice.value = outputFailureMessage()
     }
     @Synchronized override fun bindSurface(value: TerminalSurface?) {
         if (surface === value) return
         surface = value
         if (value != null) bindOutput()
+        else { outputJob?.cancel(); native?.let { releaseOutput(it, subscription, epoch) } }
     }
-    @Synchronized override fun unbindSurface(expected: TerminalSurface) { if (surface === expected) { surface = null; outputJob?.cancel(); subscription?.let { native?.unsubscribe(it) }; subscription = null; recovery.unbind() } }
+    @Synchronized override fun unbindSurface(expected: TerminalSurface) { if (surface === expected) bindSurface(null) }
     override fun trust() {
         val request = trustRequest.value ?: return
         try {
@@ -346,6 +399,16 @@ class RustClientConnection(
     private fun action(value: JsonObject) { try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") } }
     @Synchronized override fun retryNow() {
         backgroundResume.cancel(); userStopped = false
+        val c = native
+        if (c != null) applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+        if (outputFailed && status.value.phase in setOf(Phase.Ready, Phase.Restoring, Phase.Shell) && !status.value.showsConnectionProgress) {
+            if (status.value.phase == Phase.Shell) connect()
+            else {
+                outputRecoveryAttempted = false
+                onResume()
+            }
+            return
+        }
         action(buildJsonObject { put("action", "retryNow") })
     }
     @Synchronized override fun stopRetrying() {
@@ -367,6 +430,7 @@ class RustClientConnection(
     }
     @Synchronized override fun onResume() {
         if (closed) return
+        trace("resume")
         backgroundResume.take()?.let {
             lastSession = it.session; lastPane = it.pane
             connect()
@@ -378,13 +442,23 @@ class RustClientConnection(
         if (userStopped) return
         try {
             applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
-            // A renderer failure must not bypass a native auth/trust/user stop.
-            if (outputFailed && status.value.phase in setOf(Phase.Ready, Phase.Shell, Phase.Selecting, Phase.Restoring)) {
-                connect(); return
-            }
-            if (surface != null && outputJob?.isActive != true) bindOutput()
-            resumeRequests.add(c.submitAction(buildJsonObject { put("action", "checkConnection") }.toString()))
+            val request = c.submitAction(buildJsonObject { put("action", "checkConnection") }.toString())
+            resumeRequests.add(request)
+            trace("check-submit request=$request")
+            // Admission sets checking synchronously in Rust. Publish it in onStart,
+            // before Compose draws the first foreground frame, without a timer.
             applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+            if (outputFailed) {
+                // Only tmux can reconstruct a lost screen. One automatic attempt,
+                // then an explicit retry; auth/trust/stopped states stay untouched.
+                if (!outputRecoveryAttempted && surface != null && tmuxOutput &&
+                    (status.value.phase in setOf(Phase.Ready, Phase.Restoring, Phase.Reconnecting) ||
+                        (status.value.checking && status.value.retryExhausted))) {
+                    outputRecoveryAttempted = true
+                    bindOutput()
+                    applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                }
+            } else if (surface != null && outputJob?.isActive != true) bindOutput()
         } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") }
     }
     override fun selectTarget(session: String, window: String?, pane: String?) {
@@ -406,7 +480,9 @@ class RustClientConnection(
         try { refreshRequest = c.submitAction(buildJsonObject { put("action", "refresh") }.toString()) }
         catch (_: Exception) { refreshing.value = false; notice.value = t("세션 목록을 조회하지 못했습니다.") }
     }
-    override fun restore() = action(buildJsonObject { put("action", "snapshot") })
+    @Synchronized override fun restore() {
+        if (outputFailed) retryNow() else action(buildJsonObject { put("action", "snapshot") })
+    }
     @Synchronized override fun resize(value: Size) { if (!closed) resizes.resize(value, System.nanoTime() / 1_000_000) }
     // Called only by the current connection's polling loop while holding the owner lock.
     // No timer can outlive detach(), and native completions bound us to one request in flight.
@@ -484,12 +560,15 @@ class RustClientConnection(
     @Synchronized private fun detach() {
         failInputs()
         resumeRequests.clear()
+        snapshotRequest = null
         resizes.reset()
         appliedSequence = -1L
         recovery.reset()
         refreshRequest = null; refreshing.value = false
         cleanup.removeAll { it.isCompleted }
-        val old = native; native = null; val state = stateJob; stateJob = null; val output = outputJob; outputJob = null
+        // Keep the last writer as the next bind's predecessor, even across a
+        // native reconnect using the same WebView.
+        val old = native; native = null; val state = stateJob; stateJob = null; val output = outputJob
         val id = subscription; subscription = null
         state?.cancel(); output?.cancel(); if (old != null) { id?.let(old::unsubscribe); old.stop(); cleanup += scope.launch(NonCancellable) { state?.join(); output?.join(); try { old.shutdown() } finally { old.close() } } }
     }
