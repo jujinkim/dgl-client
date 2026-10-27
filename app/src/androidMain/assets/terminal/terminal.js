@@ -282,8 +282,8 @@
     if (!inputEnabled) api.cancelTouchScroll();
   };
   // Capture xterm's own paste transformation (including current bracketed-paste mode)
-  // without emitting input. Kotlin validates the target and submits one acknowledged request.
-  api.preparePaste = (text, enter) => {
+  // without emitting input. Kotlin sends Enter separately after the paste request succeeds.
+  api.preparePaste = text => {
     if (typeof text !== 'string' || text.length === 0) throw new Error('Empty paste');
     pasteCapture = [];
     try {
@@ -291,7 +291,7 @@
         const normalized = text.replace(/\r?\n/g, '\r');
         pasteCapture.push(snapshotInputModes.bracketedPasteMode ? '\x1b[200~' + normalized + '\x1b[201~' : normalized);
       } else term.paste(text);
-      const data = pasteCapture.join('') + (enter === true ? '\r' : '');
+      const data = pasteCapture.join('');
       if (new TextEncoder().encode(data).length > 65536) throw new Error('Paste exceeds 64 KiB');
       return data;
     } finally { pasteCapture = null; }

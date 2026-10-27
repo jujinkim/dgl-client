@@ -307,7 +307,6 @@ impl Terminal {
                 let bytes = input::paste_bytes(
                     &text,
                     self.input_modes().contains(TermMode::BRACKETED_PASTE),
-                    false,
                 );
                 self.send(bytes);
             }

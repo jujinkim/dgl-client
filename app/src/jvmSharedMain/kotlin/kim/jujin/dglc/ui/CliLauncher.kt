@@ -67,7 +67,7 @@ internal class TerminalFocus {
     var request: () -> Unit = {}
     var keyboard: () -> Unit = {}
     var imeVisible by mutableStateOf(false)
-    var preparePaste: suspend (String, Boolean) -> ByteArray = { _, _ -> error(t("터미널이 아직 준비되지 않았습니다.")) }
+    var preparePaste: suspend (String) -> ByteArray = { _ -> error(t("터미널이 아직 준비되지 않았습니다.")) }
     var inputAllowed: () -> Boolean = { true }
 }
 internal val LocalTerminalFocus = staticCompositionLocalOf { TerminalFocus() }

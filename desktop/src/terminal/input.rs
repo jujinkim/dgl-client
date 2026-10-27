@@ -1,17 +1,13 @@
 use alacritty_terminal::term::TermMode;
 use gpui::{Keystroke, Modifiers, MouseButton, ScrollDelta, TouchPhase};
 
-pub(super) fn paste_bytes(text: &str, bracketed: bool, enter: bool) -> Vec<u8> {
+pub(super) fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
     let text = text.replace("\r\n", "\n").replace('\n', "\r");
-    let mut bytes = if bracketed {
+    if bracketed {
         format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', "")).into_bytes()
     } else {
         text.into_bytes()
-    };
-    if enter {
-        bytes.push(b'\r');
     }
-    bytes
 }
 
 // xterm's legacy keyboard protocol. Printable text and IME commits stay with GPUI.

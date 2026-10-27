@@ -188,7 +188,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             terminal.view.setOnTouchListener(null)
             terminal.view.onFocusChangeListener = null
             focus.request = {}; focus.keyboard = {}; focus.shortcut = {}; focus.imeVisible = false
-            focus.preparePaste = { _, _ -> error(t("터미널이 닫혔습니다.")) }
+            focus.preparePaste = { _ -> error(t("터미널이 닫혔습니다.")) }
         }
     }
     DisposableEffect(terminal) {
@@ -431,14 +431,14 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         font.reset()
         applyConfiguration()
     }
-    suspend fun preparePaste(text: String, enter: Boolean): ByteArray = withTimeout(15_000) {
+    suspend fun preparePaste(text: String): ByteArray = withTimeout(15_000) {
         ready.await()
         withContext(Dispatchers.Main.immediate) {
             check(!closed) { t("터미널이 닫혔습니다.") }
             val result = CompletableDeferred<ByteArray>()
-            view.evaluateJavascript("window.preparePaste(${JSONObject.quote(text)},$enter)") { raw ->
+            view.evaluateJavascript("window.preparePaste(${JSONObject.quote(text)})") { raw ->
                 runCatching {
-                    check(raw != null && raw != "null") { t("입력은 붙여넣기 제어 문자와 Enter를 포함하여 UTF-8 64 KiB 이하여야 합니다.") }
+                    check(raw != null && raw != "null") { t("입력은 붙여넣기 제어 문자를 포함하여 UTF-8 64 KiB 이하여야 합니다.") }
                     org.json.JSONTokener(raw).nextValue().let { it as String }.toByteArray(Charsets.UTF_8)
                 }.fold({ result.complete(it) }, { result.completeExceptionally(it) })
             }

@@ -6,26 +6,19 @@
 
 ## 현재 변경 검사 (2026-10-27)
 
-같은 대상의 크기 변경 중 키·텍스트 입력을 기존 제한된 큐로 받고, 최초 크기 변경 즉시 제출·이후
-최소 50ms 병합·실패 후 150ms 재시도를 적용했습니다. 실제 연결 확인·복구와 좌표 입력은 분리합니다.
-첫 자동 재시도는 즉시, 이후 1초 간격으로 최대 3회이며 소진 시 터미널 중앙에서 다시 시도합니다.
-Android는 실제 표시 전환, 데스크톱은 전면 전환·UI tick 간격으로 복귀를 검사합니다.
+텍스트 작성의 `Enter 함께 보내기`는 텍스트 전송 성공 후 별도 Enter 키 요청을 보냅니다.
+붙여넣기 데이터에는 추가 Enter를 합치지 않으며 각 단계의 대상 검사·완료 확인과 실패 입력 무재전송을 유지합니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust·UniFFI·데스크톱 | `cargo test --locked --workspace`: 116 통과. 격리 환경/Keychain용 기본 ignore 7개는 통과로 계산하지 않음. 가상 시간 즉시·1초·1초 재시도, 중복 검사/접속·사용자 정지, 크기만 바뀐 입력 대상, 좁은 창·분할의 중앙 버튼 위치/연속 클릭, IME 조합·입력 모드 유지 포함 |
-| 격리 SSH | tmux 3.7c의 `resume::healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_input` 1개 통과. 정상 SSH 재사용, 무응답·출력 역압력 중 3초 판정, 동일 tmux PID, 실패 입력 미재전송, 크기 캡처 지연 중 한글·영문 입력 순서/중복 확인 |
-| JVM | 83 통과·외부 SSH/Windows 환경 예상 skip 9. 결과 검증기 명시적 목록 대조 통과 |
-| 웹 | 34 통과·skip 0. 연속 크기·IME 세대, 조합 위치, 스냅샷 중 방향키/붙여넣기 모드, 좌표 보고 차단 중 키·텍스트 수신과 무재전송 포함 |
-| Android | Debug·계측 APK·lint 빌드 통과. 기존 검토 lint 진단 12개 일치. API36 전용 `AndroidConnectionLifetimeTest`와 `AndroidMobileInputTest#exhaustedRetryIsCenteredAndRetainsTheTerminal` 2개 통과·skip 0 |
+| Rust 데스크톱 | `cargo test --locked -p dgl-desktop`: 77 통과·대화형 Keychain ignore 1. 텍스트 성공 뒤 독립 Enter 요청, 각 단계 완료까지 초안/편집 잠금 유지, 큐 거절·실패·취소·대상 변경 시 Enter 차단, 크기만 바뀐 대상 허용, 현재 pane의 붙여넣기 모드·64 KiB 경계 포함 |
+| JVM | 86 통과·외부 SSH/Windows 환경 예상 skip 9. 텍스트/Enter 순서·각 단계 완료 대기·인코더 거절·큐 실패·대상 변경·초안 보존 포함. 결과 검증기 명시적 목록 대조 통과 |
+| 웹 | 34 통과·skip 0. 일반/스냅샷 bracketed paste 데이터에 추가 Enter 없음, 작성한 줄바꿈 유지, 제어 문자 포함 64 KiB 경계 포함 |
+| Android | `:app:compileAndroidMain :mobileUi:compileDebugKotlin :androidApp:compileDebugKotlin` 통과. Rust 바인딩 및 네 ABI 라이브러리 빌드 포함. APK 패키징·lint·계측은 이번 변경에서 실행하지 않음 |
 | Python·정적 검사 | 98 통과. 번역 생성 일치·원문 체크섬·Wrapper·문서 링크·diff 공백·대시보드 메타데이터 검사 통과 |
 
-API36 연결 수명 검사는 홈·백그라운드 복귀, IME, Activity 재생성, 유지 설정 켜짐/꺼짐,
-수동 종료·재시도 정지·task 제거, 삭제된 세션·인증 실패 보존을 확인했습니다. 중앙 버튼 검사는
-화면 안 중앙 배치·상단 중복 버튼 없음·클릭 후 연결/터미널 유지를 확인했습니다.
-로그는 `artifacts/recovery-sync/`, 원본 APK 검사 결과는 `artifacts/rust-candidate/android/build.json`에 있습니다.
-Windows 빌드 경로는 유지했으며 Windows 네이티브·물리 Android 키보드·macOS 실기 절전/GUI·전체 API matrix·장시간 검사는 수행하지 않았습니다.
-데스크톱 절전 복귀는 3초 이상의 UI tick 간격을 사용하므로 긴 UI 정지도 연결 검사 계기가 됩니다.
+JVM 결과는 `artifacts/jvm-tests.json`에 있습니다. 이번 변경에서 실제 SSH/CLI·Android 계측·물리 키보드·macOS GUI·Windows 네이티브·장시간 검사는 수행하지 않았습니다.
+Windows 빌드·패키징 경로는 유지했습니다. 전송 완료는 기존 입력 큐가 보고하는 결과이며 원격 애플리케이션의 처리 완료를 뜻하지 않습니다.
 
 ## 남은 한계
 

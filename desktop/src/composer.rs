@@ -9,24 +9,49 @@ pub(super) struct Composer {
     pub input: Entity<TextInput>,
     pub include_enter: bool,
     target: Option<Destination>,
-    pub pending: Option<u64>,
+    pub pending: Option<Pending>,
     pub error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Pending {
+    Text { request: u64, enter: bool },
+    Enter { request: u64 },
+}
+impl Pending {
+    fn request(self) -> u64 {
+        match self {
+            Self::Text { request, .. } | Self::Enter { request } => request,
+        }
+    }
 }
 
 pub(super) fn complete(
     composers: &mut HashMap<TabId, Composer>,
     dialog: &mut Option<Dialog>,
-    id: TabId,
+    tab: &Tab,
+    selected: bool,
     result: &Completion,
     cx: &mut App,
 ) -> bool {
+    let id = tab.id;
     let Some(composer) = composers.get_mut(&id) else {
         return false;
     };
-    if !composer.complete(result, cx) {
+    if !composer.complete(
+        result,
+        Destination::capture(&tab.connection),
+        selected,
+        |target, bytes| {
+            tab.connection
+                .input(target.clone(), bytes)
+                .map_err(|e| e.to_string())
+        },
+        cx,
+    ) {
         return false;
     }
-    if composer.error.is_none() {
+    if composer.pending.is_none() && composer.error.is_none() {
         composers.remove(&id);
         if matches!(dialog, Some(Dialog::Compose(tab)) if *tab == id) {
             *dialog = None;
@@ -58,7 +83,7 @@ impl Composer {
         text: &str,
         current: Option<Destination>,
         selected: bool,
-        send: impl FnOnce(&PaneTarget, &str, bool) -> Result<u64, String>,
+        send: impl FnOnce(&PaneTarget, &str) -> Result<u64, String>,
     ) {
         if self.pending.is_some() {
             return;
@@ -82,42 +107,93 @@ impl Composer {
                 .ok_or(t(
                     "연결·세션·패널이 변경되어 전송을 취소했습니다. 초안을 확인한 뒤 다시 여세요.",
                 ))?;
-            send(&destination.target, text, self.include_enter)
+            send(&destination.target, text)
         })();
         match result {
             Ok(request) => {
-                self.pending = Some(request);
+                self.pending = Some(Pending::Text {
+                    request,
+                    enter: self.include_enter,
+                });
                 self.error = None;
             }
             Err(error) => self.error = Some(error),
         }
     }
 
-    pub fn complete(&mut self, result: &Completion, cx: &mut App) -> bool {
-        if self.pending != Some(result.request_id) {
+    fn complete(
+        &mut self,
+        result: &Completion,
+        current: Option<Destination>,
+        selected: bool,
+        send_enter: impl FnOnce(&PaneTarget, Vec<u8>) -> Result<u64, String>,
+        cx: &mut App,
+    ) -> bool {
+        let Some(pending) = self.pending.filter(|p| p.request() == result.request_id) else {
             return false;
-        }
+        };
+        let sent = result.outcome == CompletionOutcome::Sent && result.error.is_none();
+        let failure = || {
+            result
+                .error
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| t("전송 결과를 확인하지 못했습니다").into())
+        };
         self.pending = None;
+        let error = if sent && matches!(pending, Pending::Text { enter: true, .. }) {
+            // The paste has completed. Enter is a separate key request to the same destination.
+            let next = current
+                .as_ref()
+                .filter(|current| {
+                    selected
+                        && self
+                            .target
+                            .as_ref()
+                            .is_some_and(|original| original.matches(current))
+                })
+                .ok_or_else(|| t("연결·세션·패널이 변경되어 입력을 취소했습니다.").to_string())
+                .and_then(|destination| {
+                    let bytes = dgl_core::input::TerminalKey::Enter
+                        .encode(dgl_core::input::Modifiers::default(), false)
+                        .expect("Enter must be encodable");
+                    send_enter(&destination.target, bytes)
+                });
+            match next {
+                Ok(request) => {
+                    self.pending = Some(Pending::Enter { request });
+                    return true;
+                }
+                Err(error) => Some(Self::enter_error(error)),
+            }
+        } else if sent {
+            None
+        } else if matches!(pending, Pending::Enter { .. }) {
+            Some(Self::enter_error(failure()))
+        } else {
+            Some(tr!(
+                "전송 실패: {0}. 초안은 유지되며 자동 재전송하지 않습니다.",
+                failure()
+            ))
+        };
         self.input.update(cx, |input, cx| {
             input.read_only = false;
             cx.notify();
         });
-        self.error = if result.outcome == CompletionOutcome::Sent && result.error.is_none() {
+        if error.is_none() {
             self.input.update(cx, |input, cx| input.set_content("", cx));
             self.include_enter = false;
             self.target = None;
-            None
-        } else {
-            Some(tr!(
-                "전송 실패: {0}. 초안은 유지되며 자동 재전송하지 않습니다.",
-                result
-                    .error
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| t("전송 결과를 확인하지 못했습니다").into())
-            ))
-        };
+        }
+        self.error = error;
         true
+    }
+
+    fn enter_error(error: String) -> String {
+        tr!(
+            "텍스트는 전송되었지만 Enter 전송에 실패했습니다: {0}. 초안은 유지되며 자동 재전송하지 않습니다.",
+            error
+        )
     }
 }
 
@@ -180,10 +256,10 @@ impl Desktop {
             &text,
             Destination::capture(&tab.connection),
             selected,
-            |target, text, enter| {
+            |target, text| {
                 let bytes = tab
                     .terminal
-                    .update(cx, |t, cx| t.prepare_paste(target, text, enter, cx))?;
+                    .update(cx, |t, cx| t.prepare_paste(target, text, cx))?;
                 tab.connection
                     .input(target.clone(), bytes)
                     .map_err(|e| tr!("전송 실패: {0}. 초안은 유지됩니다.", e))
@@ -278,7 +354,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{Composer, Destination, TextInput};
+    use super::{Composer, Destination, Pending, TextInput};
     use dgl_core::{
         Error,
         connection::{Completion, CompletionOutcome},
@@ -324,6 +400,15 @@ mod tests {
             error,
         }
     }
+    fn complete_without_enter(composer: &mut Composer, result: &Completion, cx: &mut App) -> bool {
+        composer.complete(
+            result,
+            Some(destination()),
+            true,
+            |_, _| panic!("unexpected Enter"),
+            cx,
+        )
+    }
 
     #[gpui::test]
     fn rejects_empty_oversized_changed_and_missing_destinations_without_submitting(
@@ -346,17 +431,17 @@ mod tests {
                 mutations.push(Some(changed));
             }
             for current in mutations {
-                composer.submit("hello", current, true, |_, _, _| {
+                composer.submit("hello", current, true, |_, _| {
                     panic!("stale draft entered input queue")
                 });
                 assert!(composer.error.is_some());
                 assert!(composer.pending.is_none());
             }
-            composer.submit("hello", Some(original.clone()), false, |_, _, _| {
+            composer.submit("hello", Some(original.clone()), false, |_, _| {
                 panic!("inactive tab submitted")
             });
             for text in [String::new(), "한".repeat(21846)] {
-                composer.submit(&text, Some(original.clone()), true, |_, _, _| {
+                composer.submit(&text, Some(original.clone()), true, |_, _| {
                     panic!("invalid size submitted")
                 });
                 assert!(composer.error.is_some());
@@ -375,35 +460,186 @@ mod tests {
             resized.target.generation.size += 9;
             let text = composer.input.read(cx).content.to_string();
             let mut calls = 0;
-            composer.submit(&text, Some(resized.clone()), true, |_, text, enter| {
+            composer.submit(&text, Some(resized.clone()), true, |_, text| {
                 calls += 1;
                 assert_eq!(text, "한글\n초안 😀");
-                assert!(enter);
                 Ok(17)
             });
-            composer.submit(&text, Some(resized), true, |_, _, _| {
+            composer.submit(&text, Some(resized), true, |_, _| {
                 panic!("duplicate submitted")
             });
             assert_eq!(calls, 1);
-            assert_eq!(composer.pending, Some(17));
-            assert!(!composer.complete(&result(16, None), cx));
+            assert_eq!(
+                composer.pending,
+                Some(Pending::Text {
+                    request: 17,
+                    enter: true
+                })
+            );
+            assert!(!complete_without_enter(
+                &mut composer,
+                &result(16, None),
+                cx
+            ));
             assert_eq!(composer.input.read(cx).content.as_ref(), text);
-            assert!(composer.complete(&result(17, Some(Error::Network)), cx));
+            assert!(complete_without_enter(
+                &mut composer,
+                &result(17, Some(Error::Network)),
+                cx
+            ));
             assert!(composer.error.is_some());
             assert_eq!(composer.input.read(cx).content.as_ref(), text);
             assert!(composer.include_enter);
             assert!(composer.pending.is_none());
             // A manual retry can fail synchronously; neither failure retries itself.
-            composer.submit(&text, Some(destination()), true, |_, _, _| {
+            composer.submit(&text, Some(destination()), true, |_, _| {
                 Err("queue full".into())
             });
             assert_eq!(composer.error.as_deref(), Some("queue full"));
             assert!(composer.pending.is_none());
-            composer.submit(&text, Some(destination()), true, |_, _, _| Ok(18));
-            assert!(composer.complete(&result(18, None), cx));
+            composer.include_enter = false;
+            composer.submit(&text, Some(destination()), true, |_, _| Ok(18));
+            assert!(complete_without_enter(&mut composer, &result(18, None), cx));
             assert!(composer.input.read(cx).content.is_empty());
             assert!(!composer.include_enter);
             assert!(composer.error.is_none());
+        });
+    }
+
+    #[gpui::test]
+    fn enter_waits_for_matching_text_success_and_its_own_completion(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            let mut composer = draft(cx);
+            let text = composer.input.read(cx).content.to_string();
+            composer.submit(&text, Some(destination()), true, |_, sent| {
+                assert_eq!(sent, text);
+                Ok(17)
+            });
+            composer.input.update(cx, |i, _| i.read_only = true);
+            assert!(!complete_without_enter(
+                &mut composer,
+                &result(16, None),
+                cx
+            ));
+            let mut resized = destination();
+            resized.target.generation.size += 1;
+            let mut enters = 0;
+            assert!(composer.complete(
+                &result(17, None),
+                Some(resized.clone()),
+                true,
+                |target, bytes| {
+                    enters += 1;
+                    assert_eq!(target, &resized.target);
+                    assert_eq!(bytes, b"\r");
+                    Ok(18)
+                },
+                cx
+            ));
+            assert_eq!(enters, 1);
+            assert_eq!(composer.pending, Some(Pending::Enter { request: 18 }));
+            assert_eq!(composer.input.read(cx).content.as_ref(), text);
+            assert!(composer.input.read(cx).read_only);
+            assert!(composer.include_enter);
+            assert!(!complete_without_enter(
+                &mut composer,
+                &result(17, None),
+                cx
+            ));
+            composer.submit(&text, Some(destination()), true, |_, _| {
+                panic!("duplicate text")
+            });
+            assert!(complete_without_enter(&mut composer, &result(18, None), cx));
+            assert!(composer.pending.is_none());
+            assert!(composer.input.read(cx).content.is_empty());
+            assert!(!composer.input.read(cx).read_only);
+            assert!(!composer.include_enter);
+        });
+    }
+
+    #[gpui::test]
+    fn enter_failure_preserves_delivered_text_without_replaying(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            for failure in 0..3 {
+                let mut composer = draft(cx);
+                let text = composer.input.read(cx).content.to_string();
+                composer.submit(&text, Some(destination()), true, |_, _| Ok(17));
+                composer.input.update(cx, |i, _| i.read_only = true);
+                assert!(composer.complete(
+                    &result(17, None),
+                    Some(destination()),
+                    true,
+                    |_, _| if failure == 0 {
+                        Err("queue full".into())
+                    } else {
+                        Ok(18)
+                    },
+                    cx
+                ));
+                if failure != 0 {
+                    let completion = if failure == 1 {
+                        result(18, Some(Error::Network))
+                    } else {
+                        Completion {
+                            request_id: 18,
+                            outcome: CompletionOutcome::Cancelled,
+                            error: None,
+                        }
+                    };
+                    assert!(complete_without_enter(&mut composer, &completion, cx));
+                }
+                assert!(composer.pending.is_none());
+                assert_eq!(composer.input.read(cx).content.as_ref(), text);
+                assert!(!composer.input.read(cx).read_only);
+                assert!(composer.include_enter);
+                assert!(composer.error.as_ref().unwrap().contains("Enter"));
+                assert!(!complete_without_enter(
+                    &mut composer,
+                    &result(17, None),
+                    cx
+                ));
+                assert!(!complete_without_enter(
+                    &mut composer,
+                    &result(18, None),
+                    cx
+                ));
+            }
+        });
+    }
+
+    #[gpui::test]
+    fn changed_destinations_after_text_and_unsent_completions_never_send_enter(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            for change in 0..8 {
+                let mut composer = draft(cx);
+                let text = composer.input.read(cx).content.to_string();
+                composer.submit(&text, Some(destination()), true, |_, _| Ok(17));
+                let mut changed = destination();
+                match change {
+                    0 => changed.session = Some("$2".into()),
+                    1 => changed.target.connection += 1,
+                    2 => changed.target.generation.connection += 1,
+                    3 => changed.target.generation.pane += 1,
+                    4 => changed.target.pane_id = "%9".into(),
+                    _ => {}
+                }
+                let mut completion = result(17, None);
+                if change == 7 {
+                    completion.outcome = CompletionOutcome::Cancelled;
+                }
+                assert!(composer.complete(
+                    &completion,
+                    (change != 5).then_some(changed),
+                    change != 6,
+                    |_, _| panic!("Enter sent to changed destination or after cancellation"),
+                    cx
+                ));
+                assert!(composer.pending.is_none());
+                assert_eq!(composer.input.read(cx).content.as_ref(), text);
+                assert!(composer.error.is_some());
+            }
         });
     }
 }

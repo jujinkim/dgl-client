@@ -94,14 +94,18 @@ test('composer captures the renderer paste once, blocks background input and enf
   messages.length = 0;
   window.setInputEnabled(false);
   listeners.data('background'); listeners.binary('\x1b[M');
-  assert.equal(window.preparePaste('한글😀\n둘', false), '한글😀\r둘');
+  assert.equal(window.preparePaste('한글😀\n둘'), '한글😀\r둘');
   bracketed = true;
-  assert.equal(window.preparePaste('한글😀\n둘', true), '\x1b[200~한글😀\r둘\x1b[201~\r');
+  assert.equal(window.preparePaste('한글😀\n둘'), '\x1b[200~한글😀\r둘\x1b[201~');
   assert.deepEqual(messages.splice(0), [{ type: 'blocked-input' }]);
-  assert.throws(() => window.preparePaste('', false));
-  assert.throws(() => window.preparePaste('한'.repeat(21846), false));
-  assert.equal(window.preparePaste('a'.repeat(65524), false).length, 65536);
-  assert.throws(() => window.preparePaste('a'.repeat(65524), true));
+  assert.throws(() => window.preparePaste(''));
+  assert.throws(() => window.preparePaste('한'.repeat(21846)));
+  assert.equal(window.preparePaste('a'.repeat(65524)).length, 65536);
+  assert.throws(() => window.preparePaste('a'.repeat(65525)));
+  bracketed = false;
+  assert.equal(window.preparePaste('a'.repeat(65536)).length, 65536);
+  assert.throws(() => window.preparePaste('a'.repeat(65537)));
+  assert.equal(window.preparePaste('line\n'), 'line\r');
   window.setInputEnabled(true); listeners.data('after');
   assert.deepEqual(messages, [{ type: 'input', data: 'after', pane: 'shell', target: null }]);
   window.focusTerminal(); window.focusTerminal();
@@ -813,7 +817,7 @@ test('IME commits once while paste mouse and protocol responses bypass semantic 
   r.events.paste(); r.listeners.data('pasted text');
   r.timers.splice(0).forEach(callback => callback());
   r.listeners.data('\x1b[<0;1;1M'); r.listeners.binary('\x1b[M \x85\xff');
-  assert.equal(r.window.preparePaste('composer', false), 'composer');
+  assert.equal(r.window.preparePaste('composer'), 'composer');
   assert.deepEqual(r.messages, [
     { type: 'input', data: '\x1b[0n', pane: 'shell', target: null },
     { type: 'keyboard', key: 'text', text: '한😀', control: false, shift: false, alt: false, applicationCursor: false, pane: 'shell', target: null },
@@ -874,7 +878,7 @@ test('snapshot reset preserves cursor keys paste mode and composition until the 
   r.event('compositionend'); r.terminal.data('한글');
   assert.equal(r.messages[0].applicationCursor, true);
   assert.equal(r.messages[1].text, '한글');
-  assert.equal(r.window.preparePaste('a\nb', true), '\x1b[200~a\rb\x1b[201~\r');
+  assert.equal(r.window.preparePaste('a\nb'), '\x1b[200~a\rb\x1b[201~');
   r.event('paste'); r.terminal.data('paste');
   assert.equal(r.messages[2].data, '\x1b[200~paste\x1b[201~');
   r.window.endSnapshot(42); r.render(); r.frame(); r.frame();

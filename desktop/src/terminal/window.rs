@@ -219,7 +219,6 @@ impl WindowTerminal {
         &self,
         target: &PaneTarget,
         text: &str,
-        enter: bool,
         cx: &App,
     ) -> Result<Vec<u8>, String> {
         let pane = self.panes.get(&target.pane_id).ok_or(dgl_core::i18n::t(
@@ -229,11 +228,12 @@ impl WindowTerminal {
             .read(cx)
             .input_modes()
             .contains(TermMode::BRACKETED_PASTE);
-        let bytes = input::paste_bytes(text, bracketed, enter);
+        let bytes = input::paste_bytes(text, bracketed);
         if bytes.is_empty() || bytes.len() > 65536 {
-            return Err(
-                "입력은 붙여넣기 제어 문자와 Enter를 포함하여 UTF-8 64 KiB 이하여야 합니다.".into(),
-            );
+            return Err(dgl_core::i18n::t(
+                "입력은 붙여넣기 제어 문자를 포함하여 UTF-8 64 KiB 이하여야 합니다.",
+            )
+            .into());
         }
         Ok(bytes)
     }
@@ -754,41 +754,34 @@ mod tests {
                 },
             };
             assert_eq!(
-                t.prepare_paste(&target, "한글\r\n둘\n끝", true, cx)
-                    .unwrap(),
-                "한글\r둘\r끝\r".as_bytes()
+                t.prepare_paste(&target, "한글\r\n둘\n끝", cx).unwrap(),
+                "한글\r둘\r끝".as_bytes()
             );
             assert_eq!(
-                t.prepare_paste(&target, &"a".repeat(65536), false, cx)
+                t.prepare_paste(&target, &"a".repeat(65536), cx)
                     .unwrap()
                     .len(),
                 65536
             );
-            assert!(
-                t.prepare_paste(&target, &"a".repeat(65536), true, cx)
-                    .is_err()
-            );
+            assert!(t.prepare_paste(&target, &"a".repeat(65537), cx).is_err());
             let pane = t.panes["shell"].clone();
             pane.update(cx, |pane, _| {
                 pane.parser.advance(&mut pane.term, b"\x1b[?2004h")
             });
             assert_eq!(
-                t.prepare_paste(&target, "한\n\x1b끝", true, cx).unwrap(),
-                "\x1b[200~한\r끝\x1b[201~\r".as_bytes()
+                t.prepare_paste(&target, "한\n\x1b끝", cx).unwrap(),
+                "\x1b[200~한\r끝\x1b[201~".as_bytes()
             );
             assert_eq!(
-                t.prepare_paste(&target, &"a".repeat(65523), true, cx)
+                t.prepare_paste(&target, &"a".repeat(65524), cx)
                     .unwrap()
                     .len(),
                 65536
             );
-            assert!(
-                t.prepare_paste(&target, &"a".repeat(65524), true, cx)
-                    .is_err()
-            );
+            assert!(t.prepare_paste(&target, &"a".repeat(65525), cx).is_err());
             let mut missing = target.clone();
             missing.pane_id = "%99".into();
-            assert!(t.prepare_paste(&missing, "hello", false, cx).is_err());
+            assert!(t.prepare_paste(&missing, "hello", cx).is_err());
         });
         connection.close();
         runtime.block_on(connection.join());

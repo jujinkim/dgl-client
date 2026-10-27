@@ -2138,6 +2138,7 @@ fn composer_restores_focus_draft_selection_and_enter_option_and_blocks_terminal(
 fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
     cx: &mut TestAppContext,
 ) {
+    use super::composer::Pending;
     use dgl_core::connection::{Completion, CompletionOutcome};
     let (view, cx) = setup(cx);
     add_terminal(&view, cx);
@@ -2153,7 +2154,10 @@ fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
     cx.simulate_input("second draft");
     view.update(cx, |s, cx| {
         let composer = s.composers.get_mut(&2).unwrap();
-        composer.pending = Some(700);
+        composer.pending = Some(Pending::Text {
+            request: 700,
+            enter: false,
+        });
         composer.input.update(cx, |i, _| i.read_only = true);
         cx.notify();
     });
@@ -2177,7 +2181,10 @@ fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
     );
     assert_eq!(
         view.read_with(cx, |s, _| s.composers[&2].pending),
-        Some(700)
+        Some(Pending::Text {
+            request: 700,
+            enter: false
+        })
     );
     cx.simulate_keystrokes("escape");
     redraw(cx);
@@ -2192,7 +2199,8 @@ fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
         assert!(super::composer::complete(
             &mut s.composers,
             &mut s.dialog,
-            2,
+            &s.tabs[1],
+            false,
             &Completion {
                 request_id: 700,
                 outcome: CompletionOutcome::Sent,
@@ -2203,11 +2211,15 @@ fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
         assert!(matches!(s.dialog, Some(Dialog::Compose(1))));
         assert!(!s.composers.contains_key(&2));
         let composer = s.composers.get_mut(&1).unwrap();
-        composer.pending = Some(701);
+        composer.pending = Some(Pending::Text {
+            request: 701,
+            enter: false,
+        });
         assert!(super::composer::complete(
             &mut s.composers,
             &mut s.dialog,
-            1,
+            &s.tabs[0],
+            true,
             &Completion {
                 request_id: 701,
                 outcome: CompletionOutcome::Failed,
@@ -2224,11 +2236,15 @@ fn composer_completion_preserves_other_drafts_and_restores_focus_on_success(
         s.dismiss_dialog(cx);
         s.open_composer(cx);
         assert_eq!(s.composers[&1].error, failure);
-        s.composers.get_mut(&1).unwrap().pending = Some(702);
+        s.composers.get_mut(&1).unwrap().pending = Some(Pending::Text {
+            request: 702,
+            enter: false,
+        });
         assert!(super::composer::complete(
             &mut s.composers,
             &mut s.dialog,
-            1,
+            &s.tabs[0],
+            true,
             &Completion {
                 request_id: 702,
                 outcome: CompletionOutcome::Sent,

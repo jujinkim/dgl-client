@@ -343,7 +343,14 @@ impl Desktop {
                 }
             }
             for result in tab.connection.completions() {
-                if composer::complete(&mut self.composers, &mut self.dialog, tab.id, &result, cx) {
+                if composer::complete(
+                    &mut self.composers,
+                    &mut self.dialog,
+                    tab,
+                    self.workspace.selected() == Some(tab.id),
+                    &result,
+                    cx,
+                ) {
                     changed = true;
                     continue;
                 }
