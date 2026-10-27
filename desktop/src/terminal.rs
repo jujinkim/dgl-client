@@ -1,3 +1,4 @@
+use crate::snackbar::{SnackbarDuration, SnackbarRequest};
 use alacritty_terminal::{
     Term,
     event::{Event, EventListener},
@@ -66,7 +67,7 @@ pub struct Terminal {
     pub enabled: bool,
     #[cfg(test)]
     pub sent: Vec<Vec<u8>>,
-    pub notice: Option<String>,
+    pub notice: Option<SnackbarRequest>,
     input_requests: HashSet<u64>,
     pub modifiers: KeyModifiers,
     modifier_target: Option<(u64, u64, String, u64)>,
@@ -171,7 +172,12 @@ impl Terminal {
                 Ok(id) => {
                     self.input_requests.insert(id);
                 }
-                Err(e) => self.notice = Some(tr!("입력을 보내지 못했습니다: {0}", e)),
+                Err(e) => {
+                    self.notice = Some(SnackbarRequest::new(
+                        tr!("입력을 보내지 못했습니다: {0}", e),
+                        SnackbarDuration::Long,
+                    ))
+                }
             }
         }
     }
@@ -232,7 +238,12 @@ impl Terminal {
             self.modifiers = KeyModifiers::default();
             self.send(bytes);
         } else {
-            self.notice = Some(dgl_core::i18n::t("이 조합은 터미널 입력으로 표현할 수 없습니다. 조합키를 해제하거나 다른 키를 사용하세요.").into());
+            self.notice = Some(SnackbarRequest::new(
+                dgl_core::i18n::t(
+                    "이 조합은 터미널 입력으로 표현할 수 없습니다. 조합키를 해제하거나 다른 키를 사용하세요.",
+                ),
+                SnackbarDuration::Short,
+            ));
         }
     }
     pub fn complete(&mut self, id: u64) -> bool {
@@ -533,8 +544,10 @@ impl EntityInputHandler for Terminal {
         self.selection = 0..0;
         if origin.is_some_and(|origin| origin != self.input_identity()) {
             self.sync_modifiers();
-            self.notice =
-                Some(dgl_core::i18n::t("연결·세션·패널이 변경되어 입력을 취소했습니다.").into());
+            self.notice = Some(SnackbarRequest::new(
+                dgl_core::i18n::t("연결·세션·패널이 변경되어 입력을 취소했습니다."),
+                SnackbarDuration::Long,
+            ));
             cx.notify();
             return;
         }

@@ -225,6 +225,12 @@ Windows 툴팁 어댑터의 GNU 대상 독립 타입 검사와 Mac ad-hoc 패키
 computer-use는 `cgWindowNotFound`로 대표 툴팁을 관찰하지 못했으며 실제 OS 표시·Windows MSVC/GUI는 미검증입니다.
 Kotlin/JVM·Android 빌드·계측·실제 SSH·장시간 검사는 재실행하지 않았습니다.
 
+## 2026-10-27: CLI 실행 메뉴 정리
+
+AGY·Grok Build의 test 배지와 구분선을 제거하고 서비스명 바로 뒤 번개 아이콘·내용 기준 메뉴 폭을 적용했습니다.
+당시 Rust 데스크톱 68·JVM 78 통과, Keychain ignore 1·JVM 예상 skip 9와 Android Debug·계측 APK 컴파일·lint,
+원본 APK 네 ABI·서명을 확인했습니다. Android 계측·실제 CLI/SSH·macOS GUI·Windows 네이티브는 실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

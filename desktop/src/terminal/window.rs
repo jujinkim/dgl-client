@@ -20,7 +20,7 @@ pub struct WindowTerminal {
     resize_due: Instant,
     drag: Option<(RemotePane, Point<Pixels>, bool, PaneTarget)>,
     pub enabled: bool,
-    pub notice: Option<String>,
+    pub notice: Option<SnackbarRequest>,
     #[cfg(test)]
     pub sent: Vec<Vec<u8>>,
 }
@@ -150,7 +150,10 @@ impl WindowTerminal {
         if let Some(target) = self.connection.target()
             && let Err(e) = self.connection.input(target, bytes)
         {
-            self.notice = Some(dgl_core::tr!("입력을 보내지 못했습니다: {0}", e));
+            self.notice = Some(SnackbarRequest::new(
+                dgl_core::tr!("입력을 보내지 못했습니다: {0}", e),
+                SnackbarDuration::Long,
+            ));
         }
     }
     pub fn clear_modifiers(&mut self, cx: &mut App) {

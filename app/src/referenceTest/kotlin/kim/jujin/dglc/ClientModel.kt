@@ -28,6 +28,7 @@ class ClientModel(
     override val pane = MutableStateFlow<String?>(null)
     override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
     override val notice = MutableStateFlow<String?>(null)
+    override val inputNotice = SnackbarState()
     override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
     private val connectionGeneration = AtomicLong()
     private val paneGeneration = AtomicLong()

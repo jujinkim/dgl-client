@@ -25,6 +25,7 @@ class AndroidHierarchyTest {
         override val pane = MutableStateFlow<String?>("%1")
         override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
         override val notice = MutableStateFlow<String?>(null)
+        override val inputNotice = SnackbarState()
         override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
         override val agents = MutableStateFlow(AgentSnapshot())
         var connects = 0; var disconnects = 0

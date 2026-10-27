@@ -27,6 +27,7 @@ class AndroidMobileInputTest {
         override val pane = MutableStateFlow<String?>("%1")
         override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
         override val notice = MutableStateFlow<String?>(null)
+        override val inputNotice = SnackbarState()
         override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
         var surface: TerminalSurface? = null
         val writes = java.util.Collections.synchronizedList(mutableListOf<ByteArray>())

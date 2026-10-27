@@ -17,7 +17,7 @@ interface ClientConnection {
     val pane: MutableStateFlow<String?>
     val trustRequest: MutableStateFlow<UnknownHostKey?>
     val notice: MutableStateFlow<String?>
-    val inputNotice: MutableStateFlow<String?> get() = notice
+    val inputNotice: SnackbarState
     val tmuxProblem: MutableStateFlow<TmuxProblem?>
     /** Fast title queries are enabled only while this connection is visible in the foreground. */
     fun setTitleUpdatesEnabled(enabled: Boolean) {}

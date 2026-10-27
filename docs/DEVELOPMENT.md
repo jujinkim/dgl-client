@@ -53,9 +53,24 @@ GPUI 검사는 실제 Ctrl+휠의 확대·축소/원격 전송 차단과 좁은 
 호스트·하단 단축키 순서 모델, 설정 상세 화면 왕복·포커스, GPUI 드래그 확정/취소·조합키 1회 소비·세션 탭 재사용 검사를 포함하며 대화형 Keychain 검사는 기본 ignore입니다.
 알림 패널은 버튼 기준 위치·좁은 창·빈/긴 목록·내부 스크롤·닫기·입력 차단·포커스 복원을 검사합니다.
 네이티브 툴팁은 영역 클리핑·스크롤·크기 갱신·가림·제거·창 수명을 GPUI로 검사하며 실제 OS 표시와 Windows MSVC 빌드는 별도 확인합니다.
+스낵바는 Rust·Kotlin에서 프리셋·기본값·사용자 지정 ms의 만료 경계, 같은 문구 재호출과 오래된 닫기/만료 거부를 검사합니다.
+GPUI 검사는 하단 3px 게이지의 남은 시간·위치, 영구 노출 시 게이지 없음, 닫기·포커스를 포함합니다.
 
 기본은 위 기능·단위 검사이며 전체 Android API 계측과 장시간 자원 측정은 별도 선택입니다.
 검사 결과·남은 한계는 [VALIDATION.md](VALIDATION.md)에 기록합니다.
+
+### 스낵바 API
+
+Rust 데스크톱은 `SnackbarState::show_snackbar(message)`가 기본 5초이고,
+`show_snackbar_with_duration(message, duration)`으로 `SnackbarDuration::{Short, Normal, Long, Indefinite}`
+(3초·5초·10초·영구) 또는 `SnackbarDuration::Millis(ms)`를 지정합니다.
+터미널 안내는 `SnackbarRequest`에 문구와 시간을 담아 UI로 전달합니다.
+
+Kotlin의 연결별 `inputNotice: SnackbarState`는 `show(message)` 또는 `show(message, duration)`으로
+같은 네 프리셋을 받으며, `show(message, durationMs = 7500)`처럼 밀리초를 직접 지정할 수 있습니다.
+밀리초 0은 즉시 종료, 음수는 허용하지 않습니다. 영구 노출은 `Indefinite`로 지정하고 게이지를 만들지 않습니다.
+기존 호출부에는 영구 노출을 배정하지 않습니다. 문구 비교 대신 호출 지점에서 프리셋을 정하고,
+알림 ID와 단조 시계로 교체·닫기·만료 및 게이지를 관리합니다. Android 일반 오류의 `notice` 대화상자는 별도 경로입니다.
 
 ### UI 번역
 

@@ -47,7 +47,7 @@ fn key_import_cancel_errors_and_corrected_save(cx: &mut TestAppContext) {
     let fields = valid_form(&view, cx);
     save_without_credentials(&view, cx);
     assert_eq!(feedback(&view, cx).auth_error, Some(MISSING_KEY));
-    assert!(view.read_with(cx, |s, _| s.error.is_none() && s.local.hosts.is_empty()));
+    assert!(view.read_with(cx, |s, _| s.snackbar.is_none() && s.local.hosts.is_empty()));
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("한글 개인키");
     std::fs::write(&path, "invalid key").unwrap();

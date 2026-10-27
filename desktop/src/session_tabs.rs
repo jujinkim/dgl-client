@@ -90,7 +90,10 @@ impl Desktop {
             .host_order
             .save(&self.path.with_file_name("host-order.json"))
         {
-            self.error = Some(tr!("호스트 순서 저장 실패: {0}", e));
+            self.snackbar.show_snackbar_with_duration(
+                tr!("호스트 순서 저장 실패: {0}", e),
+                SnackbarDuration::Long,
+            );
         }
     }
     pub(super) fn reconcile_hosts(&mut self) {
@@ -230,7 +233,7 @@ impl Desktop {
                     Phase::Selecting | Phase::Ready | Phase::MissingSession
                 ) {
                     if let Err(e) = tab.connection.action(target.action()) {
-                        self.error = Some(tr!("대상 선택 실패: {0}", e));
+                        self.snackbar.show_snackbar(tr!("대상 선택 실패: {0}", e));
                     }
                 } else if matches!(
                     target_state.phase,
@@ -280,7 +283,7 @@ impl Desktop {
                     window,
                     pane,
                 }) {
-                    self.error = Some(tr!("대상 선택 실패: {0}", e));
+                    self.snackbar.show_snackbar(tr!("대상 선택 실패: {0}", e));
                 }
             }
         }

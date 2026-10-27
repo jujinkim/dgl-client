@@ -35,9 +35,9 @@ class RustClientConnection(
     override val pane = MutableStateFlow<String?>(null)
     override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
     override val notice = MutableStateFlow<String?>(null)
-    override val inputNotice = MutableStateFlow<String?>(null)
+    override val inputNotice = SnackbarState()
     private val rejections = InputRejections()
-    private fun rejectInput(code: String) { rejections.reject(code)?.let { inputNotice.value = it } }
+    private fun rejectInput(code: String) { rejections.reject(code)?.let { inputNotice.show(it, if (code == "InvalidArgument") SnackbarDuration.Normal else SnackbarDuration.Long) } }
     private fun inputCode(error: Exception) = (error as? CoreException.Failure)?.code ?: "Unknown"
     override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

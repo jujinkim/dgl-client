@@ -26,6 +26,7 @@ class AndroidWorkspaceTest {
         override val pane = MutableStateFlow<String?>(null)
         override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
         override val notice = MutableStateFlow<String?>(null)
+        override val inputNotice = SnackbarState()
         override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
         @Volatile var surface: TerminalSurface? = null
         val writes = java.util.Collections.synchronizedList(mutableListOf<String>())

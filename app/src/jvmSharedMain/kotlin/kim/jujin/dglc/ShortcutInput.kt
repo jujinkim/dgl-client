@@ -20,7 +20,7 @@ class ShortcutInput(private val client: ClientConnection) {
         sync()
         if (!client.status.value.acceptsInput) return null
         val bytes = client.encodeKeyboard(key, text, modifiers.value.union(physical), appCursor)
-        if (bytes == null) client.inputNotice.value = t("이 조합은 터미널 입력으로 표현할 수 없습니다. 조합키를 해제하거나 다른 키를 사용하세요.")
+        if (bytes == null) client.inputNotice.show(t("이 조합은 터미널 입력으로 표현할 수 없습니다. 조합키를 해제하거나 다른 키를 사용하세요."), SnackbarDuration.Short)
         // Clear at submission, even if the input queue rejects the request. Never retry it.
         else clear()
         return bytes

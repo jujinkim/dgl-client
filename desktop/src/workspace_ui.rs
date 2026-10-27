@@ -61,7 +61,7 @@ impl Desktop {
         cx.notify();
     }
     fn tab_drop_target(&self, tab: TabId, position: Point<Pixels>) -> Option<TabDropTarget> {
-        if self.dialog.is_some() || self.error.is_some() {
+        if self.dialog.is_some() || self.snackbar.is_some() {
             return None;
         }
         for group in self.workspace.layout.groups() {
@@ -326,7 +326,10 @@ impl Desktop {
                                         None,
                                     ));
                                 } else {
-                                    s.error = Some(t("호스트에 먼저 연결하세요.").into());
+                                    s.snackbar.show_snackbar_with_duration(
+                                        t("호스트에 먼저 연결하세요."),
+                                        SnackbarDuration::Short,
+                                    );
                                 }
                             },
                         ))
@@ -1128,7 +1131,10 @@ impl Desktop {
                                     passphrase: String::new(),
                                 },
                             ) {
-                                s.error = Some(tr!("호스트키 저장 실패: {0}", e));
+                                s.snackbar.show_snackbar_with_duration(
+                                    tr!("호스트키 저장 실패: {0}", e),
+                                    SnackbarDuration::Long,
+                                );
                                 return;
                             }
                             s.local.trust.insert(endpoint, fingerprint.clone());

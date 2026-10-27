@@ -350,7 +350,10 @@ fn one_shot_modifiers_combine_consume_once_and_ignore_paste_mouse(cx: &mut TestA
     assert!(take_sent(&terminal, cx).is_empty());
     terminal.read_with(cx, |t, _| {
         assert!(t.modifiers.control);
-        assert!(t.notice.is_some());
+        assert_eq!(
+            t.notice.as_ref().unwrap().duration,
+            crate::snackbar::SnackbarDuration::Short
+        );
     });
     terminal.update(cx, |t, _| {
         t.enabled = false;

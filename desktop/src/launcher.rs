@@ -134,7 +134,7 @@ impl Desktop {
     }
     pub fn sync_launcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.launcher.opened.as_ref().is_some_and(|opened| {
-            *opened != self.launch_context() || self.dialog.is_some() || self.error.is_some()
+            *opened != self.launch_context() || self.dialog.is_some() || self.snackbar.is_some()
         }) {
             self.dismiss_launcher(window, cx);
         }
@@ -152,7 +152,7 @@ impl Desktop {
         let current = self.launch_context();
         if let Some(bytes) = self.launcher.take_command(
             &current,
-            self.dialog.is_none() && self.error.is_none(),
+            self.dialog.is_none() && self.snackbar.is_none(),
             command,
         ) && let Some(tab) = self.active_tab()
         {

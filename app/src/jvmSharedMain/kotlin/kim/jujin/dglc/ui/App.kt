@@ -272,14 +272,6 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
     val pane by client.pane.collectAsState()
     val trust by client.trustRequest.collectAsState()
     val notice by client.notice.collectAsState()
-    val inputNotice by client.inputNotice.collectAsState()
-    LaunchedEffect(inputNotice) {
-        val displayed = inputNotice
-        if (displayed != null) {
-            kotlinx.coroutines.delay(4000)
-            if (client.inputNotice.value == displayed) client.inputNotice.value = null
-        }
-    }
     val tmuxProblem by client.tmuxProblem.collectAsState()
     var tmuxDetails by remember(tmuxProblem) { mutableStateOf(false) }
     var navigation by remember { mutableStateOf(!mobileLayout && !workspace) }
@@ -395,11 +387,7 @@ internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
             CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
                 PlatformTerminal(client, preferences, Modifier.fillMaxSize())
             }
-            inputNotice?.let { message ->
-                Snackbar(Modifier.align(Alignment.BottomCenter), action = {
-                    TextButton({ client.inputNotice.value = null }) { Text(t("닫기")) }
-                }) { Text(message) }
-            }
+            TimedSnackbar(client.inputNotice, Modifier.align(Alignment.BottomCenter))
         }
         if (!workspace) TerminalShortcutBar(client, preferences.terminalShortcuts, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open, inputGate = model)
     }

@@ -31,6 +31,67 @@ pub(super) fn redraw(cx: &mut VisualTestContext) {
     cx.run_until_parked();
 }
 
+#[gpui::test]
+fn snackbar_gauge_tracks_remaining_time_and_close_preserves_focus(cx: &mut TestAppContext) {
+    use crate::snackbar::SnackbarDuration;
+    use std::time::{Duration, Instant};
+    let (view, ui) = setup(cx);
+    redraw(ui);
+    let focus = ui.update(|w, cx| w.focused(cx));
+    view.update(ui, |s, cx| {
+        s.snackbar.show_snackbar("timed");
+        cx.notify();
+    });
+    redraw(ui);
+    let track = ui.debug_bounds("snackbar-gauge-track").unwrap();
+    let gauge = ui.debug_bounds("snackbar-gauge").unwrap();
+    let bar = ui.debug_bounds("snackbar").unwrap();
+    assert_eq!(track.size.height, px(3.));
+    assert_eq!(track.bottom(), bar.bottom());
+    assert!(gauge.size.width > track.size.width * 0.95);
+    view.update(ui, |s, cx| {
+        s.snackbar.current.as_mut().unwrap().started_at =
+            Instant::now() - Duration::from_millis(2_500);
+        cx.notify();
+    });
+    redraw(ui);
+    let half = ui.debug_bounds("snackbar-gauge").unwrap().size.width;
+    assert!(half > track.size.width * 0.45 && half < track.size.width * 0.55);
+    let close = ui.debug_bounds("dismiss-error").unwrap();
+    ui.simulate_click(close.center(), Modifiers::default());
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.snackbar.is_none()));
+    assert_eq!(ui.update(|w, cx| w.focused(cx)), focus);
+    view.update(ui, |s, cx| {
+        s.snackbar
+            .show_snackbar_with_duration("expires", SnackbarDuration::Short);
+        s.snackbar.current.as_mut().unwrap().started_at = Instant::now() - Duration::from_secs(3);
+        s.tick(cx);
+    });
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.snackbar.is_none()));
+}
+
+#[gpui::test]
+fn indefinite_snackbar_renders_without_gauge_and_can_be_closed(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    view.update(ui, |s, cx| {
+        s.snackbar.show_snackbar_with_duration(
+            "permanent",
+            crate::snackbar::SnackbarDuration::Indefinite,
+        );
+        cx.notify();
+    });
+    redraw(ui);
+    assert!(ui.debug_bounds("snackbar").is_some());
+    assert!(ui.debug_bounds("snackbar-gauge-track").is_none());
+    assert!(ui.debug_bounds("snackbar-gauge").is_none());
+    let close = ui.debug_bounds("dismiss-error").unwrap();
+    ui.simulate_click(close.center(), Modifiers::default());
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.snackbar.is_none()));
+}
+
 fn ordered_host(id: &str, session: Option<&str>) -> HostProfile {
     serde_json::from_value(serde_json::json!({
         "id":id, "alias":id, "hostname":"127.0.0.1", "port":1,
@@ -987,7 +1048,7 @@ fn retry_buttons_keep_the_tab_terminal_and_connection(cx: &mut TestAppContext) {
     // must no longer invoke StopRetrying (which would now report NotReady).
     cx.simulate_click(stop.center(), Modifiers::default());
     redraw(cx);
-    assert!(view.read_with(cx, |s, _| s.error.is_none()));
+    assert!(view.read_with(cx, |s, _| s.snackbar.is_none()));
     assert!(!connection.state().can_stop_retrying());
     let retry = cx.debug_bounds("retry-now-1").unwrap();
     cx.simulate_click(retry.center(), Modifiers::default());
@@ -1039,7 +1100,15 @@ fn agent_notice_missing_target_is_read_without_reconnect_or_input(cx: &mut TestA
     cx.simulate_click(button.center(), Modifiers::default());
     redraw(cx);
     assert!(view.read_with(cx, |s, _| s.inbox.recent[0].read));
-    assert!(view.read_with(cx, |s, _| s.error.as_ref().unwrap().contains("종료")));
+    assert!(view.read_with(cx, |s, _| {
+        s.snackbar
+            .current
+            .as_ref()
+            .unwrap()
+            .request
+            .message
+            .contains("종료")
+    }));
     assert_eq!(view.read_with(cx, |s, _| s.tabs.len()), 1);
     assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
 }
@@ -1399,7 +1468,7 @@ fn pane_toolbars_stay_above_each_terminal_and_disable_unavailable_actions(cx: &m
         let bounds = cx.debug_bounds(button).unwrap();
         cx.simulate_click(bounds.center(), Modifiers::default());
         redraw(cx);
-        assert!(view.read_with(cx, |s, _| s.dialog.is_none() && s.error.is_none()));
+        assert!(view.read_with(cx, |s, _| s.dialog.is_none() && s.snackbar.is_none()));
     }
     assert_eq!(view.read_with(cx, |s, _| s.tabs.len()), 2);
     assert!(first.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));

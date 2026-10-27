@@ -32,7 +32,7 @@ impl Desktop {
                 );
                 if active
                     && self.dialog.is_none()
-                    && self.error.is_none()
+                    && self.snackbar.is_none()
                     && self
                         .workspace
                         .groups
@@ -81,7 +81,8 @@ impl Desktop {
         let notice = self.inbox.recent.iter().find(|n| n.id() == id).cloned();
         self.inbox.mark_read(id);
         let Some(n) = notice else {
-            self.error = Some(t("대상 연결이 종료되었습니다.").into());
+            self.snackbar
+                .show_snackbar(t("대상 연결이 종료되었습니다."));
             return;
         };
         let tab = self
@@ -128,7 +129,8 @@ impl Desktop {
             self.dialog = None;
             self.focus_active_terminal(cx);
         } else {
-            self.error = Some(t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.").into());
+            self.snackbar
+                .show_snackbar(t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다."));
         }
         cx.notify();
     }
@@ -361,7 +363,8 @@ impl Desktop {
                         s.group_focus(s.workspace.active, w, cx);
                         s.dialog = None;
                     } else {
-                        s.error = Some(t("대상 연결 또는 패널이 종료되었습니다.").into());
+                        s.snackbar
+                            .show_snackbar(t("대상 연결 또는 패널이 종료되었습니다."));
                     }
                 },
             ));

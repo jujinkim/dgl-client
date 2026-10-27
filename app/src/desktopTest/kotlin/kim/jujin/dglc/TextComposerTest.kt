@@ -19,6 +19,7 @@ class TextComposerTest {
         override val pane = MutableStateFlow<String?>("%1")
         override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
         override val notice = MutableStateFlow<String?>(null)
+        override val inputNotice = SnackbarState()
         override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
         var epoch = 1L
         val writes = mutableListOf<ByteArray>()

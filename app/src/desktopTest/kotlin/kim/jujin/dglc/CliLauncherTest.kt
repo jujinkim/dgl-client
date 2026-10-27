@@ -19,6 +19,7 @@ class CliLauncherTest {
         override val pane = MutableStateFlow<String?>("%1")
         override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
         override val notice = MutableStateFlow<String?>(null)
+        override val inputNotice = SnackbarState()
         override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
         val encoded = mutableListOf<TerminalModifiers>()
         override fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? {
@@ -60,6 +61,8 @@ class CliLauncherTest {
         assertEquals(TerminalModifiers(), input.modifiers.value)
         input.toggle(TerminalShortcut.Ctrl)
         assertNull(input.encode("text", "한", TerminalModifiers(), false))
+        assertEquals(SnackbarDuration.Short, client.inputNotice.current.value!!.duration)
+        assertNull(client.notice.value)
         assertTrue(input.modifiers.value.control)
         client.input(byteArrayOf(1)) // volume macro/paste/CLI bypass the keyboard encoder
         assertTrue(input.modifiers.value.control)

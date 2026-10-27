@@ -227,6 +227,7 @@ class WorkspaceTest {
         override val pane = MutableStateFlow<String?>(null)
         override val trustRequest = MutableStateFlow<UnknownHostKey?>(null)
         override val notice = MutableStateFlow<String?>(null)
+        override val inputNotice = SnackbarState()
         override val tmuxProblem = MutableStateFlow<TmuxProblem?>(null)
         val targets = mutableListOf<List<String?>>()
         var connects = 0; var closes = 0

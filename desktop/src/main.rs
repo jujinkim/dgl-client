@@ -23,6 +23,7 @@ mod pane_toolbar;
 mod platform;
 mod session_tabs;
 mod settings;
+mod snackbar;
 mod storage;
 mod terminal;
 mod text_input;
@@ -42,6 +43,7 @@ use dgl_core::{
 use dgl_core::{i18n::t, tr};
 use gpui::{prelude::*, *};
 use native_tooltips::NativeTooltip;
+use snackbar::{SnackbarDuration, SnackbarState};
 use std::collections::{HashMap, HashSet};
 use std::{cell::RefCell, rc::Rc};
 use std::{
@@ -130,7 +132,7 @@ struct Desktop {
     host_drop: Option<Option<String>>,
     dialog: Option<Dialog>,
     composers: HashMap<TabId, composer::Composer>,
-    error: Option<String>,
+    snackbar: SnackbarState,
     focus: FocusHandle,
     inbox: dgl_core::agent::Inbox,
     agent_tick: u64,
@@ -190,6 +192,10 @@ impl Desktop {
             cx.notify();
         })
         .detach();
+        let mut snackbar = SnackbarState::default();
+        if let Some(error) = error {
+            snackbar.show_snackbar_with_duration(error, SnackbarDuration::Long);
+        }
         Self {
             runtime,
             path,
@@ -216,7 +222,7 @@ impl Desktop {
             host_drop: None,
             dialog: None,
             composers: HashMap::new(),
-            error,
+            snackbar,
             focus: cx.focus_handle(),
             inbox: Default::default(),
             agent_tick: 0,
@@ -292,10 +298,10 @@ impl Desktop {
                                     && let Err(e) =
                                         tab.connection.action(Action::Manage { operation })
                                 {
-                                    self.error = Some(tr!("요청 실패: {0}", e));
+                                    self.snackbar.show_snackbar(tr!("요청 실패: {0}", e));
                                 }
                             }
-                            Err(e) => self.error = Some(tr!("대상 선택 실패: {0}", e)),
+                            Err(e) => self.snackbar.show_snackbar(tr!("대상 선택 실패: {0}", e)),
                         }
                     } else if matches!(
                         state.phase,
@@ -344,20 +350,32 @@ impl Desktop {
                             dgl_core::Error::Cancelled | dgl_core::Error::StaleGeneration
                         ))
                 {
-                    self.error = Some(tr!("요청 실패: {0}", e));
+                    self.snackbar.show_snackbar_with_duration(
+                        tr!("요청 실패: {0}", e),
+                        if input {
+                            SnackbarDuration::Long
+                        } else {
+                            SnackbarDuration::Normal
+                        },
+                    );
                     changed = true;
                 }
             }
         }
         for tab in &self.tabs {
             if let Some(error) = tab.terminal.update(cx, |t, _| t.notice.take()) {
-                self.error = Some(error);
+                self.snackbar
+                    .show_snackbar_with_duration(error.message, error.duration);
                 changed = true;
             }
         }
+        changed |= self.snackbar.tick(std::time::Instant::now());
         if changed {
             if save_hosts && let Err(e) = self.local.save(&self.path) {
-                self.error = Some(tr!("설정 저장 실패: {0}", e));
+                self.snackbar.show_snackbar_with_duration(
+                    tr!("설정 저장 실패: {0}", e),
+                    SnackbarDuration::Long,
+                );
             }
             cx.notify();
         }
@@ -367,7 +385,10 @@ impl Desktop {
         match self.local.save(&self.path) {
             Ok(()) => true,
             Err(e) => {
-                self.error = Some(tr!("설정을 저장하지 못했습니다: {0}", e));
+                self.snackbar.show_snackbar_with_duration(
+                    tr!("설정을 저장하지 못했습니다: {0}", e),
+                    SnackbarDuration::Long,
+                );
                 false
             }
         }
@@ -382,7 +403,10 @@ impl Desktop {
     fn start_tab(&mut self, host: HostProfile, cx: &mut Context<Self>) -> Option<TabId> {
         if matches!(storage::read_optional(&host.credential_ref), Ok(None)) {
             self.edit(Some(host), cx);
-            self.error = Some(t("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요.").into());
+            self.snackbar.show_snackbar_with_duration(
+                t("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요."),
+                SnackbarDuration::Long,
+            );
             cx.notify();
             return None;
         }
@@ -402,7 +426,10 @@ impl Desktop {
         let id = match result {
             Ok((credential, trusted)) => Some(self.create_tab(host, credential, trusted, cx)),
             Err(e) => {
-                self.error = Some(tr!("보호 저장소를 열지 못했습니다: {0}", e));
+                self.snackbar.show_snackbar_with_duration(
+                    tr!("보호 저장소를 열지 못했습니다: {0}", e),
+                    SnackbarDuration::Long,
+                );
                 None
             }
         };
@@ -482,7 +509,8 @@ impl Desktop {
             .layout
             .save(&self.path.with_file_name("workspace-layout.json"))
         {
-            self.error = Some(tr!("배치 저장 실패: {0}", e));
+            self.snackbar
+                .show_snackbar_with_duration(tr!("배치 저장 실패: {0}", e), SnackbarDuration::Long);
         }
     }
     fn refresh(&mut self) {
@@ -492,7 +520,7 @@ impl Desktop {
         {
             match tab.connection.action(Action::Refresh) {
                 Ok(request) => tab.refresh = Some(request),
-                Err(e) => self.error = Some(tr!("조회 실패: {0}", e)),
+                Err(e) => self.snackbar.show_snackbar(tr!("조회 실패: {0}", e)),
             }
         }
     }
@@ -508,7 +536,7 @@ impl Desktop {
     }
     fn submit(&mut self, connection: &Arc<Connection>, action: Action) {
         if let Err(e) = connection.action(action) {
-            self.error = Some(tr!("요청 실패: {0}", e));
+            self.snackbar.show_snackbar(tr!("요청 실패: {0}", e));
         }
     }
     fn confirm(&mut self) {
@@ -529,7 +557,7 @@ impl Desktop {
                 }
             };
             if let Err(e) = result {
-                self.error = Some(tr!("삭제 실패: {0}", e))
+                self.snackbar.show_snackbar(tr!("삭제 실패: {0}", e))
             } else {
                 self.dialog = None;
             }
@@ -639,7 +667,9 @@ impl Desktop {
         };
         match connection.action(Action::Manage { operation }) {
             Ok(_) => self.dialog = None,
-            Err(e) => self.error = Some(tr!("이름을 확인하세요: {0}", e)),
+            Err(e) => self
+                .snackbar
+                .show_snackbar(tr!("이름을 확인하세요: {0}", e)),
         }
     }
 
@@ -880,20 +910,53 @@ impl Render for Desktop {
                 );
             }
         }
-        if let Some(error) = self.error.clone() {
+        if let Some(snackbar) = self.snackbar.current.clone() {
+            let id = snackbar.id;
+            let remaining = snackbar.remaining_fraction(std::time::Instant::now());
             root = root.child(
                 div()
+                    .id("snackbar")
+                    .debug_selector(|| "snackbar".into())
                     .absolute()
                     .bottom_4()
                     .left_4()
                     .right_4()
-                    .p_4()
                     .bg(rgb(0x682f38))
                     .text_color(rgb(0xffffff))
                     .flex()
-                    .gap_3()
-                    .child(div().flex_1().child(error))
-                    .child(self.button("dismiss-error", t("닫기"), cx, |s, _, _| s.error = None)),
+                    .flex_col()
+                    .child(
+                        div()
+                            .p_4()
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .child(div().flex_1().child(snackbar.request.message))
+                            .child(self.button(
+                                "dismiss-error",
+                                t("닫기"),
+                                cx,
+                                move |s, _, _| s.snackbar.dismiss(id),
+                            )),
+                    )
+                    .when_some(remaining, |bar, fraction| {
+                        bar.child(
+                            div()
+                                .id("snackbar-gauge-track")
+                                .debug_selector(|| "snackbar-gauge-track".into())
+                                .w_full()
+                                .h(px(3.))
+                                .bg(rgba(0xffffff33))
+                                .child(
+                                    div()
+                                        .id("snackbar-gauge")
+                                        .debug_selector(|| "snackbar-gauge".into())
+                                        .h_full()
+                                        .w(relative(fraction))
+                                        .bg(rgb(0xffffff)),
+                                ),
+                        )
+                    }),
             );
         }
         if self.dialog.is_some() {
