@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Rect
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.window.Dialog
@@ -634,24 +636,29 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
 }
 
+private enum class SettingsPage { Main, Shortcuts, About }
+
 @Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, androidInput: Boolean, dismiss: () -> Unit) {
     val local by model.local.collectAsState()
     var forget by remember { mutableStateOf<String?>(null) }
-    var details by remember { mutableStateOf(false) }
+    var page by remember { mutableStateOf(SettingsPage.Main) }
     var restoreFocus by remember { mutableStateOf(false) }
     val mainScroll = rememberScrollState()
     val shortcutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    val back = { if (details) { details = false; restoreFocus = true } else dismiss() }
-    LaunchedEffect(details) {
-        if (!details && restoreFocus) { withFrameNanos { }; shortcutFocus.requestFocus(); restoreFocus = false }
+    val aboutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    var entryFocus by remember { mutableStateOf(shortcutFocus) }
+    val back = { if (page != SettingsPage.Main) { page = SettingsPage.Main; restoreFocus = true } else dismiss() }
+    LaunchedEffect(page) {
+        if (page == SettingsPage.Main && restoreFocus) { withFrameNanos { }; entryFocus.requestFocus(); restoreFocus = false }
     }
     EditorDialog(mobileLayout, settingsLayout = true, onDismissRequest = back, title = {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (details) TextButton(back) { Text(t("뒤로")) }
-            Text(t(if (details) "하단 단축키" else "설정"))
+            if (page != SettingsPage.Main) TextButton(back) { Text(t("뒤로")) }
+            Text(when (page) { SettingsPage.Main -> t("설정"); SettingsPage.Shortcuts -> t("하단 단축키"); SettingsPage.About -> t("About app") })
         }
     }, text = {
-        if (details) TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
+        if (page == SettingsPage.About) AboutApp()
+        else if (page == SettingsPage.Shortcuts) TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
             model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
         } else Column(Modifier.verticalScroll(mainScroll), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsCard(t("화면·언어"), t("앱의 언어와 모양을 선택합니다.")) {
@@ -677,7 +684,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                     TextButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize + 1).coerceAtMost(28))) } }) { Text(t("크게")) }
                 }
                 Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
-                TextButton({ details = true }, modifier = Modifier.fillMaxWidth().then(Modifier.focusRequester(shortcutFocus))) {
+                TextButton({ entryFocus = shortcutFocus; page = SettingsPage.Shortcuts }, modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(shortcutFocus)) {
                     Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
                 }
                 if (androidInput) {
@@ -705,9 +712,32 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                 }
                 Text(model.storageDescription, style = MaterialTheme.typography.bodySmall)
             }
+            TextButton({ entryFocus = aboutFocus; page = SettingsPage.About },
+                modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(aboutFocus)) {
+                Text(t("About app"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
+            }
         }
-    }, confirmButton = { TextButton(back) { Text(t(if (details) "뒤로" else "닫기")) } })
+    }, confirmButton = { TextButton(back) { Text(t(if (page != SettingsPage.Main) "뒤로" else "닫기")) } })
     forget?.let { endpoint -> ConfirmDialog(t("신뢰 키 삭제"), tr("{0} 키를 삭제합니다. 다음 연결에서 지문을 다시 확인해야 합니다.", endpoint), { model.modify { it.copy(trust = it.trust - endpoint) }; forget = null }, { forget = null }) }
+}
+
+@Composable private fun AboutApp() {
+    val uri = LocalUriHandler.current
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Image(AppIcon, contentDescription = "DaGaLi", modifier = Modifier.size(80.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)))
+        Text("DaGaLi", style = MaterialTheme.typography.headlineMedium)
+        Text(tr("버전 {0}", APP_VERSION), style = MaterialTheme.typography.bodyLarge)
+        Text("Reconnect less. Resume more.", style = MaterialTheme.typography.bodyLarge)
+        listOf(t("앱 사이트") to "https://ddal.ggak.life", t("GitHub 저장소") to "https://github.com/jujinkim/dgl-client").forEach { (label, url) ->
+            TextButton({ uri.openUri(url) }) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(label); Text(url, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
 }
 
 @Composable private fun SettingsSwitch(label: String, selected: Boolean, change: (Boolean) -> Unit) {

@@ -94,6 +94,9 @@ MSVC CRT 정적 링크 플래그는 이 실행 파일 빌드에만 적용한다.
 | 빌드 정보 | `artifacts/rust-candidate/windows/build.json` |
 | ZIP SHA-256 | `artifacts/rust-candidate/windows/SHA256SUMS` |
 
+버전은 루트 `Cargo.toml`의 workspace 값에서 상속합니다. 타이틀바·설정 마지막의 `About app`과
+ZIP의 `build.json`에 같은 버전을 사용합니다. 패키지 버전 비교 절차는 [개발 안내](DEVELOPMENT.md#앱-버전-관리)를 따릅니다.
+
 `CARGO_TARGET_DIR`를 지정하면 실행 파일 경로는 Cargo metadata에서 가져온다.
 ZIP에는 실행 파일, GPUI 고지, Rust 의존성 라이선스 원문·목록, 내부 파일 해시와
 실행 안내가 들어간다. x64 PE 헤더를 검사한 뒤 패키지를 만든다.

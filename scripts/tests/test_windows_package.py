@@ -11,6 +11,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import package_rust_windows as windows
+from verify_app_versions import workspace_version
 
 
 def pe_fixture(machine=0x8664):
@@ -53,13 +54,14 @@ class WindowsPackageTest(unittest.TestCase):
                 os.utime(license_file, (315532800 - 86400, 315532800 - 86400))
 
             with patch.object(windows, "collect", side_effect=notices):
-                archive = windows.package(binary, output, "0.1.0")
+                archive = windows.package(binary, output, workspace_version())
             with zipfile.ZipFile(archive) as zipped:
                 prefix = windows.NAME + "/"
                 self.assertTrue(all(n.startswith(prefix) for n in zipped.namelist()))
                 self.assertFalse(any("old-secret" in n for n in zipped.namelist()))
                 self.assertEqual(zipped.read(prefix + "dgl-desktop.exe"), binary.read_bytes())
                 manifest = json.loads(zipped.read(prefix + "build.json"))
+                self.assertEqual(manifest["version"], workspace_version())
                 self.assertEqual(manifest["signing"], "unsigned")
                 self.assertEqual(manifest["runtimeValidation"], "not-performed")
                 self.assertEqual(manifest["binarySha256"], hashlib.sha256(binary.read_bytes()).hexdigest())

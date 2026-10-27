@@ -8,6 +8,18 @@ plugins {
     id("com.android.kotlin.multiplatform.library")
 }
 
+val appVersion = rootProject.extra["appVersion"] as String
+val versionSources = layout.buildDirectory.dir("generated/appVersion")
+val generateAppVersion by tasks.registering {
+    inputs.property("appVersion", appVersion)
+    outputs.dir(versionSources)
+    doLast {
+        val file = versionSources.get().file("kim/jujin/dglc/AppVersion.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText("// Generated from Cargo.toml; do not edit.\npackage kim.jujin.dglc\n\nconst val APP_VERSION = \"$appVersion\"\n")
+    }
+}
+
 kotlin {
     android {
         namespace = "kim.jujin.dglc.shared"
@@ -33,6 +45,7 @@ kotlin {
         }
         val jvmSharedMain by creating {
             dependsOn(commonMain.get())
+            kotlin.srcDir(generateAppVersion)
         }
         androidMain {
             dependsOn(jvmSharedMain)

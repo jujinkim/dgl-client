@@ -41,7 +41,7 @@ class ConnectionService : Service() {
         }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, 1, Intent(this, ConnectionService::class.java).setAction(STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val notification = Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_terminal)
+        val notification = Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(t("SSH 연결 유지")).setContentText(t("홈 이동·화면 잠금 중에도 연결을 유지합니다."))
             .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open)
             .addAction(Notification.Action.Builder(null, t("앱 열기"), open).build())

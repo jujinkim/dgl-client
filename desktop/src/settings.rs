@@ -5,6 +5,7 @@ use dgl_core::input::{TerminalShortcut, move_shortcut};
 pub(super) struct SettingsState {
     main_offset: Point<Pixels>,
     pub restore: bool,
+    pub entry: &'static str,
     pub dragging: Option<TerminalShortcut>,
     destination: Option<usize>,
     pointer: Option<Point<Pixels>>,
@@ -136,6 +137,7 @@ impl Desktop {
                 cx,
                 |s, _, _| {
                     s.settings.main_offset = s.modal.scroll.offset();
+                    s.settings.entry = "edit-shortcuts";
                     s.dialog = Some(Dialog::Shortcuts);
                 },
             ));
@@ -195,8 +197,18 @@ impl Desktop {
             .child(alerts)
             .child(sync)
             .child(security)
+            .child(self.button("about-app", t("About app"), cx, |s, _, _| {
+                s.settings.main_offset = s.modal.scroll.offset();
+                s.settings.entry = "about-app";
+                s.dialog = Some(Dialog::About);
+            }))
     }
-    pub(super) fn shortcuts_back(&mut self) {
+    pub(super) fn settings_back(&mut self) {
+        self.settings.entry = if matches!(self.dialog, Some(Dialog::About)) {
+            "about-app"
+        } else {
+            "edit-shortcuts"
+        };
         self.settings.dragging = None;
         self.settings.destination = None;
         self.settings.restore = true;
@@ -269,7 +281,7 @@ impl Desktop {
                     )),
             )
             .child(self.button("shortcuts-back", t("뒤로"), cx, |s, _, _| {
-                s.shortcuts_back()
+                s.settings_back()
             }))
             .child(div().text_lg().child(t("사용 중인 단축키")));
         let keys = &self.local.preferences.terminal_shortcuts;

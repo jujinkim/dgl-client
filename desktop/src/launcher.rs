@@ -94,6 +94,9 @@ pub struct Assets;
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
         Ok(match path {
+            "app-icon.png" => Some(Cow::Borrowed(include_bytes!(
+                "../../assets/app-icon/icon.png"
+            ))),
             "launcher/claude.svg" => Some(Cow::Borrowed(include_bytes!(
                 "../../assets/launcher/claude.svg"
             ))),
@@ -117,6 +120,7 @@ impl AssetSource for Assets {
     }
     fn list(&self, _: &str) -> gpui::Result<Vec<SharedString>> {
         let mut paths = vec![
+            "app-icon.png".into(),
             "launcher/claude.svg".into(),
             "launcher/openai.svg".into(),
             "launcher/bolt.svg".into(),

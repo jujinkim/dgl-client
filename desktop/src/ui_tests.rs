@@ -38,6 +38,133 @@ pub(super) fn redraw(cx: &mut VisualTestContext) {
 }
 
 #[gpui::test]
+fn app_title_tracks_selected_tab_group_remote_metadata_and_last_close(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    redraw(ui);
+    let base = super::app_info::base_title();
+    view.read_with(ui, |s, _| assert_eq!(s.window_title, base));
+    add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        s.tabs[0].session = Some("$1".into());
+        s.tabs[0].session_title = Some("첫 세션 · 전체 제목".into());
+        cx.notify();
+    });
+    redraw(ui);
+    view.read_with(ui, |s, _| {
+        assert_eq!(s.window_title, format!("{base} - 첫 세션 · 전체 제목"))
+    });
+    add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        s.tabs[1].session = Some("$2".into());
+        s.tabs[1].session_title = Some("두 번째 세션".into());
+        cx.notify();
+    });
+    redraw(ui);
+    view.read_with(ui, |s, _| {
+        assert_eq!(s.window_title, format!("{base} - 두 번째 세션"))
+    });
+    view.update(ui, |s, cx| {
+        s.workspace.select(s.workspace.active, s.tabs[0].id);
+        // The same metadata path used by tick must retain the full title before tab ellipsis.
+        let mut metadata = s.tabs[0].connection.state();
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v2.json"))
+                .unwrap();
+        metadata.remote = serde_json::from_value(fixture[0]["remote"].clone()).unwrap();
+        metadata.remote.panes[0].title = "한".repeat(80) + " remote title";
+        s.tabs[0].update_session(&metadata);
+        cx.notify();
+    });
+    redraw(ui);
+    view.read_with(ui, |s, _| {
+        assert_eq!(s.window_title, format!("{base} - {}", s.tabs[0].title()));
+        assert!(s.window_title.ends_with("remote title"));
+    });
+    view.update(ui, |s, cx| {
+        let first = s.workspace.active;
+        assert!(
+            s.workspace
+                .split(first, super::workspace::Axis::Horizontal, 1600., 1000.)
+        );
+        let second = s.workspace.active;
+        s.workspace.move_tab(s.tabs[1].id, second, None);
+        cx.notify();
+    });
+    redraw(ui);
+    view.read_with(ui, |s, _| {
+        assert_eq!(s.window_title, format!("{base} - 두 번째 세션"))
+    });
+    view.update(ui, |s, cx| {
+        let tab = s.tabs[0].id;
+        s.workspace.select(s.workspace.group_for(tab).unwrap(), tab);
+        cx.notify();
+    });
+    redraw(ui);
+    view.read_with(ui, |s, _| assert!(s.window_title.ends_with("remote title")));
+    view.update(ui, |s, cx| {
+        for id in s.tabs.iter().map(|t| t.id).collect::<Vec<_>>() {
+            s.close_tab(id);
+        }
+        cx.notify();
+    });
+    redraw(ui);
+    view.read_with(ui, |s, _| assert_eq!(s.window_title, base));
+}
+
+#[gpui::test]
+fn about_app_returns_to_settings_scroll_and_entry_focus_and_blocks_terminal(
+    cx: &mut TestAppContext,
+) {
+    let (view, ui) = setup(cx);
+    let terminal = add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(ui);
+    let entry = ui.debug_bounds("about-app").unwrap();
+    view.update(ui, |s, cx| {
+        let body = s.modal.scroll.bounds();
+        s.modal.scroll.set_offset(point(
+            px(0.),
+            -(entry.bottom() - body.bottom() + px(16.)).max(px(0.)),
+        ));
+        cx.notify();
+    });
+    redraw(ui);
+    let saved = view.read_with(ui, |s, _| s.modal.scroll.offset());
+    for back in ["about-back", "cancel-dialog", "escape"] {
+        let entry = ui.debug_bounds("about-app").unwrap().center();
+        ui.simulate_click(entry, Modifiers::default());
+        redraw(ui);
+        view.read_with(ui, |s, _| assert!(matches!(s.dialog, Some(Dialog::About))));
+        terminal.read_with(ui, |t, _| assert!(!t.enabled));
+        assert!(ui.debug_bounds("about-website").is_some());
+        assert!(ui.debug_bounds("about-repository").is_some());
+        if back == "escape" {
+            ui.simulate_keystrokes("escape");
+        } else {
+            let button = ui.debug_bounds(back).unwrap().center();
+            ui.simulate_click(button, Modifiers::default());
+        }
+        redraw(ui);
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::Settings)));
+            assert_eq!(s.modal.scroll.offset(), saved);
+        });
+        ui.update(|w, cx| {
+            view.update(cx, |s, cx| {
+                assert!(s.modal.button("about-app", cx).is_focused(w))
+            })
+        });
+    }
+    ui.simulate_keystrokes("escape");
+    redraw(ui);
+    view.read_with(ui, |s, _| assert!(s.dialog.is_none()));
+    terminal.read_with(ui, |t, _| assert!(t.enabled));
+}
+
+#[gpui::test]
 fn snackbar_gauge_tracks_remaining_time_and_close_preserves_focus(cx: &mut TestAppContext) {
     use crate::snackbar::SnackbarDuration;
     use std::time::{Duration, Instant};

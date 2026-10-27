@@ -223,8 +223,8 @@ impl Desktop {
     }
 
     pub(super) fn dismiss_dialog(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.dialog, Some(Dialog::Shortcuts)) {
-            self.shortcuts_back();
+        if matches!(self.dialog, Some(Dialog::Shortcuts | Dialog::About)) {
+            self.settings_back();
             cx.notify();
             return;
         }

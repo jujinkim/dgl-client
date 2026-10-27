@@ -50,11 +50,15 @@ Python 3.9 이상을 사용합니다. Windows에서는 가상환경 실행 파�
 
 - 모바일 상단: `app/src/jvmSharedMain/kotlin/kim/jujin/dglc/ui/AppIcon.kt`의 컬러 Compose 벡터를
   같은 공통 도형에서 생성합니다. 좁은 화면과 대화면 탐색기 왼쪽 상단에 24dp로 표시합니다.
+  설정 맨 아래 `About app`에서도 같은 벡터를 사용합니다. 데스크톱 정보 화면은 `icon.png`를 바이너리에 포함합니다.
 - Android: `androidApp/src/main/res/drawable-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_foreground.png`.
   컬러·단색 모두 108dp 레이어의 중심 64dp 원 안에 같은 크기와 위치로 배치합니다.
   컬러 전경은 원본 alpha를 보존합니다.
   단색은 `drawable/ic_launcher_monochrome.xml`, 연결은 `mipmap-anydpi/ic_launcher.xml`입니다.
   배경색은 기존 `values/colors.xml`을 사용합니다. 앱의 최소 API는 34입니다.
+  알림 전용 `drawable/ic_notification.xml`은 같은 도형을 24dp 영역 안의 20dp 크기로 맞춘
+  흰색·투명 벡터입니다. adaptive launcher 여백과 배경을 사용하지 않습니다.
+  연결 유지·에이전트 알림의 `setSmallIcon`에 연결하며 재생성·`--check`에 포함합니다.
 - macOS: `desktop/resources/dgl.icns`에 16·32·64·128·256·512·1024px 및 Retina 항목을 넣습니다.
   패키저가 `Contents/Resources/dgl.icns`를 복사하고 `CFBundleIconFile`을 설정한 뒤
   기존 로컬 ad-hoc 서명·검증을 수행합니다.

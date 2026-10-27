@@ -59,6 +59,7 @@ class AndroidConnectionLifetimeTest {
                 scenario.onActivity { client.trust() }
                 withTimeout(20_000) { client.status.first { it.phase == Phase.Ready } }
                 waitUntil { notification() != null }
+                assertEquals(R.drawable.ic_notification, notification()!!.notification.smallIcon.resId)
                 assertNull(app.backgroundConnectionError.value)
                 val pane = client.pane.value!!
                 val target = client.captureInputTarget()!!

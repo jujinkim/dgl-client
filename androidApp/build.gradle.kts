@@ -14,7 +14,7 @@ android {
         minSdk = 34
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = rootProject.extra["appVersion"] as String
         ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         testInstrumentationRunner = if (providers.gradleProperty("dglResourceProbe").orNull == "true")
             "kim.jujin.dglc.ResourceInstrumentation" else "androidx.test.runner.AndroidJUnitRunner"

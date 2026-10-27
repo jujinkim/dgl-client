@@ -112,6 +112,27 @@ Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나를
 `androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`이며 미서명입니다.
 앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.0` / `1`입니다.
 
+### 앱 버전 관리
+
+루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.1.0`을 유지합니다.
+Rust 코어·데스크톱은 workspace 버전을 상속하고 표시에는 빌드 시 `CARGO_PKG_VERSION`을 사용합니다.
+Gradle은 같은 값을 Android `versionName`과 `app/build/generated/appVersion/`의 Kotlin `APP_VERSION`으로 생성합니다.
+생성 디렉터리는 Git에 추가하지 않습니다. macOS 번들 두 버전 필드·`build.json`과 Windows ZIP의
+`build.json`도 Cargo 메타데이터를 사용합니다.
+
+배포 시 workspace 버전을 수정하고 Android `androidApp/build.gradle.kts`의 `versionCode`를
+이전 배포보다 큰 정수로 올립니다. 현재 코드는 `1`입니다. APK와 필요한 데스크톱 패키지를 다시 빌드한 뒤:
+
+```sh
+python3 scripts/verify_app_versions.py --android --mac
+# Windows 네이티브 패키지를 만든 환경에서는 --windows
+```
+
+플랫폼을 생략하면 생성 Kotlin·Cargo 메타데이터·원본 Debug APK 버전을 비교합니다. `--android`·`--mac`·
+`--windows`를 조합해 필요한 플랫폼만 검사할 수 있습니다. macOS는 실제 `.app`과 메타데이터,
+Windows는 ZIP 내부·외부 메타데이터를 비교하며 Android 도구가 필요하지 않습니다. 실제 네이티브 실행 검증은 별도입니다.
+README의 현재 버전과 Git 제외된 `.dashboard-props.json`의 프로젝트·파일별 버전/빌드 번호도 대조·갱신합니다.
+
 ## 데스크톱 패키징
 
 ```sh
@@ -130,7 +151,7 @@ Windows는 `scripts/run_windows.cmd` 또는 `scripts/build_windows.ps1`로 빌�
 
 공통 도형·디자인 명세·크기별 미리보기와 변환 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있습니다.
 일반 빌드는 저장된 리소스를 사용합니다. 갱신할 때만 Python 가상환경에 Pillow 11.3.0을 설치하고
-`scripts/generate_app_icons.py`로 원본 PNG부터 플랫폼별 리소스·모바일 상단 Compose 벡터까지 생성합니다. `--check`로 파일 일치를 확인한 뒤
+`scripts/generate_app_icons.py`로 원본 PNG부터 플랫폼별 리소스·모바일 상단 Compose 벡터·알림 전용 단색 벡터까지 생성합니다. `--check`로 파일 일치를 확인한 뒤
 Android Debug·lint와 macOS 패키징을 확인합니다. Windows는 기존 SDK `rc.exe`로
 실행 파일의 아이콘 ID `1`을 컴파일하며 네이티브 빌드·GUI 확인은 Windows에서 별도로 수행합니다.
 

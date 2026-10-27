@@ -583,5 +583,9 @@ internal object EnglishCatalog {
         "아래로 이동" to "Move down",
         "에이전트 상태" to "Agent status",
         "{0} · {1}\n진단 정보 · 세션 ID: {2} · 창 ID: {3} · 패널 ID: {4}" to "{0} · {1}\nDiagnostics · Session ID: {2} · Window ID: {3} · Pane ID: {4}",
+        "About app" to "About app",
+        "버전 {0}" to "Version {0}",
+        "앱 사이트" to "App website",
+        "GitHub 저장소" to "GitHub repository",
     )
 }

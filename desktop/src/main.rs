@@ -5,6 +5,7 @@
 
 mod accent_ui;
 mod agent_ui;
+mod app_info;
 mod appearance;
 mod cloud_sync;
 mod composer;
@@ -107,6 +108,7 @@ enum Dialog {
     },
     Settings,
     Shortcuts,
+    About,
     Agents(Arc<Connection>, String, Option<String>),
     Notifications,
     Compose(TabId),
@@ -130,6 +132,7 @@ struct Desktop {
     group_bounds: HashMap<GroupId, Bounds<Pixels>>,
     shortcut_target: Option<(GroupId, Option<TabId>)>,
     settings: settings::SettingsState,
+    window_title: String,
     split_bounds: HashMap<Vec<bool>, Bounds<Pixels>>,
     resizing: Option<Vec<bool>>,
     dragging_tab: Option<TabId>,
@@ -221,6 +224,7 @@ impl Desktop {
             group_bounds: HashMap::new(),
             shortcut_target: None,
             settings: settings::SettingsState::default(),
+            window_title: String::new(),
             split_bounds: HashMap::new(),
             resizing: None,
             dragging_tab: None,
@@ -751,6 +755,11 @@ impl Drop for Desktop {
 }
 impl Render for Desktop {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = self.app_window_title();
+        if self.window_title != title {
+            window.set_window_title(&title);
+            self.window_title = title;
+        }
         let dark = match self.local.preferences.theme.as_str() {
             "light" => false,
             "dark" => true,
@@ -808,6 +817,7 @@ impl Render for Desktop {
                 Dialog::Delete { .. } => ("delete", vec![]),
                 Dialog::Settings => ("settings", vec![]),
                 Dialog::Shortcuts => ("shortcuts", vec![]),
+                Dialog::About => ("about", vec![]),
                 Dialog::Agents(..) => ("agents", vec![]),
                 Dialog::Notifications => ("notifications", vec![]),
                 Dialog::Compose(id) => ("compose", vec![self.composers[id].input.clone()]),
@@ -837,7 +847,7 @@ impl Render for Desktop {
                     .gap_3();
                 let mut footer = div().flex().gap_2().justify_end().child(self.button(
                     "cancel-dialog",
-                    if matches!(&dialog, Dialog::Shortcuts) {
+                    if matches!(&dialog, Dialog::Shortcuts | Dialog::About) {
                         t("뒤로")
                     } else if matches!(&dialog, Dialog::Compose(_)) {
                         t("취소")
@@ -921,6 +931,9 @@ impl Render for Desktop {
                     Dialog::Shortcuts => {
                         body = body.child(self.shortcut_settings(cx));
                     }
+                    Dialog::About => {
+                        body = body.child(self.about_app(cx));
+                    }
                 }
                 root = root.child(
                     div()
@@ -941,7 +954,7 @@ impl Render for Desktop {
                                 .w(px(
                                     if matches!(
                                         self.dialog,
-                                        Some(Dialog::Settings | Dialog::Shortcuts)
+                                        Some(Dialog::Settings | Dialog::Shortcuts | Dialog::About)
                                     ) {
                                         720.
                                     } else {
@@ -1015,7 +1028,7 @@ impl Render for Desktop {
             if self.settings.restore && matches!(self.dialog, Some(Dialog::Settings)) {
                 self.settings.restore = false;
                 self.modal.scroll.set_offset(self.settings.main_offset());
-                self.modal.restore_button("edit-shortcuts", window);
+                self.modal.restore_button(self.settings.entry, window);
             }
             self.modal.finish(window);
         }
@@ -1049,7 +1062,7 @@ fn main() {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: Some("DaGaLi".into()),
+                        title: Some(app_info::base_title().into()),
                         ..Default::default()
                     }),
                     ..Default::default()

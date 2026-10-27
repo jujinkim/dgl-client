@@ -25,6 +25,13 @@ plugins {
 
 apply(from = "gradle/dependency-inventory.gradle")
 
+// Cargo's workspace version is the source for every product surface and package.
+val workspaceManifest = providers.fileContents(layout.projectDirectory.file("Cargo.toml")).asText.get()
+val workspacePackage = workspaceManifest.substringAfter("[workspace.package]").substringBefore("\n[")
+extra["appVersion"] = Regex("""(?m)^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$""")
+    .find(workspacePackage)?.groupValues?.get(1)
+    ?: error("Cargo.toml must declare a numeric workspace.package.version")
+
 subprojects {
     // Lint runs in a separate classloader and does not inherit the plugin classpath fixes.
     configurations.matching { it.name == "androidLintTool" }.configureEach {

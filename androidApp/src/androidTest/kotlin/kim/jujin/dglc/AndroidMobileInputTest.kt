@@ -717,6 +717,103 @@ class AndroidMobileInputTest {
         }
     } }
 
+    @Test fun aboutAppShowsBuildVersionAndReturnsToSettingsWithoutInput() = runBlocking<Unit> { withLauncherDisplay {
+        val client = Connection("about")
+        val opened = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val monitor = object : android.app.Instrumentation.ActivityMonitor() {
+            override fun onStartActivity(intent: android.content.Intent): android.app.Instrumentation.ActivityResult? {
+                if (intent.action != android.content.Intent.ACTION_VIEW) return null
+                opened += intent.dataString.orEmpty()
+                return android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_OK, null)
+            }
+        }
+        var stage = "setup"
+        lateinit var app: AppModel
+        lateinit var previous: LocalState
+        lateinit var workspace: WorkspaceState
+        var oldConnections = emptyList<ClientConnection>()
+        var oldSelected: ClientConnection? = null
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity {
+                    app = (it.application as DglApplication).connections().app
+                    previous = app.local.value; workspace = app.workspace.value
+                    oldConnections = app.connections.value; oldSelected = app.selected.value
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false)) }
+                    app.connections.value = listOf(client); app.selected.value = client; app.reconcileWorkspace()
+                }
+                withTimeout(5000) { while (client.surface == null) delay(20) }
+                val renderer = client.surface as kim.jujin.dglc.ui.AndroidTerminal
+                stage = "open settings"
+                openConnectionMenu(); click("설정"); awaitNode("닫기")
+                stage = "scroll to About app"
+                withTimeout(5000) {
+                    while (node("About app")?.isVisibleToUser != true) {
+                        val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }!!
+                        scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); delay(100)
+                    }
+                }
+                val entry = bounds(awaitNode("About app"))
+                instrumentation.addMonitor(monitor)
+                for (hardwareBack in listOf(false, true)) {
+                    stage = "open About app, hardwareBack=$hardwareBack"
+                    click("About app"); awaitNode("버전 $APP_VERSION")
+                    assertEquals(BuildConfig.VERSION_NAME, APP_VERSION)
+                    assertEquals(APP_VERSION, instrumentation.targetContext.packageManager
+                        .getPackageInfo(instrumentation.targetContext.packageName, 0).versionName)
+                    awaitNode("Reconnect less. Resume more.")
+                    assertNotNull(find(instrumentation.uiAutomation.rootInActiveWindow) { it.text?.contains("https://ddal.ggak.life") == true })
+                    assertNotNull(find(instrumentation.uiAutomation.rootInActiveWindow) { it.text?.contains("https://github.com/jujinkim/dgl-client") == true })
+                    if (!hardwareBack) for (url in listOf("https://ddal.ggak.life", "https://github.com/jujinkim/dgl-client")) {
+                        stage = "open browser link $url"
+                        val link = find(instrumentation.uiAutomation.rootInActiveWindow) { it.text?.contains(url) == true }!!
+                        val button = generateSequence(link) { it.parent }.first { it.isClickable }
+                        assertTrue(button.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                        withTimeout(5000) { while (opened.lastOrNull() != url) delay(25) }
+                    }
+                    assertTrue(app.inputBlocked())
+                    scenario.onActivity {
+                        renderer.view.evaluateJavascript("window.dgl.postMessage(JSON.stringify({type:'input',data:'blocked-about'}))", null)
+                        it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP))
+                        it.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_UP))
+                    }
+                    delay(100); assertTrue(client.writes.isEmpty())
+                    stage = "return from About app, hardwareBack=$hardwareBack"
+                    if (hardwareBack) instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                    else click("뒤로")
+                    awaitNode("닫기")
+                    assertEquals(entry, bounds(awaitNode("About app")))
+                    withTimeout(5000) {
+                        while (true) {
+                            instrumentation.uiAutomation.clearCache()
+                            val focused = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isFocused }
+                            if (find(focused) { it.text?.toString()?.contains("About app") == true } != null) break
+                            delay(25)
+                        }
+                    }
+                    assertTrue(app.inputBlocked())
+                }
+                click("닫기")
+                withTimeout(5000) { while (app.inputBlocked()) delay(20) }
+                scenario.onActivity { assertSame(renderer, client.surface) }
+                assertTrue(client.writes.isEmpty())
+                assertEquals(0, client.connects)
+                assertEquals(listOf("https://ddal.ggak.life", "https://github.com/jujinkim/dgl-client"), opened.toList())
+            } catch (failure: Throwable) {
+                fun dump(root: AccessibilityNodeInfo?): String = if (root == null) "" else
+                    "[${root.text}|${root.contentDescription}|${bounds(root)}|focused=${root.isFocused}]" +
+                        (0 until root.childCount).joinToString { dump(root.getChild(it)) }
+                throw AssertionError("About app stage=$stage; tree=" + dump(instrumentation.uiAutomation.rootInActiveWindow), failure)
+            } finally {
+                instrumentation.removeMonitor(monitor)
+                scenario.onActivity {
+                    app.connections.value = oldConnections; app.selected.value = oldSelected
+                    app.workspace.value = workspace; app.modify { previous }
+                }
+            }
+        }
+    } }
+
     private suspend fun withLauncherDisplay(animateIme: Boolean = false, test: suspend () -> Unit) {
         fun shell(command: String) = instrumentation.uiAutomation.executeShellCommand(command).use {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes().decodeToString().trim()

@@ -310,6 +310,15 @@ Android Debug·계측 APK 컴파일·lint·원본 APK 검증을 확인했습니�
 데스크톱 78·Python 98 통과와 Android Debug/Release·계측 컴파일·lint를 확인했으며 계측은 실행하지 않았습니다.
 도형·크기별 마스크 미리보기와 로그는 `.tools/ui-icons-*`에 남겼습니다.
 
+## 2026-10-28: Android IME와 패널 이동
+
+IME 높이를 layout 단계에서 적용하고 WebView 논리 높이·분할 그룹 표면을 유지했습니다.
+키보드 패널에 80ms 속도/250ms 감속 관성을 추가하고 두 줄 단축키에 독립 너비·공동 스크롤을 적용했습니다.
+웹 40·JVM 92·Python 98과 Debug·계측 APK·lint, API36 관련 7개 계측을 확인했습니다.
+짧은 열기/닫기 진단에서 WebView 크기 변경은 62→0회, 원격 resize는 모두 0회였으나
+앱 창 프레임 p95는 167.17→193.72ms로 개선을 확인하지 못했습니다. 사용자 실기 체감과 AVD 수치를 구분합니다.
+원시는 `artifacts/android-ime/`, `artifacts/android-workspace/`에 있으며 낮은 가로 화면의 도구 접근성은 TASKS에 남겼습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

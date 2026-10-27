@@ -38,6 +38,19 @@ class AgentNotificationTest {
         val manager = context.getSystemService(NotificationManager::class.java)
         val notifications = AgentNotifications(context)
         val notice = AgentNotice("host", event("permission-test"))
+        // A small icon must contain only a white foreground and transparent holes.
+        for (size in listOf(24, 48)) {
+            val drawable = context.getDrawable(R.drawable.ic_notification)!!
+            val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+            drawable.setBounds(0, 0, size, size); drawable.draw(android.graphics.Canvas(bitmap))
+            val colors = IntArray(size * size)
+            bitmap.getPixels(colors, 0, size, 0, 0, size, size)
+            assertTrue(colors.any { android.graphics.Color.alpha(it) > 0 })
+            assertTrue(colors.any { android.graphics.Color.alpha(it) == 0 })
+            assertTrue(colors.all { android.graphics.Color.alpha(it) == 0 || it and 0xffffff == 0xffffff })
+            assertEquals(0, android.graphics.Color.alpha(bitmap.getPixel(0, 0)))
+            bitmap.recycle()
+        }
         assertNotNull(manager.getNotificationChannel(AgentNotifications.CHANNEL))
         manager.cancelAll()
         instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
@@ -50,6 +63,7 @@ class AgentNotificationTest {
             while (manager.activeNotifications.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(50)
             val sent = manager.activeNotifications.single()
             assertEquals(AgentNotifications.CHANNEL, sent.notification.channelId)
+            assertEquals(R.drawable.ic_notification, sent.notification.smallIcon.resId)
             assertNotNull(sent.notification.contentIntent)
             assertEquals(notice.key, sent.tag)
             assertEquals(agentMessage(notice.event.kind), sent.notification.extras.getCharSequence("android.text").toString())

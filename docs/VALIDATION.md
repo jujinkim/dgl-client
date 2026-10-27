@@ -6,31 +6,28 @@
 
 ## 현재 변경 검사 (2026-10-28)
 
-Android IME 높이를 layout에서 적용하고 WebView 논리 높이와 그룹별 표면을 유지합니다.
-키보드 패널 이동에 관성을 추가하고, 하단 두 줄 단축키를 독립 너비·공동 스크롤로 바꿨습니다.
+Cargo workspace 버전을 단일 기준으로 Android 표시·APK·데스크톱·패키징에 연결했습니다.
+두 플랫폼의 설정 마지막에 About app을 추가하고, 데스크톱 타이틀바와 Android 알림 아이콘을 갱신했습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| 웹 | `npm test --prefix web`: 40 통과·skip 0. 기존 36개와 IME 셀 측정 생략, 80ms 속도·250ms 감속·경계 정지·취소/지연 프레임·입력 누출 방지 추가 |
+| Rust 데스크톱 | 80 통과·Keychain ignore 1. 초기 제목·탭/그룹 선택·긴 원격 제목·마지막 탭 닫기와 About 왕복·설정 스크롤/포커스·입력 차단 포함 |
 | JVM | `:app:desktopTest`: 92 통과·환경별 예상 skip 9, 명시적 이름 목록 대조 통과 |
-| Android 빌드 | Debug·계측 APK 빌드와 `lintDebug` 통과. 원본 Debug APK의 서명·ID/SDK·Rust 네 ABI payload 검증 통과. lint 오류 0·기존 검토 경고 12개 검증 통과 |
-| 정적 검사 | 킥오프 체크섬·Gradle wrapper·문서 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과 |
-| Python | `python3 -m unittest discover -s scripts/tests -v`: 98 통과. 새 계측 이름을 명시적 목록에 등록 |
-| API36 분할 | 전용 `Dgl_API36`의 작업 공간 2개 계측 통과. 839/840dp·분할/전환·IME 전후 양쪽 WebView 크기 불변·폰트/스크롤 확인 |
-| API36 모바일 | 모바일/렌더러 4개 계측 통과. 독립 폭·홀짝 순서·공동 스크롤·고정 도구 접근성·빈/홀수/한 줄·설정 복원·WebView 유지 확인. CLI 메뉴의 IME 유지·알림/포커스·원격 열/터치 스크롤 확인 |
-| 사용자 실기 확인 | 사용자가 APK를 폰에 설치해 확인한 뒤 체감이 나쁘지 않다고 보고. 기종/OS·정량 프레임 측정은 제공되지 않음 |
-| 짧은 IME 진단 | 애니메이션 1배·480×800dp·software GPU에서 수정 전후 열기/닫기 각 5회. WebView 크기 변경 62→0회, 원격 resize 모두 0회. 앱 창 `TOTAL_DURATION` p95 167.17→193.72ms(137/138 프레임), 개선 미확인, 누락 콜백 모두 0 |
+| Android 빌드 | Debug·계측 APK·`lintDebug` 통과. 원본 Debug APK의 서명·ID/SDK·Rust 네 ABI payload 검증 통과. lint 오류 0·기존 검토 경고 12개 |
+| API36 설정 | About 정보/설치 버전·두 ACTION_VIEW 링크·버튼/Android 뒤로 가기·스크롤/포커스 복원·WebView 유지·터미널/볼륨 입력 차단 1개 계측 통과. 브라우저 인텐트는 모니터로 검사 |
+| API36 알림 | 에이전트 2개와 연결 수명 1개 이름별 완료 통과. 24/48px 흰색/투명 도형·smallIcon 리소스·에이전트 클릭·연결 유지 알림 클릭 확인. 연결 수명은 격리 OpenSSH/tmux 3.7c 사용 |
+| Python | 99 통과. macOS Cargo 버전/target 디렉터리·번들/메타데이터 회귀 추가, Windows ZIP 메타데이터는 현재 workspace 버전과 일치하는 fixture로 검사 |
+| 패키징·버전 | macOS `.app` 빌드·로컬 ad-hoc 서명/검증 통과. Cargo·생성 Kotlin·원본 APK·macOS 번들 두 필드/build.json이 모두 `0.1.0`, Android code `1` |
+| 정적 검사 | 앱/UI 아이콘·번역 생성물·킥오프 체크섬·Gradle wrapper·변경 Rust 포맷·문서 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과 |
 
-측정 원시 ns·환경·APK SHA와 비교는 `artifacts/android-ime/before.json`, `after-final.json`, `comparison.json`에 있습니다.
-작업 공간 계측 원문은 `artifacts/android-workspace/workspace.txt`, 모바일 원문은 `artifacts/android-ime/mobile.txt`, `controls.txt`에 있습니다. 7개 이름별 통과 대조는 `artifacts/android-ime/verification.json`에 있습니다.
-최종 p95가 기준선보다 높아 이 조건에서 프레임 성능 개선은 확인하지 못했습니다.
-원시 분포의 중앙값은 83.64→88.00ms이며 최종 138개 중 200ms 초과 6개가 있었습니다.
-사용자 실기 체감과 AVD 수치를 별도로 기록하며, 이 표본만으로 실기 성능 악화를 판정하지 않습니다.
-이 짧은 앱 프레임 처리 시간 진단은 SurfaceFlinger 표시 지연·물리 기기 성능·전체 성능 인수를 증명하지 않습니다.
-320dp 높이의 가로 화면은 패널 도구를 접은 조건에서 검사합니다. 고정 도구의 합보다 창이 작을 때의 접근성은
-[TASKS.md](../TASKS.md)에 남아 있으며 이번 검사로 해결됐다고 보고하지 않습니다.
+로그는 `.tools/about-*.log`, API36 원문·이름별 결과는 `artifacts/about-app/`에 있습니다.
+초기 설정 테스트의 메뉴 대상·포커스 부모/자식 판정을 수정하고, 터치 모드의 진입 버튼 포커스 허용을 보완한 뒤
+About 단독 검사가 통과했습니다. 연결 수명 케이스는 앞선 동시 실행에서 통과했으며 해당 실행의 About 실패도
+`settings-lifetime-attempt.txt`에 보존합니다. 이미 허용된 알림 권한을 계측 안에서 회수하면 프로세스가 종료되므로
+에이전트 알림 검사는 앱을 정지하고 권한을 회수한 뒤 별도로 실행했습니다. 실패·skip을 통과로 계산하지 않습니다.
 APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본을 사용합니다.
-에이전트는 실제 SSH/CLI·물리 Android 정량 계측·macOS GUI·Windows 네이티브·전체 API matrix·장시간 반복 검사를 수행하지 않았습니다.
+Windows ZIP 버전은 Python fixture 검사이며 실제 Windows 네이티브 빌드·패키징 통과가 아닙니다.
+물리 Android·macOS GUI/Keychain·Windows 네이티브·전체 API matrix·장시간 반복 검사는 수행하지 않았습니다.
 
 ## 남은 한계
 

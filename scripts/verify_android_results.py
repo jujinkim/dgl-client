@@ -2,6 +2,7 @@
 import re
 
 EXPECTED_ANDROID = {
+    'kim.jujin.dglc.AndroidMobileInputTest.aboutAppShowsBuildVersionAndReturnsToSettingsWithoutInput',
     'kim.jujin.dglc.AndroidMobileInputTest.imeTransitionsRecordFrameDurations',
     'kim.jujin.dglc.AndroidMobileInputTest.cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput',
     'kim.jujin.dglc.AndroidMobileInputTest.compactTabsAndNotificationPopupPreserveInputAndFocus',
