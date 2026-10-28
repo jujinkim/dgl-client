@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Fail-closed OSV audit of selected Gradle graphs and npm lockfile packages."""
+"""Fail-closed OSV audit of selected Gradle graphs, Cargo.lock and npm lockfile packages."""
 import argparse
 from datetime import date
 import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 import urllib.request
 from evidence import context
@@ -16,6 +17,9 @@ REQUIRED_GRAPHS = {(':androidApp', 'debugRuntimeClasspath'), (':androidApp', 're
                    (':androidApp', 'debugAndroidTestRuntimeClasspath'), (':', 'classpath'),
                    (':androidApp', 'androidLintTool'), (':app', 'androidLintTool'), (':app', 'inventoryAapt2'),
                    (':coreBindings', 'debugRuntimeClasspath'), (':mobileUi', 'debugRuntimeClasspath')}
+# Shipped Rust targets: Android APK ABIs, macOS app and Windows ZIP.
+CARGO_TARGETS = ('aarch64-linux-android', 'armv7-linux-androideabi', 'i686-linux-android', 'x86_64-linux-android',
+                 'aarch64-apple-darwin', 'x86_64-pc-windows-msvc')
 
 
 def load_inventory(path, root=ROOT):
@@ -74,6 +78,53 @@ def npm_packages(lock):
     if not result:
         raise ValueError('Empty npm inventory')
     return result
+
+
+def cargo_closure(metadata, follow):
+    nodes = {n['id']: n for n in metadata['resolve']['nodes']}
+    seen, pending = set(), list(metadata['workspace_members'])
+    while pending:
+        item = pending.pop()
+        if item not in seen:
+            seen.add(item)
+            pending.extend(d['pkg'] for d in nodes[item]['deps'] if follow(d['pkg'], {k['kind'] for k in d['dep_kinds']}))
+    return seen
+
+
+def cargo_runtime(metadata):
+    """Normal dependencies that are linked into a target; proc-macros and their own deps only run in rustc."""
+    macros = {p['id'] for p in metadata['packages'] if any('proc-macro' in t['kind'] for t in p['targets'])}
+    return cargo_closure(metadata, lambda pkg, kinds: None in kinds and pkg not in macros)
+
+
+def cargo_packages(metadata, runtime):
+    """Locked crates.io packages of every workspace member, feature and target; `runtime` holds shipped IDs."""
+    packages = {p['id']: p for p in metadata['packages']}
+    nodes = {n['id'] for n in metadata['resolve']['nodes']}
+    members = set(metadata['workspace_members'])
+    build = cargo_closure(metadata, lambda pkg, kinds: kinds != {'dev'})
+    result = []
+    for identifier in sorted(set(nodes) - members):
+        p = packages[identifier]
+        if p.get('source') != 'registry+https://github.com/rust-lang/crates.io-index':
+            raise ValueError('Unaudited Cargo source: ' + identifier)
+        scope = 'runtime' if identifier in runtime else 'build' if identifier in build else 'test'
+        result.append({'ecosystem': 'crates.io', 'name': p['name'], 'version': p['version'],
+                       'artifacts': [{'name': f"{p['name']}-{p['version']}.crate", 'source': p['source']}],
+                       'usages': [{'module': 'cargo', 'configuration': 'Cargo.lock', 'platform': 'rust-targets', 'scope': scope}]})
+    if not result:
+        raise ValueError('Empty Cargo inventory')
+    return result
+
+
+def cargo_metadata(target=None):
+    command = ['cargo', 'metadata', '--locked', '--all-features', '--format-version', '1']
+    return json.loads(subprocess.check_output(command + (['--filter-platform', target] if target else []), cwd=ROOT))
+
+
+def cargo_inventory():
+    runtime = set().union(*(cargo_runtime(cargo_metadata(target)) for target in CARGO_TARGETS))
+    return cargo_packages(cargo_metadata(), runtime)
 
 
 def combine(packages):
@@ -157,16 +208,18 @@ def main():
     identity = {'schema': 1, 'context': context()}
     report.write_text(json.dumps(dict(identity, complete=False, status='failed')) + '\n', encoding="utf-8")
     try:
-        packages = combine(load_inventory(args.inventory) + npm_packages(json.loads((ROOT / 'web/package-lock.json').read_text(encoding="utf-8"))))
+        packages = combine(load_inventory(args.inventory) + cargo_inventory() +
+                           npm_packages(json.loads((ROOT / 'web/package-lock.json').read_text(encoding="utf-8"))))
         findings = apply_exceptions(query_osv(packages), json.loads(args.exceptions.read_text(encoding="utf-8"))['exceptions'])
         blocked = sum(f['status'] == 'blocked' for f in findings)
         runtime = sum(any(u['scope'] == 'runtime' for u in f['usages']) for f in findings)
         report.write_text(json.dumps({**identity, 'complete': True, 'status': 'failed' if blocked else 'passed',
                                      'date': date.today().isoformat(), 'packages': len(packages),
                                      'runtime': runtime, 'blocked': blocked, 'findings': findings}, indent=2) + '\n', encoding="utf-8")
-        print(f'OSV: {len(packages)} selected versions; {runtime} runtime, {len(findings)-runtime} build/test, {blocked} blocked findings')
+        ecosystems = ', '.join(f'{sum(p["ecosystem"] == e for p in packages)} {e}' for e in ('Maven', 'crates.io', 'npm'))
+        print(f'OSV: {len(packages)} selected versions ({ecosystems}); {runtime} runtime, {len(findings)-runtime} build/test, {blocked} blocked findings')
         return 1 if blocked else 0
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
         print('Dependency audit FAILED: ' + str(error), file=sys.stderr)
         return 1
 

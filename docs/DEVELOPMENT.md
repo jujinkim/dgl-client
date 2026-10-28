@@ -159,11 +159,21 @@ Android Debug·lint와 macOS 패키징을 확인합니다. Windows는 기존 SDK
 ## 선택 검사
 
 격리 SSH 검사는 OpenSSH·임시 키·독립 tmux socket을 사용합니다. 기존 사용자 서버·키를 사용하지 않습니다.
-`integration.py`의 기본 명령은 JVM 참조 검사이므로 Rust 검사는 `--command`를 지정합니다.
+`integration.py`의 기본 명령은 Rust 엔진의 `ssh_integration` ignore 검사 전체이며, CI `verify_ssh`와 같습니다.
+에이전트 관측 검사는 격리 HOME이 필요해 `--agent-home` 없이 실행하면 실패합니다.
+개별 Rust 검사·JVM 참조·Android 실행은 `--command`로 지정합니다.
 
 ```sh
 python3 scripts/build_test_tmux.py 3.7c
+python3 scripts/integration.py --agent-home --tmux .tools/tmux-3.7c/tmux-3.7c/tmux
 python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command cargo test --locked -p dgl-core --test ssh_integration isolated_auth_management_input_reconnect -- --ignored --exact
+```
+
+JVM 참조 엔진의 SSH 회귀가 필요할 때만 아래처럼 실행하고 `ssh` 모드 검증기로 결과를 대조합니다.
+
+```sh
+python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command ./gradlew :app:desktopTest --rerun-tasks
+python3 scripts/verify_test_results.py --mode ssh --output artifacts/jvm-ssh-tests.json
 ```
 
 복귀 응답 확인·소켓을 닫지 않는 무응답·출력 역압력 중 3초 판정·동일 tmux 작업/입력 복원과
@@ -264,6 +274,9 @@ python3 scripts/collect_artifacts.py
 python3 scripts/scan_secrets.py
 ```
 
+`audit_dependencies.py`는 Gradle inventory·npm lock과 함께 `cargo metadata --locked --all-features`의
+crates.io 패키지 전체를 OSV에 대조하므로 Rust 툴체인이 필요합니다. 배포 타깃(Android 네 ABI, macOS ARM64, Windows x64)에
+링크되는 일반 의존성만 runtime이며, proc-macro와 다른 플랫폼 전용 의존성은 build로 분류합니다.
 `collect_artifacts.py`는 빌드된 Debug·Release APK의 ID/SDK·백업 정책·번들 고지·Rust payload를 확인하고
 `artifacts/build-manifest.json`, `artifacts/SHA256SUMS`를 생성합니다.
 보고서와 해시 목록의 APK 경로는 저장소 루트 기준이며, 루트에서 `sha256sum -c artifacts/SHA256SUMS`로 확인합니다.
@@ -274,14 +287,14 @@ python3 scripts/scan_secrets.py
 ## CI
 
 `main` push/PR의 **Build and verify**는 Linux 기본 job 하나를 실행합니다.
-Python·JVM 검사, Android Debug 빌드·lint, Wrapper·비밀정보·번들 검사를 포함합니다.
-Rust 코어/데스크톱 단위 검사는 위 로컬 명령으로 별도 실행합니다.
+Python·Rust 코어/UniFFI·web·JVM 단위 검사, Android Debug 빌드·lint, Wrapper·비밀정보·번들 검사를 포함합니다.
+GPUI 데스크톱(`dgl-desktop`) 검사는 위 macOS 로컬 명령, Windows는 `build_windows.ps1 -Test`로 별도 실행합니다.
 `README.md`·`TASKS.md`·`AGENTS.md`·`docs/**`·`scripts/README.md`만 바뀌면 CI를 생략합니다. Debug APK는 `android-debug` artifact로 수집합니다.
 
 | 수동 입력 | 추가 작업 |
 |---|---|
-| `verify_packaging` | Release·계측 APK, 의존성·라이선스·배포 검사 |
-| `verify_ssh` | JVM 참조 SSH/tmux 3.3a·3.7c 통합 검사 |
+| `verify_packaging` | Release·계측 APK, Gradle·Cargo·npm 의존성 감사, 라이선스·배포 검사 |
+| `verify_ssh` | Rust 엔진 SSH/tmux 3.3a·3.7c 통합 검사, 로그를 artifact로 수집 |
 | `verify_android` | Android API 34·35·36 계측 |
 
 입력은 기본 꺼짐입니다. **Build Windows Rust candidate**는 별도 수동 workflow이며

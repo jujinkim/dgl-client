@@ -34,8 +34,9 @@ Wrapper 배포/JAR checksum, Gradle verification metadata·dependency lock, Carg
 ## 의존성·라이선스·lint
 
 `writeDependencyInventory`는 Gradle의 실제 선택 버전·artifact 해시·사용 범위와 그래프를 수집합니다.
-`audit_dependencies.py`는 이 inventory와 npm lock을 OSV에 대조합니다. 필수 그래프 누락·오래된 입력·
-해시 오류·OSV 통신 실패는 실패로 처리합니다. 이 도구는 Rust 전체 의존성 취약점 검사를 대신하지 않습니다.
+`audit_dependencies.py`는 이 inventory, `Cargo.lock`의 crates.io 패키지, npm lock을 OSV에 대조합니다.
+필수 그래프 누락·오래된 입력·해시 오류·crates.io 외 Cargo 출처·OSV 통신 실패는 실패로 처리합니다.
+Rust runtime 범위는 배포 타깃에 링크되는 일반 의존성이며 runtime 권고는 예외로 허용하지 않습니다.
 과거 검사 결과의 패키지 수·0건 기록을 현재 버전의 결과로 재사용하지 않습니다.
 
 `verify_licenses.py`는 선택 inventory와 `licenses/dependencies.json`의 원문 해시·고지를 대조합니다.

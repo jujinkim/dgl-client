@@ -31,11 +31,11 @@
 |---|---|
 | `generate_ui_icons.py` | 공통 SVG에서 Compose 벡터·Rust 포함 목록 생성. `--check`로 SVG 형식·생성물 일치 검사; [UI 아이콘 안내](../assets/ui-icons/README.md) |
 | `check_prompt.py` / `verify_wrapper.py` | 원문 요구사항·Gradle bootstrap 무결성 |
-| `verify_test_results.py` | JVM의 모든 지정 테스트 결과·예상 skip 검사 (`linux`, `ssh`, `windows`) |
+| `verify_test_results.py` | JVM의 모든 지정 테스트 결과·예상 skip 검사 (`linux`, JVM 참조 SSH용 `ssh`, `windows`) |
 | `verify_android_results.py` | 계측의 지정 테스트 이름·완료·실패/skip 검사; 실행 도구에서 import |
 | `verify_lint.py` | lint 진단·검토 조건·만료 확인 |
 | `scan_secrets.py` | Gitleaks로 작업 파일·전체 staged snapshot·Git refs 검사 |
-| `audit_dependencies.py` | Gradle 선택 inventory와 npm lock의 OSV 검사 |
+| `audit_dependencies.py` | Gradle 선택 inventory·Cargo.lock(crates.io)·npm lock의 OSV 검사 |
 | `verify_licenses.py` | 선택 inventory의 라이선스·원문 해시·고지 확인 |
 | `refresh_licenses.py` | 명시적으로 요청할 때 라이선스 근거 갱신; 생성 결과 검토 필요 |
 | `verify_dependency_origins.py` | 의존성 출처와 다운로드 해시 대조 |
@@ -53,7 +53,7 @@ JVM·Android 테스트를 추가/삭제하면 `verify_test_results.py` / `verify
 | 도구 | 범위 |
 |---|---|
 | `build_test_tmux.py` | 3.3a/3.7c를 `.tools/`에 빌드; 사용자 tmux는 변경하지 않음 |
-| `integration.py` | 임시 OpenSSH·키·독립 tmux socket 생성/정리. 기본 JVM 검사, `--command`로 Rust/Android 지정 |
+| `integration.py` | 임시 OpenSSH·키·독립 tmux socket 생성/정리. 기본은 Rust `ssh_integration` 전체(`--agent-home` 필요), `--command`로 개별 Rust·JVM 참조·Android 지정 |
 | `android_integration.py` | fixture 안에서 APK 빌드·설치·전체 기본 runner 실행·이름별 결과 검증 |
 | `rust_android_integration.py` | 빌드된 APK의 API36 후보 검사·화면 수집. 명시적 이름 목록과 대조하며 fixture 안에서 실행 |
 | `workspace_android.py` | 전용 API36 한 대에서 839/840dp·분할·WebView 동일성·IME·활성 입력/모달 차단·드래그·세션 폰트 핀치/초기화·가로 스크롤 경계와 기존 모바일 회귀 검사. 화면/키보드 설정 원복, `artifacts/android-workspace/` 출력 |

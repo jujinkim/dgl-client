@@ -50,7 +50,7 @@ async fn phase(c: &Connection, expected: Phase) {
         }
     })
     .await
-    .unwrap();
+    .unwrap_or_else(|_| panic!("{expected:?} timeout: {:?}", c.state()));
 }
 async fn completion(c: &Connection, id: u64) {
     tokio::time::timeout(Duration::from_secs(20), async {
@@ -84,10 +84,11 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
 async fn agent_hidden_pane_case(service: dgl_core::agent::Agent, executable: &str) {
     use dgl_core::agent::{self, Kind};
     let root = std::path::PathBuf::from(std::env::var("DGL_TEST_ROOT").unwrap());
-    // Refuse to write an observer database into the real home in ordinary SSH tests.
-    if !root.join("home").exists() {
-        return;
-    }
+    // Refuse to write an observer database into the real home; a silent skip would read as a pass.
+    assert!(
+        root.join("home").exists(),
+        "run through scripts/integration.py --agent-home"
+    );
     let helper = root.join("observer.py");
     std::fs::write(&helper, agent::HELPER).unwrap();
     let trigger = root.join("emit-stop");
@@ -513,7 +514,9 @@ async fn isolated_auth_management_input_reconnect() {
         bridge.abort();
     }
     phase(&c, Phase::Reconnecting).await;
-    assert_eq!(c.state().retry.attempt, 0);
+    // The first automatic retry starts immediately, so it may already be in flight.
+    assert!(c.state().retry.attempt <= 1);
+    assert!(!c.state().retry.stopped);
     phase(&c, Phase::Ready).await;
     assert_eq!(c.state().retry.attempt, 0);
     assert_eq!(c.state().handle, handle);

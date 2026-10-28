@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Run SSHJ tests against a disposable OpenSSH + private tmux socket.
+"""Run SSH/tmux integration tests against a disposable OpenSSH + private tmux socket.
+
+The default command is the Rust engine's ignored `ssh_integration` suite; the agent
+observer case in it requires `--agent-home`. `--command` selects JVM reference or
+Android runs instead.
 
 No user SSH config, authorized_keys, or existing tmux server is modified.
 All private keys are generated at runtime and removed on exit.
@@ -163,7 +167,8 @@ LogLevel ERROR
                            DGL_TEST_TMUX_LOGIN_PATH='1' if args.tmux_login_path else '0',
                            DGL_TEST_TMUX_WRAPPER=str(wrapper),
                            DGL_TEST_TMUX_VERSION=run([tmux, '-V']).stdout.strip().removeprefix('tmux '))
-                command = args.command or ['./gradlew', ':app:desktopTest', '--rerun-tasks']
+                command = args.command or ['cargo', 'test', '--locked', '-p', 'dgl-core', '--test', 'ssh_integration',
+                                           '--', '--ignored', '--test-threads=1']
                 print('Isolated OpenSSH ready; ' + run([tmux, '-V']).stdout.strip(), flush=True)
                 result = subprocess.Popen(command, env=env)
                 try:

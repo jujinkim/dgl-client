@@ -354,6 +354,14 @@ Android Debug·계측 APK·lint를 확인했습니다. 실제 키보드 계측�
 초기 포커스 준비 실패와 실행 래퍼 시간 초과는 통과로 계산하지 않았으며 최종 계측은 72.423초였습니다.
 원문은 `artifacts/cli-menu-overlay/`와 `.tools/cli-overlay-*-build.log`에 있습니다. 삼성 키보드 실기는 수행하지 않았습니다.
 
+## 2026-10-29: CI를 Rust 제품 엔진 기준으로 전환
+
+기본 CI에 Rust 코어/UniFFI·web 단위 검사를 추가하고, 수동 `verify_ssh`를 JVM 참조 대신 Rust `ssh_integration`으로 바꿨습니다.
+첫 실행에서 즉시 재시도 전환(`c2d4aca`) 뒤 갱신되지 않은 통합 검사 단언과, `--agent-home` 없이 조용히 통과하던 에이전트 검사를 고쳤습니다.
+의존성 감사에 Cargo.lock(crates.io)을 추가했으며 첫 조회에서 배포 타깃 runtime 권고가 확인되어 감사는 실패 상태입니다.
+tmux 3.7c는 6개 통과, 3.3a는 resume 검사가 실패합니다. 세션 없는 control client의 `refresh-client -B` 구독 타이머가
+tmux 3.2~3.6b 서버를 SIGSEGV로 종료시키는 결함(3.7에서 수정) 때문이며 별도 수정 대상입니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

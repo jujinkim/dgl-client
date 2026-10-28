@@ -75,6 +75,32 @@ class AuditTests(unittest.TestCase):
         del lock['packages']['node_modules/a/node_modules/@scope/alias']['name']
         self.assertEqual('@scope/alias', audit.npm_packages(lock)[0]['name'])
 
+    def test_cargo_scopes_and_unaudited_source(self):
+        registry = 'registry+https://github.com/rust-lang/crates.io-index'
+        def dep(pkg, *kinds):
+            return {'pkg': pkg, 'dep_kinds': [{'kind': k} for k in kinds]}
+        def package(name, kind='lib', source=registry):
+            return {'id': name, 'name': name, 'version': '1.0.0', 'source': source, 'targets': [{'kind': [kind]}]}
+        metadata = {'workspace_members': ['app'], 'packages': [
+            package('app', source=None), package('rt'), package('bd'), package('dv'), package('shared'),
+            package('derive', 'proc-macro'), package('syn')],
+            'resolve': {'nodes': [
+                {'id': 'app', 'deps': [dep('rt', None), dep('bd', 'build'), dep('dv', 'dev'), dep('derive', None)]},
+                {'id': 'rt', 'deps': [dep('shared', None)]}, {'id': 'bd', 'deps': [dep('shared', None)]},
+                {'id': 'derive', 'deps': [dep('syn', None)]},
+                {'id': 'dv', 'deps': []}, {'id': 'shared', 'deps': []}, {'id': 'syn', 'deps': []}]}}
+        runtime = audit.cargo_runtime(metadata)
+        packages = audit.cargo_packages(metadata, runtime)
+        scopes = {p['name']: p['usages'][0]['scope'] for p in packages}
+        self.assertEqual({'rt': 'runtime', 'shared': 'runtime', 'bd': 'build', 'dv': 'test',
+                          'derive': 'build', 'syn': 'build'}, scopes)
+        self.assertEqual({'crates.io'}, {p['ecosystem'] for p in packages})
+        # A package outside every shipped target's runtime graph is still audited, as build scope.
+        self.assertEqual('build', {p['name']: p['usages'][0]['scope'] for p in audit.cargo_packages(metadata, set())}['rt'])
+        metadata['packages'][3]['source'] = 'git+https://example.test/dv'
+        with self.assertRaisesRegex(ValueError, 'Unaudited Cargo source'):
+            audit.cargo_packages(metadata, runtime)
+
     def test_empty_inventory_rejected(self):
         import tempfile
         with tempfile.TemporaryDirectory() as directory:

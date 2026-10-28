@@ -62,6 +62,8 @@ jobs:
         run: |
           rustup toolchain install 1.98.1 --profile minimal --target aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
           rustup default 1.98.1
+      - name: Rust core and binding unit tests
+        run: cargo test --locked -p dgl-core -p dgl-uniffi
       - name: Install Android build platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"'
       - name: Install pinned Gitleaks
@@ -72,7 +74,7 @@ jobs:
           sudo install gitleaks /usr/local/bin/gitleaks
           rm gitleaks gitleaks_8.30.1_linux_x64.tar.gz
       - run: python3 scripts/scan_secrets.py
-      - run: npm ci --ignore-scripts --no-audit && npm run bundle
+      - run: npm ci --ignore-scripts --no-audit && npm run bundle && npm test
         working-directory: web
       - run: git diff --exit-code -- app/src/androidMain/assets
       - name: Unit tests, debug APK and lint
@@ -132,23 +134,23 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - run: python3 scripts/verify_wrapper.py
       - run: sudo apt-get update && sudo apt-get install -y openssh-server libevent-dev libncurses-dev build-essential
       - run: sudo mkdir -p /run/sshd
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
       - run: python3 scripts/build_test_tmux.py '${{ matrix.tmux }}'
-      - name: Real SSH and tmux tests
-        run: python3 scripts/integration.py --tmux '.tools/tmux-${{ matrix.tmux }}/tmux-${{ matrix.tmux }}/tmux'
-      - run: python3 scripts/verify_test_results.py --mode ssh --output 'artifacts/tmux-${{ matrix.tmux }}-tests.json'
-        if: always()
+      - name: Real SSH and tmux tests (Rust engine)
+        run: |
+          mkdir -p artifacts
+          set -o pipefail
+          python3 scripts/integration.py --agent-home --tmux '.tools/tmux-${{ matrix.tmux }}/tmux-${{ matrix.tmux }}/tmux' 2>&1 | tee 'artifacts/tmux-${{ matrix.tmux }}-rust-tests.log'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: tmux-${{ matrix.tmux }}-verification
-          path: artifacts/tmux-${{ matrix.tmux }}-tests.json
+          path: artifacts/tmux-${{ matrix.tmux }}-rust-tests.log
           if-no-files-found: warn
           retention-days: 7
   android-integration:
