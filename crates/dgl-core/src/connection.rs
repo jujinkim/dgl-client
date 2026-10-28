@@ -2,7 +2,7 @@
 use crate::{
     Error, Result,
     command::{Command, Operation},
-    flow::{Generation, OutputKind, OutputQueue, PaneTarget},
+    flow::{Generation, MAX_BATCH, OutputKind, OutputQueue, PaneTarget},
     model::{self, Credential, HostProfile, RemoteState, Size},
     protocol::{Event, Parser},
     ssh::{self, Ssh, Stream},
@@ -732,6 +732,66 @@ impl Drop for Connection {
         self.close();
     }
 }
+/// A capture is one byte stream, not one renderer round trip per cursor move/row.
+/// Keep only one bounded batch while the output queue owns all pending payload.
+struct SnapshotWriter {
+    output: Arc<OutputQueue>,
+    subscription: u64,
+    target: PaneTarget,
+    size: Size,
+    bytes: Vec<u8>,
+}
+impl SnapshotWriter {
+    fn new(output: Arc<OutputQueue>, subscription: u64, target: PaneTarget, size: Size) -> Self {
+        Self {
+            output,
+            subscription,
+            target,
+            size,
+            bytes: Vec::with_capacity(MAX_BATCH),
+        }
+    }
+    async fn write(&mut self, mut bytes: &[u8]) -> Result<()> {
+        while !bytes.is_empty() {
+            let n = bytes.len().min(MAX_BATCH - self.bytes.len());
+            self.bytes.extend_from_slice(&bytes[..n]);
+            bytes = &bytes[n..];
+            if self.bytes.len() == MAX_BATCH {
+                self.flush().await?;
+            }
+        }
+        Ok(())
+    }
+    async fn rows(&mut self, rows: Vec<Vec<u8>>) -> Result<()> {
+        for (i, row) in rows.into_iter().enumerate() {
+            self.write(format!("\x1b[{};1H", i + 1).as_bytes()).await?;
+            self.write(&crate::protocol::decode(&row, true)?).await?;
+        }
+        Ok(())
+    }
+    async fn flush(&mut self) -> Result<()> {
+        if !self.bytes.is_empty() && self.subscription != 0 {
+            match self
+                .output
+                .push(
+                    self.subscription,
+                    &self.target,
+                    OutputKind::ResetChunk,
+                    self.size,
+                    &self.bytes,
+                )
+                .await
+            {
+                // A capture remains bound to the subscriber present at its start.
+                Err(Error::StaleGeneration) => {}
+                result => result?,
+            }
+        }
+        self.bytes.clear();
+        Ok(())
+    }
+}
+
 struct Control {
     stream: Stream,
     parser: Parser,
@@ -1072,20 +1132,18 @@ impl Control {
             )
             .await?;
         let main = self.response().await?;
+        let mut writer = SnapshotWriter::new(
+            self.shared.output.clone(),
+            subscription,
+            target.clone(),
+            self.size,
+        );
         if fields[2] == 1 {
-            self.draw(subscription, &target, main).await?;
-            self.shared
-                .emit_to_subscription(
-                    subscription,
-                    &target,
-                    OutputKind::ResetChunk,
-                    self.size,
-                    b"\x1b[?1049h",
-                )
-                .await?;
+            writer.rows(main).await?;
+            writer.write(b"\x1b[?1049h").await?;
         }
         let screen = self.response().await?;
-        self.draw(subscription, &target, screen).await?;
+        writer.rows(screen).await?;
         let mut modes = format!(
             "\x1b[0m\x1b[{};{}r\x1b[{};{}H",
             fields[12] + 1,
@@ -1113,55 +1171,17 @@ impl Control {
             "\x1b[4{}",
             if fields[14] == 1 { 'h' } else { 'l' }
         ));
-        self.shared
-            .emit_to_subscription(
-                subscription,
-                &target,
-                OutputKind::ResetChunk,
-                self.size,
-                modes.as_bytes(),
-            )
-            .await?;
+        writer.write(modes.as_bytes()).await?;
         for row in self.response().await? {
-            self.shared
-                .emit_to_subscription(
-                    subscription,
-                    &target,
-                    OutputKind::ResetChunk,
-                    self.size,
-                    &crate::protocol::decode(&row, true)?,
-                )
-                .await?;
+            writer.write(&crate::protocol::decode(&row, true)?).await?;
         }
         self.response().await?;
+        writer.flush().await?;
         self.shared
             .emit_to_subscription(subscription, &target, OutputKind::ResetEnd, self.size, &[])
             .await?;
         self.capturing = None;
         self.paused.remove(&id);
-        Ok(())
-    }
-    async fn draw(&self, subscription: u64, target: &PaneTarget, rows: Vec<Vec<u8>>) -> Result<()> {
-        for (i, row) in rows.into_iter().enumerate() {
-            self.shared
-                .emit_to_subscription(
-                    subscription,
-                    target,
-                    OutputKind::ResetChunk,
-                    self.size,
-                    format!("\x1b[{};1H", i + 1).as_bytes(),
-                )
-                .await?;
-            self.shared
-                .emit_to_subscription(
-                    subscription,
-                    target,
-                    OutputKind::ResetChunk,
-                    self.size,
-                    &crate::protocol::decode(&row, true)?,
-                )
-                .await?;
-        }
         Ok(())
     }
 }
@@ -2040,6 +2060,100 @@ async fn connected(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn snapshot_writer() -> (Arc<OutputQueue>, SnapshotWriter) {
+        let output = Arc::new(OutputQueue::default());
+        let id = output.subscribe().unwrap();
+        let target = PaneTarget {
+            connection: 1,
+            pane_id: "%1".into(),
+            generation: Generation {
+                connection: 1,
+                pane: 0,
+                size: 1,
+            },
+        };
+        let writer = SnapshotWriter::new(output.clone(), id, target, Size::default());
+        (output, writer)
+    }
+    #[tokio::test]
+    async fn snapshot_batches_preserve_main_alternate_modes_and_pending_bytes() {
+        let (output, mut writer) = snapshot_writer();
+        let mut expected = Vec::new();
+        for alternate in [false, true] {
+            if alternate {
+                writer.write(b"\x1b[?1049h").await.unwrap();
+                expected.extend_from_slice(b"\x1b[?1049h");
+            }
+            let mut rows = Vec::new();
+            for i in 1..=40 {
+                rows.push("한글😀\\\\shell or TUI".as_bytes().to_vec());
+                expected.extend_from_slice(format!("\x1b[{i};1H한글😀\\shell or TUI").as_bytes());
+            }
+            writer.rows(rows).await.unwrap();
+        }
+        let suffix = b"\x1b[0m\x1b[1;40r\x1b[5;10H\x1b[?2004h\x1b[38;2;";
+        writer.write(suffix).await.unwrap();
+        expected.extend_from_slice(suffix);
+        assert_eq!(
+            output.metrics(),
+            (0, 0),
+            "Small rows share one renderer write"
+        );
+        writer.flush().await.unwrap();
+        let event = output.poll(writer.subscription).unwrap().unwrap();
+        assert_eq!(event.kind, OutputKind::ResetChunk);
+        assert_eq!(event.bytes, expected);
+        assert!(output.poll(writer.subscription).unwrap().is_none());
+        assert_eq!(
+            output.metrics(),
+            (expected.len(), 1),
+            "Payload stays charged until renderer ACK"
+        );
+        output.ack(writer.subscription, event.sequence).unwrap();
+        assert_eq!(output.metrics(), (0, 0));
+    }
+    #[tokio::test]
+    async fn snapshot_batches_split_at_limit_without_losing_utf8_or_escape_bytes() {
+        let (output, mut writer) = snapshot_writer();
+        let mut bytes = vec![b'a'; MAX_BATCH - 1];
+        bytes.extend_from_slice("한글😀\x1b[?1049h".as_bytes());
+        bytes.extend_from_slice(&vec![b'b'; MAX_BATCH]);
+        writer.write(&bytes).await.unwrap();
+        writer.flush().await.unwrap();
+        writer.flush().await.unwrap();
+        let mut restored = Vec::new();
+        let mut writes = 0;
+        while let Some(event) = output.poll(writer.subscription).unwrap() {
+            assert!(!event.bytes.is_empty() && event.bytes.len() <= MAX_BATCH);
+            restored.extend_from_slice(&event.bytes);
+            output.ack(writer.subscription, event.sequence).unwrap();
+            writes += 1;
+        }
+        assert_eq!(restored, bytes);
+        assert_eq!(writes, bytes.len().div_ceil(MAX_BATCH));
+        assert_eq!(writer.bytes.capacity(), MAX_BATCH);
+        assert_eq!(output.metrics(), (0, 0));
+    }
+    #[tokio::test]
+    async fn snapshot_batch_backpressure_is_released_by_unsubscribe_without_leaking_to_successor() {
+        let (output, mut writer) = snapshot_writer();
+        let id = writer.subscription;
+        for _ in 0..crate::flow::MAX_OUTPUT / MAX_BATCH {
+            writer.write(&vec![b'x'; MAX_BATCH]).await.unwrap();
+        }
+        let task = tokio::spawn(async move { writer.write(&vec![b'y'; MAX_BATCH]).await });
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        output.unsubscribe(id);
+        let next = output.subscribe().unwrap();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(output.poll(next).unwrap().is_none());
+        assert_eq!(output.metrics(), (0, 0));
+    }
     fn host(port: u16) -> HostProfile {
         HostProfile {
             id: "retry-fixture".into(),

@@ -193,6 +193,9 @@ API36 후보 검사는 앱/계측 APK를 먼저 빌드하고 fixture 안에서 �
 `kim.jujin.dglc.AndroidOutputRecoveryTest`는 같은 fixture에서 렌더러 ACK를 실제 15초 넘게 지연시킵니다.
 구독 종료 후 SSH 세대·tmux client·원격 프로세스 유지, 모든 표시 pane의 ACK 대기, 늦은 ACK·표면 교체,
 자동 화면 복원 실패 후 수동 재시도를 확인합니다. 물리 기기의 장시간 잠금·Doze 재현을 대신하지 않습니다.
+같은 클래스의 `tabRebindAndWindowSwitchWaitForFreshVisiblePanes`는 실제 WebView·일반/alternate 버퍼로
+탭 재부착·창 전환 중 불투명 표시, 마지막 pane ACK 전 입력 차단, pane당 묶음 전송과 원격 PID 유지를 검사합니다.
+`DglPresentationTest`의 `elapsedMs`는 요청부터 복원 완료 콜백까지이며 실제 첫 표시 프레임의 측정값이 아닙니다.
 Debug 진단은 `adb -s "$ANDROID_SERIAL" logcat -s DglResume`으로 복귀·검사 제출/완료·구독/연결 세대·화면 ACK·입력 허용 시각을 확인합니다.
 
 ```sh

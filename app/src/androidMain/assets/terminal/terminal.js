@@ -171,7 +171,6 @@
   api.endSnapshot = id => {
     if (savedScroll !== null) { term.scrollToLine(savedScroll); savedScroll = null; }
     if (!Number.isSafeInteger(id) || id <= 0) return;
-    if (!cachedScreen) { snapshotUpdating = false; snapshotInputModes = null; syncInputPosition(); post({ type: 'ack', id }); return; }
     const version = cacheVersion;
     renderAck = id;
     renderListener?.dispose();
@@ -180,12 +179,12 @@
       // xterm's write callback only confirms parsing. Wait for its actual render
       // and a paint opportunity before exposing the replacement screen.
       requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (cacheVersion !== version || !cachedScreen) return;
+        if (cacheVersion !== version || renderAck !== id) return;
         snapshotUpdating = false; snapshotInputModes = null;
         syncInputPosition();
         const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
         // Resize, pane changes and ordinary snapshots swap atomically without motion.
-        if (!reconnectSnapshot || reducedMotion) { clearCache(); return; }
+        if (!cachedScreen || !reconnectSnapshot || reducedMotion) { clearCache(); return; }
         const duration = smoothTransitions ? 120 : 90;
         cachedScreen.style.transitionDuration = `${duration}ms`;
         const liveScreen = term.element.querySelector('.xterm-screen');

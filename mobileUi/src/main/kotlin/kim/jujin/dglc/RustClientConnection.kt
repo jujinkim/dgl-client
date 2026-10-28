@@ -69,6 +69,7 @@ class RustClientConnection(
     private var lastPane = host.lastPane
     private val resizes = TerminalResizeQueue()
     private val recovery = TerminalRecovery()
+    private val presentation = TerminalPresentation()
     private val backgroundResume = BackgroundResume()
     private var userStopped = false
     private val inputRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<ULong>()
@@ -181,6 +182,11 @@ class RustClientConnection(
         val resizing = s["resizing"]?.jsonPrimitive?.boolean == true
         val targets = if (phase == Phase.Shell) native?.targetJson()?.let { mapOf("shell" to it) } ?: emptyMap()
             else s["render_targets"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+        if (surface != null && (phase == Phase.Shell ||
+                (phase in setOf(Phase.Ready, Phase.Restoring) && text("window") != null))) {
+            val connection = s["generation"]?.jsonObject?.get("connection")
+            presentation.observe("$connection:${text("session")}:${if (phase == Phase.Shell) "shell" else text("window")}")
+        }
         val recovering = recovery.update(checking || outputFailed, phase, connecting, targets)
         if (!recovering && !outputFailed) outputRecoveryAttempted = false
         val outputRetry = outputFailed && phase in setOf(Phase.Ready, Phase.Shell, Phase.Restoring) && !connecting
@@ -199,7 +205,8 @@ class RustClientConnection(
             Phase.Selecting -> t("tmux 세션을 선택하거나 만드세요."); Phase.Restoring -> if (resizing) t("연결됨 · tmux") else t("터미널 복원 중…"); Phase.Ready -> t("연결됨 · tmux")
             Phase.Shell -> t("일반 SSH · tmux 탐지 실패"); Phase.Reconnecting -> t("연결 복구 중…"); Phase.MissingSession -> t("이전 세션이 삭제되었습니다. 직접 선택하세요.")
             else -> t("연결 종료")
-        }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering, phase == Phase.Failed && error == "Network" && !stopped && attempt >= 3)
+        }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering,
+            phase == Phase.Failed && error == "Network" && !stopped && attempt >= 3, presenting = presentation.pending)
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         if (phase == Phase.Shell) tmuxOutput = false
         else if (phase in setOf(Phase.Ready, Phase.Restoring) && session.value != null) tmuxOutput = true
@@ -243,17 +250,27 @@ class RustClientConnection(
         val id = c.subscribe(); subscription = id
         outputFailed = false
         recovery.bind(id.toLong())
+        presentation.bind(id.toLong())
+        status.value = status.value.copy(presenting = true)
         val current = epoch
         trace("output-bind")
         outputJob = launchTerminalOutput(scope, previous, consume = {
             val displayed = mutableMapOf<String, String>()
             var layoutSequence = ""
             var preserving: Boolean? = null
+            var presentationApplied = true
+            terminal.presentationPending(true)
             terminal.cancelSnapshot()
             while (isActive && current == epoch) {
                 val state = json.parseToJsonElement(c.stateJson()).jsonObject
                 synchronized(this@RustClientConnection) {
                     if (current == epoch && subscription == id) applyState(state)
+                }
+                val pending = synchronized(this@RustClientConnection) { presentation.pending }
+                val presentationCycle = synchronized(this@RustClientConnection) { presentation.cycle }
+                if (pending != presentationApplied) {
+                    terminal.presentationPending(pending)
+                    presentationApplied = pending
                 }
                 val preserve = synchronized(this@RustClientConnection) { recovery.pending } ||
                     state["phase"]?.jsonPrimitive?.content == "Reconnecting" ||
@@ -286,6 +303,7 @@ class RustClientConnection(
                             applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
                         }
                     }
+                    if (presentIfReady(c, terminal, id, current)) presentationApplied = false
                     delay(8); continue
                 }
                 if (current == epoch && subscription == id && surface === terminal && c.acceptsOutput(event.targetJson)) {
@@ -293,7 +311,7 @@ class RustClientConnection(
                     terminal.outputPane(target, event.targetJson)
                     when (event.kind) {
                         "Resize" -> {
-                            val shellRecovery = target == "shell" && synchronized(this@RustClientConnection) { recovery.pending }
+                            val shellRecovery = target == "shell" && synchronized(this@RustClientConnection) { recovery.pending || presentation.pending }
                             if (shellRecovery || (displayed[target] != null && displayed[target] != event.targetJson)) terminal.beginSnapshot()
                             // A shell resize can supersede its initial Reset events before
                             // the renderer polls them. Render an empty new shell at the
@@ -305,6 +323,7 @@ class RustClientConnection(
                                 synchronized(this@RustClientConnection) {
                                     if (current == epoch && subscription == id && c.acceptsOutput(event.targetJson)) {
                                         recovery.rendered(id.toLong(), cycle, target, event.targetJson)
+                                        presentation.rendered(id.toLong(), presentationCycle, target, event.targetJson)
                                         trace("screen-ack cycle=$cycle")
                                         applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
                                     }
@@ -312,7 +331,7 @@ class RustClientConnection(
                             }
                         }
                         "ResetBegin" -> {
-                            if (displayed[target] != null || synchronized(this@RustClientConnection) { recovery.pending }) terminal.beginSnapshot()
+                            terminal.beginSnapshot()
                             terminal.reset(event.bytes)
                         }
                         "ResetChunk", "Live" -> terminal.write(event.bytes)
@@ -321,6 +340,7 @@ class RustClientConnection(
                             synchronized(this@RustClientConnection) {
                                 if (current == epoch && subscription == id && c.acceptsOutput(event.targetJson)) {
                                     recovery.rendered(id.toLong(), cycle, target, event.targetJson)
+                                    presentation.rendered(id.toLong(), presentationCycle, target, event.targetJson)
                                     trace("screen-ack cycle=$cycle")
                                     applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
                                 }
@@ -336,6 +356,7 @@ class RustClientConnection(
                         if (state["checking"]?.jsonPrimitive?.boolean != true) applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
                     }
                 }
+                if (presentIfReady(c, terminal, id, current)) presentationApplied = false
             }
         }, failed = { error ->
             synchronized(this@RustClientConnection) {
@@ -371,8 +392,45 @@ class RustClientConnection(
     private fun releaseOutput(c: NativeConnection, id: ULong?, current: Long) {
         if (id == null || current != epoch || native !== c || subscription != id) return
         c.unsubscribe(id)
-        subscription = null; snapshotRequest = null; recovery.unbind()
+        subscription = null; snapshotRequest = null; recovery.unbind(); presentation.unbind()
+        status.value = status.value.copy(presenting = false)
         trace("output-release id=$id")
+    }
+    // Called under the adapter lock. State Ready alone says capture/enqueue is done,
+    // not that every visible pane has rendered on this subscription/window cycle.
+    private fun canPresent(c: NativeConnection, id: ULong, current: Long, cycle: Long): Boolean {
+        if (current != epoch || native !== c || subscription != id || surface == null || !presentation.pending) return false
+        val state = json.parseToJsonElement(c.stateJson()).jsonObject
+        applyState(state)
+        val phase = status.value.phase
+        val targets = if (phase == Phase.Shell) c.targetJson()?.let { mapOf("shell" to it) } ?: emptyMap()
+            else state["render_targets"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+        val remote = remote.value
+        val window = remote.windows.firstOrNull { it.id == status.value.window }
+        val visible = if (phase == Phase.Shell) setOf("shell") else remote.panes
+            .filter { it.window == window?.id && (window?.zoomed != true || it.active) }.map { it.id }.toSet()
+        return presentation.ready(id.toLong(), cycle, phase, visible, targets,
+            snapshotRequest != null || outputFailed || status.value.checking)
+    }
+    private suspend fun presentIfReady(c: NativeConnection, terminal: TerminalSurface, id: ULong, current: Long): Boolean {
+        val cycle = synchronized(this) {
+            val cycle = presentation.cycle
+            if (!canPresent(c, id, current, cycle)) return false
+            cycle
+        }
+        terminal.presentationPending(false)
+        currentCoroutineContext().ensureActive()
+        val presented = synchronized(this) {
+            if (surface !== terminal || !canPresent(c, id, current, cycle)) false
+            else {
+                presentation.presented(id.toLong(), cycle)
+                trace("window-presented cycle=$cycle")
+                applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                true
+            }
+        }
+        if (!presented) terminal.presentationPending(true)
+        return presented
     }
     private fun failOutput(c: NativeConnection, id: ULong?, current: Long) {
         if (id == null || current != epoch || native !== c || subscription != id) return
@@ -564,6 +622,7 @@ class RustClientConnection(
         resizes.reset()
         appliedSequence = -1L
         recovery.reset()
+        presentation.unbind()
         refreshRequest = null; refreshing.value = false
         cleanup.removeAll { it.isCompleted }
         // Keep the last writer as the next bind's predecessor, even across a

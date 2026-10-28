@@ -327,6 +327,12 @@ Keychain ignore 1·JVM 예상 skip 9, Android Debug·계측 APK·lint, API36 Abo
 macOS ad-hoc 패키징·버전 대조를 확인했습니다. 원시는 `.tools/about-*.log`, `artifacts/about-app/`에 있으며
 초기 About/연결 수명 동시 실행 실패는 통과로 계산하지 않았습니다. Windows 네이티브와 실기 인수는 수행하지 않았습니다.
 
+## 2026-10-28: Android 단축키 Staggered Grid
+
+두 줄 단축키를 Compose 기본 Staggered Grid로 바꾸고 짧은 줄 우선·동률 시 위 줄·독립 너비·공동 스크롤을 유지했습니다.
+당시 JVM 92 통과·예상 skip 9, Debug·계측 APK·lint, API36 선택 계측 1개를 확인했습니다.
+초기 계측의 화면 밖 항목·목록 반영 대기 실패는 통과로 계산하지 않았습니다. 원시는 `artifacts/shortcut-staggered/`입니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

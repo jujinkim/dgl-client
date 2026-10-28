@@ -65,8 +65,9 @@ data class ConnectionStatus(
     val checking: Boolean = false,
     val recovering: Boolean = false,
     val retryExhausted: Boolean = false,
+    val presenting: Boolean = false,
 ) {
-    val acceptsInput get() = !checking && !recovering && (phase == Phase.Ready || phase == Phase.Shell || (phase == Phase.Restoring && resizing && !canStopRetrying))
+    val acceptsInput get() = !checking && !recovering && !presenting && (phase == Phase.Ready || phase == Phase.Shell || (phase == Phase.Restoring && resizing && !canStopRetrying))
     val acceptsPointer get() = acceptsInput && !resizing
     val recoveryMessage get() = when {
         checking && !showsConnectionProgress -> t("연결 확인 중…")
@@ -125,6 +126,8 @@ interface TmuxController {
 
 /** write completes only when bytes have been accepted by a bounded renderer queue. */
 interface TerminalSurface {
+    /** Hide a switching window until all of its current panes have painted. */
+    suspend fun presentationPending(active: Boolean) {}
     /** Keep the last rendered window visible while a connection restores its panes. */
     suspend fun connectionRecovery(active: Boolean) {}
     suspend fun layout(remote: RemoteState, window: String?, pane: String?, inputTarget: String?) {}

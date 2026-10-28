@@ -6,22 +6,32 @@
 
 ## 현재 변경 검사 (2026-10-28)
 
-모바일 하단 두 줄 단축키를 Compose 기본 Staggered Grid로 변경했습니다.
-저장 순서대로 더 짧은 줄에 이어 붙이고 길이가 같으면 위 줄을 선택하며, 버튼별 너비와 공동 가로 스크롤을 유지합니다.
+Android 탭 재부착·tmux 창 전환의 행별 전달을 최대 16 KiB 묶음으로 변경했습니다.
+모든 보이는 pane의 최신 캡처와 렌더가 끝날 때까지 불투명 로딩 표시와 입력 차단을 유지합니다.
+첫 캡처도 렌더·paint 기회 후 ACK하며, 이전 화면·일반 버퍼 복원 중간 화면을 노출하지 않습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| JVM | `:app:desktopTest`: 92 통과·환경별 예상 skip 9, 명시적 이름 목록 대조 통과 |
+| Rust | core·UniFFI 45 통과·환경 ignore 6. 16 KiB 경계·UTF-8/escape 순서·출력 예산·구독 교체 검사 포함 |
+| JVM | `:app:desktopTest`: 95 통과·환경별 예상 skip 9, 명시적 이름 목록 대조 통과 |
+| 웹·Python | 웹 42·Python 99 통과. 첫 렌더 ACK·취소 프레임·새 명시 목록 검사 포함 |
 | Android 빌드 | Debug·계측 APK·`lintDebug` 통과. lint 오류 0·기존 검토 경고 12개, 진단 목록 검증 통과 |
-| API36 단축키 | 320dp 전용 에뮬레이터의 `mobileLayoutImeComposerAndSharedPreference` 1개 이름별 완료 통과. 짧은 줄 연속 배치·동률 시 위 줄·독립 너비·공동 스크롤·고정 도구·빈/단일 목록·한 줄 설정 저장/복원·IME·회전·작성창 입력 검사 포함 |
-| 정적 검사 | 변경 문서의 로컬 링크와 diff 공백 검사 통과 |
+| API36 실제 SSH·WebView | `tabRebindAndWindowSwitchWaitForFreshVisiblePanes` 통과. 두 pane 일반/alternate 버퍼, 마지막 ACK 지연 중 불투명 픽셀·입력 차단, pane당 캡처 write 1회, 탭 재부착·창 변경·원격 PID 유지 확인 |
+| API36 회귀 | 출력 timeout·재시도·오래된 ACK, WebView 입력·IME·snapshot, 작업 공간 탭·분할·IME 유지의 3개 이름별 완료 확인. 작업 공간은 초기 System UI ANR 실패 후 재시작한 별도 실행에서 통과 |
+| 정적·산출물 | 로컬 문서 링크·diff 공백·대시보드 메타데이터·원본 Debug APK/4 ABI 검사 통과 |
 
-JVM·API36 원문과 이름별 결과는 `artifacts/shortcut-staggered/`, 최종 계측 빌드 로그는
-`.tools/shortcut-staggered-test-build.log`에 있습니다. 초기 계측 2회는 화면 밖 Lazy 항목을 기다리거나
-새 목록의 프레임 반영 전에 조회하여 실패했습니다. 새 항목 반영과 시작 위치 스크롤을 기다리도록 검사를 보완한 뒤
-세 번째 실행이 통과했으며 이전 실패·skip을 통과로 계산하지 않습니다. 에뮬레이터 설정은 복원하고 종료했습니다.
+JVM 결과는 `artifacts/tab-presentation/jvm-tests.json`, 빌드와 계측 원문은 `.tools/tab-presentation-*.log`에 있습니다.
+초기 API36 실행은 핵심 3개 통과·작업 공간 1개 실패였으며, 실패한 실행 전체를 통과로 계산하지 않습니다.
+작업 공간만 재시작 후 실행한 결과는 `.tools/tab-presentation-workspace.log`에 있습니다.
+초기 빌드는 기존 coroutines BOM 1.6.4 POM의 검증 해시 누락으로 실패했습니다. Maven Central 원본·공개 SHA-256과
+로컬 파일의 일치를 확인해 해당 항목만 추가한 뒤 최종 빌드를 통과했습니다.
+
+전용 API36/software GPU에서 요청부터 복원 완료 콜백까지 탭 재부착 248ms·창 전환 675ms를 기록했습니다.
+40행·두 버퍼의 xterm 파서 단독 실험은 162회 write 약 206ms, 묶음 write 약 2ms였고 최종 버퍼·모드가 같았습니다.
+이 값들은 실제 첫 표시 프레임·물리 기기의 체감 속도나 동일 환경의 제품 전후 비교를 증명하지 않습니다.
+에뮬레이터 설정은 검사 후 복원하고 종료했습니다.
 APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본을 사용합니다.
-Rust 검사·재패키징·실제 SSH·물리 Android·macOS GUI/Keychain·Windows 네이티브·전체 API matrix·장시간 반복 검사는 수행하지 않았습니다.
+물리 Android·macOS GUI/Keychain·데스크톱 재패키징·Windows 네이티브·전체 API matrix·장시간 반복 검사는 수행하지 않았습니다.
 
 ## 남은 한계
 

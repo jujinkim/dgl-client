@@ -125,7 +125,13 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     val allowed = focus.inputAllowed()
     val connectionStatus by client.status.collectAsState()
     LaunchedEffect(terminal, connectionStatus.acceptsPointer) { terminal.setPointerEnabled(connectionStatus.acceptsPointer) }
-    LaunchedEffect(terminal, allowed) { terminal.setInputEnabled(allowed) }
+    LaunchedEffect(terminal, allowed) {
+        terminal.setInputEnabled(allowed)
+        if (allowed && entry.visible && entry.restoreIme) {
+            entry.restoreIme = false
+            terminal.keyboard(true) { entry.visible && entry.focus.inputAllowed() }
+        }
+    }
     LaunchedEffect(terminal, preferences.smoothTerminalTransitions) {
         terminal.setSmoothTransitions(preferences.smoothTerminalTransitions)
     }
@@ -197,7 +203,9 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     DisposableEffect(terminal) {
         entry.visible = true
         client.bindSurface(terminal)
-        if (entry.restoreIme) {
+        // Cover a retained WebView before its very first reattachment frame.
+        terminal.preparePresentation(client.status.value.presenting)
+        if (entry.restoreIme && client.status.value.acceptsInput) {
             entry.restoreIme = false
             terminal.view.post { terminal.view.postOnAnimation {
                 if (entry.visible) terminal.keyboard(true) { entry.visible && entry.focus.inputAllowed() }
@@ -205,11 +213,14 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         }
         onDispose {
             entry.restoreIme = entry.restoreIme || (entry.focus.inputAllowed() && terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) == true)
-            entry.visible = false; client.unbindSurface(terminal); if (resources == null) terminal.close()
+            entry.visible = false; client.unbindSurface(terminal)
+            terminal.preparePresentation(true)
+            if (resources == null) terminal.close()
         }
     }
     LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
+    val presenting = terminal.screenPending || status.presenting
     val fontOverride by terminal.fontSizeOverride.collectAsState()
     val occlusion = LocalTerminalOcclusion.current
     Box(modifier.clipToBounds()) {
@@ -241,7 +252,13 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                 }
             }
         }
-        status.recoveryMessage?.takeUnless { status.retryExhausted }?.let { message ->
+        if (presenting) {
+            Box(Modifier.fillMaxSize().background(Color(0xff11151b)), contentAlignment = Alignment.Center) {
+                Text(if (status.canRetryNow || status.phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired)) status.message
+                    else t("터미널 복원 중…"), color = Color.White, modifier = Modifier.padding(24.dp))
+            }
+        }
+        status.recoveryMessage?.takeUnless { status.retryExhausted || presenting }?.let { message ->
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .45f)), contentAlignment = Alignment.Center) {
                 Text(message, color = Color.White, modifier = Modifier.padding(24.dp))
             }
@@ -258,6 +275,16 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private val blockedInput: () -> Unit = {},
     private val pointerInput: ((String, String?, ByteArray) -> Unit)? = null,
     private val keyboardInput: (String, String?, String, String?, TerminalModifiers, Boolean) -> Unit = { _, _, _, _, _, _ -> }) : TerminalSurface {
+    var screenPending by mutableStateOf(false); private set
+    fun preparePresentation(active: Boolean) {
+        screenPending = active
+        view.importantForAccessibility = if (active) android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            else android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        view.invalidate()
+    }
+    override suspend fun presentationPending(active: Boolean) {
+        withContext(Dispatchers.Main.immediate) { if (!closed) preparePresentation(active) }
+    }
     val fontSizeOverride get() = font.overrideSize
     private var scrollback = preferences.scrollback.coerceIn(100, 10000)
     private var consumingPinch = false
@@ -270,6 +297,12 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         }
     }).apply { isQuickScaleEnabled = false; isStylusScaleEnabled = false }
     val view = object : WebView(context) {
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            // Keep measuring/painting behind an opaque curtain. GONE/INVISIBLE
+            // would stop the render acknowledgements that release it.
+            if (screenPending) canvas.drawColor(android.graphics.Color.rgb(17, 21, 27))
+        }
         override fun onAttachedToWindow() { super.onAttachedToWindow(); refreshViewport() }
         override fun onDetachedFromWindow() { cancelImeAnimation(); super.onDetachedFromWindow() }
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {

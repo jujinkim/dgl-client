@@ -229,6 +229,31 @@ test('ordinary resize snapshots swap after rendering without dim or motion regar
   }
 });
 
+test('first snapshot without a cache still acknowledges only after render and paint', () => {
+  const r = cachedRenderer();
+  r.window.endSnapshot(71);
+  assert.deepEqual(r.messages, [], 'parsing alone must not uncover a switching window');
+  r.frame(); r.frame();
+  assert.deepEqual(r.messages, [], 'paint callbacks cannot replace a render event');
+  r.render(); r.frame();
+  assert.deepEqual(r.messages, []);
+  r.frame();
+  assert.deepEqual(r.messages, [{ type: 'ack', id: 71 }]);
+  assert.equal(r.root.children.length, 0);
+});
+
+test('cancelled first-render callbacks cannot complete a newer snapshot', () => {
+  const r = cachedRenderer();
+  r.window.endSnapshot(72); r.render();
+  r.window.cancelSnapshot();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'ack', id: 72 }]);
+  r.window.endSnapshot(73);
+  r.frame(); r.frame();
+  assert.deepEqual(r.messages, [], 'old paint frames cannot release the successor');
+  r.render(); r.frame(); r.frame();
+  assert.deepEqual(r.messages, [{ type: 'ack', id: 73 }]);
+});
+
 test('a resize superseding a reconnect fade removes recovery motion and keeps its render acknowledgement', () => {
   const r = cachedRenderer();
   r.window.setConnectionRecovery(true);

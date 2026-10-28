@@ -5,6 +5,9 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'core.TerminalPresentationTest': ['freshWindowWaitsForEveryVisiblePaneAndSnapshotCompletion',
+                                       'rapidSwitchRebindAndConnectionChangesRejectOldAcknowledgements',
+                                       'failureAndEmptyLayoutsNeverUncoverPartialScreensAndShellCanPresent'],
     'MobileChromeTest': ['notificationPositionRespectsAnchorScreenInsetsAndKeyboard'],
     'SnackbarStateTest': ['defaultPresetsAndCustomMillisecondsExpireAtTheirBoundary',
                           'sameTextRestartsAndOldExpiryOrDismissCannotRemoveReplacement',

@@ -189,3 +189,8 @@ Kotlin 패키지 변경은 저장 키 교체나 초기 앱 데이터 자동 이�
 Android가 현재 렌더링 대상을 확인한다. bridge 입력은 원래 pane과 입력 target을 함께 제출한다.
 기존 저장 키·입력 ACK·출력 예산·Windows 빌드 진입점은 유지한다.
 자세한 계약은 [TMUX_WINDOW_SYNC.md](TMUX_WINDOW_SYNC.md)를 따른다.
+
+Android Kotlin의 `ConnectionStatus.presenting`은 탭 재부착·창 전환의 최신 화면 준비 상태이며 기본값은 false다.
+true이면 `acceptsInput`/`acceptsPointer`를 차단한다. `TerminalSurface.presentationPending(active)`는
+측정·렌더링을 유지하면서 불투명 로딩 표시를 제어한다. 현재 구독·연결·창 전환 세대의 모든 보이는 pane이
+`ResetEnd` 렌더 ACK를 보내고 snapshot 요청과 코어 복원이 끝나면 공개한다. Rust·UniFFI wire 형식은 바꾸지 않는다.
