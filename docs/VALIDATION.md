@@ -6,32 +6,27 @@
 
 ## 현재 변경 검사 (2026-10-28)
 
-Android 탭 재부착·tmux 창 전환의 행별 전달을 최대 16 KiB 묶음으로 변경했습니다.
-모든 보이는 pane의 최신 캡처와 렌더가 끝날 때까지 불투명 로딩 표시와 입력 차단을 유지합니다.
-첫 캡처도 렌더·paint 기회 후 ACK하며, 이전 화면·일반 버퍼 복원 중간 화면을 노출하지 않습니다.
+Android 키보드 대응에 기기 로컬 `androidKeyboardMode` 설정을 추가했습니다. 기본 자동은 짧은 일반 출력만
+리사이즈하며 긴 출력·전체 화면 앱·이력 열람·복원 중에는 이동합니다. 이동은 하단 빈 행을 제외한 마지막 콘텐츠와
+커서를 기준으로 하고, 명시적인 리사이즈는 전체 화면 앱도 가시 높이에 맞춥니다. IME 종료 후 최종 행 수를 제출하고
+닫을 때 전체 크기를 복원합니다. 자체 resize의 크기 세대 갱신으로 자동 선택을 반복하지 않습니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust | core·UniFFI 45 통과·환경 ignore 6. 16 KiB 경계·UTF-8/escape 순서·출력 예산·구독 교체 검사 포함 |
-| JVM | `:app:desktopTest`: 95 통과·환경별 예상 skip 9, 명시적 이름 목록 대조 통과 |
-| 웹·Python | 웹 42·Python 99 통과. 첫 렌더 ACK·취소 프레임·새 명시 목록 검사 포함 |
-| Android 빌드 | Debug·계측 APK·`lintDebug` 통과. lint 오류 0·기존 검토 경고 12개, 진단 목록 검증 통과 |
-| API36 실제 SSH·WebView | `tabRebindAndWindowSwitchWaitForFreshVisiblePanes` 통과. 두 pane 일반/alternate 버퍼, 마지막 ACK 지연 중 불투명 픽셀·입력 차단, pane당 캡처 write 1회, 탭 재부착·창 변경·원격 PID 유지 확인 |
-| API36 회귀 | 출력 timeout·재시도·오래된 ACK, WebView 입력·IME·snapshot, 작업 공간 탭·분할·IME 유지의 3개 이름별 완료 확인. 작업 공간은 초기 System UI ANR 실패 후 재시작한 별도 실행에서 통과 |
-| 정적·산출물 | 로컬 문서 링크·diff 공백·대시보드 메타데이터·원본 Debug APK/4 ABI 검사 통과 |
+| Rust | core·UniFFI 46 통과·환경 ignore 6. 설정 누락·저장 호환과 동기화 제외, 기존 계약 fixture 포함 |
+| JVM | `:app:desktopTest`: 96 통과·환경별 예상 skip 9. 추가 설정 검사와 명시적 이름 목록 대조 통과 |
+| 웹 | 55 통과. 빈 행·커서·경계 높이·표시 pane 위치·모드 전환·TUI 격자 복원·최종 resize·빠른 반전·오래된 프레임·스크롤바/수동 위치 포함 |
+| Python | 99 통과. JVM/Android 명시 목록과 관련 검증기 회귀 포함 |
+| Android 빌드 | Debug·계측 APK·`lintDebug` 통과. lint 기존 검토 진단 12개 목록 검증 통과 |
+| 정적·산출물 | 번역 목록·로컬 문서 링크·diff 공백·대시보드 메타데이터·원본 Debug APK/4 ABI 검사 통과 |
 
-JVM 결과는 `artifacts/tab-presentation/jvm-tests.json`, 빌드와 계측 원문은 `.tools/tab-presentation-*.log`에 있습니다.
-초기 API36 실행은 핵심 3개 통과·작업 공간 1개 실패였으며, 실패한 실행 전체를 통과로 계산하지 않습니다.
-작업 공간만 재시작 후 실행한 결과는 `.tools/tab-presentation-workspace.log`에 있습니다.
-초기 빌드는 기존 coroutines BOM 1.6.4 POM의 검증 해시 누락으로 실패했습니다. Maven Central 원본·공개 SHA-256과
-로컬 파일의 일치를 확인해 해당 항목만 추가한 뒤 최종 빌드를 통과했습니다.
+JVM 결과는 `artifacts/android-keyboard/jvm-tests.json`, 빌드·Python 원문은 `.tools/android-keyboard-*.log`에 있습니다.
+첫 JVM/Rust 실행은 새 기본 필드가 빠진 설정 fixture 예상값 때문에 실패했습니다. 기존 입력 fixture는 유지하고
+인코딩 예상값에 추가 기본값을 반영한 뒤 최종 실행을 통과했습니다. 계측 소스의 기존 resize 없음 검사는 이동 모드를 명시했습니다.
 
-전용 API36/software GPU에서 요청부터 복원 완료 콜백까지 탭 재부착 248ms·창 전환 675ms를 기록했습니다.
-40행·두 버퍼의 xterm 파서 단독 실험은 162회 write 약 206ms, 묶음 write 약 2ms였고 최종 버퍼·모드가 같았습니다.
-이 값들은 실제 첫 표시 프레임·물리 기기의 체감 속도나 동일 환경의 제품 전후 비교를 증명하지 않습니다.
-에뮬레이터 설정은 검사 후 복원하고 종료했습니다.
-APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본을 사용합니다.
-물리 Android·macOS GUI/Keychain·데스크톱 재패키징·Windows 네이티브·전체 API matrix·장시간 반복 검사는 수행하지 않았습니다.
+APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본입니다. Android 계측은 컴파일만 했으며
+기기·에뮬레이터에서 이번 키보드 동작을 실행하지 않았습니다. 실제 SSH·물리 키보드·macOS GUI/Keychain·
+데스크톱 재패키징·Windows 네이티브·전체 API matrix·장시간 반복 검사는 수행하지 않았습니다.
 
 ## 남은 한계
 

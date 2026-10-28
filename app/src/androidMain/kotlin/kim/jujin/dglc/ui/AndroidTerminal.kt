@@ -218,7 +218,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             if (resources == null) terminal.close()
         }
     }
-    LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback) { terminal.configure(preferences) }
+    LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback, preferences.androidKeyboardMode) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
     val presenting = terminal.screenPending || status.presenting
     val fontOverride by terminal.fontSizeOverride.collectAsState()
@@ -287,6 +287,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
     val fontSizeOverride get() = font.overrideSize
     private var scrollback = preferences.scrollback.coerceIn(100, 10000)
+    private var keyboardMode = preferences.effectiveAndroidKeyboardMode
     private var consumingPinch = false
     private var managedViewport = false
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -425,7 +426,9 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         withTimeout(15_000) { ready.await() }
         val w = remote.windows.firstOrNull { it.id == window }
         val value = JSONObject().put("window", window ?: JSONObject.NULL).put("active", pane ?: JSONObject.NULL)
-            .put("inputTarget", inputTarget ?: JSONObject.NULL).put("columns", w?.width ?: 80).put("rows", w?.height ?: 24)
+            .put("inputTarget", inputTarget ?: JSONObject.NULL)
+            .put("inputIdentity", inputTarget?.let { kim.jujin.dglc.inputTargetIdentity(it) } ?: JSONObject.NULL)
+            .put("columns", w?.width ?: 80).put("rows", w?.height ?: 24)
             .put("panes", org.json.JSONArray().apply { remote.panes.forEach { p -> put(JSONObject()
                 .put("id", p.id).put("left", p.left).put("top", p.top).put("width", p.width).put("height", p.height)
                 .put("visible", p.window == window && (w?.zoomed != true || p.active))) } })
@@ -478,11 +481,12 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         withContext(Dispatchers.Main.immediate) {
             font.configure(preferences.fontSize)
             scrollback = preferences.scrollback.coerceIn(100, 10000)
+            keyboardMode = preferences.effectiveAndroidKeyboardMode
             applyConfiguration()
         }
     }
     private fun applyConfiguration() {
-        if (!closed) view.evaluateJavascript("window.configure(${font.effective},$scrollback)", null)
+        if (!closed) view.evaluateJavascript("window.configure(${font.effective},$scrollback,${JSONObject.quote(keyboardMode)})", null)
     }
     fun finishFontGesture() {
         if (!consumingPinch) return

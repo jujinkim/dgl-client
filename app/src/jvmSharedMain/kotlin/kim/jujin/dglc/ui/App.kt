@@ -688,6 +688,18 @@ private enum class SettingsPage { Main, Shortcuts, About }
                     Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
                 }
                 if (androidInput) {
+                    Text(t("키보드가 열릴 때"), style = MaterialTheme.typography.titleSmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("auto" to t("자동"), "pan" to t("위로 이동"), "resize" to t("리사이즈")).forEach { (value, label) ->
+                            FilterChip(local.preferences.effectiveAndroidKeyboardMode == value,
+                                { model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardMode = value)) } }, label = { Text(label) })
+                        }
+                    }
+                    Text(t(when (local.preferences.effectiveAndroidKeyboardMode) {
+                        "pan" -> "터미널 크기를 유지하고, 가려지는 내용만 위로 이동합니다."
+                        "resize" -> "키보드 위 영역에 맞춰 터미널 행 수를 변경합니다. 실행 중인 앱이 다시 배치될 수 있습니다."
+                        else -> "짧은 출력은 리사이즈하고, 긴 출력과 전체 화면 앱은 위로 이동합니다."
+                    }), style = MaterialTheme.typography.bodySmall)
                     SettingsSwitch(t("하단 단축키 두 줄로 표시"), local.preferences.mobileShortcutBarTwoRows) { enabled ->
                         model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = enabled)) }
                     }

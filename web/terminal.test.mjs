@@ -119,6 +119,7 @@ function cachedRenderer() {
     children = []; classes = new Set(); textContent = '';
     style = { setProperty(name, value) { this[name] = value; } }; width = 100; height = 100; left = 0; top = 0;
     classList = { add: value => this.classes.add(value), remove: value => this.classes.delete(value) };
+    addEventListener() {}
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
     appendChild(child) { this.children.push(child); child.parent = this; }
@@ -173,7 +174,7 @@ function cachedRenderer() {
     clearTimeout: id => timers.delete(id),
   });
   messages.length = 0;
-  return { window, root, screen, canvas, body, Element, messages, animations, helpers, textarea, composition, terminal,
+  return { window, root, screen, canvas, body, Element, messages, animations, helpers, textarea, composition, terminal, viewport,
     event(name, value) { for (const callback of events[name] || []) callback(value); },
     frame() { frames.splice(0).forEach(callback => callback()); },
     render() { for (const callback of [...renders]) callback(); },
@@ -366,7 +367,7 @@ test('cancellation and a stalled renderer release the cache and pending ack', ()
   }
 });
 
-function imeRenderer({ delayedFont = false, nativeViewport = false } = {}) {
+function imeRenderer({ delayedFont = false, nativeViewport = false, keyboardMode = 'pan' } = {}) {
   const messages = [], frames = [], terminals = [], observed = new Set();
   const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
   const host = () => ({ style: {}, addEventListener() {}, appendChild() {}, setAttribute() {}, remove() {}, classList: { toggle() {} } });
@@ -382,7 +383,8 @@ function imeRenderer({ delayedFont = false, nativeViewport = false } = {}) {
     constructor() { terminal ||= this; terminals.push(this); }
     loadAddon() {} open() {} dispose() {}
     onData(callback) { this.data = callback; } onBinary(callback) { this.binary = callback; }
-    onRender(callback) { render = callback; }
+    onRender(callback) { this.render = callback; render = callback; }
+    onScroll(callback) { this.scroll = callback; }
     resize(columns, rows) { this.cols = columns; this.rows = rows; }
   }
   const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
@@ -393,10 +395,187 @@ function imeRenderer({ delayedFont = false, nativeViewport = false } = {}) {
     requestAnimationFrame: callback => frames.push(callback),
     clearTimeout() {},
   });
+  window.configure(14, 5000, keyboardMode);
   messages.length = 0;
-  return { window, root, canvas, messages, terminal, terminals, observed, observe: () => observe(), render: () => render(),
+  return { window, root, canvas, messages, terminal, terminals, observed, observe: () => observe(), render: (t = terminals.at(-1)) => t.render(),
     frame() { frames.splice(0).forEach(callback => callback()); } };
 }
+
+function normalBuffer(lines = [], cursorY = Math.max(0, lines.length - 1)) {
+  return { type: 'normal', viewportY: 10, baseY: 10, cursorY, cursorX: 0,
+    getLine(y) { return { translateToString: () => lines[y - 10] || '' }; } };
+}
+
+test('pan uses the last content or cursor row and ignores only trailing empty rows', () => {
+  for (const [lines, cursor, offset] of [
+    [['한글😀', '', 'prompt', '   ', ''], 2, 0],
+    [Array(15).fill('wrapped output'), 14, 0],
+    [Array(16).fill('wrapped output'), 15, 20],
+    [['first', ...Array(14).fill(''), 'last'], 1, 20],
+    [['prompt'], 15, 20],
+  ]) {
+    const r = imeRenderer();
+    r.terminal.buffer.active = normalBuffer(lines, cursor); r.render();
+    r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+    assert.equal(r.canvas.style.transform, offset ? `translateY(-${offset}px)` : '');
+    assert.deepEqual(r.messages, [], 'pan never changes remote rows');
+  }
+});
+
+test('pan follows new output only when already at the content bottom and leaves history untouched', () => {
+  const r = imeRenderer();
+  r.terminal.buffer.active = normalBuffer(['prompt']); r.render();
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  r.terminal.buffer.active = normalBuffer(Array(20).fill('line')); r.render();
+  assert.equal(r.canvas.style.transform, 'translateY(-100px)');
+  r.terminal.buffer.active.viewportY = 3; r.terminal.scroll();
+  assert.equal(r.terminal.buffer.active.viewportY, 3);
+  assert.deepEqual(r.messages, []);
+});
+
+test('auto chooses resize once after IME animation and restores the full grid on close', () => {
+  const r = imeRenderer({ keyboardMode: 'auto' });
+  r.terminal.buffer.active = normalBuffer(['short', '', 'prompt']); r.render();
+  const geometry = (version, visibleHeight, imeVisible = true) => r.window.setViewport({ version, width: 1000, logicalHeight: 600, visibleHeight, imeVisible });
+  geometry(1, 600, false);
+  r.window.setImeAnimation(true, 1);
+  for (const [i, height] of [540, 420, 300].entries()) geometry(i + 2, height);
+  assert.deepEqual(r.messages, [], 'animation frames must not resize the remote');
+  r.window.setImeAnimation(false, 1); r.frame();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 15 }]);
+  assert.equal(r.canvas.style.transform, '');
+  r.window.resizePane(100, 15);
+  r.terminal.buffer.active = normalBuffer(Array(15).fill('new output')); r.render();
+  assert.deepEqual(r.messages, [], 'output growth cannot change the selected strategy');
+  r.window.setImeAnimation(true, 2); geometry(5, 600, false);
+  assert.deepEqual(r.messages, []);
+  r.window.setImeAnimation(false, 2); r.frame();
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 30 }]);
+});
+
+test('auto preserves long output alternate screens history and unknown content', () => {
+  for (const buffer of [normalBuffer(Array(16).fill('line')), { ...normalBuffer(['prompt']), type: 'alternate' },
+    { ...normalBuffer(['prompt']), viewportY: 9 }, { type: 'normal', baseY: 0, viewportY: 0 }]) {
+    const r = imeRenderer({ keyboardMode: 'auto' });
+    r.terminal.buffer.active = buffer; r.render();
+    r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+    assert.deepEqual(r.messages, []);
+    assert.equal(r.terminal.rows, 30);
+    if (buffer.type === 'alternate') assert.equal(r.canvas.style.transform, 'translateY(-300px)');
+  }
+});
+
+test('auto uses complete visible rows at the fit boundary', () => {
+  for (const [rows, expected] of [[15, [{ type: 'resize', columns: 100, rows: 15 }]], [16, []]]) {
+    const r = imeRenderer({ keyboardMode: 'auto' });
+    r.terminal.buffer.active = normalBuffer(Array(rows).fill('line')); r.render();
+    r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 319, imeVisible: true });
+    assert.deepEqual(r.messages, expected);
+  }
+});
+
+test('auto restores the full grid for a newly entered TUI and keeps pan until IME closes', () => {
+  const r = imeRenderer({ keyboardMode: 'auto' });
+  r.terminal.buffer.active = normalBuffer(['prompt']); r.render();
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  r.messages.length = 0; r.window.resizePane(100, 15);
+  r.terminal.buffer.active.type = 'alternate'; r.render();
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 30 }]);
+  r.window.resizePane(100, 30); r.render();
+  assert.equal(r.canvas.style.transform, 'translateY(-300px)');
+  r.terminal.buffer.active = normalBuffer(['prompt']); r.render();
+  r.window.setViewport({ version: 2, width: 1000, logicalHeight: 600, visibleHeight: 320, imeVisible: true });
+  assert.deepEqual(r.messages, [], 'leaving the TUI must not oscillate back to resize');
+});
+
+test('explicit resize includes TUI and changes only the final height after rapid IME reversal', () => {
+  const r = imeRenderer({ keyboardMode: 'resize' });
+  r.terminal.buffer.active = { ...normalBuffer(), type: 'alternate' }; r.render();
+  const geometry = (version, visibleHeight) => r.window.setViewport({ version, width: 1000, logicalHeight: 600, visibleHeight, imeVisible: visibleHeight < 600 });
+  geometry(1, 600); r.window.setImeAnimation(true, 1); geometry(2, 300);
+  r.window.setImeAnimation(true, 2); geometry(3, 600);
+  r.window.setImeAnimation(false, 1); r.frame();
+  assert.deepEqual(r.messages, []);
+  r.window.setImeAnimation(false, 2); r.frame();
+  assert.deepEqual(r.messages, []);
+  geometry(4, 300);
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 15 }]);
+  assert.equal(r.canvas.style.transform, '');
+  r.window.setImeAnimation(true, 3); geometry(5, 400);
+  r.window.setImeAnimation(false, 3); r.frame();
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 20 }]);
+});
+
+test('mode changes apply while IME is open and unknown settings fall back to auto', () => {
+  const r = imeRenderer();
+  r.terminal.buffer.active = normalBuffer(['prompt']); r.render();
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  r.window.configure(14, 5000, 'resize');
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 15 }]);
+  r.window.configure(14, 5000, 'pan');
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 30 }]);
+  r.window.setInputEnabled(false); // The settings dialog owns the input gate.
+  r.window.configure(14, 5000, 'future-setting');
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 15 }]);
+});
+
+test('auto measures all visible tmux panes with their vertical positions and ignores hidden panes', () => {
+  const r = imeRenderer({ keyboardMode: 'auto' });
+  const layout = { window: '@1', columns: 100, rows: 30, active: '%1', panes: [
+    { id: '%1', visible: true, left: 0, top: 0, width: 49, height: 30 },
+    { id: '%2', visible: true, left: 50, top: 0, width: 50, height: 30 },
+    { id: '%3', visible: false, left: 0, top: 0, width: 100, height: 30 },
+  ] };
+  r.window.setLayout(layout);
+  for (const t of r.terminals.slice(1)) { t.buffer.active = normalBuffer(['prompt']); r.render(t); }
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 100, rows: 15 }]);
+  r.window.setLayout({ ...layout, window: '@2', panes: layout.panes.map(p => p.id === '%2' ? { ...p, top: 20 } : p) });
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 30 }]);
+  assert.equal(r.canvas.style.transform, 'translateY(-120px)');
+});
+
+test('auto excludes size generations from target changes and reselects for a new destination', () => {
+  const r = imeRenderer({ keyboardMode: 'auto' });
+  const layout = { window: null, active: 'shell', panes: [], inputTarget: 'size-1', inputIdentity: 'destination-1' };
+  r.window.setLayout(layout);
+  r.terminal.buffer.active = normalBuffer(Array(20).fill('line')); r.render();
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  r.terminal.buffer.active = normalBuffer(['short now']); r.render();
+  r.window.setLayout({ ...layout, inputTarget: 'size-2' });
+  assert.deepEqual(r.messages, [], 'output and size-only updates cannot restart auto selection');
+  r.window.setLayout({ ...layout, inputTarget: 'new', inputIdentity: 'destination-2' });
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 15 }]);
+});
+
+test('auto cannot resize from snapshot intermediates or recovery caches', () => {
+  for (const block of [r => r.window.beginSnapshot(), r => r.window.setConnectionRecovery(true)]) {
+    const r = cachedRenderer();
+    r.viewport.clientWidth = 800; r.viewport.clientHeight = 600;
+    r.screen.width = 800; r.screen.height = 600; r.terminal.cols = 80; r.terminal.rows = 30;
+    r.terminal.buffer.active = normalBuffer(['prompt']); r.render();
+    r.window.setViewport({ version: 1, width: 800, logicalHeight: 600, visibleHeight: 600, imeVisible: false });
+    r.messages.length = 0;
+    block(r);
+    r.window.setViewport({ version: 2, width: 800, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+    assert.deepEqual(r.messages, []);
+  }
+});
+
+test('queued resize animation endings cannot escape a detached or superseded surface', () => {
+  const r = imeRenderer({ keyboardMode: 'resize' });
+  r.window.setViewport({ version: 1, width: 1000, logicalHeight: 600, visibleHeight: 600, imeVisible: false });
+  r.window.setImeAnimation(true, 1);
+  r.window.setViewport({ version: 2, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  r.window.setImeAnimation(false, 1);
+  r.window.detachViewport(3); r.frame();
+  assert.deepEqual(r.messages, []);
+  r.window.setViewport({ version: 4, width: 800, logicalHeight: 400, visibleHeight: 200, imeVisible: true });
+  assert.deepEqual(r.messages, [{ type: 'resize', columns: 80, rows: 10 }]);
+  r.window.setViewport({ version: 2, width: 1000, logicalHeight: 600, visibleHeight: 300, imeVisible: true });
+  r.frame();
+  assert.equal(r.messages.length, 1);
+});
 
 test('outer scrolling follows the remote window, not the hidden measurement shell', () => {
   const r = imeRenderer();
@@ -699,6 +878,7 @@ function touchRenderer() {
       { id: '%1', visible: true, left: 0, top: 0, width: 40, height: 24 },
       { id: '%2', visible: true, left: 41, top: 0, width: 40, height: 24 },
     ] : [] });
+  window.configure(12, 5000, 'pan');
   layout(); messages.length = 0;
   const pointer = (type, x, y, term = terminals[0], extra = {}) => {
     const event = { type, pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: x, clientY: y, timeStamp: now, ...extra };
@@ -1007,7 +1187,7 @@ test('IME body drag moves the panel pixel for pixel with limits and no remote or
   const r = touchRenderer(), t = r.terminals[0];
   const geometry = (version, visibleHeight, imeVisible = true) => r.window.setViewport({ version, width: 807, logicalHeight: 480, visibleHeight, imeVisible });
   geometry(1, 240);
-  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 80, rows: 24 }]);
+  assert.deepEqual(r.messages, [], 'pan keeps the previously measured remote grid');
   assert.equal(r.canvas.style.transform, 'translateY(-240px)');
   assert.equal(r.canvas.style.width, '807px');
   const bar = r.body.children[0], thumb = bar.children[0];
@@ -1037,7 +1217,7 @@ test('IME body drag moves the panel pixel for pixel with limits and no remote or
 test('IME scrollbar scales thumb drag and discards cancellation target changes and pinch', () => {
   const r = touchRenderer();
   r.window.setViewport({ version: 1, width: 807, logicalHeight: 480, visibleHeight: 240, imeVisible: true });
-  assert.deepEqual(r.messages.splice(0), [{ type: 'resize', columns: 80, rows: 24 }]);
+  assert.deepEqual(r.messages, [], 'pan keeps the previously measured remote grid');
   const bar = r.body.children[0];
   const pointer = (type, y) => bar.dispatchEvent({ type, pointerId: 5, isPrimary: true, clientY: y });
   pointer('pointerdown', 160); pointer('pointermove', 110);
@@ -1055,6 +1235,24 @@ test('IME scrollbar scales thumb drag and discards cancellation target changes a
   const css = readFileSync(new URL('../app/src/androidMain/assets/terminal/style.css', import.meta.url), 'utf8');
   assert.match(css, /\.panel-scrollbar \{[^}]*width: 24px/);
   assert.match(css, /\.panel-scrollbar-thumb \{[^}]*width: 3px/);
+});
+
+test('content-based scrollbar preserves manual offset as output grows and removes trailing blank range', () => {
+  const r = touchRenderer(), t = r.terminals[0];
+  t.buffer.active = normalBuffer(Array(18).fill('line')); t.render();
+  r.window.setViewport({ version: 1, width: 807, logicalHeight: 480, visibleHeight: 240, imeVisible: true });
+  const bar = r.body.children[0], thumb = bar.children[0];
+  assert.equal(r.canvas.style.transform, 'translateY(-120px)');
+  assert.equal(thumb.style.height, '160px');
+  r.drag(100, 140);
+  assert.equal(r.canvas.style.transform, 'translateY(-80px)');
+  t.buffer.active = normalBuffer(Array(20).fill('line')); t.render();
+  assert.equal(r.canvas.style.transform, 'translateY(-80px)', 'manual position survives output growth');
+  t.buffer.active = normalBuffer(['prompt']); t.render();
+  assert.equal(r.canvas.style.transform, '');
+  assert.equal(bar.style.display, 'none');
+  assert.equal(t.buffer.active.viewportY, 10);
+  assert.deepEqual(r.messages, []);
 });
 
 test('native WebView waits for logical geometry before measuring its initial or transient bounds', () => {

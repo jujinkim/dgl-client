@@ -64,7 +64,8 @@ TESTS = {
                           'shellFallbackExplainsFailureAndReconnectClearsDetails'],
     'core.TerminalInputTest': ['shortcutOrderPreviewCancelExclusionAndLegacyListsSurviveRestart', 'binaryMouseReportsPreserveEveryByteAndRejectInvalidInput', 'everySupportedKeyAndToolbarOrder', 'mixedStepsUnicodeNewlinesAndNoImplicitEnter',
                                'emptyInvalidAndUtf8SizeLimits', 'oldPreferencesAndIndependentBindingsRoundTrip'],
-    'PreferencesTest': ['repositoryRestoresMacrosAndLegacySettings', 'accentValidationFallbackContrastAndStoredChoice',
+    'PreferencesTest': ['androidKeyboardModesSurviveRestartAndLegacyUnknownUseAuto',
+                        'repositoryRestoresMacrosAndLegacySettings', 'accentValidationFallbackContrastAndStoredChoice',
                         'languageChoiceSurvivesRestartAndLegacySettingsUseSystem'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification
         unicodeMaySpanOutputEvents extendedOutputAndEmptyOutput malformedAndOversizedMessagesFailClosed

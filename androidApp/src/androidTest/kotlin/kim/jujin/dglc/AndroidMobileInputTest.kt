@@ -287,7 +287,7 @@ class AndroidMobileInputTest {
                 scenario.onActivity {
                     app = (it.application as DglApplication).connections().app
                     previous = app.local.value; oldConnections = app.connections.value; oldSelected = app.selected.value
-                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", mobilePaneToolbarVisible = true,
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", mobilePaneToolbarVisible = true, androidKeyboardMode = "pan",
                         mobileShortcutBarTwoRows = true, terminalShortcuts = TerminalShortcut.defaultShortcuts,
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Enter))))) }
                     app.connections.value = listOf(first, second); app.selected.value = first
@@ -702,7 +702,7 @@ class AndroidMobileInputTest {
                 scenario.onActivity {
                     app = (it.application as DglApplication).connections().app
                     previous = app.local.value; oldConnections = app.connections.value; oldSelected = app.selected.value
-                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false)) }
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false, androidKeyboardMode = "pan")) }
                     app.connections.value = listOf(client); app.selected.value = client
                 }
                 awaitNode("키보드 열기")

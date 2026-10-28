@@ -32,6 +32,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val theme: String = "system", val fontSize: Int = 12, val scrollback: Int = 5000,
     val mobilePaneToolbarVisible: Boolean = true,
     val mobileShortcutBarTwoRows: Boolean = true,
+    val androidKeyboardMode: String = "auto",
     val terminalShortcuts: List<TerminalShortcut> = TerminalShortcut.defaultShortcuts,
     val volumeKeysEnabled: Boolean = false,
     val agentNotifications: AgentNotificationSettings = AgentNotificationSettings(),
@@ -41,7 +42,9 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val keepConnectionsInBackground: Boolean = true,
     val showAllHierarchy: Boolean = false,
     val accent: AccentSettings = AccentSettings(),
-)
+) {
+    val effectiveAndroidKeyboardMode: String get() = androidKeyboardMode.takeIf { it in listOf("auto", "pan", "resize") } ?: "auto"
+}
 @Serializable data class LocalState(val hosts: List<HostProfile> = emptyList(), val trust: Map<String, String> = emptyMap(), val preferences: Preferences = Preferences())
 
 data class RemoteSession(val id: String, val name: String, val attached: Int)

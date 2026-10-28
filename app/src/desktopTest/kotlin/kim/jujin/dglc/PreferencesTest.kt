@@ -6,6 +6,21 @@ import java.nio.file.Files
 import kotlin.test.*
 
 class PreferencesTest {
+    @Test fun androidKeyboardModesSurviveRestartAndLegacyUnknownUseAuto() {
+        val directory = Files.createTempDirectory("dgl-keyboard-").toFile()
+        try {
+            directory.resolve("settings.json").writeText("""{"preferences":{"fontSize":19}}""")
+            val repository = LocalRepository(directory)
+            assertEquals("auto", repository.read().preferences.effectiveAndroidKeyboardMode)
+            for (mode in listOf("auto", "pan", "resize", "future-mode")) {
+                val state = repository.read().let { it.copy(preferences = it.preferences.copy(androidKeyboardMode = mode)) }
+                repository.save(state)
+                val restored = LocalRepository(directory).read()
+                assertEquals(state, restored)
+                assertEquals(if (mode == "future-mode") "auto" else mode, restored.preferences.effectiveAndroidKeyboardMode)
+            }
+        } finally { directory.deleteRecursively() }
+    }
     @Test fun languageChoiceSurvivesRestartAndLegacySettingsUseSystem() {
         val status = CloudSyncStatus()
         val previous = I18n.language

@@ -333,6 +333,13 @@ macOS ad-hoc 패키징·버전 대조를 확인했습니다. 원시는 `.tools/a
 당시 JVM 92 통과·예상 skip 9, Debug·계측 APK·lint, API36 선택 계측 1개를 확인했습니다.
 초기 계측의 화면 밖 항목·목록 반영 대기 실패는 통과로 계산하지 않았습니다. 원시는 `artifacts/shortcut-staggered/`입니다.
 
+## 2026-10-28: Android 탭·창 화면 복원 묶음
+
+탭 재부착·tmux 창 전환의 캡처 전달을 최대 16 KiB로 묶고 모든 표시 pane의 최종 렌더까지 불투명 로딩과 입력 차단을 유지했습니다.
+당시 Rust 코어/UniFFI 45·JVM 95·웹 42·Python 99, Debug·계측 APK·lint와 API36 선택 검사를 확인했습니다.
+작업 공간 검사의 초기 System UI ANR은 실패로 남겼으며 별도 재시작 실행에서 통과했습니다. 로그는 `.tools/tab-presentation-*`와
+`artifacts/tab-presentation/`에 있습니다. 요청부터 복원 콜백까지 탭 248ms·창 675ms를 기록했으나 실제 첫 표시 프레임 측정은 아닙니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

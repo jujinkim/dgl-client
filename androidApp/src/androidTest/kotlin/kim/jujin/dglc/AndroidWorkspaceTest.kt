@@ -64,7 +64,7 @@ class AndroidWorkspaceTest {
                     previous = model.local.value; previousWorkspace = model.workspace.value
                     oldConnections = model.connections.value; oldSelected = model.selected.value
                     model.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", mobilePaneToolbarVisible = false,
-                        mobileShortcutBarTwoRows = true,
+                        mobileShortcutBarTwoRows = true, androidKeyboardMode = "pan",
                         volumeKeysEnabled = true, volumeUp = VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(TerminalKey.Tab))))) }
                     model.workspace.value = WorkspaceState()
                     model.connections.value = listOf(first, second); model.selected.value = first

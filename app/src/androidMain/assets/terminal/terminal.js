@@ -11,13 +11,15 @@
   let geometryObserver = null;
   const nativeViewport = document.body?.dataset?.nativeViewport === 'true';
   let viewport = null, viewportVersion = 0, viewportDetached = false;
+  let keyboardMode = 'auto', keyboardChoice = 'pan', keyboardDecisionPending = true, autoPanLocked = false;
+  let sizingHeight = null, panelHeight = 0, panelLimit = 0;
   let panelOffset = 0, panelDragging = false, panelBar = null, panelThumb = null, barDrag = null;
   let panelFling = null;
   const stopPanelFling = () => {
     const previous = panelFling; panelFling = null;
     if (previous && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(previous.frame);
   };
-  const panelRange = () => viewport?.imeVisible ? Math.max(0, viewport.logicalHeight - viewport.visibleHeight) : 0;
+  const panelRange = () => panelLimit;
   const logicalWidth = () => viewport?.width ?? root.clientWidth;
   const logicalHeight = () => viewport?.logicalHeight ?? root.clientHeight;
   const cancelTouchScroll = () => {
@@ -66,6 +68,7 @@
   };
   function createPane(pane, host) {
   const api = {};
+  api.content = null;
   const post = message => send(message.type === 'input' || message.type === 'input-binary' || message.type === 'keyboard'
     ? { ...message, pane, target: 'target' in message ? message.target : pane === active ? inputTarget : null } : message);
   const term = new Terminal({
@@ -87,6 +90,8 @@
   let cachedSize = null;
   let animations = [];
   let snapshotUpdating = false, snapshotInputModes = null;
+  api.snapshotting = () => snapshotUpdating;
+  api.refreshContent = () => { if (!snapshotUpdating) api.content = readPaneContent(term); };
   // Use the rendered cursor, with public buffer coordinates as the fallback.
   // CSS variables take precedence over xterm's deferred composition positioning.
   const syncInputPosition = () => {
@@ -108,7 +113,8 @@
     helpers.style.setProperty('--dgl-input-height', `${height}px`);
   };
   api.syncInputPosition = syncInputPosition;
-  term.onRender?.(() => { syncInputPosition(); resize(); });
+  term.onRender?.(() => { api.refreshContent(); syncInputPosition(); resize(); });
+  term.onScroll?.(() => { api.refreshContent(); resize(); });
   host.addEventListener('compositionstart', syncInputPosition, true);
   host.addEventListener('compositionupdate', syncInputPosition);
   host.addEventListener('focusin', syncInputPosition);
@@ -128,7 +134,9 @@
     cachedSize = null;
     reconnectSnapshot = false;
     snapshotUpdating = false; snapshotInputModes = null;
+    api.refreshContent();
     syncInputPosition();
+    resize();
     if (renderAck !== null) post({ type: 'ack', id: renderAck });
     renderAck = null;
   };
@@ -181,6 +189,8 @@
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (cacheVersion !== version || renderAck !== id) return;
         snapshotUpdating = false; snapshotInputModes = null;
+        api.refreshContent();
+        resize();
         syncInputPosition();
         const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
         // Resize, pane changes and ordinary snapshots swap atomically without motion.
@@ -475,7 +485,7 @@
     if (pane !== active) send({ type: 'focus', pane, target: inputTarget });
     api.focusTerminal();
   });
-  return { ...api, term, host };
+  return Object.assign(api, { term, host });
   }
   panes.set('shell', createPane('shell', document.getElementById('shell')));
   const current = () => panes.get(output) || panes.get('shell');
@@ -500,6 +510,61 @@
   let lastViewport = '';
   let imeAnimating = false, imeVersion = 0;
   let cell = { width: 8.54, height: 19.6 }, boundaries = [], draggingBoundary = false;
+  function readPaneContent(term) {
+    const buffer = term.buffer?.active;
+    if (!buffer) return null;
+    const fullscreen = buffer.type === 'alternate' || (term.modes?.mouseTrackingMode && term.modes.mouseTrackingMode !== 'none');
+    if (fullscreen) return { rows: term.rows, fullscreen: true, safe: false };
+    if (buffer.type !== 'normal' || typeof buffer.getLine !== 'function' || !Number.isInteger(buffer.cursorY)) return null;
+    let rows = 0;
+    for (let y = term.rows - 1; y >= 0; --y) {
+      const line = buffer.getLine(buffer.viewportY + y);
+      if (!line) return null;
+      if (line.translateToString(true, 0, term.cols).trim().length) { rows = y + 1; break; }
+    }
+    const cursor = buffer.baseY + buffer.cursorY - buffer.viewportY;
+    if (cursor >= 0 && cursor < term.rows) rows = Math.max(rows, cursor + 1);
+    return { rows, fullscreen: false, safe: buffer.viewportY === buffer.baseY };
+  }
+  function contentGeometry() {
+    const specs = layout?.window != null ? layout.panes.filter(p => p.visible) : [{ id: 'shell', top: 0 }];
+    let bottom = 0, safe = specs.length > 0 && !recoveryScreen, fullscreen = false;
+    for (const spec of specs) {
+      const pane = panes.get(spec.id), content = pane?.content;
+      const known = content && !pane.snapshotting();
+      const rows = content?.rows ?? spec.height ?? pane?.term.rows ?? 0;
+      bottom = Math.max(bottom, (spec.top + rows) * cell.height);
+      safe &&= !!known && content.safe;
+      fullscreen ||= !!known && content.fullscreen;
+    }
+    if (!safe && !bottom) bottom = logicalHeight();
+    return { bottom, safe, fullscreen };
+  }
+  function updateKeyboardLayout() {
+    const content = contentGeometry();
+    if (!imeAnimating && !fontGesture) {
+      if (!viewport?.imeVisible) {
+        keyboardChoice = 'pan'; autoPanLocked = false; keyboardDecisionPending = true;
+      } else if (keyboardMode !== 'auto') keyboardChoice = keyboardMode;
+      else {
+        if (keyboardChoice === 'resize' && content.fullscreen) {
+          autoPanLocked = true; keyboardChoice = 'pan';
+        }
+        if (keyboardDecisionPending) {
+          // Compare with complete visible cells, not the fractional space below them.
+          const available = Math.floor(viewport.visibleHeight / cell.height) * cell.height;
+          keyboardChoice = !autoPanLocked && content.safe && content.bottom <= available + .001 ? 'resize' : 'pan';
+          keyboardDecisionPending = false;
+        }
+      }
+    }
+    const atBottom = Math.abs(panelOffset - panelLimit) < .001;
+    panelHeight = content.bottom;
+    panelLimit = viewport?.imeVisible && keyboardChoice !== 'resize' ? Math.max(0, panelHeight - viewport.visibleHeight) : 0;
+    panelOffset = atBottom ? panelLimit : Math.min(panelOffset, panelLimit);
+    alignViewport();
+    return viewport?.imeVisible && keyboardChoice === 'resize' ? viewport.visibleHeight : logicalHeight();
+  }
   function sizeCanvas() {
     if (!canvas.style || root.clientWidth <= 0 || root.clientHeight <= 0) return;
     const tmux = layout?.window != null;
@@ -510,7 +575,7 @@
     canvas.style.width = `${Math.max(logicalWidth(), width)}px`;
     canvas.style.height = `${Math.max(logicalHeight(), height)}px`;
     root.scrollLeft = Math.max(0, Math.min(root.scrollLeft || 0, Math.max(0, width - root.clientWidth)));
-    root.scrollTop = panelRange() > 0 ? 0 : Math.max(0, Math.min(root.scrollTop || 0, Math.max(0, height - root.clientHeight)));
+    root.scrollTop = viewport?.imeVisible ? 0 : Math.max(0, Math.min(root.scrollTop || 0, Math.max(0, height - root.clientHeight)));
   }
   window.setFontGesture = value => {
     fontGesture = value === true;
@@ -533,7 +598,7 @@
     const range = panelRange(), visible = viewport?.visibleHeight || 0;
     panelBar.style.display = range > 0 && !viewportDetached ? 'block' : 'none';
     panelBar.style.height = `${visible}px`;
-    const thumb = range > 0 ? Math.min(visible, Math.max(24, visible * visible / viewport.logicalHeight)) : visible;
+    const thumb = range > 0 ? Math.min(visible, Math.max(24, visible * visible / panelHeight)) : visible;
     panelThumb.style.height = `${thumb}px`;
     panelThumb.style.top = `${range > 0 ? panelOffset / range * (visible - thumb) : 0}px`;
   }
@@ -555,7 +620,7 @@
       if (!barDrag || event.pointerId !== barDrag.id) return;
       if (barDrag.target !== inputTarget || !panelRange()) { cancelTouchScroll(); return; }
       const visible = viewport.visibleHeight;
-      const thumb = Math.min(visible, Math.max(24, visible * visible / viewport.logicalHeight));
+      const thumb = Math.min(visible, Math.max(24, visible * visible / panelHeight));
       const travel = visible - thumb;
       if (travel > 0) movePanel(barDrag.offset + (event.clientY - barDrag.y) * panelRange() / travel);
       event.preventDefault(); event.stopImmediatePropagation();
@@ -572,25 +637,29 @@
     if (!value || !Number.isSafeInteger(value.version) || value.version <= viewportVersion ||
         ![value.width, value.logicalHeight, value.visibleHeight].every(n => Number.isFinite(n) && n > 0) ||
         value.visibleHeight > value.logicalHeight || typeof value.imeVisible !== 'boolean') return;
-    const oldRange = panelRange(), atBottom = panelOffset === oldRange;
     cancelTouchScroll();
     const logicalChanged = viewportDetached || !viewport || viewport.width !== value.width || viewport.logicalHeight !== value.logicalHeight;
+    if (logicalChanged || viewport?.imeVisible !== value.imeVisible || viewport?.visibleHeight !== value.visibleHeight) keyboardDecisionPending = true;
+    if (!viewport?.imeVisible && value.imeVisible) autoPanLocked = false;
     viewportVersion = value.version; viewportDetached = false; viewport = { ...value };
-    const range = panelRange();
-    panelOffset = !range ? 0 : !oldRange || atBottom ? range : Math.min(panelOffset, range);
     ensurePanelBar();
     if (logicalChanged) resize();
-    alignViewport();
+    else {
+      const height = updateKeyboardLayout();
+      if (!imeAnimating && height !== sizingHeight) resize();
+    }
   };
   window.detachViewport = version => {
     if (!Number.isSafeInteger(version) || version <= viewportVersion) return;
     viewportVersion = version; viewportDetached = true;
+    keyboardDecisionPending = true; autoPanLocked = false;
     cancelTouchScroll(); alignViewport();
   };
   window.setImeAnimation = (animating, version) => {
     if (!Number.isSafeInteger(version) || version < imeVersion) return;
     imeVersion = version; imeAnimating = animating === true;
     cancelTouchScroll();
+    if (!imeAnimating) requestAnimationFrame(() => { if (version === imeVersion && !imeAnimating) resize(); });
   };
   window.refreshViewport = () => resize();
   function resize() {
@@ -602,19 +671,27 @@
     const changed = measured.width !== cell.width || measured.height !== cell.height;
     cell = measured;
     const columns = Math.max(2, Math.min(500, Math.floor(logicalWidth() / cell.width)));
-    const rows = Math.max(2, Math.min(250, Math.floor(logicalHeight() / cell.height)));
+    const requestedHeight = updateKeyboardLayout();
+    const height = imeAnimating ? sizingHeight ?? logicalHeight() : requestedHeight;
+    const rows = Math.max(2, Math.min(250, Math.floor(height / cell.height)));
     const key = `${columns},${rows}`;
     alignViewport();
     if (fontGesture) {
       if (changed) arrange(); else sizeCanvas();
       return;
     }
+    if (!imeAnimating) sizingHeight = height;
     if (key !== lastViewport) { lastViewport = key; send({ type: 'resize', columns, rows }); arrange(); }
     else if (changed) arrange();
     else sizeCanvas();
   }
 
-  window.configure = (font, history) => {
+  window.configure = (font, history, mode = keyboardMode) => {
+    const nextMode = ['auto', 'pan', 'resize'].includes(mode) ? mode : 'auto';
+    if (nextMode !== keyboardMode) {
+      keyboardMode = nextMode; keyboardDecisionPending = true; autoPanLocked = false;
+      cancelTouchScroll();
+    }
     fontSize = font; scrollback = history;
     for (const p of panes.values()) p.configure(font, history);
     resize();
@@ -625,6 +702,7 @@
   function arrange() {
     if (draggingBoundary) return;
     const shell = panes.get('shell');
+    updateKeyboardLayout();
     sizeCanvas();
     if (!layout) return;
     const tmux = layout.window !== null;
@@ -665,6 +743,11 @@
   window.setLayout = value => {
     const ownedFocus = [...panes.values()].some(p => p.term.element?.contains?.(document.activeElement));
     const previous = active;
+    // Native identity excludes the size generation, so our own resize cannot
+    // restart auto selection when the server publishes its updated layout.
+    const destinationChanged = layout?.window !== value.window || active !== (value.active || 'shell') ||
+      (layout?.inputIdentity ?? layout?.inputTarget) !== (value.inputIdentity ?? value.inputTarget);
+    if (destinationChanged) { keyboardDecisionPending = true; autoPanLocked = false; }
     const selectedByTouch = touchSelection !== null && touchSelection.pane === value.active && touchSelection.target === inputTarget;
     const geometryChanged = !layout || layout.columns !== value.columns || layout.rows !== value.rows ||
       layout.panes.length !== value.panes.length || value.panes.some((p, i) =>
@@ -680,12 +763,13 @@
       p.cancelSnapshot(); p.term.dispose(); p.host.remove(); panes.delete(id);
     }
     arrange();
+    if (destinationChanged && viewport?.imeVisible) resize();
     if (enabled && document.hasFocus() && ownedFocus && previous !== active && !selectedByTouch) focused().focusTerminal();
   };
   // The server may keep a smaller grid than this viewport. Tapping the empty
   // container still opens the active pane's IME, just as tapping its cells does.
   root.addEventListener('pointerdown', stopPanelFling, true);
-  root.addEventListener('scroll', () => { if (panelRange() > 0 && root.scrollTop) root.scrollTop = 0; });
+  root.addEventListener('scroll', () => { if (viewport?.imeVisible && root.scrollTop) root.scrollTop = 0; });
   root.addEventListener('click', event => {
     if (enabled && !fontGesture && !event.target.closest('.pane, .boundary')) focused().focusTerminal();
   });

@@ -665,7 +665,8 @@
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system",
-          "mobileShortcutBarTwoRows": true
+          "mobileShortcutBarTwoRows": true,
+          "androidKeyboardMode": "auto"
         }
       }
     },
@@ -726,7 +727,8 @@
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system",
-          "mobileShortcutBarTwoRows": true
+          "mobileShortcutBarTwoRows": true,
+          "androidKeyboardMode": "auto"
         }
       }
     },
@@ -786,7 +788,8 @@
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system",
-          "mobileShortcutBarTwoRows": false
+          "mobileShortcutBarTwoRows": false,
+          "androidKeyboardMode": "auto"
         }
       }
     },
@@ -913,7 +916,8 @@
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system",
-          "mobileShortcutBarTwoRows": true
+          "mobileShortcutBarTwoRows": true,
+          "androidKeyboardMode": "auto"
         }
       }
     },
@@ -998,7 +1002,8 @@
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system",
-          "mobileShortcutBarTwoRows": true
+          "mobileShortcutBarTwoRows": true,
+          "androidKeyboardMode": "auto"
         }
       }
     },
@@ -1107,7 +1112,8 @@
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system",
-          "mobileShortcutBarTwoRows": true
+          "mobileShortcutBarTwoRows": true,
+          "androidKeyboardMode": "auto"
         }
       }
     },
@@ -1149,7 +1155,8 @@
           "mobilePaneToolbarVisible": true,
           "showAllHierarchy": false,
           "language": "system",
-          "mobileShortcutBarTwoRows": true
+          "mobileShortcutBarTwoRows": true,
+          "androidKeyboardMode": "auto"
         }
       }
     },
@@ -1209,7 +1216,8 @@
           "mobilePaneToolbarVisible": false,
           "showAllHierarchy": false,
           "language": "system",
-          "mobileShortcutBarTwoRows": true
+          "mobileShortcutBarTwoRows": true,
+          "androidKeyboardMode": "auto"
         }
       }
     }
