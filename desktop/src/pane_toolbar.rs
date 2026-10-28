@@ -32,7 +32,9 @@ impl Desktop {
         if state.phase != Phase::Ready {
             return;
         }
-        let Some(target) = state.pane else { return };
+        let Some(target) = state.pane.clone() else {
+            return;
+        };
         let operation = match action {
             PaneAction::Split(horizontal) => Operation::Split { target, horizontal },
             PaneAction::Focus(direction) => Operation::FocusPane { target, direction },

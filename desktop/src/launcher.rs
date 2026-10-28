@@ -47,7 +47,7 @@ struct LaunchTarget {
     pane: Option<String>,
 }
 impl LaunchContext {
-    fn new(group: GroupId, tab: Option<TabId>, state: Option<State>) -> Self {
+    fn new(group: GroupId, tab: Option<TabId>, state: Option<&State>) -> Self {
         Self {
             group,
             tab,
@@ -55,9 +55,9 @@ impl LaunchContext {
                 connection: s.handle,
                 connection_generation: s.generation.connection,
                 pane_generation: s.generation.pane,
-                phase: s.phase,
-                session: s.session,
-                pane: s.pane,
+                phase: s.phase.clone(),
+                session: s.session.clone(),
+                pane: s.pane.clone(),
             }),
         }
     }
@@ -138,7 +138,7 @@ impl Desktop {
         LaunchContext::new(
             self.workspace.active,
             tab.map(|t| t.id),
-            tab.map(|t| t.connection.state()),
+            tab.map(|t| t.connection.state()).as_deref(),
         )
     }
     pub fn sync_launcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {

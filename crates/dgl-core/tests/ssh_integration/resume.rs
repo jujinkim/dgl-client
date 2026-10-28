@@ -121,7 +121,7 @@ async fn healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_i
     .await;
     events.lock().unwrap().clear();
     let before = c.target().unwrap();
-    let render_targets = c.state().render_targets;
+    let render_targets = c.state().render_targets.clone();
     let check = c.action(Action::CheckConnection).unwrap();
     assert!(c.state().checking);
     assert_eq!(

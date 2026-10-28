@@ -102,7 +102,11 @@ impl NativeConnection {
         }))
     }
     pub fn state_json(&self) -> String {
-        serde_json::to_string(&self.inner.state()).unwrap()
+        serde_json::to_string(&*self.inner.state()).unwrap()
+    }
+    /// Cheap change check: poll this and fetch `state_json` only when it differs.
+    pub fn state_sequence(&self) -> u64 {
+        self.inner.sequence()
     }
     pub fn target_json(&self) -> Option<String> {
         self.inner

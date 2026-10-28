@@ -69,7 +69,7 @@ impl Destination {
     fn capture(connection: &Connection) -> Option<Self> {
         Some(Self {
             target: connection.target()?,
-            session: connection.state().session,
+            session: connection.state().session.clone(),
         })
     }
     fn matches(&self, current: &Self) -> bool {

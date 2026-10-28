@@ -18,7 +18,7 @@ pub struct WindowTerminal {
     applied_size: Option<Size>,
     resize_request: Option<(u64, Size)>,
     resize_due: Instant,
-    last_display: Option<dgl_core::connection::State>,
+    last_display: Option<Arc<dgl_core::connection::State>>,
     rejection_shown: bool,
     drag: Option<(RemotePane, Point<Pixels>, bool, PaneTarget)>,
     pub enabled: bool,
@@ -208,6 +208,7 @@ impl WindowTerminal {
             .connection
             .state()
             .pane
+            .clone()
             .unwrap_or_else(|| "shell".into());
         self.pane(&id, cx).update(cx, |t, cx| {
             t.shortcut(key);
@@ -282,6 +283,7 @@ impl Focusable for WindowTerminal {
         self.connection
             .state()
             .pane
+            .clone()
             .or(Some("shell".into()))
             .and_then(|id| self.panes.get(&id))
             .map(|t| t.focus_handle(cx))

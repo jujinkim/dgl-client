@@ -250,14 +250,14 @@ impl Desktop {
         pane: Option<&str>,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        self.agent_details_state(connection.clone(), alias, pane, connection.state(), cx)
+        self.agent_details_state(connection.clone(), alias, pane, &connection.state(), cx)
     }
     pub(super) fn agent_details_state(
         &self,
         connection: Arc<Connection>,
         alias: String,
         pane: Option<&str>,
-        state: dgl_core::connection::State,
+        state: &dgl_core::connection::State,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let mut body = div()
@@ -352,6 +352,7 @@ impl Desktop {
             );
             let target = o.clone();
             let c = connection.clone();
+            let generation = state.generation.connection;
             body = body.child(self.button(
                 format!("agent-go-{}-{}", o.run, o.actor),
                 t("패널로 이동"),
@@ -359,7 +360,7 @@ impl Desktop {
                 move |s, w, cx| {
                     let current = c.state();
                     if current.phase == Phase::Ready
-                        && current.generation.connection == state.generation.connection
+                        && current.generation.connection == generation
                         && current.agents.current(agent::now_ms())
                         && current.agents.observations.iter().any(|o| {
                             o.run == target.run
@@ -406,7 +407,7 @@ impl Desktop {
                 );
             },
         ));
-        if let Some(preview) = state.agent_setup {
+        if let Some(preview) = &state.agent_setup {
             if let Some(error) = preview.get("error").and_then(|v| v.as_str()) {
                 body = body.child(error.to_owned());
             }

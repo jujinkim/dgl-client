@@ -64,6 +64,11 @@ class RustClientConnection(
     @Volatile private var adapterGeneration = 0L
     private var nativeGeneration: Long? = null
     private var appliedSequence = -1L
+    // Pollers share one parsed snapshot per native sequence instead of re-serializing it.
+    private val stateLock = Any()
+    private var stateCache: Triple<NativeConnection, Long, JsonObject>? = null
+    private var decodedState: JsonObject? = null
+    private var decodedLanguage: UiLanguage? = null
     override val generation: Long get() = adapterGeneration
     private var lastSession = host.lastSession
     private var lastPane = host.lastPane
@@ -113,10 +118,9 @@ class RustClientConnection(
                 }
                 var sequence = -1L
                 while (isActive && current == epoch) {
-                    val state = json.parseToJsonElement(connection.stateJson()).jsonObject
-                    val next = state.getValue("sequence").jsonPrimitive.long
-                    if (next != sequence) {
-                        sequence = next
+                    if (connection.stateSequence().toLong() != sequence) {
+                        val state = stateOf(connection)
+                        sequence = state.getValue("sequence").jsonPrimitive.long
                         synchronized(this@RustClientConnection) { if (current == epoch && !closed) applyState(state) }
                     }
                     json.parseToJsonElement(connection.completionsJson()).jsonArray.forEach { result ->
@@ -154,12 +158,22 @@ class RustClientConnection(
             catch (_: Exception) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("보호 저장소 또는 네이티브 연결을 열지 못했습니다.")); native?.stop() } } }
         }
     }
+    private fun stateOf(c: NativeConnection): JsonObject = synchronized(stateLock) {
+        val sequence = c.stateSequence().toLong()
+        stateCache?.let { (owner, cached, state) -> if (owner === c && cached == sequence) return state }
+        val state = json.parseToJsonElement(c.stateJson()).jsonObject
+        stateCache = Triple(c, state.getValue("sequence").jsonPrimitive.long, state)
+        state
+    }
     private fun applyState(s: JsonObject) {
         val sequence = s.getValue("sequence").jsonPrimitive.long
         // State and output pollers can finish out of order. Equal sequences still
         // need to re-evaluate render acknowledgements, older ones must not restart recovery.
         if (sequence < appliedSequence) return
         appliedSequence = sequence
+        // Values decoded from the same snapshot and UI language are unchanged.
+        val fresh = s !== decodedState || I18n.language != decodedLanguage
+        decodedState = s; decodedLanguage = I18n.language
         s["generation"]?.jsonObject?.get("connection")?.jsonPrimitive?.longOrNull?.let { next ->
             val previous = nativeGeneration
             if (previous != null && previous > 0 && previous != next) {
@@ -169,8 +183,10 @@ class RustClientConnection(
             nativeGeneration = next
         }
         fun text(name: String) = s[name]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
-        agents.value = s["agents"]?.let { json.decodeFromJsonElement(AgentSnapshot.serializer(), it) } ?: AgentSnapshot()
-        agentSetup.value = s["agent_setup"]?.takeUnless { it is JsonNull }?.toString()
+        if (fresh) {
+            agents.value = s["agents"]?.let { json.decodeFromJsonElement(AgentSnapshot.serializer(), it) } ?: AgentSnapshot()
+            agentSetup.value = s["agent_setup"]?.takeUnless { it is JsonNull }?.toString()
+        }
         val phase = when (text("phase")) { "Closed" -> Phase.Disconnected; else -> runCatching { Phase.valueOf(text("phase") ?: "Failed") }.getOrDefault(Phase.Failed) }
         val error = text("error")
         val retry = s["retry"]?.jsonObject
@@ -210,26 +226,28 @@ class RustClientConnection(
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         if (phase == Phase.Shell) tmuxOutput = false
         else if (phase in setOf(Phase.Ready, Phase.Restoring) && session.value != null) tmuxOutput = true
-        val r = s.getValue("remote").jsonObject
-        fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
-        remote.value = RemoteStateDecoder.json(r)
-        trustRequest.value = if (phase == Phase.TrustRequired) text("fingerprint")?.let { UnknownHostKey(host.endpoint, it) } else null
-        tmuxProblem.value = if (phase == Phase.Shell) {
-            val probes = s.getValue("diagnostics").jsonArray.map { it.jsonObject }
-            val version = probes.firstOrNull { it.str("stage") == "version" }
-            val kind = when (version?.str("outcome")) {
-                "failed" -> TmuxProblemKind.ExecutionFailed
-                "invalid" -> TmuxProblemKind.InvalidVersion
-                "unsupported" -> TmuxProblemKind.UnsupportedVersion
-                else -> TmuxProblemKind.NotFound
-            }
-            fun JsonObject.optional(key: String) = get(key)?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
-            TmuxProblem(kind, TmuxDiagnostics(probes.filter { it.str("stage") != "version" }.map { probe ->
-                TmuxProbeAttempt(when (probe.str("stage")) { "direct" -> t("SSH 기본 PATH"); "login" -> t("로그인 셸 PATH"); else -> t("일반 설치 경로") },
-                    when (probe.str("outcome")) { "found" -> TmuxProbeOutcome.Found; "timeout" -> TmuxProbeOutcome.TimedOut; "failed" -> TmuxProbeOutcome.Failed; "invalid" -> TmuxProbeOutcome.InvalidResponse; else -> TmuxProbeOutcome.NotFound },
-                    listOfNotNull(probe.optional("path")), probe.optional("exit_status")?.toIntOrNull())
-            }, probes.firstNotNullOfOrNull { it.optional("path") }), version?.optional("version"), version?.optional("exit_status")?.toIntOrNull())
-        } else null
+        if (fresh) {
+            val r = s.getValue("remote").jsonObject
+            fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
+            remote.value = RemoteStateDecoder.json(r)
+            trustRequest.value = if (phase == Phase.TrustRequired) text("fingerprint")?.let { UnknownHostKey(host.endpoint, it) } else null
+            tmuxProblem.value = if (phase == Phase.Shell) {
+                val probes = s.getValue("diagnostics").jsonArray.map { it.jsonObject }
+                val version = probes.firstOrNull { it.str("stage") == "version" }
+                val kind = when (version?.str("outcome")) {
+                    "failed" -> TmuxProblemKind.ExecutionFailed
+                    "invalid" -> TmuxProblemKind.InvalidVersion
+                    "unsupported" -> TmuxProblemKind.UnsupportedVersion
+                    else -> TmuxProblemKind.NotFound
+                }
+                fun JsonObject.optional(key: String) = get(key)?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+                TmuxProblem(kind, TmuxDiagnostics(probes.filter { it.str("stage") != "version" }.map { probe ->
+                    TmuxProbeAttempt(when (probe.str("stage")) { "direct" -> t("SSH 기본 PATH"); "login" -> t("로그인 셸 PATH"); else -> t("일반 설치 경로") },
+                        when (probe.str("outcome")) { "found" -> TmuxProbeOutcome.Found; "timeout" -> TmuxProbeOutcome.TimedOut; "failed" -> TmuxProbeOutcome.Failed; "invalid" -> TmuxProbeOutcome.InvalidResponse; else -> TmuxProbeOutcome.NotFound },
+                        listOfNotNull(probe.optional("path")), probe.optional("exit_status")?.toIntOrNull())
+                }, probes.firstNotNullOfOrNull { it.optional("path") }), version?.optional("version"), version?.optional("exit_status")?.toIntOrNull())
+            } else null
+        }
         // Publish readiness only after its matching target and trust details are visible.
         rejections.status(nextStatus)
         if (status.value.checking != checking) trace("checking=$checking")
@@ -262,7 +280,7 @@ class RustClientConnection(
             terminal.presentationPending(true)
             terminal.cancelSnapshot()
             while (isActive && current == epoch) {
-                val state = json.parseToJsonElement(c.stateJson()).jsonObject
+                val state = stateOf(c)
                 synchronized(this@RustClientConnection) {
                     if (current == epoch && subscription == id) applyState(state)
                 }
@@ -300,7 +318,7 @@ class RustClientConnection(
                 if (event == null) {
                     synchronized(this@RustClientConnection) {
                         if (current == epoch && subscription == id && state["checking"]?.jsonPrimitive?.boolean != true) {
-                            applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                            applyState(stateOf(c))
                         }
                     }
                     if (presentIfReady(c, terminal, id, current)) presentationApplied = false
@@ -325,7 +343,7 @@ class RustClientConnection(
                                         recovery.rendered(id.toLong(), cycle, target, event.targetJson)
                                         presentation.rendered(id.toLong(), presentationCycle, target, event.targetJson)
                                         trace("screen-ack cycle=$cycle")
-                                        applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                                        applyState(stateOf(c))
                                     }
                                 }
                             }
@@ -342,7 +360,7 @@ class RustClientConnection(
                                     recovery.rendered(id.toLong(), cycle, target, event.targetJson)
                                     presentation.rendered(id.toLong(), presentationCycle, target, event.targetJson)
                                     trace("screen-ack cycle=$cycle")
-                                    applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                                    applyState(stateOf(c))
                                 }
                             }
                         }
@@ -353,7 +371,7 @@ class RustClientConnection(
                 synchronized(this@RustClientConnection) {
                     if (current == epoch && subscription == id) {
                         c.acknowledge(id, event.sequence)
-                        if (state["checking"]?.jsonPrimitive?.boolean != true) applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                        if (state["checking"]?.jsonPrimitive?.boolean != true) applyState(stateOf(c))
                     }
                 }
                 if (presentIfReady(c, terminal, id, current)) presentationApplied = false
@@ -400,7 +418,7 @@ class RustClientConnection(
     // not that every visible pane has rendered on this subscription/window cycle.
     private fun canPresent(c: NativeConnection, id: ULong, current: Long, cycle: Long): Boolean {
         if (current != epoch || native !== c || subscription != id || surface == null || !presentation.pending) return false
-        val state = json.parseToJsonElement(c.stateJson()).jsonObject
+        val state = stateOf(c)
         applyState(state)
         val phase = status.value.phase
         val targets = if (phase == Phase.Shell) c.targetJson()?.let { mapOf("shell" to it) } ?: emptyMap()
@@ -425,7 +443,7 @@ class RustClientConnection(
             else {
                 presentation.presented(id.toLong(), cycle)
                 trace("window-presented cycle=$cycle")
-                applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                applyState(stateOf(c))
                 true
             }
         }
@@ -436,7 +454,7 @@ class RustClientConnection(
         if (id == null || current != epoch || native !== c || subscription != id) return
         recovery.begin()
         outputFailed = true
-        applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+        applyState(stateOf(c))
         notice.value = outputFailureMessage()
     }
     @Synchronized override fun bindSurface(value: TerminalSurface?) {
@@ -458,7 +476,7 @@ class RustClientConnection(
     @Synchronized override fun retryNow() {
         backgroundResume.cancel(); userStopped = false
         val c = native
-        if (c != null) applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+        if (c != null) applyState(stateOf(c))
         if (outputFailed && status.value.phase in setOf(Phase.Ready, Phase.Restoring, Phase.Shell) && !status.value.showsConnectionProgress) {
             if (status.value.phase == Phase.Shell) connect()
             else {
@@ -477,7 +495,7 @@ class RustClientConnection(
         if (closed || backgroundResume.pending) return
         // Read the current native phase so an unpolled auth/host-key failure cannot
         // be turned into a fresh automatic connection by backgrounding the app.
-        val state = native?.let { json.parseToJsonElement(it.stateJson()).jsonObject }
+        val state = native?.let { stateOf(it) }
         if (state != null) applyState(state)
         if (status.value.phase in setOf(Phase.Disconnected, Phase.Failed)) return
         val stopped = userStopped || state?.get("retry")?.jsonObject?.get("stopped")?.jsonPrimitive?.boolean == true
@@ -499,13 +517,13 @@ class RustClientConnection(
         val c = native ?: return
         if (userStopped) return
         try {
-            applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+            applyState(stateOf(c))
             val request = c.submitAction(buildJsonObject { put("action", "checkConnection") }.toString())
             resumeRequests.add(request)
             trace("check-submit request=$request")
             // Admission sets checking synchronously in Rust. Publish it in onStart,
             // before Compose draws the first foreground frame, without a timer.
-            applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+            applyState(stateOf(c))
             if (outputFailed) {
                 // Only tmux can reconstruct a lost screen. One automatic attempt,
                 // then an explicit retry; auth/trust/stopped states stay untouched.
@@ -514,7 +532,7 @@ class RustClientConnection(
                         (status.value.checking && status.value.retryExhausted))) {
                     outputRecoveryAttempted = true
                     bindOutput()
-                    applyState(json.parseToJsonElement(c.stateJson()).jsonObject)
+                    applyState(stateOf(c))
                 }
             } else if (surface != null && outputJob?.isActive != true) bindOutput()
         } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") }
@@ -621,6 +639,7 @@ class RustClientConnection(
         snapshotRequest = null
         resizes.reset()
         appliedSequence = -1L
+        decodedState = null
         recovery.reset()
         presentation.unbind()
         refreshRequest = null; refreshing.value = false

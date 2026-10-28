@@ -66,7 +66,7 @@ fn app_title_tracks_selected_tab_group_remote_metadata_and_last_close(cx: &mut T
     view.update(ui, |s, cx| {
         s.workspace.select(s.workspace.active, s.tabs[0].id);
         // The same metadata path used by tick must retain the full title before tab ellipsis.
-        let mut metadata = s.tabs[0].connection.state();
+        let mut metadata = (*s.tabs[0].connection.state()).clone();
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v2.json"))
                 .unwrap();
@@ -351,7 +351,9 @@ fn session_clicks_reuse_tabs_across_groups_keep_entities_and_host_history(cx: &m
         s.activate_tab(a2);
         (a1, a2, b1, terminal, connection)
     });
-    let mut state = view.read_with(ui, |s, _| s.active_tab().unwrap().connection.state());
+    let mut state = view.read_with(ui, |s, _| {
+        (*s.active_tab().unwrap().connection.state()).clone()
+    });
     state.remote = serde_json::from_value(serde_json::json!({
         "sessions":[{"id":"$1","name":"one","attached":0},{"id":"$2","name":"two","attached":0}],
         "windows":[],"panes":[]
@@ -507,7 +509,7 @@ impl gpui::Render for HierarchyPreview {
         let state = self.state.clone();
         let tree = self
             .desktop
-            .update(cx, |s, cx| s.render_tree_state(state, cx));
+            .update(cx, |s, cx| s.render_tree_state(&state, cx));
         gpui::div()
             .id("hierarchy-preview")
             .w(px(self.width))
@@ -524,7 +526,7 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
     let terminal = add_terminal(&desktop, ui);
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v1.json")).unwrap();
-    let mut state = desktop.read_with(ui, |s, _| s.tabs[0].connection.state());
+    let mut state = desktop.read_with(ui, |s, _| (*s.tabs[0].connection.state()).clone());
     state.remote = serde_json::from_value(fixture["remote"].clone()).unwrap();
     state.phase = dgl_core::connection::Phase::Ready;
     state.session = Some("$1".into());
@@ -625,7 +627,7 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
     let terminal = add_terminal(&desktop, ui);
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v2.json")).unwrap();
-    let mut state = desktop.read_with(ui, |s, _| s.tabs[0].connection.state());
+    let mut state = desktop.read_with(ui, |s, _| (*s.tabs[0].connection.state()).clone());
     state.remote = serde_json::from_value(fixture[0]["remote"].clone()).unwrap();
     state.phase = dgl_core::connection::Phase::Ready;
     state.session = Some("$1".into());
@@ -693,7 +695,7 @@ fn hierarchy_recovery_preserves_row_positions_expansion_and_scroll(cx: &mut Test
     let terminal = add_terminal(&desktop, ui);
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../../fixtures/migration/hierarchy-v1.json")).unwrap();
-    let mut state = desktop.read_with(ui, |s, _| s.tabs[0].connection.state());
+    let mut state = desktop.read_with(ui, |s, _| (*s.tabs[0].connection.state()).clone());
     state.remote = serde_json::from_value(fixture["remote"].clone()).unwrap();
     // Enough cached sessions to exercise a real, nonzero scroll offset.
     for i in 3..20 {
@@ -1030,7 +1032,7 @@ impl gpui::Render for AgentPanelPreview {
         let state = self.state.clone();
         let connection = self.connection.clone();
         self.desktop.update(cx, |s, cx| {
-            s.agent_details_state(connection, "검증".into(), Some("%1"), state, cx)
+            s.agent_details_state(connection, "검증".into(), Some("%1"), &state, cx)
         })
     }
 }
@@ -1041,7 +1043,7 @@ fn panel_details_keep_all_runs_and_exclude_other_panes(cx: &mut TestAppContext) 
     let (desktop, ui) = setup(cx);
     let terminal = add_terminal(&desktop, ui);
     let connection = desktop.read_with(ui, |s, _| s.tabs[0].connection.clone());
-    let mut state = connection.state();
+    let mut state = (*connection.state()).clone();
     let event = |run: &str, pane: &str, kind| AgentEvent {
         id: run.into(),
         seq: 1,

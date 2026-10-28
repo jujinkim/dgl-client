@@ -363,6 +363,12 @@ Android Debug·계측 APK·lint를 확인했습니다. 실제 키보드 계측�
 결함(3.7에서 수정)을 확인했습니다. 3.7 미만에는 구독 대신 같은 format을 1초마다 조회하도록 바꿨고,
 이후 3.3a·3.7c 모두 6개 통과와 새 tmux 크래시 보고서 없음을 확인했습니다.
 
+## 2026-10-29: 연결 상태 스냅샷 공유
+
+코어 상태를 `Arc` 스냅샷으로 바꿔 조회가 전체 복제를 만들지 않게 하고, Android 어댑터는 `state_sequence()`가
+바뀔 때만 상태 JSON을 받아 파싱합니다. Rust 코어·UniFFI·데스크톱 단위 검사, JVM·lint, API36의
+`AndroidOutputRecoveryTest`·`AndroidConnectionLifetimeTest` 3개 통과를 확인했습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

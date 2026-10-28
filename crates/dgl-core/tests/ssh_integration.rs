@@ -660,7 +660,7 @@ async fn workspace_focus_tree_and_independent_connections() {
         .await;
     }
     // Initial navigation already contains windows/panes for every session.
-    let remote = c.state().remote;
+    let remote = c.state().remote.clone();
     let first = remote
         .sessions
         .iter()
@@ -743,7 +743,7 @@ async fn workspace_focus_tree_and_independent_connections() {
         .unwrap(),
     )
     .await;
-    let right = c.state().pane.unwrap();
+    let right = c.state().pane.clone().unwrap();
     assert_ne!(right, left);
     for (direction, expected) in [('L', left.clone()), ('R', right.clone())] {
         let previous = c.target().unwrap();
@@ -775,7 +775,7 @@ async fn workspace_focus_tree_and_independent_connections() {
         .unwrap(),
     )
     .await;
-    let bottom = c.state().pane.unwrap();
+    let bottom = c.state().pane.clone().unwrap();
     assert_ne!(bottom, right);
     for (direction, expected) in [
         ('U', right.clone()),

@@ -153,11 +153,13 @@ Kotlin 패키지 변경은 저장 키 교체나 초기 앱 데이터 자동 이�
 ## 구현 매핑
 
 - `dgl_core::connection::Connection`이 actor를 소유한다. `input`/`action`은 request ID,
-  `state()`는 sequence 포함 최신 스냅샷, `completions()`는 한 번만 소비하는 제한된 결과를 반환한다.
+  `state()`는 sequence 포함 최신 스냅샷을 공유 `Arc`로 반환해 조회가 복제를 만들지 않고, 갱신은 읽는 쪽이
+  스냅샷을 보유할 때만 복사한다. `sequence()`는 변경 확인만 한다. `completions()`는 한 번만 소비하는 제한된 결과를 반환한다.
   `close()` 후 `join()`과 완료 결과 조회는 허용되며, 일반 요청은 Closed다.
 - `NativeConnection`은 상태/명령/대상을 JSON으로 전달하고 출력은 바이트 record로 전달한다.
   원시 tmux/shell 문자열은 UI에 노출하지 않는다. Kotlin은 `stop → jobs join → shutdown → close`로 해제한다.
-  콜백 대신 상태·결과·출력을 각각 polling하며 결과는 요청 슬롯과 함께 보존한다.
+  콜백 대신 상태·결과·출력을 각각 polling하며 결과는 요청 슬롯과 함께 보존한다. 상태는 `state_sequence()`가
+  바뀔 때만 `state_json()`을 받아 파싱하고, 같은 스냅샷의 원격 목록·에이전트 디코드는 반복하지 않는다.
 - 연결당 출력 구독 하나로 현재 창의 모든 보이는 pane을 전달한다. 구독 교체는 이전 출력 예산을 반환하고 오래된 구독을 거절한다.
 - GPUI는 alacritty 엔진 적용 후, Android는 xterm write callback 후 ack한다. Kotlin은
   target/generation을 적용 직전에 다시 비교한다. 구독이 없으면 화면 출력 큐를 만들지 않는다.

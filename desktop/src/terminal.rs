@@ -218,7 +218,7 @@ impl Terminal {
         let phase = if size_change {
             self.modifier_phase.clone()
         } else {
-            Some(state.phase)
+            Some(state.phase.clone())
         };
         if self.modifier_target != next || self.modifier_phase != phase || !self.enabled {
             self.modifiers = KeyModifiers::default();

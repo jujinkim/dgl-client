@@ -1391,11 +1391,12 @@ impl Desktop {
         let Some(tab) = self.active_tab() else {
             return div().into_any_element();
         };
-        self.render_tree_state(tab.connection.state(), cx)
+        let state = tab.connection.state();
+        self.render_tree_state(&state, cx)
     }
     pub(super) fn render_tree_state(
         &mut self,
-        state: dgl_core::connection::State,
+        state: &dgl_core::connection::State,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;

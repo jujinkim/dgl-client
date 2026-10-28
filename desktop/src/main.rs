@@ -498,7 +498,7 @@ impl Desktop {
             let state = tab.connection.state();
             host.last_session = tab.session.clone();
             host.last_pane = if state.session == tab.session {
-                state.pane.or(host.last_pane)
+                state.pane.clone().or(host.last_pane)
             } else {
                 None
             };

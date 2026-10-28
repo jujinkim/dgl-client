@@ -210,7 +210,8 @@ struct TitleVisibility {
     last_start: Option<tokio::time::Instant>,
 }
 struct Shared {
-    state: Mutex<State>,
+    /// Copy-on-write snapshot: readers clone the `Arc`; an update copies only while a reader holds one.
+    state: Mutex<Arc<State>>,
     output: Arc<OutputQueue>,
     cancel: AtomicBool,
     stop: Notify,
@@ -236,8 +237,9 @@ pub struct Connection {
 }
 impl Shared {
     fn update(&self, f: impl FnOnce(&mut State)) {
-        let mut s = self.state.lock().unwrap();
-        f(&mut s);
+        let mut guard = self.state.lock().unwrap();
+        let s = Arc::make_mut(&mut guard);
+        f(s);
         if s.phase != Phase::Restoring || s.error.is_some() {
             s.resizing = false;
         }
@@ -284,7 +286,8 @@ impl Shared {
         if !visibility.enabled || visibility.revision != scope.visibility {
             return;
         }
-        let mut s = self.state.lock().unwrap();
+        let mut guard = self.state.lock().unwrap();
+        let s = &**guard;
         if s.phase != Phase::Ready
             || s.checking
             || s.handle != scope.target.connection
@@ -294,14 +297,14 @@ impl Shared {
         {
             return;
         }
-        if let Some(pane) = s
+        if let Some(index) = s
             .remote
             .panes
-            .iter_mut()
-            .find(|p| p.id == scope.target.pane_id)
-            && pane.title != title
+            .iter()
+            .position(|p| p.id == scope.target.pane_id && p.title != title)
         {
-            pane.title = title;
+            let s = Arc::make_mut(&mut guard);
+            s.remote.panes[index].title = title;
             s.sequence = s.sequence.checked_add(1).expect("state sequence exhausted");
         }
     }
@@ -372,7 +375,7 @@ impl Connection {
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| x.checked_add(1))
             .expect("connection handles exhausted");
         let shared = Arc::new(Shared {
-            state: Mutex::new(State {
+            state: Mutex::new(Arc::new(State {
                 sequence: 0,
                 handle,
                 phase: Phase::Connecting,
@@ -394,7 +397,7 @@ impl Connection {
                 diagnostics: vec![],
                 agents: Default::default(),
                 agent_setup: None,
-            }),
+            })),
             output: Arc::new(OutputQueue::default()),
             cancel: AtomicBool::new(false),
             stop: Notify::new(),
@@ -471,8 +474,13 @@ impl Connection {
         });
         result
     }
-    pub fn state(&self) -> State {
+    /// A shared snapshot; cloning it is a reference-count increment.
+    pub fn state(&self) -> Arc<State> {
         self.shared.state.lock().unwrap().clone()
+    }
+    /// Changes whenever a new state snapshot is published.
+    pub fn sequence(&self) -> u64 {
+        self.shared.state.lock().unwrap().sequence
     }
     pub fn target(&self) -> Option<PaneTarget> {
         self.shared.target()
@@ -563,10 +571,11 @@ impl Connection {
                 return Ok(id);
             }
             // Block input at admission, before the actor or UI next polls state.
-            state.checking = true;
+            let s = Arc::make_mut(&mut state);
+            s.checking = true;
             self.shared.check_request.store(id, Ordering::SeqCst);
             self.shared.input_revision.fetch_add(1, Ordering::SeqCst);
-            state.sequence += 1;
+            s.sequence += 1;
             drop(state);
             if let Err(error) = self.check_tx.try_send(Request {
                 id,
@@ -1617,7 +1626,7 @@ async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
                 state.phase,
                 Phase::Ready | Phase::Restoring | Phase::Selecting
             )
-            && let Some(session) = state.session
+            && let Some(session) = state.session.clone()
         {
             if scope.0 != session {
                 cursor = 0;
@@ -2230,17 +2239,17 @@ mod tests {
             s.window = Some("@2".into());
             s.remote.panes = model::panes(&[b"%34|@2|80|24|1||sh|old|0|0".to_vec()]).unwrap();
         });
-        let before = serde_json::to_value(c.state()).unwrap();
+        let before = serde_json::to_value(&*c.state()).unwrap();
         c.set_title_updates_enabled(true);
-        assert_eq!(serde_json::to_value(c.state()).unwrap(), before);
+        assert_eq!(serde_json::to_value(&*c.state()).unwrap(), before);
         let scope = c.shared.title_scope().unwrap();
         c.shared.apply_title(&scope, "old".into());
-        assert_eq!(serde_json::to_value(c.state()).unwrap(), before);
+        assert_eq!(serde_json::to_value(&*c.state()).unwrap(), before);
         c.shared.apply_title(&scope, "한글 🚀".into());
         let mut expected = before.clone();
         expected["sequence"] = (c.state().sequence).into();
         expected["remote"]["panes"][0]["title"] = "한글 🚀".into();
-        assert_eq!(serde_json::to_value(c.state()).unwrap(), expected);
+        assert_eq!(serde_json::to_value(&*c.state()).unwrap(), expected);
         assert_eq!(c.state().sequence, before["sequence"].as_u64().unwrap() + 1);
         c.set_title_updates_enabled(false);
         c.set_title_updates_enabled(true);
@@ -2427,7 +2436,7 @@ mod tests {
         });
         c.shared.phase(Phase::Ready);
         assert_eq!(c.state().retry.attempt, 0);
-        let mut legacy = serde_json::to_value(c.state()).unwrap();
+        let mut legacy = serde_json::to_value(&*c.state()).unwrap();
         legacy.as_object_mut().unwrap().remove("checking");
         assert!(!serde_json::from_value::<State>(legacy).unwrap().checking);
         // Fill the ordinary queue; control admission must still succeed immediately.
