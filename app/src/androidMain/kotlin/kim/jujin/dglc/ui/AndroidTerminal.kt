@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -11,6 +12,7 @@ import android.view.inputmethod.InputMethodManager
 import android.view.WindowInsets as AndroidInsets
 import android.webkit.*
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +44,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import kim.jujin.dglc.ClientConnection
 import kim.jujin.dglc.AppModel
 import kim.jujin.dglc.core.*
@@ -76,6 +81,13 @@ private class TerminalEntry(val terminal: AndroidTerminal) {
     var focus = TerminalFocus()
     var visible = false
     var restoreIme = false
+    val keyboardVisibility = TerminalKeyboardVisibility()
+    var updateKeyboard: () -> Unit = {}
+}
+private tailrec fun Context.terminalLifecycleOwner(): LifecycleOwner? = when (this) {
+    is LifecycleOwner -> this
+    is ContextWrapper -> baseContext.terminalLifecycleOwner()
+    else -> null
 }
 private class TerminalResources(val model: AppModel) {
     val entries = java.util.IdentityHashMap<ClientConnection, TerminalEntry>()
@@ -121,7 +133,16 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         resources?.entries?.getOrPut(client, ::create) ?: create()
     }
     val terminal = entry.terminal
-    SideEffect { entry.focus = focus }
+    val alwaysShowKeyboard by rememberUpdatedState(preferences.androidKeyboardAlwaysVisible)
+    SideEffect { entry.focus = focus; entry.updateKeyboard() }
+    // IME Back normally hides the keyboard first. Consume any Back that reaches
+    // the Activity during a show/hide handoff instead of leaving the terminal.
+    BackHandler(enabled = preferences.androidKeyboardAlwaysVisible && focus.keyboardAllowed()) {
+        if (alwaysShowKeyboard && entry.focus.keyboardAllowed()) {
+            entry.keyboardVisibility.update(TerminalKeyboardVisibility.State())
+            entry.updateKeyboard()
+        }
+    }
     val allowed = focus.inputAllowed()
     val connectionStatus by client.status.collectAsState()
     LaunchedEffect(terminal, connectionStatus.acceptsPointer) { terminal.setPointerEnabled(connectionStatus.acceptsPointer) }
@@ -140,28 +161,57 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) entry.focus.activate()
             false
         }
-        terminal.view.onFocusChangeListener = android.view.View.OnFocusChangeListener { _, hasFocus -> if (hasFocus) entry.focus.activate() }
+        terminal.view.onFocusChangeListener = android.view.View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) entry.focus.activate()
+            entry.updateKeyboard()
+        }
         // Read the same native insets used at click time. Compose's target IME visibility
         // can lag a cancelled show/hide animation while the WebView owns input focus.
         var observing = true
+        var imeAnimation: android.view.WindowInsetsAnimation? = null
+        var imeVersion = 0L
+        val lifecycle = context.terminalLifecycleOwner()?.lifecycle
+        fun keyboardEligible() = observing && entry.visible && terminal.keyboardReady && terminal.view.isAttachedToWindow &&
+            lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true && terminal.view.hasWindowFocus() &&
+            entry.focus.keyboardAllowed() && (resources == null ||
+                (resources.model.selected.value === client && !resources.model.inputBlocked()))
+        entry.updateKeyboard = {
+            val request = entry.keyboardVisibility.update(TerminalKeyboardVisibility.State(
+                enabled = alwaysShowKeyboard, eligible = keyboardEligible(),
+                visible = terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) == true,
+                focused = terminal.view.hasFocus() && terminal.editorFocused,
+                animating = imeAnimation != null))
+            if (request != null) terminal.view.post {
+                if (entry.keyboardVisibility.isCurrent(request) && alwaysShowKeyboard && keyboardEligible()) {
+                    terminal.keyboard(true) {
+                        entry.keyboardVisibility.isCurrent(request) && alwaysShowKeyboard && keyboardEligible()
+                    }
+                }
+            }
+        }
+        terminal.keyboardFocusChanged = { entry.updateKeyboard() }
         val updateIme = { if (observing) {
             val next = terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) == true
             focus.imeVisible = next
+            entry.updateKeyboard()
         } }
         val observer = android.view.ViewTreeObserver.OnPreDrawListener { updateIme(); true }
         val treeObserver = composeView.viewTreeObserver
         treeObserver.addOnPreDrawListener(observer)
+        val windowObserver = android.view.ViewTreeObserver.OnWindowFocusChangeListener { updateIme() }
+        treeObserver.addOnWindowFocusChangeListener(windowObserver)
+        val lifecycleObserver = LifecycleEventObserver { _, _ -> terminal.view.post { updateIme() } }
+        lifecycle?.addObserver(lifecycleObserver)
         terminal.view.setOnApplyWindowInsetsListener { view, insets ->
             view.post { updateIme() }
             view.onApplyWindowInsets(insets)
         }
-        var imeAnimation: android.view.WindowInsetsAnimation? = null
-        var imeVersion = 0L
         terminal.view.setWindowInsetsAnimationCallback(object : android.view.WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
             override fun onPrepare(animation: android.view.WindowInsetsAnimation) {
                 if (animation.typeMask and AndroidInsets.Type.ime() != 0) {
                     imeAnimation = animation
                     imeVersion = terminal.beginImeAnimation()
+                    entry.updateKeyboard()
                 }
             }
             override fun onProgress(insets: AndroidInsets, animations: MutableList<android.view.WindowInsetsAnimation>): AndroidInsets {
@@ -169,18 +219,20 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             }
             override fun onEnd(animation: android.view.WindowInsetsAnimation) {
                 terminal.view.post {
-                    updateIme()
                     if (observing && imeAnimation === animation) {
                         imeAnimation = null
                         terminal.endImeAnimation(imeVersion)
                     }
+                    updateIme()
                 }
             }
         })
         terminal.refreshViewport()
         terminal.view.post { updateIme() }
         focus.request = { terminal.focus { entry.visible && entry.focus.inputAllowed() } }
-        focus.keyboard = { terminal.keyboard(terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) != true, focus.inputAllowed) }
+        focus.keyboard = {
+            if (!alwaysShowKeyboard) terminal.keyboard(terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) != true, focus.inputAllowed)
+        }
         focus.preparePaste = terminal::preparePaste
         focus.shortcut = terminal::shortcut
         onDispose {
@@ -191,7 +243,14 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             entry.restoreIme = entry.restoreIme || (entry.focus.inputAllowed() &&
                 (focus.imeVisible || terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) == true))
             observing = false
-            if (treeObserver.isAlive) treeObserver.removeOnPreDrawListener(observer)
+            entry.keyboardVisibility.update(TerminalKeyboardVisibility.State())
+            entry.updateKeyboard = {}
+            terminal.keyboardFocusChanged = {}
+            lifecycle?.removeObserver(lifecycleObserver)
+            if (treeObserver.isAlive) {
+                treeObserver.removeOnPreDrawListener(observer)
+                treeObserver.removeOnWindowFocusChangeListener(windowObserver)
+            }
             terminal.view.setOnApplyWindowInsetsListener(null)
             terminal.view.setWindowInsetsAnimationCallback(null)
             terminal.view.setOnTouchListener(null)
@@ -218,7 +277,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             if (resources == null) terminal.close()
         }
     }
-    LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback, preferences.androidKeyboardMode) { terminal.configure(preferences) }
+    LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback, preferences.effectiveAndroidKeyboardMode) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
     val presenting = terminal.screenPending || status.presenting
     val fontOverride by terminal.fontSizeOverride.collectAsState()
@@ -276,6 +335,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private val pointerInput: ((String, String?, ByteArray) -> Unit)? = null,
     private val keyboardInput: (String, String?, String, String?, TerminalModifiers, Boolean) -> Unit = { _, _, _, _, _, _ -> }) : TerminalSurface {
     var screenPending by mutableStateOf(false); private set
+    internal var editorFocused = false; private set
+    internal var keyboardFocusChanged: () -> Unit = {}
     fun preparePresentation(active: Boolean) {
         screenPending = active
         view.importantForAccessibility = if (active) android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -335,6 +396,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private var serial = 0L
     private var awaiting: Pair<Long, CompletableDeferred<Unit>>? = null
     private var closed = false
+    internal val keyboardReady get() = ready.isCompleted && !closed
     private val imeAnimation = TerminalImeAnimation()
     private val viewport = TerminalViewportState()
     private var viewportScheduled = false
@@ -399,6 +461,11 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                         applyConfiguration()
                         ready.complete(Unit)
                         dispatchViewport()
+                        keyboardFocusChanged()
+                    }
+                    "editor-focus" -> {
+                        editorFocused = json.getBoolean("focused")
+                        keyboardFocusChanged()
                     }
                     "blocked-input" -> blockedInput()
                     "input" -> {

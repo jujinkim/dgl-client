@@ -5,6 +5,8 @@ import xml.etree.ElementTree as ET
 from evidence import ROOT, context, write_report
 
 TESTS = {
+    'core.TerminalKeyboardVisibilityTest': ['entryDismissalAndFocusLossRequestOnceAfterAnimations',
+                                           'settingsBackgroundInactiveTargetsAndDisposalCancelDelayedRequests'],
     'core.TerminalPresentationTest': ['freshWindowWaitsForEveryVisiblePaneAndSnapshotCompletion',
                                        'rapidSwitchRebindAndConnectionChangesRejectOldAcknowledgements',
                                        'failureAndEmptyLayoutsNeverUncoverPartialScreensAndShellCanPresent'],
@@ -64,7 +66,7 @@ TESTS = {
                           'shellFallbackExplainsFailureAndReconnectClearsDetails'],
     'core.TerminalInputTest': ['shortcutOrderPreviewCancelExclusionAndLegacyListsSurviveRestart', 'binaryMouseReportsPreserveEveryByteAndRejectInvalidInput', 'everySupportedKeyAndToolbarOrder', 'mixedStepsUnicodeNewlinesAndNoImplicitEnter',
                                'emptyInvalidAndUtf8SizeLimits', 'oldPreferencesAndIndependentBindingsRoundTrip'],
-    'PreferencesTest': ['androidKeyboardModesSurviveRestartAndLegacyUnknownUseAuto',
+    'PreferencesTest': ['androidKeyboardModesSurviveRestartAndLegacyUnknownUseAuto', 'alwaysVisibleKeyboardPreservesModeAndSurvivesRestart',
                         'repositoryRestoresMacrosAndLegacySettings', 'accentValidationFallbackContrastAndStoredChoice',
                         'languageChoiceSurvivesRestartAndLegacySettingsUseSystem'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification

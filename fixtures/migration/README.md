@@ -39,3 +39,5 @@ version for incompatible changes. Never update expectations merely to pass a por
 The additive local `showAllHierarchy` preference defaults to false in the v1 settings contract. It does not extend cloud sync or change existing target IDs/wire envelopes.
 The local `mobileShortcutBarTwoRows` preference defaults to true when absent; an explicit false survives a settings round trip and is excluded from cloud sync.
 The additive local `androidKeyboardMode` preference defaults to `auto`; old sources remain unchanged and their encoded expectations include that default. `pan` and `resize` are explicit choices, while unknown strings are preserved and behave as `auto` on Android. This does not change remote input/resize wire formats or cloud sync.
+
+The local `androidKeyboardAlwaysVisible` preference defaults to `false`. Enabling it uses `resize` on Android without overwriting the stored mode; disabling it restores the stored choice. Old fixture sources stay unchanged and their encoded expectations include the new default.

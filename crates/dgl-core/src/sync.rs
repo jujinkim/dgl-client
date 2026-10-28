@@ -579,6 +579,7 @@ mod tests {
         local.preferences.keep_connections_in_background = false;
         local.preferences.mobile_shortcut_bar_two_rows = false;
         local.preferences.android_keyboard_mode = "resize".into();
+        local.preferences.android_keyboard_always_visible = true;
         let out = exchange(Some(a.cache), &local, doc.as_bytes(), &[]).unwrap();
         for value in [
             "SECRET-REFERENCE",
@@ -592,6 +593,7 @@ mod tests {
             "keepConnectionsInBackground",
             "mobileShortcutBarTwoRows",
             "androidKeyboardMode",
+            "androidKeyboardAlwaysVisible",
             "privateKey",
             "password",
         ] {
@@ -612,6 +614,7 @@ mod tests {
         assert!(other.local.preferences.keep_connections_in_background);
         assert!(other.local.preferences.mobile_shortcut_bar_two_rows);
         assert_eq!(other.local.preferences.android_keyboard_mode, "auto");
+        assert!(!other.local.preferences.android_keyboard_always_visible);
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {

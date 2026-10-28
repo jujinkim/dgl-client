@@ -33,6 +33,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val mobilePaneToolbarVisible: Boolean = true,
     val mobileShortcutBarTwoRows: Boolean = true,
     val androidKeyboardMode: String = "auto",
+    val androidKeyboardAlwaysVisible: Boolean = false,
     val terminalShortcuts: List<TerminalShortcut> = TerminalShortcut.defaultShortcuts,
     val volumeKeysEnabled: Boolean = false,
     val agentNotifications: AgentNotificationSettings = AgentNotificationSettings(),
@@ -43,7 +44,8 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val showAllHierarchy: Boolean = false,
     val accent: AccentSettings = AccentSettings(),
 ) {
-    val effectiveAndroidKeyboardMode: String get() = androidKeyboardMode.takeIf { it in listOf("auto", "pan", "resize") } ?: "auto"
+    val effectiveAndroidKeyboardMode: String get() = if (androidKeyboardAlwaysVisible) "resize"
+        else androidKeyboardMode.takeIf { it in listOf("auto", "pan", "resize") } ?: "auto"
 }
 @Serializable data class LocalState(val hosts: List<HostProfile> = emptyList(), val trust: Map<String, String> = emptyMap(), val preferences: Preferences = Preferences())
 

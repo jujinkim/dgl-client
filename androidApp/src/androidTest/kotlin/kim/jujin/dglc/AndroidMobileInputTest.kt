@@ -64,6 +64,123 @@ class AndroidMobileInputTest {
         override fun close() { closes++ }
     }
 
+    @Suppress("DEPRECATION")
+    @Test fun alwaysVisibleKeyboardRespectsEditorsLifecycleAndActiveTerminal() = runBlocking<Unit> { withLauncherDisplay(animateIme = true) {
+        val first = Connection("always-first"); val second = Connection("always-second")
+        lateinit var app: AppModel; lateinit var previous: LocalState; lateinit var workspace: WorkspaceState
+        var oldConnections = emptyList<ClientConnection>(); var oldSelected: ClientConnection? = null
+        var stage by kotlin.properties.Delegates.observable("setup") { _, _, next -> android.util.Log.i("DglKeyboardTest", next) }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            suspend fun eventually(check: (MainActivity) -> Boolean) = withTimeout(5000) {
+                while (true) {
+                    var done = false; scenario.onActivity { done = check(it) }
+                    if (done) return@withTimeout
+                    delay(25)
+                }
+            }
+            suspend fun js(renderer: kim.jujin.dglc.ui.AndroidTerminal, script: String): String {
+                val reply = CompletableDeferred<String>()
+                scenario.onActivity { renderer.view.evaluateJavascript(script) { reply.complete(it) } }
+                return withTimeout(5000) { reply.await() }
+            }
+            suspend fun scrollTo(label: String) = withTimeout(5000) {
+                while (node(label)?.isVisibleToUser != true) {
+                    find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }!!
+                        .performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    delay(100)
+                }
+            }
+            try {
+                scenario.onActivity {
+                    app = (it.application as DglApplication).connections().app
+                    previous = app.local.value; workspace = app.workspace.value
+                    oldConnections = app.connections.value; oldSelected = app.selected.value
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", androidKeyboardMode = "pan",
+                        androidKeyboardAlwaysVisible = false, mobilePaneToolbarVisible = false)) }
+                    app.workspace.value = WorkspaceState()
+                    app.connections.value = listOf(first, second); app.selected.value = first; app.reconcileWorkspace()
+                }
+                eventually { first.surface != null }
+                val renderer = first.surface as kim.jujin.dglc.ui.AndroidTerminal
+                stage = "enable in settings"
+                openConnectionMenu(); click("설정"); scrollTo("키보드 항상 보이기"); click("키보드 항상 보이기")
+                scrollTo("리사이즈")
+                for (label in listOf("자동", "위로 이동", "리사이즈")) {
+                    val chip = generateSequence(awaitNode(label)) { it.parent }.first { it.isClickable }
+                    assertFalse("$label must be disabled", chip.isEnabled)
+                    assertEquals("$label selection: $chip", label == "리사이즈", chip.isSelected || chip.isChecked)
+                }
+                assertEquals("pan", app.local.value.preferences.androidKeyboardMode)
+                click("닫기"); waitIme(scenario, true)
+                assertFalse(awaitNode("키보드 항상 보이기").isEnabled)
+                stage = "DOM focus loss and system dismissal"
+                js(renderer, "document.activeElement.blur()")
+                withTimeout(5000) {
+                    while (js(renderer, "document.activeElement.classList.contains('xterm-helper-textarea')") != "true") delay(25)
+                }
+                instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                delay(500); waitIme(scenario, true)
+                stage = "recovery cannot send input"
+                scenario.onActivity { first.status.value = ConnectionStatus(Phase.Reconnecting, canStopRetrying = true) }
+                delay(100)
+                js(renderer, "window.dgl.postMessage(JSON.stringify({type:'input',data:'blocked-recovery'}))")
+                assertTrue(first.writes.isEmpty()); waitIme(scenario, true)
+                scenario.onActivity { first.status.value = ConnectionStatus(Phase.Ready) }
+                stage = "composer retains its editor"
+                click("텍스트 작성 열기"); awaitNode("전송할 텍스트"); waitDialogIme()
+                scenario.onActivity { assertFalse(renderer.view.hasWindowFocus()) }
+                assertTrue(first.writes.isEmpty())
+                click("취소"); waitIme(scenario, true)
+                stage = "pause and resume"
+                scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED)
+                scenario.onActivity { it.window.insetsController?.hide(WindowInsets.Type.ime()) }
+                waitIme(scenario, false); delay(300); waitIme(scenario, false)
+                scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED); waitIme(scenario, true)
+                stage = "active split terminal"
+                instrumentation.uiAutomation.executeShellCommand("wm size 1200x1000").close()
+                awaitNode("분할 작업 공간"); click("앱 화면 좌우 분할")
+                eventually { app.workspace.value.groups.size == 2 }
+                scenario.onActivity {
+                    val group = app.workspace.value.activeGroup
+                    app.changeWorkspace { it.move(app.tabId(second)!!, group) }
+                }
+                eventually { first.surface != null && second.surface != null }
+                val secondRenderer = second.surface as kim.jujin.dglc.ui.AndroidTerminal
+                eventually { app.selected.value === second && secondRenderer.view.hasFocus() && !renderer.view.hasFocus() }
+                waitIme(scenario, true)
+                scenario.onActivity { app.selectConnection(first) }
+                eventually { renderer.view.hasFocus() && !secondRenderer.view.hasFocus() }
+                stage = "disable restores mode and manual hiding"
+                click("설정"); scrollTo("키보드 항상 보이기"); click("키보드 항상 보이기"); scrollTo("위로 이동")
+                val pan = generateSequence(awaitNode("위로 이동")) { it.parent }.first { it.isClickable }
+                assertTrue(pan.isEnabled); assertTrue(pan.isSelected || pan.isChecked)
+                click("닫기")
+                stage = "manual keyboard after disabling in settings"
+                // Finish the modal window's IME-control handoff before preparing the manual-hide check.
+                eventually { !app.inputBlocked() && renderer.view.hasWindowFocus() }
+                delay(350)
+                scenario.onActivity { renderer.keyboard(true) }
+                waitIme(scenario, true)
+                stage = "disabling on the terminal does not hide the keyboard"
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = true)) } }
+                awaitNode("키보드 항상 보이기")
+                scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = false)) } }
+                awaitNode("키보드 닫기"); delay(300); waitIme(scenario, true)
+                stage = "manual hiding no longer reopens the keyboard"
+                click("키보드 닫기"); waitIme(scenario, false); delay(300); waitIme(scenario, false)
+                assertTrue(first.writes.isEmpty()); assertTrue(second.writes.isEmpty())
+            } catch (failure: Throwable) {
+                throw AssertionError("Always-visible keyboard stage: $stage", failure)
+            } finally {
+                // Preserve the original failure even if a broken Back handler destroyed the Activity.
+                instrumentation.runOnMainSync {
+                    app.connections.value = oldConnections; app.selected.value = oldSelected
+                    app.workspace.value = workspace; app.modify { previous }
+                }
+            }
+        }
+    } }
+
     @Test fun exhaustedRetryIsCenteredAndRetainsTheTerminal() = runBlocking<Unit> {
         val client = Connection("retry")
         lateinit var app: AppModel

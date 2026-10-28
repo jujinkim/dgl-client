@@ -338,13 +338,15 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     WorkspaceInputBlock(model, modalOwner, (mobileLayout && navigation) || tmuxDetails || namePrompt != null || deletion != null || trust != null || notice != null)
     WorkspaceInputBlock(model, composerOwner, composerOpen && !workspace)
     val blocks by model.inputBlocks.collectAsState()
-    val terminalBaseAllowed = {
+    val terminalContextAllowed = {
         // Observe Compose state for button/bridge updates; the flow also closes the pre-recomposition input race.
-        inputAllowed() && status.acceptsInput && client.status.value.acceptsInput && !composerOpen && !composer.opened.value && !(mobileLayout && navigation) && !tmuxDetails && namePrompt == null && deletion == null &&
+        inputAllowed() && !composerOpen && !composer.opened.value && !(mobileLayout && navigation) && !tmuxDetails && namePrompt == null && deletion == null &&
             client.trustRequest.value == null && client.notice.value == null
     }
+    val terminalBaseAllowed = { terminalContextAllowed() && status.acceptsInput && client.status.value.acceptsInput }
     val terminalInputAllowed = { terminalBaseAllowed() && blocks.isEmpty() && !model.inputBlocked() }
     terminalFocus.inputAllowed = terminalInputAllowed
+    terminalFocus.keyboardAllowed = { terminalContextAllowed() && blocks.isEmpty() && !model.inputBlocked() }
     if (!workspace) SideEffect { model.visibleConnection = client.takeIf { terminalInputAllowed() } }
     DisposableEffect(client) { onDispose { if (model.visibleConnection === client) model.visibleConnection = null } }
     if (!workspace) PlatformInputRegistration(client, preferences, terminalInputAllowed)
@@ -439,7 +441,8 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         }
         if (!workspace && mobileLayout) mobileTabs()
         if (!workspace) TerminalShortcutBar(client, preferences.terminalShortcuts, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open,
-            mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, inputGate = model, openShortcutSettings = openShortcutSettings)
+            mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, keyboardAlwaysVisible = preferences.androidKeyboardAlwaysVisible,
+            inputGate = model, openShortcutSettings = openShortcutSettings)
     }
     if (mobileLayout && composerOpen) {
         DisposableEffect(composer) { onDispose { model.blockInput(composerOwner, false); if (model.selected.value === client && inputAllowed()) terminalFocus.request() } }
@@ -692,11 +695,16 @@ private enum class SettingsPage { Main, Shortcuts, About }
                     Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
                 }
                 if (androidInput) {
+                    SettingsSwitch(t("키보드 항상 보이기"), local.preferences.androidKeyboardAlwaysVisible) { enabled ->
+                        model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = enabled)) }
+                    }
+                    Text(t("터미널에서 키보드를 유지하고 크기를 키보드 위 영역에 맞춥니다. 끄면 이전 크기 설정으로 돌아갑니다."), style = MaterialTheme.typography.bodySmall)
                     Text(t("키보드가 열릴 때"), style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("auto" to t("자동"), "pan" to t("위로 이동"), "resize" to t("리사이즈")).forEach { (value, label) ->
                             FilterChip(local.preferences.effectiveAndroidKeyboardMode == value,
-                                { model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardMode = value)) } }, label = { Text(label) })
+                                { model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardMode = value)) } },
+                                enabled = !local.preferences.androidKeyboardAlwaysVisible, label = { Text(label) })
                         }
                     }
                     Text(t(when (local.preferences.effectiveAndroidKeyboardMode) {

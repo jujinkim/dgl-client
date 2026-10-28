@@ -222,6 +222,9 @@
   // Remote escape sequences cannot access the clipboard.
   term.parser.registerOscHandler(52, () => true);
   let inputEnabled = true;
+  // Native WebView focus alone cannot detect the xterm editor losing DOM focus.
+  host.addEventListener('focusin', () => post({ type: 'editor-focus', focused: true }));
+  host.addEventListener('focusout', () => post({ type: 'editor-focus', focused: false }));
   let pasteCapture = null;
   let wheelOrigin = null;
   let keyOrigin = null, textOrigin = false, textTarget = null, composing = false, compositionPending = false, compositionVersion = 0, pasting = false;

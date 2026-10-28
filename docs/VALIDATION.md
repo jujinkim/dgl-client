@@ -6,28 +6,32 @@
 
 ## 현재 변경 검사 (2026-10-28)
 
-Android 하단 `…` CLI 메뉴를 별도 Popup 창에서 같은 Activity의 오버레이로 옮겼습니다. 메뉴 열기·명령 선택·
-바깥 터치·Back·Escape 동안 WebView 입력 포커스와 IME 표시 상태를 보존합니다. Back은 메뉴가 열린 동안
-IME보다 먼저 처리하고, 닫을 때 키/Back 콜백을 해제합니다. 입력 차단·명령 1회 전송·대상 세대 검사와
-복구 시 메뉴 종료를 유지합니다. `단축키 설정` 선택 뒤에는 기존 설정 화면의 포커스 동작을 따릅니다.
+Android 설정에 기기 로컬 ‘키보드 항상 보이기’를 추가했습니다. 기본은 꺼짐이며, 켜면 활성 터미널에서
+키보드를 자동 표시·복원하고 리사이즈를 적용합니다. 크기 옵션과 키보드 닫기 버튼은 비활성화하며,
+끄면 저장된 이전 크기 옵션을 복원합니다. 토글 해제 자체는 키보드를 닫지 않습니다.
+렌더러 준비·Activity 수명·창/DOM 포커스·IME 애니메이션을 확인하고, 대화상자·작성 창·비활성 터미널에서는
+포커스를 가져오지 않습니다. 지연된 요청을 무효화하고 복구 중 입력 차단·대상 세대 검사를 유지합니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| CLI 단위 검사 | `:app:desktopTest --tests kim.jujin.dglc.CliLauncherTest`: 5 통과·skip 0. 명시적 이름 목록 대조 통과 |
-| Android 빌드 | Debug·계측 APK·`lintDebug` 통과. lint 기존 검토 진단 12개 목록 검증 통과 |
-| Android 계측 | 전용 API36에서 CLI 메뉴 관련 2개 통과·skip 0. 결과 검증기의 명시적 이름 목록 대조 통과 |
-| IME·포커스 | 키보드 표시/숨김 각각 열기·선택·닫기의 매 프레임과 포커스 전환 감시. 일시적인 IME 숨김/재표시·WebView/창 포커스 상실 없음 |
-| 메뉴 회귀 | 같은 Activity 창·버튼 위 위치·화면 경계·한 줄/두 줄 전환·크기 복원·가로 내부 스크롤·키/볼륨/터치 입력 차단·복구/대상 변경·설정 진입 확인 |
-| 정적 | 변경 문서의 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과 |
+| JVM | `:app:desktopTest`: 99 통과·예상 환경 skip 9. 명시적 이름 목록 대조 통과 |
+| Rust | 코어·UniFFI 46 통과·환경 의존 ignore 6. 설정 왕복·127개 계약 fixture·동기화 로컬 보존 포함 |
+| 웹·스크립트 | 웹 56·Python 99 통과. DOM 포커스 알림·기존 IME/입력 회귀와 검사 목록 대조 포함 |
+| Android 빌드 | 원본 Debug APK·계측 APK·`lintDebug` 통과. 기존 검토 진단 12개 목록 검증 통과 |
+| Android 계측 | 전용 API36에서 이번 기능 1개 통과·skip 0, 62.790초. 명시적 이름 목록 검증 통과 |
+| IME·포커스 | 설정 토글·크기 옵션 잠금/복원·DOM 포커스 이탈·Back·복구 중 입력 차단·작성 창·pause/resume·활성 분할 터미널·해제 후 수동 닫기 확인 |
+| 정적 | 번역·버전 대조·변경 문서 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과. 변경 Rust 파일의 edition 2024 형식 검사 통과 |
 
-결과·원문·프레임 감시 로그는 `artifacts/cli-menu-overlay/`, 빌드는 `.tools/cli-overlay-*-build.log`에 있습니다.
-최초 IME 계측은 메뉴를 열기 전 WebView 초기 포커스 대기에서 실패하여 검사 준비 단계에 포커스를 명시했습니다.
-이어진 실행은 기기 로그상 통과했으나 종료 처리 중 실행 래퍼의 120초 제한에 걸려 최종 통과 수에 포함하지 않았습니다.
-최종 두 검사 실행은 72.423초로 완료했고 결과 검증기를 통과했습니다.
+최종 계측 결과·원문은 `artifacts/keyboard-always-visible/summary.json`·`instrumentation-final.txt`,
+빌드는 `.tools/keyboard-always-android-check.log`에 있습니다. 초기 설정 fixture 예상값 실패,
+접근성 선택 상태·해제 후 IME 준비 실패와 Back 전환 시 Activity 종료는 최종 통과에 포함하지 않았습니다.
+Back이 Activity까지 전달될 때 소비하도록 보완했고, 초기 계측 원문은 같은 artifacts 폴더에 보존했습니다.
+전체 `cargo fmt --all -- --check`는 이번 변경 밖 `crates/dgl-core/tests/password_shell.rs`의 기존 형식 차이로 실패했습니다.
 
-APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본입니다. 삼성 키보드 실기 검사는 수행하지 않았습니다.
-실제 SSH·물리 키보드·macOS GUI/Keychain·데스크톱 재패키징·Windows 네이티브·전체 API matrix·장시간 반복과
-관련 범위 밖 Rust·웹·JVM 전체 검사는 실행하지 않았습니다. 앞선 키보드 대응 모드 검사 기록은 [HISTORY.md](HISTORY.md)에 있습니다.
+APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본입니다.
+Android/IME가 강제로 숨긴 경우 재표시까지 잠시 사라질 수 있으며, 백그라운드·다른 창에서 강제 표시하지 않습니다.
+삼성 키보드·물리 기기·실제 SSH·macOS GUI/Keychain·데스크톱 재패키징·Windows 네이티브·전체 API matrix·장시간 반복은 수행하지 않았습니다.
+이전 변경의 실행 요약은 [HISTORY.md](HISTORY.md)에 있습니다.
 
 ## 남은 한계
 

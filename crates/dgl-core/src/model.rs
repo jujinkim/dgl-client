@@ -86,6 +86,7 @@ pub struct Preferences {
     pub mobile_pane_toolbar_visible: bool,
     pub mobile_shortcut_bar_two_rows: bool,
     pub android_keyboard_mode: String,
+    pub android_keyboard_always_visible: bool,
     pub font_size: i32,
     pub scrollback: i32,
     pub terminal_shortcuts: Vec<crate::input::TerminalShortcut>,
@@ -106,6 +107,7 @@ impl Default for Preferences {
             mobile_pane_toolbar_visible: true,
             mobile_shortcut_bar_two_rows: true,
             android_keyboard_mode: "auto".into(),
+            android_keyboard_always_visible: false,
             font_size: 12,
             scrollback: 5000,
             terminal_shortcuts: crate::input::TerminalShortcut::defaults(),
@@ -128,10 +130,15 @@ mod keyboard_tests {
     fn keyboard_modes_round_trip_and_old_settings_use_auto() {
         let mut state = LocalState::decode(br#"{"preferences":{"fontSize":19}}"#).unwrap();
         assert_eq!(state.preferences.android_keyboard_mode, "auto");
+        assert!(!state.preferences.android_keyboard_always_visible);
         for mode in ["auto", "pan", "resize", "future-mode"] {
             state.preferences.android_keyboard_mode = mode.into();
             let encoded = serde_json::to_vec(&state).unwrap();
             assert_eq!(LocalState::decode(&encoded).unwrap(), state);
+            state.preferences.android_keyboard_always_visible = true;
+            let encoded = serde_json::to_vec(&state).unwrap();
+            assert_eq!(LocalState::decode(&encoded).unwrap(), state);
+            state.preferences.android_keyboard_always_visible = false;
         }
     }
 }

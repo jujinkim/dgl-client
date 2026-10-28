@@ -85,6 +85,8 @@ internal class TerminalFocus {
     var imeVisible by mutableStateOf(false)
     var preparePaste: suspend (String) -> ByteArray = { _ -> error(t("터미널이 아직 준비되지 않았습니다.")) }
     var inputAllowed: () -> Boolean = { true }
+    // Keyboard ownership survives connection recovery; it never authorizes remote input.
+    var keyboardAllowed: () -> Boolean = { true }
 }
 internal val LocalTerminalFocus = staticCompositionLocalOf { TerminalFocus() }
 
@@ -97,6 +99,7 @@ private object AboveLauncher : PopupPositionProvider {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalShortcut>, allowed: () -> Boolean, terminalFocus: TerminalFocus,
     mobile: Boolean = false, openComposer: () -> Unit = {}, workspace: Boolean = false, mobileShortcutBarTwoRows: Boolean = true,
+    keyboardAlwaysVisible: Boolean = false,
     inputGate: kim.jujin.dglc.AppModel? = null, openShortcutSettings: () -> Unit) {
     val shortcutInput = inputGate?.shortcutInput(client)
     val modifiers = shortcutInput?.modifiers?.collectAsState()?.value
@@ -128,11 +131,11 @@ private object AboveLauncher : PopupPositionProvider {
             .padding(horizontal = 4.dp, vertical = if (compact) 3.dp else if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val keyboardButton: @Composable () -> Unit = {
-                TerminalToolButton({ terminalFocus.keyboard() }, enabled = available,
+                TerminalToolButton({ terminalFocus.keyboard() }, enabled = available && !keyboardAlwaysVisible,
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics {
-                        contentDescription = if (imeVisible) t("키보드 닫기") else t("키보드 열기")
-                        stateDescription = if (imeVisible) t("표시됨") else t("숨김")
+                        contentDescription = if (keyboardAlwaysVisible) t("키보드 항상 보이기") else if (imeVisible) t("키보드 닫기") else t("키보드 열기")
+                        stateDescription = if (keyboardAlwaysVisible) t("항상 표시") else if (imeVisible) t("표시됨") else t("숨김")
                     }) { KeyboardIcon() }
             }
             val mobileTools: @Composable () -> Unit = {

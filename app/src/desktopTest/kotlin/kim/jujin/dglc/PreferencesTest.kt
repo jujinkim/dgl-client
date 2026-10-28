@@ -6,6 +6,26 @@ import java.nio.file.Files
 import kotlin.test.*
 
 class PreferencesTest {
+    @Test fun alwaysVisibleKeyboardPreservesModeAndSurvivesRestart() {
+        val directory = Files.createTempDirectory("dgl-always-keyboard-").toFile()
+        try {
+            directory.resolve("settings.json").writeText("""{"preferences":{"androidKeyboardMode":"pan"}}""")
+            val repository = LocalRepository(directory)
+            assertFalse(repository.read().preferences.androidKeyboardAlwaysVisible)
+            for (mode in listOf("auto", "pan", "resize", "future-mode")) {
+                val original = Preferences(androidKeyboardMode = mode)
+                val enabled = LocalState(preferences = original.copy(androidKeyboardAlwaysVisible = true))
+                repository.save(enabled)
+                val restored = LocalRepository(directory).read()
+                assertEquals(enabled, restored)
+                assertEquals("resize", restored.preferences.effectiveAndroidKeyboardMode)
+                assertEquals(mode, restored.preferences.androidKeyboardMode)
+                val disabled = restored.copy(preferences = restored.preferences.copy(androidKeyboardAlwaysVisible = false))
+                repository.save(disabled)
+                assertEquals(original.effectiveAndroidKeyboardMode, repository.read().preferences.effectiveAndroidKeyboardMode)
+            }
+        } finally { directory.deleteRecursively() }
+    }
     @Test fun androidKeyboardModesSurviveRestartAndLegacyUnknownUseAuto() {
         val directory = Files.createTempDirectory("dgl-keyboard-").toFile()
         try {

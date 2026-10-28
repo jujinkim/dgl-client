@@ -191,6 +191,9 @@ Android 계측은 전용 에뮬레이터와 명시적인 `ANDROID_SERIAL`을 사
 메뉴 열기·선택·닫기 동안 매 프레임의 IME 표시와 WebView/창 포커스를 감시하며, 일시적인 숨김·재표시도 실패로 판정합니다.
 같은 Activity 창·바깥 터치·Back/Escape·콜백 해제·입력 차단·도구 줄 크기 변경·가로 스크롤을 함께 확인합니다.
 이 에뮬레이터 검사는 삼성 키보드 실기 확인을 대신하지 않습니다.
+‘키보드 항상 보이기’만 확인할 때는 `AndroidMobileInputTest#alwaysVisibleKeyboardRespectsEditorsLifecycleAndActiveTerminal`을 선택합니다.
+설정 토글·크기 옵션 잠금/복원·DOM 포커스 이탈·Back·복구 중 입력 차단·텍스트 작성·pause/resume·활성 분할 터미널을 확인합니다.
+추가 설정은 기기 로컬이며 Kotlin/Rust 저장·동기화 보존과 지연된 IME 요청 취소는 기본 단위 검사에 포함합니다.
 API36 후보 검사는 앱/계측 APK를 먼저 빌드하고 fixture 안에서 실행합니다.
 연결 수명·IME·정상 복귀의 즉시 확인 dim과 SSH 유지·유지 끔의 자동 재연결/취소·삭제된 세션/인증 실패 보존·알림 인텐트·task 제거 후 새 실행만 짧게 확인할 때는 아래 실행에
 `DGL_ANDROID_TEST_CLASSES=kim.jujin.dglc.AndroidConnectionLifetimeTest`를 추가합니다.

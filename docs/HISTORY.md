@@ -347,6 +347,13 @@ macOS ad-hoc 패키징·버전 대조를 확인했습니다. 원시는 `.tools/a
 Android Debug·계측 APK·lint를 확인했습니다. 실제 키보드 계측은 실행하지 않았습니다.
 초기 설정 fixture 예상값 실패는 최종 통과와 구분했으며 원문은 `.tools/android-keyboard-*.log`에 있습니다.
 
+## 2026-10-28: Android CLI 메뉴 IME 보존
+
+하단 CLI 메뉴를 같은 Activity의 오버레이로 옮겨 메뉴 열기·선택·닫기 동안 WebView 포커스와 IME를 보존했습니다.
+당시 CLI 단위 5개·API36 선택 계측 2개·Android Debug/계측 APK·lint·정적 검사를 확인했습니다.
+초기 포커스 준비 실패와 실행 래퍼 시간 초과는 통과로 계산하지 않았으며 최종 계측은 72.423초였습니다.
+원문은 `artifacts/cli-menu-overlay/`와 `.tools/cli-overlay-*-build.log`에 있습니다. 삼성 키보드 실기는 수행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

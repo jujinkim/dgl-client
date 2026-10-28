@@ -3,6 +3,25 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
+test('editor focus changes notify native keyboard ownership even while remote input is blocked', () => {
+  const messages = [], listeners = {};
+  class Terminal {
+    parser = { registerOscHandler() {} };
+    loadAddon() {} open() {} onData() {} onBinary() {}
+  }
+  const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
+  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
+    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} }, ResizeObserver: class { observe() {} },
+    document: { getElementById: () => ({ addEventListener: (name, callback) => { listeners[name] = callback; } }) },
+  });
+  messages.length = 0;
+  window.setInputEnabled(false);
+  listeners.focusin(); listeners.focusout();
+  assert.deepEqual(messages.map(({ type, focused }) => ({ type, focused })), [
+    { type: 'editor-focus', focused: true }, { type: 'editor-focus', focused: false },
+  ]);
+});
+
 test('client viewport uses container pixels and ignores zero layouts and pane grid changes', () => {
   const messages = []; let observe, render;
   const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
