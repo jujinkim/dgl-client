@@ -21,6 +21,8 @@ use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc};
 static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
 pub const MAX_RETRIES: u8 = 3;
 pub const CHECK_TIMEOUT: Duration = Duration::from_secs(3);
+/// Matches tmux's own one-second subscription check.
+const METADATA_POLL: Duration = Duration::from_secs(1);
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RetryState {
     pub attempt: u8,
@@ -792,6 +794,12 @@ impl SnapshotWriter {
     }
 }
 
+/// Replaces the format subscription on tmux before 3.7, which crashes on it (see
+/// `command::safe_subscriptions`): the same format is read once a second instead.
+struct MetadataPoll {
+    due: tokio::time::Instant,
+    last: Vec<Vec<u8>>,
+}
 struct Control {
     stream: Stream,
     parser: Parser,
@@ -803,6 +811,7 @@ struct Control {
     dirty: bool,
     paused: HashSet<String>,
     titles: crate::title::Updates,
+    metadata: Option<MetadataPoll>,
 }
 impl Control {
     async fn next(&mut self) -> Result<Event> {
@@ -952,6 +961,21 @@ impl Control {
         match result {
             Ok(rows) => self.shared.apply_title(&scope, model::pane_title(&rows)?),
             // A deleted pane is resolved by the normal metadata/screen path.
+            Err(Error::InvalidArgument) => self.dirty = true,
+            Err(error) => return Err(error),
+        }
+        Ok(())
+    }
+    async fn poll_metadata(&mut self) -> Result<()> {
+        let value = self.command(Operation::MetadataPoll).await;
+        let poll = self.metadata.as_mut().unwrap();
+        poll.due = tokio::time::Instant::now() + METADATA_POLL;
+        match value {
+            Ok(value) if value == poll.last => {}
+            Ok(value) => {
+                poll.last = value;
+                self.dirty = true;
+            }
             Err(Error::InvalidArgument) => self.dirty = true,
             Err(error) => return Err(error),
         }
@@ -1282,12 +1306,26 @@ async fn attach(
         dirty: false,
         paused: HashSet::new(),
         titles: Default::default(),
+        metadata: None,
     };
     c.titles
         .set_last_start(c.shared.title_visibility.lock().unwrap().last_start);
     c.response().await?;
     c.command(Operation::FlowControl).await?;
-    c.command(Operation::MetadataSubscription).await?;
+    if ssh
+        .tmux_version
+        .as_deref()
+        .is_some_and(crate::command::safe_subscriptions)
+    {
+        c.command(Operation::MetadataSubscription).await?;
+    } else {
+        // Read the baseline before the refresh below so later changes are not missed.
+        let last = c.command(Operation::MetadataPoll).await?;
+        c.metadata = Some(MetadataPoll {
+            due: tokio::time::Instant::now() + METADATA_POLL,
+            last,
+        });
+    }
     c.command(Operation::ClientSize {
         columns: size.columns,
         rows: size.rows,
@@ -1742,11 +1780,13 @@ async fn connected(
             Shell(Option<russh::ChannelMsg>),
             Refresh,
             Title,
+            Metadata,
             Visibility,
         }
         let incoming = if let Some(c) = control.as_mut() {
             c.titles.reconcile(shared.title_scope());
             let title_deadline = c.titles.deadline();
+            let metadata_due = c.metadata.as_ref().map(|m| m.due);
             let pending_refresh = c.dirty || !c.paused.is_empty();
             // A slow link may receive another change during every refresh.
             // Keep pending user requests eligible instead of starving input.
@@ -1761,6 +1801,12 @@ async fn connected(
                         None => std::future::pending().await,
                     }
                 } => Incoming::Title,
+                _=async {
+                    match metadata_due {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending().await,
+                    }
+                } => Incoming::Metadata,
                 _=std::future::ready(()), if pending_refresh => Incoming::Refresh,
             }
         } else if let Some(sh) = shell.as_mut() {
@@ -1802,8 +1848,13 @@ async fn connected(
                 });
             }
             Incoming::Refresh | Incoming::Visibility => {}
-            Incoming::Title => {
-                let result = control.as_mut().unwrap().refresh_title().await;
+            Incoming::Title | Incoming::Metadata => {
+                let c = control.as_mut().unwrap();
+                let result = if matches!(incoming, Incoming::Title) {
+                    c.refresh_title().await
+                } else {
+                    c.poll_metadata().await
+                };
                 if result == Err(Error::MissingSession) {
                     missing_session(ssh, &shared, &mut control).await?;
                 } else {

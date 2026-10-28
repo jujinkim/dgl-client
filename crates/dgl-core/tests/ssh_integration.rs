@@ -415,7 +415,15 @@ async fn isolated_auth_management_input_reconnect() {
         .unwrap(),
     )
     .await;
-    let session = c.state().remote.sessions[0].id.clone();
+    let session = c
+        .state()
+        .remote
+        .sessions
+        .iter()
+        .find(|s| s.name == "rust candidate;")
+        .unwrap()
+        .id
+        .clone();
     completion(
         &c,
         c.action(Action::SelectSession {
@@ -1165,9 +1173,17 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
     )
     .await;
     // Isolate the OSC path from the existing one-second metadata subscription.
+    // Older tmux is polled instead and must never be given a subscription; the
+    // poll cannot be paused there, so only subscribing servers check the gating.
+    let subscribed = dgl_core::command::safe_subscriptions(&format!(
+        "tmux {}",
+        std::env::var("DGL_TEST_TMUX_VERSION").unwrap()
+    ));
     let client = tmux(&["list-clients", "-t", session, "-F", "#{client_name}"]);
     assert_eq!(client.lines().count(), 1);
-    tmux(&["refresh-client", "-t", &client, "-B", "dgl-metadata"]);
+    if subscribed {
+        tmux(&["refresh-client", "-t", &client, "-B", "dgl-metadata"]);
+    }
     tmux(&["set-window-option", "-t", window, "automatic-rename", "off"]);
     tokio::time::sleep(Duration::from_millis(300)).await;
     c.set_title_updates_enabled(true);
@@ -1193,8 +1209,7 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
         "title:hidden fast path disabled",
     ]);
     tmux(&["send-keys", "-t", pane, "Enter"]);
-    tokio::time::sleep(Duration::from_millis(650)).await;
-    assert!(
+    let pane_title = |c: &Connection| {
         c.state()
             .remote
             .panes
@@ -1202,19 +1217,14 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
             .find(|p| p.id == pane)
             .unwrap()
             .title
-            .is_empty()
-    );
+            .clone()
+    };
+    tokio::time::sleep(Duration::from_millis(650)).await;
+    assert!(!subscribed || pane_title(&c).is_empty());
     c.set_title_updates_enabled(true);
     tokio::time::sleep(Duration::from_millis(550)).await;
     assert!(
-        c.state()
-            .remote
-            .panes
-            .iter()
-            .find(|p| p.id == pane)
-            .unwrap()
-            .title
-            .is_empty(),
+        !subscribed || pane_title(&c).is_empty(),
         "returning alone must not poll"
     );
     tmux(&["send-keys", "-t", pane, "-l", "title:foreground again"]);
@@ -1252,7 +1262,9 @@ async fn hierarchy_titles_all_sessions_without_screen_reset() {
         .unwrap()
         .strip_suffix('\'')
         .unwrap();
-    tmux(&["refresh-client", "-t", &client, "-B", format]);
+    if subscribed {
+        tmux(&["refresh-client", "-t", &client, "-B", format]);
+    }
     // A running program changes the OSC title without a tmux rename command.
     // The format subscription must update metadata without changing the input target.
     tmux(&["send-keys", "-t", pane, "-l", "title:OSC live title 🚀"]);

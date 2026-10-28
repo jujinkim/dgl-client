@@ -333,3 +333,27 @@ fn pane_title_uses_stable_target_and_quotes_literal_formats() {
         .is_err()
     );
 }
+
+#[test]
+fn format_subscriptions_only_on_tmux_that_survives_sessionless_clients() {
+    use dgl_core::command::{safe_subscriptions, supports_tmux};
+    for version in ["tmux 3.3a", "tmux 3.4", "tmux 3.6b"] {
+        assert!(
+            supports_tmux(version) && !safe_subscriptions(version),
+            "{version}"
+        );
+    }
+    for version in ["tmux 3.7", "tmux 3.7c\n"] {
+        assert!(
+            supports_tmux(version) && safe_subscriptions(version),
+            "{version}"
+        );
+    }
+    assert!(!safe_subscriptions("tmux next-3.8") && !safe_subscriptions("screen 4.0"));
+    let subscription = Command::new(&Operation::MetadataSubscription).unwrap().wire;
+    let poll = Command::new(&Operation::MetadataPoll).unwrap().wire;
+    let format = subscription
+        .strip_prefix("refresh-client -B 'dgl-metadata::")
+        .unwrap();
+    assert_eq!(poll, format!("display-message -p '{format}"));
+}

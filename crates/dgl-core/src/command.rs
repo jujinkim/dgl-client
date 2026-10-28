@@ -111,7 +111,11 @@ pub enum Operation {
     Panes,
     FlowControl,
     MetadataSubscription,
+    /// The subscription format read once, for servers that cannot keep a subscription safely.
+    MetadataPoll,
 }
+/// Every session's windows and panes; any change requires a metadata refresh.
+const METADATA_FORMAT: &str = "#{S:#{session_id}|#{q:session_name}|#{W:#{window_id}|#{window_index}|#{q:window_name}|#{window_active}|#{P:#{pane_id}|#{pane_active}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title};}}}";
 #[derive(Clone, Debug)]
 pub struct Command {
     pub wire: String,
@@ -147,7 +151,8 @@ impl Command {
             Sessions=>"list-sessions -F '#{session_id}|#{q:session_name}|#{session_attached}'".into(),
             Windows=>"list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}|#{window_width}|#{window_height}|#{window_zoomed_flag}|#{window_visible_layout}'".into(),
             Panes=>"list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}|#{pane_left}|#{pane_top}'".into(),
-            MetadataSubscription=>"refresh-client -B 'dgl-metadata::#{S:#{session_id}|#{q:session_name}|#{W:#{window_id}|#{window_index}|#{q:window_name}|#{window_active}|#{P:#{pane_id}|#{pane_active}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title};}}}'".into(),
+            MetadataSubscription=>format!("refresh-client -B 'dgl-metadata::{METADATA_FORMAT}'"),
+            MetadataPoll=>format!("display-message -p '{METADATA_FORMAT}'"),
             FlowControl=>"refresh-client -f 'pause-after=2'".into(),
         };
         let shell_wire = if let NewSession { name: n } = op {
@@ -176,15 +181,19 @@ impl Command {
         ))
     }
 }
-pub fn supports_tmux(version: &str) -> bool {
-    let Some(v) = version.trim().strip_prefix("tmux ") else {
-        return false;
-    };
+fn tmux_minor(version: &str) -> Option<u8> {
+    let v = version.trim().strip_prefix("tmux ")?;
     let v = v
         .strip_suffix(|c: char| c.is_ascii_lowercase())
         .unwrap_or(v);
-    let Some((major, minor)) = v.split_once('.') else {
-        return false;
-    };
-    major == "3" && minor.parse::<u8>().is_ok_and(|n| (3..=7).contains(&n))
+    let (major, minor) = v.split_once('.')?;
+    (major == "3").then(|| minor.parse().ok()).flatten()
+}
+pub fn supports_tmux(version: &str) -> bool {
+    tmux_minor(version).is_some_and(|n| (3..=7).contains(&n))
+}
+/// tmux 3.2-3.6 crash when a control client without a session keeps a format subscription
+/// (`control_check_subs_timer`); 3.7 skips such clients.
+pub fn safe_subscriptions(version: &str) -> bool {
+    tmux_minor(version).is_some_and(|n| n >= 7)
 }

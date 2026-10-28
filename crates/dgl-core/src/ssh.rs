@@ -37,6 +37,8 @@ pub struct Ssh {
     socket: SocketGuard,
     pub handle: client::Handle<Handler>,
     pub tmux: Option<String>,
+    /// `tmux -V` output of a supported `tmux`.
+    pub tmux_version: Option<String>,
     pub diagnostics: Vec<Probe>,
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -141,6 +143,7 @@ pub async fn connect(
         socket: guard,
         handle,
         tmux: None,
+        tmux_version: None,
         diagnostics: vec![],
     })
 }
@@ -273,6 +276,9 @@ impl Ssh {
                                 .collect(),
                         ),
                     });
+                }
+                if supported {
+                    self.tmux_version = Some(String::from_utf8_lossy(&version).trim().to_owned());
                 }
                 return Ok(supported);
             }
