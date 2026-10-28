@@ -15,6 +15,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import uniffi.dgl_core.NativeConnection
+import uniffi.dgl_core.NativeOutputKind
 import java.security.MessageDigest
 
 /** The process runtime owns this adapter. Each WebView has its own output subscription. */
@@ -66,7 +67,8 @@ class RustClientConnection(
     private var appliedSequence = -1L
     // Pollers share one parsed snapshot per native sequence instead of re-serializing it.
     private val stateLock = Any()
-    private var stateCache: Triple<NativeConnection, Long, JsonObject>? = null
+    private class CachedState(val owner: NativeConnection, val sequence: Long, val language: UiLanguage, val state: JsonObject)
+    private var stateCache: CachedState? = null
     private var decodedState: JsonObject? = null
     private var decodedLanguage: UiLanguage? = null
     override val generation: Long get() = adapterGeneration
@@ -158,11 +160,13 @@ class RustClientConnection(
             catch (_: Exception) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("보호 저장소 또는 네이티브 연결을 열지 못했습니다.")); native?.stop() } } }
         }
     }
+    // The core localizes `derived.retry_message`, so a language change also needs a fresh snapshot.
     private fun stateOf(c: NativeConnection): JsonObject = synchronized(stateLock) {
         val sequence = c.stateSequence().toLong()
-        stateCache?.let { (owner, cached, state) -> if (owner === c && cached == sequence) return state }
+        val language = I18n.language
+        stateCache?.let { if (it.owner === c && it.sequence == sequence && it.language == language) return it.state }
         val state = json.parseToJsonElement(c.stateJson()).jsonObject
-        stateCache = Triple(c, state.getValue("sequence").jsonPrimitive.long, state)
+        stateCache = CachedState(c, state.getValue("sequence").jsonPrimitive.long, language, state)
         state
     }
     private fun applyState(s: JsonObject) {
@@ -191,8 +195,9 @@ class RustClientConnection(
         val error = text("error")
         val retry = s["retry"]?.jsonObject
         val attempt = retry?.get("attempt")?.jsonPrimitive?.int ?: 0
-        val wait = retry?.get("wait_seconds")?.takeUnless { it is JsonNull }?.jsonPrimitive?.int
-        val stopped = retry?.get("stopped")?.jsonPrimitive?.boolean == true
+        // Retry predicates come from the core; only Android's own output/presentation state is added here.
+        val derived = s.getValue("derived").jsonObject
+        fun derivedFlag(name: String) = derived.getValue(name).jsonPrimitive.boolean
         val checking = s["checking"]?.jsonPrimitive?.boolean == true
         val connecting = retry?.get("connecting")?.jsonPrimitive?.boolean == true
         val resizing = s["resizing"]?.jsonPrimitive?.boolean == true
@@ -206,23 +211,16 @@ class RustClientConnection(
         val recovering = recovery.update(checking || outputFailed, phase, connecting, targets)
         if (!recovering && !outputFailed) outputRecoveryAttempted = false
         val outputRetry = outputFailed && phase in setOf(Phase.Ready, Phase.Shell, Phase.Restoring) && !connecting
-        val canStopRetrying = phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting) ||
-            (phase == Phase.Restoring && retry?.get("connecting")?.jsonPrimitive?.boolean == true)
-        val canRetryNow = outputRetry || canStopRetrying || (phase == Phase.Failed && (error == "Network" || stopped))
-        val retryMessage = when {
-            stopped -> t("재시도 정지 · 접속 정보 유지 중")
-            phase == Phase.Failed && error == "Network" -> t("자동 재시도 3회 종료 · 접속 정보 유지 중")
-            wait != null -> tr("자동 재시도 대기 · {0}/3회 완료 · 대기 간격 {1}초", attempt, wait)
-            phase == Phase.Reconnecting -> tr("연결 재시도 중 · 자동 재시도 {0}/3회", attempt)
-            else -> null
-        }
+        val canStopRetrying = derivedFlag("reconnecting")
+        val canRetryNow = outputRetry || derivedFlag("retry_available")
+        val retryMessage = derived["retry_message"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
         val nextStatus = ConnectionStatus(phase, (if (outputRetry) outputFailureMessage() else null) ?: retryMessage ?: error?.let(::message) ?: when (phase) {
             Phase.Connecting -> t("SSH 연결 중…"); Phase.Authenticating -> t("서버 확인 중…"); Phase.TrustRequired -> t("호스트키 지문을 확인하세요.")
             Phase.Selecting -> t("tmux 세션을 선택하거나 만드세요."); Phase.Restoring -> if (resizing) t("연결됨 · tmux") else t("터미널 복원 중…"); Phase.Ready -> t("연결됨 · tmux")
             Phase.Shell -> t("일반 SSH · tmux 탐지 실패"); Phase.Reconnecting -> t("연결 복구 중…"); Phase.MissingSession -> t("이전 세션이 삭제되었습니다. 직접 선택하세요.")
             else -> t("연결 종료")
         }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering,
-            phase == Phase.Failed && error == "Network" && !stopped && attempt >= 3, presenting = presentation.pending)
+            derivedFlag("retry_exhausted"), presenting = presentation.pending)
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         if (phase == Phase.Shell) tmuxOutput = false
         else if (phase in setOf(Phase.Ready, Phase.Restoring) && session.value != null) tmuxOutput = true
@@ -328,7 +326,7 @@ class RustClientConnection(
                     val target = json.parseToJsonElement(event.targetJson).jsonObject.getValue("pane_id").jsonPrimitive.content
                     terminal.outputPane(target, event.targetJson)
                     when (event.kind) {
-                        "Resize" -> {
+                        NativeOutputKind.RESIZE -> {
                             val shellRecovery = target == "shell" && synchronized(this@RustClientConnection) { recovery.pending || presentation.pending }
                             if (shellRecovery || (displayed[target] != null && displayed[target] != event.targetJson)) terminal.beginSnapshot()
                             // A shell resize can supersede its initial Reset events before
@@ -348,12 +346,12 @@ class RustClientConnection(
                                 }
                             }
                         }
-                        "ResetBegin" -> {
+                        NativeOutputKind.RESET_BEGIN -> {
                             terminal.beginSnapshot()
                             terminal.reset(event.bytes)
                         }
-                        "ResetChunk", "Live" -> terminal.write(event.bytes)
-                        "ResetEnd" -> {
+                        NativeOutputKind.RESET_CHUNK, NativeOutputKind.LIVE -> terminal.write(event.bytes)
+                        NativeOutputKind.RESET_END -> {
                             terminal.endSnapshot(); displayed[target] = event.targetJson
                             synchronized(this@RustClientConnection) {
                                 if (current == epoch && subscription == id && c.acceptsOutput(event.targetJson)) {

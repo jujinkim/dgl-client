@@ -1086,7 +1086,7 @@ impl Desktop {
             let terminal = tab.terminal.clone();
             let state = tab.connection.state();
             body = body.child(self.render_pane_toolbar(tab, cx));
-            if state.can_retry_now() && !state.retry_exhausted() && !state.checking {
+            if state.offers_retry() && !state.retry_exhausted() {
                 let retry_connection = tab.connection.clone();
                 let stop_connection = tab.connection.clone();
                 let mut retry_controls = div().flex().flex_wrap().text_xs().child(self.button(
@@ -1097,7 +1097,7 @@ impl Desktop {
                         s.submit(&retry_connection, Action::RetryNow);
                     },
                 ));
-                if state.can_stop_retrying() {
+                if state.reconnecting() {
                     retry_controls = retry_controls.child(self.button(
                         format!("stop-retry-{id}"),
                         t("재시도 정지"),

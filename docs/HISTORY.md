@@ -370,6 +370,12 @@ gpui 0.2.2·russh·AGP가 버전을 고정한 나머지는 `blockedBy`·완화 �
 바뀔 때만 상태 JSON을 받아 파싱합니다. Rust 코어·UniFFI·데스크톱 단위 검사, JVM·lint, API36의
 `AndroidOutputRecoveryTest`·`AndroidConnectionLifetimeTest` 3개 통과를 확인했습니다.
 
+## 2026-10-29: 재시도 판정의 코어 일원화
+
+Android 어댑터가 다시 계산하던 재시도 판정·문구·소진 여부를 상태 JSON의 `derived`로 받고, 출력 종류를 UniFFI enum으로 바꿨습니다.
+첫 구현은 `serde_json::Value`를 거쳐 키 순서가 바뀌는 바람에, 문자열로 비교하는 pane 대상이 어긋나 Android 입력 허용이 열리지 않았습니다.
+API36 계측으로 이를 발견해 필드 순서를 보존하는 직렬화와 회귀 단위 검사로 고쳤습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

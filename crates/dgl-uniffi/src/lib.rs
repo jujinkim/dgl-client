@@ -1,7 +1,7 @@
 //! Kotlin owns this object explicitly; shutdown joins the actor before wrapper close().
 use dgl_core::{
     connection::{Action, Connection},
-    flow::OutputEvent,
+    flow::{OutputEvent, OutputKind},
     model::{Credential, HostProfile},
 };
 use std::sync::{Arc, OnceLock};
@@ -57,12 +57,32 @@ pub fn public_key(private_key: String, passphrase: String) -> Result<String, Cor
         passphrase,
     })?)
 }
+/// Typed so a new core output kind fails Kotlin's exhaustive `when` instead of being acked unseen.
+#[derive(uniffi::Enum)]
+pub enum NativeOutputKind {
+    Resize,
+    ResetBegin,
+    ResetChunk,
+    ResetEnd,
+    Live,
+}
+impl From<OutputKind> for NativeOutputKind {
+    fn from(kind: OutputKind) -> Self {
+        match kind {
+            OutputKind::Resize => Self::Resize,
+            OutputKind::ResetBegin => Self::ResetBegin,
+            OutputKind::ResetChunk => Self::ResetChunk,
+            OutputKind::ResetEnd => Self::ResetEnd,
+            OutputKind::Live => Self::Live,
+        }
+    }
+}
 #[derive(uniffi::Record)]
 pub struct NativeOutput {
     pub subscription: u64,
     pub sequence: u64,
     pub target_json: String,
-    pub kind: String,
+    pub kind: NativeOutputKind,
     pub columns: u16,
     pub rows: u16,
     pub bytes: Vec<u8>,
@@ -73,7 +93,7 @@ impl From<OutputEvent> for NativeOutput {
             subscription: e.subscription,
             sequence: e.sequence,
             target_json: serde_json::to_string(&e.target).unwrap(),
-            kind: format!("{:?}", e.kind),
+            kind: e.kind.into(),
             columns: e.size.columns,
             rows: e.size.rows,
             bytes: e.bytes,
@@ -101,8 +121,9 @@ impl NativeConnection {
             inner: Connection::start(host, credential, trusted_fingerprint),
         }))
     }
+    /// State fields plus `derived`, the core's own predicates for input and retry controls.
     pub fn state_json(&self) -> String {
-        serde_json::to_string(&*self.inner.state()).unwrap()
+        serde_json::to_string(&self.inner.state().view()).unwrap()
     }
     /// Cheap change check: poll this and fetch `state_json` only when it differs.
     pub fn state_sequence(&self) -> u64 {
@@ -292,6 +313,12 @@ mod tests {
         assert_eq!(c.completions_json(), "[]");
         assert_eq!(c.inner.output().subscription(), 0);
         assert!(before.get("title_updates_enabled").is_none());
+        // Bindings read the core's predicates instead of re-deriving them.
+        let derived = &before["derived"];
+        for key in ["reconnecting", "retry_available", "retry_exhausted"] {
+            assert!(derived[key].is_boolean(), "{key}");
+        }
+        assert!(derived.get("retry_message").is_some());
         c.stop();
         runtime().block_on(c.inner.join());
     }

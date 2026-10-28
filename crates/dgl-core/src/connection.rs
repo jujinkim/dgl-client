@@ -89,18 +89,47 @@ impl State {
     fn resume_exhausted(&self) -> bool {
         self.phase == Phase::Failed && self.error == Some(Error::Network) && !self.retry.stopped
     }
+    /// A transport attempt (connect, authenticate, reconnect or reattach) is in flight.
+    pub fn reconnecting(&self) -> bool {
+        matches!(
+            self.phase,
+            Phase::Connecting | Phase::Authenticating | Phase::Reconnecting
+        ) || (self.phase == Phase::Restoring && self.retry.connecting)
+    }
+    fn retry_failed(&self) -> bool {
+        self.phase == Phase::Failed && (self.error == Some(Error::Network) || self.retry.stopped)
+    }
+    /// The connection is in a retry cycle, regardless of a pending connection check.
+    pub fn retry_available(&self) -> bool {
+        self.reconnecting() || self.retry_failed()
+    }
+    /// Admission rule; a pending connection check also accepts (and merges) retry actions.
     pub fn can_stop_retrying(&self) -> bool {
-        self.checking
-            || matches!(
-                self.phase,
-                Phase::Connecting | Phase::Authenticating | Phase::Reconnecting
-            )
-            || (self.phase == Phase::Restoring && self.retry.connecting)
+        self.checking || self.reconnecting()
     }
     pub fn can_retry_now(&self) -> bool {
-        self.can_stop_retrying()
-            || (self.phase == Phase::Failed
-                && (self.error == Some(Error::Network) || self.retry.stopped))
+        self.can_stop_retrying() || self.retry_failed()
+    }
+    /// Whether a UI shows retry controls: never while a connection check is pending.
+    pub fn offers_retry(&self) -> bool {
+        !self.checking && self.retry_available()
+    }
+    /// The binding's JSON form. Fields keep their declared order (no `serde_json::Value`
+    /// round trip), because adapters compare serialized pane targets as strings.
+    pub fn view(&self) -> StateView<'_> {
+        StateView {
+            state: self,
+            derived: self.derived(),
+        }
+    }
+    /// Retry predicates serialized next to the state so bindings never re-derive them.
+    pub fn derived(&self) -> Derived {
+        Derived {
+            reconnecting: self.reconnecting(),
+            retry_available: self.retry_available(),
+            retry_exhausted: self.retry_exhausted(),
+            retry_message: self.retry_message(),
+        }
     }
     pub fn retry_message(&self) -> Option<String> {
         if self.retry.stopped {
@@ -122,6 +151,19 @@ impl State {
             None
         }
     }
+}
+#[derive(Serialize)]
+pub struct StateView<'a> {
+    #[serde(flatten)]
+    pub state: &'a State,
+    pub derived: Derived,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Derived {
+    pub reconnecting: bool,
+    pub retry_available: bool,
+    pub retry_exhausted: bool,
+    pub retry_message: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Completion {
@@ -2228,6 +2270,45 @@ mod tests {
             last_session: Some("$12".into()),
             last_pane: Some("%34".into()),
         }
+    }
+    #[tokio::test]
+    async fn retry_controls_hide_during_a_check_that_still_admits_retry() {
+        let c = Connection::start(host(1), Credential::default(), None);
+        let mut s = (*c.state()).clone();
+        c.close();
+        s.phase = Phase::Failed;
+        s.error = Some(Error::Network);
+        s.retry.attempt = MAX_RETRIES;
+        let failed = s.derived();
+        assert!(failed.retry_available && failed.retry_exhausted && !failed.reconnecting);
+        assert!(s.offers_retry() && failed.retry_message.is_some());
+        // A check after exhausted retries still counts as a retry cycle for menus and guards.
+        s.checking = true;
+        assert!(s.can_retry_now() && s.can_stop_retrying());
+        assert!(s.derived().retry_available && !s.offers_retry() && !s.accepts_input());
+        s.checking = false;
+        s.phase = Phase::Restoring;
+        s.error = None;
+        s.retry.connecting = true;
+        let reattach = s.derived();
+        assert!(reattach.reconnecting && reattach.retry_available && !reattach.retry_exhausted);
+        s.retry.connecting = false;
+        s.resizing = true;
+        assert!(s.accepts_input() && !s.accepts_pointer() && !s.derived().retry_available);
+        s.render_targets.insert(
+            "%34".into(),
+            crate::flow::PaneTarget {
+                connection: s.handle,
+                pane_id: "%34".into(),
+                generation: s.generation.clone(),
+            },
+        );
+        // Same bytes as the plain state plus `derived`: target strings must match output events.
+        let plain = serde_json::to_string(&s).unwrap();
+        let view = serde_json::to_string(&s.view()).unwrap();
+        assert!(view.starts_with(plain.strip_suffix('}').unwrap()));
+        let target = serde_json::to_string(&s.render_targets["%34"]).unwrap();
+        assert!(view.contains(&target));
     }
     #[tokio::test]
     async fn title_publication_rejects_stale_responses_and_only_changes_title() {

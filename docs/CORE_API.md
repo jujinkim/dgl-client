@@ -156,7 +156,10 @@ Kotlin 패키지 변경은 저장 키 교체나 초기 앱 데이터 자동 이�
   `state()`는 sequence 포함 최신 스냅샷을 공유 `Arc`로 반환해 조회가 복제를 만들지 않고, 갱신은 읽는 쪽이
   스냅샷을 보유할 때만 복사한다. `sequence()`는 변경 확인만 한다. `completions()`는 한 번만 소비하는 제한된 결과를 반환한다.
   `close()` 후 `join()`과 완료 결과 조회는 허용되며, 일반 요청은 Closed다.
-- `NativeConnection`은 상태/명령/대상을 JSON으로 전달하고 출력은 바이트 record로 전달한다.
+- `NativeConnection`은 상태/명령/대상을 JSON으로 전달하고 출력은 바이트 record와 `NativeOutputKind` enum으로 전달한다.
+  상태 JSON의 `derived`는 코어가 계산한 재시도 판정(`reconnecting`, `retry_available`, 소진, 지역화 문구)이다.
+  어댑터는 이를 다시 계산하지 않고 플랫폼 고유의 출력·표시 상태만 더한다. 데스크톱 재시도 패널은 확인 중 숨기는
+  `offers_retry()`를 쓰며, 코어는 확인 중에도 재시도 요청을 받아 진행 중인 확인과 합친다.
   원시 tmux/shell 문자열은 UI에 노출하지 않는다. Kotlin은 `stop → jobs join → shutdown → close`로 해제한다.
   콜백 대신 상태·결과·출력을 각각 polling하며 결과는 요청 슬롯과 함께 보존한다. 상태는 `state_sequence()`가
   바뀔 때만 `state_json()`을 받아 파싱하고, 같은 스냅샷의 원격 목록·에이전트 디코드는 반복하지 않는다.
