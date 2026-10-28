@@ -125,13 +125,16 @@ private object AboveLauncher : PopupPositionProvider {
         Row(Modifier.fillMaxWidth().semantics { contentDescription = t("터미널 입력 도구") }
             .padding(horizontal = 4.dp, vertical = if (compact) 3.dp else if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            val mobileTools: @Composable () -> Unit = {
+            val keyboardButton: @Composable () -> Unit = {
                 TerminalToolButton({ terminalFocus.keyboard() }, enabled = available,
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics {
                         contentDescription = if (imeVisible) t("키보드 닫기") else t("키보드 열기")
                         stateDescription = if (imeVisible) t("표시됨") else t("숨김")
                     }) { KeyboardIcon() }
+            }
+            val mobileTools: @Composable () -> Unit = {
+                keyboardButton()
                 TerminalToolButton(openComposer, enabled = available,
                     modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("텍스트 작성 열기") },
                     contentPadding = PaddingValues(0.dp)) { UiGlyph(UiIcons.compose, Modifier.size(18.dp)) }
@@ -171,9 +174,10 @@ private object AboveLauncher : PopupPositionProvider {
             val density = LocalDensity.current
             val safeTop = WindowInsets.safeDrawing.getTop(density)
             var launcherTop by remember { mutableIntStateOf(0) }
-            // Anchor and height limit use the entire fixed column, including the empty upper cell.
-            Box(Modifier.height(if (twoRows) columnHeight else buttonHeight)
+            // Anchor and height limit use the entire fixed column above the menu.
+            Box(Modifier.zIndex(1f).height(if (twoRows) columnHeight else buttonHeight)
                 .onGloballyPositioned { launcherTop = it.boundsInWindow().top.toInt() }, contentAlignment = Alignment.BottomCenter) {
+                if (twoRows) Box(Modifier.align(Alignment.TopCenter)) { keyboardButton() }
                 TerminalToolButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("CLI 실행 메뉴") }) { UiGlyph(UiIcons.more, Modifier.size(if (mobile) 18.dp else 20.dp)) }
