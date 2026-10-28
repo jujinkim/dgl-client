@@ -77,6 +77,30 @@ impl State {
     pub fn accepts_pointer(&self) -> bool {
         self.accepts_input() && !self.resizing
     }
+    /// The phases in which the connection runs its agent observer.
+    pub fn observing_agents(&self) -> bool {
+        matches!(
+            self.phase,
+            Phase::Ready | Phase::Restoring | Phase::Selecting
+        )
+    }
+    pub fn input_target(&self) -> Option<PaneTarget> {
+        self.pane.as_ref().map(|p| PaneTarget {
+            connection: self.handle,
+            pane_id: p.clone(),
+            generation: self.generation.clone(),
+        })
+    }
+    /// Output belongs to a pane renderer, independently of input focus; a plain shell
+    /// has a single target that is also its input target.
+    pub fn accepts_output(&self, target: &PaneTarget) -> bool {
+        if target.pane_id == "shell" {
+            self.input_target().as_ref() == Some(target)
+        } else {
+            self.render_targets.get(&target.pane_id) == Some(target)
+                && matches!(self.phase, Phase::Ready | Phase::Restoring)
+        }
+    }
     pub fn retry_exhausted(&self) -> bool {
         self.resume_exhausted() && self.retry.attempt >= MAX_RETRIES
     }
@@ -125,6 +149,7 @@ impl State {
     /// Retry predicates serialized next to the state so bindings never re-derive them.
     pub fn derived(&self) -> Derived {
         Derived {
+            observing_agents: self.observing_agents(),
             reconnecting: self.reconnecting(),
             retry_available: self.retry_available(),
             retry_exhausted: self.retry_exhausted(),
@@ -160,6 +185,7 @@ pub struct StateView<'a> {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Derived {
+    pub observing_agents: bool,
     pub reconnecting: bool,
     pub retry_available: bool,
     pub retry_exhausted: bool,
@@ -297,12 +323,7 @@ impl Shared {
         });
     }
     fn target(&self) -> Option<PaneTarget> {
-        let s = self.state.lock().unwrap();
-        s.pane.as_ref().map(|p| PaneTarget {
-            connection: s.handle,
-            pane_id: p.clone(),
-            generation: s.generation.clone(),
-        })
+        self.state.lock().unwrap().input_target()
     }
     fn title_scope(&self) -> Option<crate::title::Scope> {
         let visibility = self.title_visibility.lock().unwrap();
@@ -1664,10 +1685,7 @@ async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
     loop {
         let state = shared.state.lock().unwrap().clone();
         if tmux
-            && matches!(
-                state.phase,
-                Phase::Ready | Phase::Restoring | Phase::Selecting
-            )
+            && state.observing_agents()
             && let Some(session) = state.session.clone()
         {
             if scope.0 != session {
@@ -2309,6 +2327,20 @@ mod tests {
         assert!(view.starts_with(plain.strip_suffix('}').unwrap()));
         let target = serde_json::to_string(&s.render_targets["%34"]).unwrap();
         assert!(view.contains(&target));
+        // Output follows render targets in Ready/Restoring, not input focus.
+        let rendered = s.render_targets["%34"].clone();
+        s.phase = Phase::Ready;
+        s.pane = Some("%35".into());
+        assert!(s.accepts_output(&rendered) && s.observing_agents());
+        let mut stale = rendered.clone();
+        stale.generation.size += 1;
+        assert!(!s.accepts_output(&stale));
+        s.phase = Phase::Reconnecting;
+        assert!(!s.accepts_output(&rendered) && !s.observing_agents());
+        s.phase = Phase::Shell;
+        s.pane = Some("shell".into());
+        let shell = s.input_target().unwrap();
+        assert!(s.accepts_output(&shell));
     }
     #[tokio::test]
     async fn title_publication_rejects_stale_responses_and_only_changes_title() {

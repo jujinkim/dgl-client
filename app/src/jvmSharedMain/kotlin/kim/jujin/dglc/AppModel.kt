@@ -101,7 +101,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
                 }.toSet()
                 val result = synchronized(agentInbox) {
                     if (!isActive) return@launch
-                    agentInbox.tick(connections.value.map { it.agentEndpoint to if (it.status.value.phase in setOf(Phase.Ready, Phase.Restoring, Phase.Selecting)) it.agents.value else AgentSnapshot() }, keys, local.value.preferences.agentNotifications)
+                    agentInbox.tick(connections.value.map { it.agentEndpoint to it.observedAgents }, keys, local.value.preferences.agentNotifications)
                 }
                 agentNotifications.value = result.recent
                 result.deliver.forEach { runCatching { sendAgentNotification(it) } }

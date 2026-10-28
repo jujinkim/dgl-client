@@ -87,17 +87,7 @@ impl WindowTerminal {
             .clone()
     }
     fn accept(&mut self, e: OutputEvent, cx: &mut Context<Self>) {
-        let state = self.connection.state();
-        let valid = if e.target.pane_id == "shell" {
-            self.connection.target().as_ref() == Some(&e.target)
-        } else {
-            state.render_targets.get(&e.target.pane_id) == Some(&e.target)
-                && matches!(
-                    state.phase,
-                    dgl_core::connection::Phase::Ready | dgl_core::connection::Phase::Restoring
-                )
-        };
-        if !valid {
+        if !self.connection.state().accepts_output(&e.target) {
             return;
         }
         let terminal = self.pane(&e.target.pane_id, cx);

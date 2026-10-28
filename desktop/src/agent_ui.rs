@@ -31,20 +31,15 @@ impl Desktop {
                 .unwrap_or(false)
         });
         let mut visible = HashSet::new();
-        let mut live = HashSet::new();
         let old_count = self.inbox.recent.len();
         let old_unread = self.inbox.recent.iter().filter(|n| !n.read).count();
-        for tab in &self.tabs {
-            let state = tab.connection.state();
-            let key = endpoint(&tab.host);
+        let sources: Vec<_> = self
+            .tabs
+            .iter()
+            .map(|tab| (endpoint(&tab.host), tab.connection.state()))
+            .collect();
+        for (tab, (key, state)) in self.tabs.iter().zip(&sources) {
             if state.agents.current(now) && state.phase == Phase::Ready {
-                live.extend(
-                    state
-                        .agents
-                        .observations
-                        .iter()
-                        .map(|o| format!("{}:{}:{}", key, state.agents.server, o.run)),
-                );
                 if active
                     && self.dialog.is_none()
                     && self.snackbar.is_none()
@@ -55,23 +50,20 @@ impl Desktop {
                         .any(|g| g.selected == Some(tab.id))
                 {
                     for pane in state.render_targets.keys() {
-                        visible.insert(format!("{}:{}:{}", key, state.agents.server, pane));
+                        visible.insert(agent::pane_key(key, &state.agents.server, pane));
                     }
                 }
             }
-            self.inbox.ingest(
-                &key,
-                &state.agents,
-                &self.local.preferences.agent_notifications,
-                now,
-            );
         }
-        self.inbox.read_visible(&visible);
-        for notice in self.inbox.ready(
-            now,
+        let observed = sources
+            .iter()
+            .filter(|(_, state)| state.observing_agents())
+            .map(|(key, state)| (key.as_str(), &state.agents));
+        for notice in self.inbox.tick(
+            observed,
             &visible,
-            &live,
             &self.local.preferences.agent_notifications,
+            now,
         ) {
             if !notifications::show(&notice) {
                 self.notification_status =

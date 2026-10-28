@@ -139,16 +139,7 @@ impl NativeConnection {
         let Ok(target) = serde_json::from_str::<dgl_core::flow::PaneTarget>(&target_json) else {
             return false;
         };
-        let s = self.inner.state();
-        if target.pane_id == "shell" {
-            self.inner.target().as_ref() == Some(&target)
-        } else {
-            s.render_targets.get(&target.pane_id) == Some(&target)
-                && matches!(
-                    s.phase,
-                    dgl_core::connection::Phase::Ready | dgl_core::connection::Phase::Restoring
-                )
-        }
+        self.inner.state().accepts_output(&target)
     }
     pub fn submit_input(&self, target_json: String, bytes: Vec<u8>) -> Result<u64, CoreError> {
         Ok(self.inner.input(
@@ -258,22 +249,15 @@ impl NativeAgentInbox {
         let visible: std::collections::HashSet<String> =
             serde_json::from_str(&visible_json).map_err(|_| invalid())?;
         let settings = serde_json::from_str(&settings_json).map_err(|_| invalid())?;
-        let now = dgl_core::agent::now_ms();
         let mut inbox = self.inner.lock().unwrap();
-        let mut live = std::collections::HashSet::new();
-        for (endpoint, snapshot) in sources {
-            if snapshot.current(now) {
-                live.extend(
-                    snapshot
-                        .observations
-                        .iter()
-                        .map(|o| format!("{}:{}:{}", endpoint, snapshot.server, o.run)),
-                );
-            }
-            inbox.ingest(&endpoint, &snapshot, &settings, now);
-        }
-        inbox.read_visible(&visible);
-        let deliver = inbox.ready(now, &visible, &live, &settings);
+        let deliver = inbox.tick(
+            sources
+                .iter()
+                .map(|(endpoint, snapshot)| (endpoint.as_str(), snapshot)),
+            &visible,
+            &settings,
+            dgl_core::agent::now_ms(),
+        );
         Ok(serde_json::json!({"recent": inbox.recent, "deliver": deliver}).to_string())
     }
     pub fn mark_read(&self, id: String) {
@@ -315,7 +299,12 @@ mod tests {
         assert!(before.get("title_updates_enabled").is_none());
         // Bindings read the core's predicates instead of re-deriving them.
         let derived = &before["derived"];
-        for key in ["reconnecting", "retry_available", "retry_exhausted"] {
+        for key in [
+            "observing_agents",
+            "reconnecting",
+            "retry_available",
+            "retry_exhausted",
+        ] {
             assert!(derived[key].is_boolean(), "{key}");
         }
         assert!(derived.get("retry_message").is_some());

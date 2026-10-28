@@ -39,5 +39,10 @@
   AGY·Grok Build는 실험 지원이며 실제 로그인·유료 호출 인수는 남아 있다.
 - Linux 앱·WSL 연동·사용자 데이터 이전. 현재 실행·자동 이전 기능으로 안내하지 않는다.
 
+## 검사 보완
+
+- [ ] `AgentNotificationTest#channelPermissionAndClickIntentRetainOnlyEventId`는 시작 시 알림 권한이 허용돼 있으면
+  권한 회수로 앱 프로세스가 종료되어 실패한다. 시작 상태와 무관하게 회수 경로를 검사하도록 고친다.
+
 전체 Android API matrix나 장시간 계측은 기본 작업에 자동으로 추가하지 않습니다.
 현재 검사 근거와 제약은 [VALIDATION.md](docs/VALIDATION.md)를 따릅니다.

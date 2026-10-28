@@ -352,14 +352,18 @@ pub struct Notice {
 }
 impl Notice {
     pub fn key(&self) -> String {
-        format!(
-            "{}:{}:{}",
-            self.endpoint, self.event.server, self.event.pane
-        )
+        pane_key(&self.endpoint, &self.event.server, &self.event.pane)
     }
     pub fn id(&self) -> String {
         format!("{}:{}", self.endpoint, self.event.id)
     }
+}
+/// Identifies a visible pane for `Inbox::tick`; notices for it are read and never delivered.
+pub fn pane_key(endpoint: &str, server: &str, pane: &str) -> String {
+    format!("{endpoint}:{server}:{pane}")
+}
+fn run_key(endpoint: &str, server: &str, run: &str) -> String {
+    format!("{endpoint}:{server}:{run}")
 }
 #[derive(Default)]
 pub struct Inbox {
@@ -369,6 +373,31 @@ pub struct Inbox {
     pending: HashMap<String, (u64, Notice)>,
 }
 impl Inbox {
+    /// One notification pass shared by every platform. `sources` are the endpoints whose
+    /// connection is observing agents (`State::observing_agents`) with that snapshot; a
+    /// coalesced notice is delivered only while its run is still observed and current.
+    pub fn tick<'a>(
+        &mut self,
+        sources: impl IntoIterator<Item = (&'a str, &'a Snapshot)>,
+        visible: &HashSet<String>,
+        settings: &NotificationSettings,
+        now: u64,
+    ) -> Vec<Notice> {
+        let mut live = HashSet::new();
+        for (endpoint, snapshot) in sources {
+            if snapshot.current(now) {
+                live.extend(
+                    snapshot
+                        .observations
+                        .iter()
+                        .map(|o| run_key(endpoint, &snapshot.server, &o.run)),
+                );
+            }
+            self.ingest(endpoint, snapshot, settings, now);
+        }
+        self.read_visible(visible);
+        self.ready(now, visible, &live, settings)
+    }
     pub fn ingest(
         &mut self,
         endpoint: &str,
@@ -451,10 +480,7 @@ impl Inbox {
                     && !n.read
                     && settings.allows(n.event.kind)
                     && !visible.contains(&key)
-                    && live.contains(&format!(
-                        "{}:{}:{}",
-                        n.endpoint, n.event.server, n.event.run
-                    )))
+                    && live.contains(&run_key(&n.endpoint, &n.event.server, &n.event.run)))
                 .then_some(n)
             })
             .collect()
@@ -590,6 +616,66 @@ mod tests {
         assert!(
             inbox
                 .ready(6000, &HashSet::new(), &HashSet::new(), &settings)
+                .is_empty()
+        );
+    }
+    #[test]
+    fn tick_delivers_only_observed_runs_and_reads_visible_panes() {
+        let settings = NotificationSettings {
+            os: true,
+            ..Default::default()
+        };
+        let observation = Observation {
+            session: "$1".into(),
+            window: "@1".into(),
+            pane: "%1".into(),
+            run: "run".into(),
+            actor: "parent".into(),
+            agent: Agent::Codex,
+            last: None,
+            supported: vec![],
+        };
+        let snapshot = |id: &str| Snapshot {
+            server: "server".into(),
+            valid: true,
+            observed_at: 1,
+            observations: vec![observation.clone()],
+            events: vec![event(id, Kind::Approval)],
+            ..Default::default()
+        };
+        let none = HashSet::new();
+        let mut inbox = Inbox::default();
+        let first = snapshot("observed");
+        assert!(
+            inbox
+                .tick([("host", &first)], &none, &settings, 1)
+                .is_empty()
+        );
+        let delivered = inbox.tick([("host", &first)], &none, &settings, 2001);
+        assert_eq!(delivered.len(), 1);
+        // A connection that stops observing is omitted: its pending notice is dropped.
+        let second = snapshot("unobserved");
+        inbox.tick([("host", &second)], &none, &settings, 3000);
+        assert!(inbox.tick([], &none, &settings, 5001).is_empty());
+        // A visible pane reads the notice instead of delivering it.
+        let third = snapshot("visible");
+        let visible = HashSet::from([pane_key("host", "server", "%1")]);
+        assert!(
+            inbox
+                .tick([("host", &third)], &visible, &settings, 6000)
+                .is_empty()
+        );
+        assert!(
+            inbox
+                .recent
+                .iter()
+                .find(|n| n.event.id == "visible")
+                .unwrap()
+                .read
+        );
+        assert!(
+            inbox
+                .tick([("host", &third)], &none, &settings, 8001)
                 .is_empty()
         );
     }

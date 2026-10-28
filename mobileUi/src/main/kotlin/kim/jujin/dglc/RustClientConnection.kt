@@ -71,6 +71,8 @@ class RustClientConnection(
     private var stateCache: CachedState? = null
     private var decodedState: JsonObject? = null
     private var decodedLanguage: UiLanguage? = null
+    @Volatile private var observingAgents = false
+    override val observedAgents: AgentSnapshot get() = if (observingAgents) agents.value else AgentSnapshot()
     override val generation: Long get() = adapterGeneration
     private var lastSession = host.lastSession
     private var lastPane = host.lastPane
@@ -211,6 +213,7 @@ class RustClientConnection(
         val recovering = recovery.update(checking || outputFailed, phase, connecting, targets)
         if (!recovering && !outputFailed) outputRecoveryAttempted = false
         val outputRetry = outputFailed && phase in setOf(Phase.Ready, Phase.Shell, Phase.Restoring) && !connecting
+        observingAgents = derivedFlag("observing_agents")
         val canStopRetrying = derivedFlag("reconnecting")
         val canRetryNow = outputRetry || derivedFlag("retry_available")
         val retryMessage = derived["retry_message"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
@@ -638,6 +641,7 @@ class RustClientConnection(
         resizes.reset()
         appliedSequence = -1L
         decodedState = null
+        observingAgents = false
         recovery.reset()
         presentation.unbind()
         refreshRequest = null; refreshing.value = false
