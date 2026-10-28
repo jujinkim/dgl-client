@@ -6,27 +6,28 @@
 
 ## 현재 변경 검사 (2026-10-28)
 
-Android 키보드 대응에 기기 로컬 `androidKeyboardMode` 설정을 추가했습니다. 기본 자동은 짧은 일반 출력만
-리사이즈하며 긴 출력·전체 화면 앱·이력 열람·복원 중에는 이동합니다. 이동은 하단 빈 행을 제외한 마지막 콘텐츠와
-커서를 기준으로 하고, 명시적인 리사이즈는 전체 화면 앱도 가시 높이에 맞춥니다. IME 종료 후 최종 행 수를 제출하고
-닫을 때 전체 크기를 복원합니다. 자체 resize의 크기 세대 갱신으로 자동 선택을 반복하지 않습니다.
+Android 하단 `…` CLI 메뉴를 별도 Popup 창에서 같은 Activity의 오버레이로 옮겼습니다. 메뉴 열기·명령 선택·
+바깥 터치·Back·Escape 동안 WebView 입력 포커스와 IME 표시 상태를 보존합니다. Back은 메뉴가 열린 동안
+IME보다 먼저 처리하고, 닫을 때 키/Back 콜백을 해제합니다. 입력 차단·명령 1회 전송·대상 세대 검사와
+복구 시 메뉴 종료를 유지합니다. `단축키 설정` 선택 뒤에는 기존 설정 화면의 포커스 동작을 따릅니다.
 
 | 검사 | 이번 결과·범위 |
 |---|---|
-| Rust | core·UniFFI 46 통과·환경 ignore 6. 설정 누락·저장 호환과 동기화 제외, 기존 계약 fixture 포함 |
-| JVM | `:app:desktopTest`: 96 통과·환경별 예상 skip 9. 추가 설정 검사와 명시적 이름 목록 대조 통과 |
-| 웹 | 55 통과. 빈 행·커서·경계 높이·표시 pane 위치·모드 전환·TUI 격자 복원·최종 resize·빠른 반전·오래된 프레임·스크롤바/수동 위치 포함 |
-| Python | 99 통과. JVM/Android 명시 목록과 관련 검증기 회귀 포함 |
+| CLI 단위 검사 | `:app:desktopTest --tests kim.jujin.dglc.CliLauncherTest`: 5 통과·skip 0. 명시적 이름 목록 대조 통과 |
 | Android 빌드 | Debug·계측 APK·`lintDebug` 통과. lint 기존 검토 진단 12개 목록 검증 통과 |
-| 정적·산출물 | 번역 목록·로컬 문서 링크·diff 공백·대시보드 메타데이터·원본 Debug APK/4 ABI 검사 통과 |
+| Android 계측 | 전용 API36에서 CLI 메뉴 관련 2개 통과·skip 0. 결과 검증기의 명시적 이름 목록 대조 통과 |
+| IME·포커스 | 키보드 표시/숨김 각각 열기·선택·닫기의 매 프레임과 포커스 전환 감시. 일시적인 IME 숨김/재표시·WebView/창 포커스 상실 없음 |
+| 메뉴 회귀 | 같은 Activity 창·버튼 위 위치·화면 경계·한 줄/두 줄 전환·크기 복원·가로 내부 스크롤·키/볼륨/터치 입력 차단·복구/대상 변경·설정 진입 확인 |
+| 정적 | 변경 문서의 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과 |
 
-JVM 결과는 `artifacts/android-keyboard/jvm-tests.json`, 빌드·Python 원문은 `.tools/android-keyboard-*.log`에 있습니다.
-첫 JVM/Rust 실행은 새 기본 필드가 빠진 설정 fixture 예상값 때문에 실패했습니다. 기존 입력 fixture는 유지하고
-인코딩 예상값에 추가 기본값을 반영한 뒤 최종 실행을 통과했습니다. 계측 소스의 기존 resize 없음 검사는 이동 모드를 명시했습니다.
+결과·원문·프레임 감시 로그는 `artifacts/cli-menu-overlay/`, 빌드는 `.tools/cli-overlay-*-build.log`에 있습니다.
+최초 IME 계측은 메뉴를 열기 전 WebView 초기 포커스 대기에서 실패하여 검사 준비 단계에 포커스를 명시했습니다.
+이어진 실행은 기기 로그상 통과했으나 종료 처리 중 실행 래퍼의 120초 제한에 걸려 최종 통과 수에 포함하지 않았습니다.
+최종 두 검사 실행은 72.423초로 완료했고 결과 검증기를 통과했습니다.
 
-APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본입니다. Android 계측은 컴파일만 했으며
-기기·에뮬레이터에서 이번 키보드 동작을 실행하지 않았습니다. 실제 SSH·물리 키보드·macOS GUI/Keychain·
-데스크톱 재패키징·Windows 네이티브·전체 API matrix·장시간 반복 검사는 수행하지 않았습니다.
+APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본입니다. 삼성 키보드 실기 검사는 수행하지 않았습니다.
+실제 SSH·물리 키보드·macOS GUI/Keychain·데스크톱 재패키징·Windows 네이티브·전체 API matrix·장시간 반복과
+관련 범위 밖 Rust·웹·JVM 전체 검사는 실행하지 않았습니다. 앞선 키보드 대응 모드 검사 기록은 [HISTORY.md](HISTORY.md)에 있습니다.
 
 ## 남은 한계
 

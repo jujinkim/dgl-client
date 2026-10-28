@@ -132,6 +132,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(0.dp))) {
         CompositionLocalProvider(LocalAppModel provides model, LocalAccentFill provides (rgb(raw) to rgb(onAccentColor(raw))),
             LocalTextSelectionColors provides TextSelectionColors(rgb(readable), rgb(selection))) {
+        CliMenuOverlayHost(enabled = androidInput) {
         Surface(Modifier.fillMaxSize()) {
           val safeInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
           val imeInsets = if (androidInput) WindowInsets.ime else WindowInsets(0)
@@ -291,6 +292,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text(t("오류")) }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text(t("닫기")) } }) }
           }
           }
+        }
         }
         }
     }

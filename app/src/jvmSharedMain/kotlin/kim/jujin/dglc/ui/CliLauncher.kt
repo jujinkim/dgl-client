@@ -29,10 +29,11 @@ import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
@@ -106,6 +107,7 @@ private object AboveLauncher : PopupPositionProvider {
     val blocks = inputGate?.inputBlocks?.collectAsState()?.value
     val menuAllowed = { allowed() && (blocks == null || inputGate?.inputBlocked(menuOwner) != true) }
     val available = menuAllowed()
+    val overlay = LocalCliMenuOverlay.current
     SideEffect { shortcutInput?.sync() }
     // A target/phase/dialog change discards the request before painting or handling another click.
     var request by remember(client, status.cliLaunchPhase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
@@ -171,34 +173,27 @@ private object AboveLauncher : PopupPositionProvider {
                     shortcuts.distinct().forEach { shortcut -> shortcutButton(shortcut, Modifier) }
                 }
             }
-            val density = LocalDensity.current
-            val safeTop = WindowInsets.safeDrawing.getTop(density)
-            var launcherTop by remember { mutableIntStateOf(0) }
-            // Anchor and height limit use the entire fixed column above the menu.
+            var launcherBounds by remember { mutableStateOf(Rect.Zero) }
+            // Anchor uses the entire fixed column above the menu.
             Box(Modifier.zIndex(1f).height(if (twoRows) columnHeight else buttonHeight)
-                .onGloballyPositioned { launcherTop = it.boundsInWindow().top.toInt() }, contentAlignment = Alignment.BottomCenter) {
+                .onGloballyPositioned { launcherBounds = it.boundsInWindow() }, contentAlignment = Alignment.BottomCenter) {
                 if (twoRows) Box(Modifier.align(Alignment.TopCenter)) { keyboardButton() }
                 TerminalToolButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
                     contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("CLI 실행 메뉴") }) { UiGlyph(UiIcons.more, Modifier.size(if (mobile) 18.dp else 20.dp)) }
+                    modifier = Modifier.size(buttonHeight).focusProperties { canFocus = overlay == null }
+                        .semantics { contentDescription = t("CLI 실행 메뉴") }) { UiGlyph(UiIcons.more, Modifier.size(if (mobile) 18.dp else 20.dp)) }
                 val opened = request
                 if (opened != null) {
-                    // Android posts the focus request so it runs after the popup window is removed.
-                    DisposableEffect(opened, terminalFocus) { onDispose { terminalFocus.request() } }
-                    Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
-                        properties = imePreservingPopupProperties()) {
+                    val menuContent: @Composable () -> Unit = {
                         val menuFocus = remember { FocusRequester() }
-                        // The Android popup already owns keys/back. Moving Compose focus
-                        // away from the WebView can end its IME session on some keyboards.
-                        LaunchedEffect(Unit) { if (!mobile) menuFocus.requestFocus() }
+                        LaunchedEffect(Unit) { if (overlay == null) menuFocus.requestFocus() }
                         Surface(modifier = Modifier.semantics { paneTitle = t("CLI 실행 메뉴") }, shadowElevation = 8.dp,
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                            val heightLimit = if (mobile) Modifier.heightIn(max = with(density) {
-                                (launcherTop - safeTop).coerceAtLeast(0).toDp()
-                            }) else Modifier
-                            Column(Modifier.width(IntrinsicSize.Max).then(heightLimit).verticalScroll(rememberScrollState()).onPreviewKeyEvent {
+                            val menuKeys = if (overlay == null) Modifier.onPreviewKeyEvent {
                                 if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { dismiss(); true } else false
-                            }.focusRequester(menuFocus).focusable()) {
+                            }.focusRequester(menuFocus).focusable() else Modifier
+                            Column(Modifier.width(IntrinsicSize.Max).focusProperties { canFocus = overlay == null }
+                                .verticalScroll(rememberScrollState()).then(menuKeys)) {
                                 val launch: (CliCommand) -> Unit = { command ->
                                     if (request === opened) {
                                         request = null
@@ -215,7 +210,7 @@ private object AboveLauncher : PopupPositionProvider {
                                 LauncherRow("Grok Build", LauncherIcons.grok, available && status.acceptsInput,
                                     { launch(CliCommand.Grok) }, { launch(CliCommand.GrokBypass) }, experimental = true)
                                 HorizontalDivider()
-                                Row(Modifier.fillMaxWidth().height(48.dp).clickable(role = Role.Button) {
+                                Row(Modifier.fillMaxWidth().height(48.dp).focusProperties { canFocus = overlay == null }.clickable(role = Role.Button) {
                                     if (request === opened) { dismiss(); openShortcutSettings() }
                                 }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -224,6 +219,12 @@ private object AboveLauncher : PopupPositionProvider {
                                 }
                             }
                         }
+                    }
+                    if (overlay != null) RegisterCliMenuOverlay(overlay, launcherBounds, dismiss, menuContent)
+                    else {
+                        DisposableEffect(opened, terminalFocus) { onDispose { terminalFocus.request() } }
+                        Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
+                            properties = imePreservingPopupProperties(), content = menuContent)
                     }
                 }
             }
@@ -262,8 +263,9 @@ private object AboveLauncher : PopupPositionProvider {
 }
 
 @Composable private fun LauncherItem(label: String?, description: String, icon: ImageVector, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
+    val overlay = LocalCliMenuOverlay.current
     val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
-    Row(modifier.fillMaxHeight().clickable(enabled = enabled, role = Role.Button, onClick = action)
+    Row(modifier.fillMaxHeight().focusProperties { canFocus = overlay == null }.clickable(enabled = enabled, role = Role.Button, onClick = action)
         .semantics(mergeDescendants = true) { contentDescription = description }.padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = color)

@@ -568,7 +568,7 @@ class AndroidMobileInputTest {
         }
     }
 
-    @Test fun cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput() = runBlocking<Unit> { withLauncherDisplay {
+    @Test fun cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput() = runBlocking<Unit> { withLauncherDisplay(animateIme = true) {
         val client = Connection("launcher")
         lateinit var app: AppModel; lateinit var previous: LocalState; lateinit var workspace: WorkspaceState
         var oldConnections = emptyList<ClientConnection>(); var oldSelected: ClientConnection? = null
@@ -591,14 +591,53 @@ class AndroidMobileInputTest {
                 awaitNode("CLI 실행 메뉴")
                 withTimeout(5000) { while (client.surface == null) delay(20) }
                 val renderer = client.surface as kim.jujin.dglc.ui.AndroidTerminal
+                scenario.onActivity { renderer.focus() }
+                suspend fun touch(text: String) {
+                    val rect = bounds(awaitNode(text))
+                    tap(rect.centerX().toFloat(), rect.centerY().toFloat())
+                }
+                suspend fun preservesEditor(visible: Boolean, action: suspend () -> Unit) {
+                    waitIme(scenario, visible)
+                    withTimeout(5000) {
+                        var focused = false
+                        while (!focused) { scenario.onActivity { focused = renderer.view.hasFocus() }; delay(25) }
+                    }
+                    lateinit var observation: MenuInputObservation
+                    lateinit var callback: Window.Callback
+                    scenario.onActivity {
+                        callback = it.window.callback
+                        observation = MenuInputObservation(it.window.decorView, renderer.view, visible)
+                    }
+                    println("DGL CLI $stage: observing IME=$visible")
+                    var completed = false
+                    try {
+                        action()
+                        delay(250) // Also catch a delayed IME hide/reopen after the menu disappears.
+                        completed = true
+                    } finally {
+                        scenario.onActivity {
+                            observation.close()
+                            println("DGL CLI $stage: ${observation.frames} frames, failure=${observation.failure}")
+                            assertNull("IME/focus changed during $stage: ${observation.failure}", observation.failure)
+                            assertTrue("Observed the complete menu gesture", observation.frames > 0)
+                            if (completed) assertSame("Menu key callback was removed", callback, it.window.callback)
+                        }
+                    }
+                }
                 suspend fun checkOpen(visible: Boolean, anchor: Rect) {
-                    repeat(4) {
+                    repeat(2) {
                         awaitNode("Claude Code 실행")
-                        val panel = bounds(find(instrumentation.uiAutomation.rootInActiveWindow) { it.paneTitle?.toString() == "CLI 실행 메뉴" }!!)
+                        val menu = find(instrumentation.uiAutomation.rootInActiveWindow) { it.paneTitle?.toString() == "CLI 실행 메뉴" }!!
+                        assertEquals("Menu stays in the Activity window", awaitNode("CLI 실행 메뉴").windowId, menu.windowId)
+                        val panel = bounds(menu)
                         assertTrue("The entire menu stays above the shortcut column", panel.bottom <= anchor.top)
                         scenario.onActivity { activity ->
                             val insets = activity.window.decorView.rootWindowInsets
                             assertEquals(visible, insets.isVisible(WindowInsets.Type.ime()))
+                            assertTrue(renderer.view.hasFocus())
+                            assertTrue(renderer.view.hasWindowFocus())
+                            assertTrue(panel.left >= insets.getInsets(WindowInsets.Type.systemBars()).left)
+                            assertTrue(panel.right <= activity.window.decorView.width - insets.getInsets(WindowInsets.Type.systemBars()).right)
                             assertTrue(panel.top >= insets.getInsets(WindowInsets.Type.systemBars()).top)
                         }
                         assertTrue(app.inputBlocked())
@@ -619,37 +658,56 @@ class AndroidMobileInputTest {
                     if (visible) click("키보드 열기")
                     waitIme(scenario, visible)
                     val anchor = bounds(awaitNode("키보드 닫기".takeIf { visible } ?: "키보드 열기"))
-                    click("CLI 실행 메뉴"); checkOpen(visible, anchor)
                     val before = client.writes.size
-                    scenario.onActivity {
-                        renderer.view.evaluateJavascript("window.dgl.postMessage(JSON.stringify({type:'input',data:'blocked'}))", null)
-                        val now = android.os.SystemClock.uptimeMillis()
-                        it.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, 0))
-                        it.dispatchKeyEvent(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_UP, 0))
-                        client.status.value = ConnectionStatus(Phase.Restoring, resizing = true)
+                    preservesEditor(visible) {
+                        touch("CLI 실행 메뉴"); checkOpen(visible, anchor)
+                        scenario.onActivity {
+                            renderer.view.evaluateJavascript("window.dgl.postMessage(JSON.stringify({type:'input',data:'blocked'}))", null)
+                            val now = android.os.SystemClock.uptimeMillis()
+                            it.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, 0))
+                            it.dispatchKeyEvent(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_UP, 0))
+                            client.status.value = ConnectionStatus(Phase.Restoring, resizing = true)
+                        }
+                        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+                        instrumentation.waitForIdleSync(); checkOpen(visible, anchor)
+                        assertEquals(before, client.writes.size)
+                        scenario.onActivity { client.status.value = ConnectionStatus(Phase.Ready) }
+                        instrumentation.waitForIdleSync(); checkOpen(visible, anchor)
+                        scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = false)) } }
+                        checkBar(twoRows = false)
+                        checkOpen(visible, bounds(awaitNode(if (visible) "키보드 닫기" else "키보드 열기")))
+                        scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = true)) } }
+                        checkBar(); checkOpen(visible, anchor)
+                        touch("Codex 실행"); checkClosed(visible)
                     }
-                    instrumentation.waitForIdleSync(); checkOpen(visible, anchor)
-                    assertEquals(before, client.writes.size)
-                    scenario.onActivity { client.status.value = ConnectionStatus(Phase.Ready) }
-                    instrumentation.waitForIdleSync(); checkOpen(visible, anchor)
-                    click("Codex 실행"); checkClosed(visible)
                     assertEquals(before + 1, client.writes.size)
                     assertArrayEquals("codex\r".encodeToByteArray(), client.writes.last())
+                    for (method in 0..4) {
+                        stage = "dismiss method $method with IME=$visible"
+                        val outside = bounds(awaitNode("텍스트 작성 열기"))
+                        preservesEditor(visible) {
+                            touch("CLI 실행 메뉴"); awaitNode("Claude Code 실행")
+                            when (method) {
+                                0 -> instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE)
+                                1 -> instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                                2 -> instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                                3 -> tap(outside.centerX().toFloat(), outside.centerY().toFloat())
+                                else -> {
+                                    val terminal = bounds(awaitNode("터미널 입력 도구"))
+                                    tap(terminal.left + 10f, anchor.top - 10f)
+                                }
+                            }
+                            checkClosed(visible)
+                        }
+                        assertFalse(app.composer(client).opened.value)
+                        assertEquals(before + 1, client.writes.size)
+                    }
                 }
                 val sent = client.writes.size
-                for (method in 0..2) {
-                    stage = "dismiss method $method with IME"
-                    val outside = bounds(awaitNode("텍스트 작성 열기"))
-                    click("CLI 실행 메뉴"); awaitNode("Claude Code 실행")
-                    when (method) {
-                        0 -> instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE)
-                        1 -> instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-                        else -> tap(outside.centerX().toFloat(), outside.centerY().toFloat())
-                    }
-                    checkClosed(true)
-                    assertFalse(app.composer(client).opened.value)
-                    assertEquals(sent, client.writes.size)
-                }
+                stage = "Back returns to IME handling after menu closes"
+                instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                waitIme(scenario, false)
+                click("키보드 열기"); waitIme(scenario, true)
                 stage = "real recovery dismisses"
                 click("CLI 실행 메뉴"); awaitNode("Claude Code 실행")
                 scenario.onActivity { client.status.value = ConnectionStatus(Phase.Reconnecting) }
@@ -662,12 +720,15 @@ class AndroidMobileInputTest {
                 if (node("키보드 열기") != null) click("키보드 열기")
                 waitIme(scenario, true)
                 val anchor = bounds(awaitNode("키보드 닫기"))
-                click("CLI 실행 메뉴"); checkOpen(true, anchor)
-                val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }
-                assertNotNull("Short IME viewport needs an internal menu scroll", scroll)
-                assertTrue(bounds(scroll!!).bottom <= anchor.top)
-                assertTrue(scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
-                click("Grok Build 실행 · 실험 지원"); checkClosed(true)
+                preservesEditor(true) {
+                    touch("CLI 실행 메뉴"); checkOpen(true, anchor)
+                    val menu = find(instrumentation.uiAutomation.rootInActiveWindow) { it.paneTitle?.toString() == "CLI 실행 메뉴" }
+                    val scroll = find(menu) { it.isScrollable }
+                    assertNotNull("Short IME viewport needs an internal menu scroll", scroll)
+                    assertTrue(bounds(scroll!!).bottom <= anchor.top)
+                    assertTrue(scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
+                    click("Grok Build 실행 · 실험 지원"); checkClosed(true)
+                }
                 assertEquals(sent + 1, client.writes.size)
                 assertArrayEquals("grok\r".encodeToByteArray(), client.writes.last())
                 stage = "shortcut settings from menu"
@@ -699,6 +760,40 @@ class AndroidMobileInputTest {
             }
         }
     } }
+
+    /** Sample every frame and focus transition, so hiding then reopening the IME still fails. */
+    private class MenuInputObservation(private val root: View, private val editor: WebView, private val imeVisible: Boolean) : AutoCloseable {
+        var failure: String? = null
+            private set
+        var frames = 0
+            private set
+        private val observer = root.viewTreeObserver
+        private val choreographer = Choreographer.getInstance()
+        private val focus = ViewTreeObserver.OnGlobalFocusChangeListener { _, _ -> sample() }
+        private val windowFocus = ViewTreeObserver.OnWindowFocusChangeListener { sample() }
+        private val frame = object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                frames++; sample(); choreographer.postFrameCallback(this)
+            }
+        }
+        init {
+            observer.addOnGlobalFocusChangeListener(focus)
+            observer.addOnWindowFocusChangeListener(windowFocus)
+            sample(); choreographer.postFrameCallback(frame)
+        }
+        private fun sample() {
+            val visible = root.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
+            if (failure == null && (visible != imeVisible || !editor.hasFocus() || !editor.hasWindowFocus()))
+                failure = "frame=$frames, IME=$visible (expected $imeVisible), editorFocus=${editor.hasFocus()}, windowFocus=${editor.hasWindowFocus()}"
+        }
+        override fun close() {
+            sample(); choreographer.removeFrameCallback(frame)
+            if (observer.isAlive) {
+                observer.removeOnGlobalFocusChangeListener(focus)
+                observer.removeOnWindowFocusChangeListener(windowFocus)
+            }
+        }
+    }
 
     /** Short app-window diagnostic, not a SurfaceFlinger presentation benchmark. */
     @Test fun imeTransitionsRecordFrameDurations() = runBlocking<Unit> { withLauncherDisplay(animateIme = true) {

@@ -186,6 +186,11 @@ python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command 
 
 tmux 소스 빌드에는 C 컴파일러·make·libevent·ncurses 개발 헤더가 필요합니다.
 Android 계측은 전용 에뮬레이터와 명시적인 `ANDROID_SERIAL`을 사용합니다.
+하단 CLI 메뉴만 확인할 때는 `AndroidMobileInputTest#cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput`과
+`AndroidVolumeKeyTest#cliLauncherCommandsLayoutDismissalAndTargetChanges`를 선택합니다(패키지 `kim.jujin.dglc`).
+메뉴 열기·선택·닫기 동안 매 프레임의 IME 표시와 WebView/창 포커스를 감시하며, 일시적인 숨김·재표시도 실패로 판정합니다.
+같은 Activity 창·바깥 터치·Back/Escape·콜백 해제·입력 차단·도구 줄 크기 변경·가로 스크롤을 함께 확인합니다.
+이 에뮬레이터 검사는 삼성 키보드 실기 확인을 대신하지 않습니다.
 API36 후보 검사는 앱/계측 APK를 먼저 빌드하고 fixture 안에서 실행합니다.
 연결 수명·IME·정상 복귀의 즉시 확인 dim과 SSH 유지·유지 끔의 자동 재연결/취소·삭제된 세션/인증 실패 보존·알림 인텐트·task 제거 후 새 실행만 짧게 확인할 때는 아래 실행에
 `DGL_ANDROID_TEST_CLASSES=kim.jujin.dglc.AndroidConnectionLifetimeTest`를 추가합니다.

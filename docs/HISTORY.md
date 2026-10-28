@@ -340,6 +340,13 @@ macOS ad-hoc 패키징·버전 대조를 확인했습니다. 원시는 `.tools/a
 작업 공간 검사의 초기 System UI ANR은 실패로 남겼으며 별도 재시작 실행에서 통과했습니다. 로그는 `.tools/tab-presentation-*`와
 `artifacts/tab-presentation/`에 있습니다. 요청부터 복원 콜백까지 탭 248ms·창 675ms를 기록했으나 실제 첫 표시 프레임 측정은 아닙니다.
 
+## 2026-10-28: Android 키보드 대응 모드
+
+기기 로컬 `androidKeyboardMode`에 자동·이동·리사이즈를 추가하고 기존 설정·동기화 호환을 유지했습니다.
+당시 core·UniFFI 46·JVM 96·웹 55·Python 99 통과, Rust 환경 ignore 6·JVM 예상 skip 9와
+Android Debug·계측 APK·lint를 확인했습니다. 실제 키보드 계측은 실행하지 않았습니다.
+초기 설정 fixture 예상값 실패는 최종 통과와 구분했으며 원문은 `.tools/android-keyboard-*.log`에 있습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.
