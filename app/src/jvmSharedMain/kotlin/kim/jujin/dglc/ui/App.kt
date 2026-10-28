@@ -72,7 +72,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     val dark = when (local.preferences.theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
     var edit by remember { mutableStateOf<HostProfile?>(null) }
     var adding by remember { mutableStateOf(false) }
-    var settings by remember { mutableStateOf(false) }
+    var settings by remember { mutableStateOf<SettingsPage?>(null) }
     var agentDetails by remember { mutableStateOf<Pair<ClientConnection, String?>?>(null) }
     var notifications by remember { mutableStateOf(false) }
     val mobileTabState = rememberLazyListState()
@@ -90,11 +90,11 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     LaunchedEffect(agentNav) {
         if (agentNav > 0) {
             explorer = false; notifications = false; agentDetails = null; tmuxNavigationClient = null
-            settings = false; adding = false; edit = null; deletion = null; error = null
+            settings = null; adding = false; edit = null; deletion = null; error = null
         }
     }
     DisposableEffect(model) { onDispose { model.visibleConnection = null; model.visibleConnections = emptySet(); model.hostEditing = false; model.blockInput(appInputOwner, false) } }
-    val appModal = notifications || agentError != null || agentDetails != null || settings || adding || edit != null || deletion != null || error != null
+    val appModal = notifications || agentError != null || agentDetails != null || settings != null || adding || edit != null || deletion != null || error != null
     SideEffect { model.blockInput(appInputOwner, appModal) }
     val colors = if (dark) darkColorScheme(
         primary = Color(0xff75aaff), secondary = Color(0xff75aaff),
@@ -160,7 +160,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                         })
                                         addAll(hostConnectionActions(client, model))
                                     }
-                                    add(t("설정") to { settings = true })
+                                    add(t("설정") to { settings = SettingsPage.Main })
                                 }
                                 MobileHeaderMenu(client?.let { tr("현재 호스트 {0} 연결 메뉴", it.host.alias) } ?: t("기타 메뉴"), actions)
                             }
@@ -180,7 +180,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                     selected?.let { HostConnectionMenu(it, model) }
                     TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(if (explorer) t("터미널") else t("호스트")) }
                     TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
-                    TextButton({ settings = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
+                    TextButton({ settings = SettingsPage.Main }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
                 }
                 if (!androidInput && connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                     connections.forEach { connection ->
@@ -238,15 +238,17 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                         }
                         if (wide || (selected != null && !explorer)) {
                             Box(Modifier.weight(1f).fillMaxHeight()) {
-                                if (workspaceMode) WorkspaceContent(model, local.preferences, { client, pane -> agentDetails = client to pane })
+                                if (workspaceMode) WorkspaceContent(model, local.preferences, { client, pane -> agentDetails = client to pane },
+                                    openShortcutSettings = { settings = SettingsPage.Shortcuts })
                                 else if (selected != null) key(selected) {
                                     val client = selected!!
                                     ConnectionScreen(client, local.preferences, mobileLayout, model, { agentDetails = client to it },
                                         mobileTabs = { MobileConnectionTabs(connections, selected, mobileTabState,
                                             { model.selectConnection(it); explorer = false }, model::removeConnection) },
-                                        openNavigation = tmuxNavigationClient === client, onNavigationOpened = { tmuxNavigationClient = null }) {
+                                        openNavigation = tmuxNavigationClient === client, onNavigationOpened = { tmuxNavigationClient = null },
+                                        openShortcutSettings = { settings = SettingsPage.Shortcuts }) {
                                         model.selected.value === client && (wide || !explorer) &&
-                                            !notifications && agentError == null && agentDetails == null && !settings && !adding && edit == null && deletion == null && error == null
+                                            !notifications && agentError == null && agentDetails == null && settings == null && !adding && edit == null && deletion == null && error == null
                                     }
                                 }
                                 else Column(Modifier.align(Alignment.Center).padding(24.dp)) {
@@ -270,15 +272,15 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                         Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                     selected?.let { HostConnectionMenu(it, model) }
                     TextButton({ notifications = true }) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
-                    TextButton({ settings = true }) { Text(t("설정")) }
+                    TextButton({ settings = SettingsPage.Main }) { Text(t("설정")) }
                 }
             }
-        if (selected == null || explorer || settings || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
+        if (selected == null || explorer || settings != null || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
         agentDetails?.let { (client, pane) -> AgentDetails(client, model, pane) { agentDetails = null } }
         if (notifications && !mobileLayout) AgentNotifications(model) { notifications = false }
         agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { TextButton({ model.agentNavigationError.value = null }) { Text(t("닫기")) } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
-        if (settings) SettingsDialog(model, mobileLayout, androidInput) { settings = false }
+        settings?.let { SettingsDialog(model, mobileLayout, androidInput, it) { settings = null } }
         deletion?.let { host -> ConfirmDialog(t("호스트 삭제"), tr("{0}의 로컬 설정과 저장된 자격 증명을 삭제합니다.", host.alias), {
             try {
                 model.credentials.delete(host.credentialRef)
@@ -297,7 +299,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, model: AppModel, showAgents: (String) -> Unit, workspace: Boolean = false, sharedFocus: TerminalFocus? = null,
     mobileTabs: @Composable () -> Unit = {},
-    openNavigation: Boolean = false, onNavigationOpened: () -> Unit = {}, inputAllowed: () -> Boolean) {
+    openNavigation: Boolean = false, onNavigationOpened: () -> Unit = {}, openShortcutSettings: () -> Unit = {}, inputAllowed: () -> Boolean) {
     val status by client.status.collectAsState()
     val remote by client.remote.collectAsState()
     val refreshing by client.refreshing.collectAsState()
@@ -435,7 +437,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         }
         if (!workspace && mobileLayout) mobileTabs()
         if (!workspace) TerminalShortcutBar(client, preferences.terminalShortcuts, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open,
-            mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, inputGate = model)
+            mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, inputGate = model, openShortcutSettings = openShortcutSettings)
     }
     if (mobileLayout && composerOpen) {
         DisposableEffect(composer) { onDispose { model.blockInput(composerOwner, false); if (model.selected.value === client && inputAllowed()) terminalFocus.request() } }
@@ -638,10 +640,10 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 
 private enum class SettingsPage { Main, Shortcuts, About }
 
-@Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, androidInput: Boolean, dismiss: () -> Unit) {
+@Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, androidInput: Boolean, initialPage: SettingsPage, dismiss: () -> Unit) {
     val local by model.local.collectAsState()
     var forget by remember { mutableStateOf<String?>(null) }
-    var page by remember { mutableStateOf(SettingsPage.Main) }
+    var page by remember { mutableStateOf(initialPage) }
     var restoreFocus by remember { mutableStateOf(false) }
     val mainScroll = rememberScrollState()
     val shortcutFocus = remember { androidx.compose.ui.focus.FocusRequester() }

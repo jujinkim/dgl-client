@@ -670,6 +670,23 @@ class AndroidMobileInputTest {
                 click("Grok Build 실행 · 실험 지원"); checkClosed(true)
                 assertEquals(sent + 1, client.writes.size)
                 assertArrayEquals("grok\r".encodeToByteArray(), client.writes.last())
+                stage = "shortcut settings from menu"
+                scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+                waitOrientation(scenario, false)
+                click("CLI 실행 메뉴"); awaitNode("단축키 설정")
+                assertTrue(bounds(awaitNode("단축키 설정")).top >= bounds(awaitNode("Grok Build 실행 · 실험 지원")).bottom)
+                click("단축키 설정"); awaitNode("사용 중인 단축키")
+                assertNull(node("Claude Code 실행"))
+                assertTrue(app.inputBlocked())
+                scenario.onActivity {
+                    renderer.view.evaluateJavascript("window.dgl.postMessage(JSON.stringify({type:'input',data:'blocked-settings'}))", null)
+                }
+                delay(100)
+                assertEquals(sent + 1, client.writes.size)
+                click("뒤로"); awaitNode("닫기")
+                click("닫기")
+                withTimeout(5000) { while (app.inputBlocked()) delay(25) }
+                assertSame(renderer, client.surface)
             } catch (failure: Throwable) {
                 screenshot("cli-launcher-ime-failure")
                 throw AssertionError("CLI launcher IME stage: $stage", failure)

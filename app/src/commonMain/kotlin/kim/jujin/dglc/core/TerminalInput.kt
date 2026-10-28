@@ -24,7 +24,7 @@ import kotlinx.serialization.Serializable
     fun bytes(): ByteArray = sequence.encodeToByteArray()
 
     companion object {
-        val defaultShortcuts = listOf(Escape, Tab, Enter, ShiftTab, ShiftLeft, CtrlC, CtrlD, CtrlL, Up, Down, Left, Right, Home, End)
+        val defaultShortcuts = listOf(Escape, Tab, Enter, ShiftTab, ShiftLeft, CtrlC, CtrlD, CtrlJ, CtrlL, Up, Down, Left, Right, Home, End)
     }
 }
 

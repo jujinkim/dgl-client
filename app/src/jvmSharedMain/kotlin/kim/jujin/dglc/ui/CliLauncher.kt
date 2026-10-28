@@ -96,7 +96,7 @@ private object AboveLauncher : PopupPositionProvider {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalShortcut>, allowed: () -> Boolean, terminalFocus: TerminalFocus,
     mobile: Boolean = false, openComposer: () -> Unit = {}, workspace: Boolean = false, mobileShortcutBarTwoRows: Boolean = true,
-    inputGate: kim.jujin.dglc.AppModel? = null) {
+    inputGate: kim.jujin.dglc.AppModel? = null, openShortcutSettings: () -> Unit) {
     val shortcutInput = inputGate?.shortcutInput(client)
     val modifiers = shortcutInput?.modifiers?.collectAsState()?.value
     val status by client.status.collectAsState()
@@ -188,7 +188,9 @@ private object AboveLauncher : PopupPositionProvider {
                     Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,
                         properties = imePreservingPopupProperties()) {
                         val menuFocus = remember { FocusRequester() }
-                        LaunchedEffect(Unit) { menuFocus.requestFocus() }
+                        // The Android popup already owns keys/back. Moving Compose focus
+                        // away from the WebView can end its IME session on some keyboards.
+                        LaunchedEffect(Unit) { if (!mobile) menuFocus.requestFocus() }
                         Surface(modifier = Modifier.semantics { paneTitle = t("CLI 실행 메뉴") }, shadowElevation = 8.dp,
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                             val heightLimit = if (mobile) Modifier.heightIn(max = with(density) {
@@ -212,6 +214,14 @@ private object AboveLauncher : PopupPositionProvider {
                                     { launch(CliCommand.Agy) }, { launch(CliCommand.AgyBypass) }, experimental = true)
                                 LauncherRow("Grok Build", LauncherIcons.grok, available && status.acceptsInput,
                                     { launch(CliCommand.Grok) }, { launch(CliCommand.GrokBypass) }, experimental = true)
+                                HorizontalDivider()
+                                Row(Modifier.fillMaxWidth().height(48.dp).clickable(role = Role.Button) {
+                                    if (request === opened) { dismiss(); openShortcutSettings() }
+                                }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(UiIcons.settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Text(t("단축키 설정"), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                }
                             }
                         }
                     }

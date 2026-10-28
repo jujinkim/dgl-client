@@ -28,7 +28,7 @@ class TerminalInputTest {
             assertContentEquals(wire.encodeToByteArray(), key.bytes())
             assertContentEquals(wire.encodeToByteArray(), VolumeBinding(VolumeAction.Shortcut, listOf(MacroStep.Key(key))).bytes())
         }
-        assertEquals(listOf("Esc", "Tab", "Enter", "Shift+Tab", "Shift+←", "Ctrl+C", "Ctrl+D", "Ctrl+L", "↑", "↓", "←", "→", "Home", "End"), TerminalKey.defaultShortcuts.map { it.label })
+        assertEquals(listOf("Esc", "Tab", "Enter", "Shift+Tab", "Shift+←", "Ctrl+C", "Ctrl+D", "Ctrl+J", "Ctrl+L", "↑", "↓", "←", "→", "Home", "End"), TerminalKey.defaultShortcuts.map { it.label })
     }
 
     @Test fun mixedStepsUnicodeNewlinesAndNoImplicitEnter() {

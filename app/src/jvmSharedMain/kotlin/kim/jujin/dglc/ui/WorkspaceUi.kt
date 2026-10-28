@@ -97,7 +97,7 @@ import kim.jujin.dglc.core.*
 private data class TabDrag(val tab: String, val position: Offset)
 
 /** Flat keyed leaves keep composition identity independent of the shape of the split tree. */
-@Composable internal fun WorkspaceContent(model: AppModel, preferences: Preferences, showAgents: (ClientConnection, String) -> Unit) {
+@Composable internal fun WorkspaceContent(model: AppModel, preferences: Preferences, showAgents: (ClientConnection, String) -> Unit, openShortcutSettings: () -> Unit) {
     val workspace by model.workspace.collectAsState()
     val activeClient by model.selected.collectAsState()
     val blocks by model.inputBlocks.collectAsState()
@@ -282,11 +282,11 @@ private data class TabDrag(val tab: String, val position: Offset)
                 } }
             }
         }
-        activeClient?.let { client -> key(client) { WorkspaceInputTools(client, model, preferences, focus(client)) } }
+        activeClient?.let { client -> key(client) { WorkspaceInputTools(client, model, preferences, focus(client), openShortcutSettings) } }
     }
 }
 
-@Composable private fun WorkspaceInputTools(client: ClientConnection, model: AppModel, preferences: Preferences, focus: TerminalFocus) {
+@Composable private fun WorkspaceInputTools(client: ClientConnection, model: AppModel, preferences: Preferences, focus: TerminalFocus, openShortcutSettings: () -> Unit) {
     val composer = remember(client) { model.composer(client) }
     val opened by composer.opened.collectAsState()
     val status by client.status.collectAsState()
@@ -306,7 +306,7 @@ private data class TabDrag(val tab: String, val position: Offset)
     }
     if (preferences.mobilePaneToolbarVisible) TmuxPaneToolbar(client, { focus.request() }) { deleting = it }
     TerminalShortcutBar(client, preferences.terminalShortcuts, { model.selected.value === client }, focus, mobile = true,
-        openComposer = composer::open, workspace = true, mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, inputGate = model)
+        openComposer = composer::open, workspace = true, mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, inputGate = model, openShortcutSettings = openShortcutSettings)
     if (opened) {
         DisposableEffect(composer) { onDispose { model.blockInput(owner, false); if (model.selected.value === client) focus.request() } }
         TextInputDialog(composer, focus, { model.selected.value === client && !model.inputBlocked(owner) }, status.acceptsInput)

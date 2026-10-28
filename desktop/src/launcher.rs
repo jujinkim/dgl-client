@@ -283,6 +283,35 @@ impl Desktop {
             }
             menu = menu.child(row);
         }
+        let mut settings_entry = div()
+            .id("launcher-shortcut-settings")
+            .debug_selector(|| "launcher-shortcut-settings".into())
+            .h(px(45.))
+            .border_t_1()
+            .border_color(rgb(p.line))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .cursor_pointer()
+            .hover(move |s| s.bg(rgb(p.selection)))
+            .child(
+                svg()
+                    .path(UiIcon::Settings.path())
+                    .size(px(18.))
+                    .text_color(rgb(p.fg)),
+            )
+            .child(t("단축키 설정"))
+            .on_click(cx.listener(|s, _, window, cx| {
+                s.dismiss_launcher(window, cx);
+                s.menu = None;
+                s.settings = settings::SettingsState::default();
+                s.dialog = Some(Dialog::Shortcuts);
+                cx.notify();
+                cx.stop_propagation();
+            }));
+        settings_entry.style().align_self = Some(gpui::AlignSelf::Stretch);
+        menu = menu.child(settings_entry);
         Some(
             div()
                 .id("cli-launcher-overlay")

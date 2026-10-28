@@ -127,6 +127,7 @@ internal object EnglishCatalog {
         "다른 변경이 감지되어 다음 동기화에서 재시도합니다." to "Another change was detected. Retrying at the next sync.",
         "단일 창도 표시" to "Show single windows too",
         "단축키" to "Shortcut",
+        "단축키 설정" to "Shortcut settings",
         "단축키 기본값 복원" to "Reset shortcuts",
         "단축키를 선택하세요." to "Select a shortcut.",
         "닫기" to "Close",

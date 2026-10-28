@@ -123,6 +123,7 @@
   "다른 변경이 감지되어 다음 동기화에서 재시도합니다.": "Another change was detected. Retrying at the next sync.",
   "단일 창도 표시": "Show single windows too",
   "단축키": "Shortcut",
+  "단축키 설정": "Shortcut settings",
   "단축키 기본값 복원": "Reset shortcuts",
   "단축키를 선택하세요.": "Select a shortcut.",
   "닫기": "Close",

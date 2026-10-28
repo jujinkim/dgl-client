@@ -19,6 +19,8 @@ existing key names, sequences and saved preferences remain compatible.
   fixture notation only; it is not a settings field.
 - `terminalShortcuts` is a shared ordered key list: missing values use the common
   defaults; explicit custom and empty lists survive saving and reopening.
+  The common defaults include `CtrlJ` (`0a`) between `CtrlD` and `CtrlL`; existing
+  saved lists retain their order and contents until edited or reset to defaults.
 - `settings`: decode `source` as settings with unknown keys ignored, encode with
   defaults included and compare JSON trees with `expected`. A repository round trip
   must preserve the same model. Error cases must leave original bytes untouched.

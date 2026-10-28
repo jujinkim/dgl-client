@@ -1794,11 +1794,27 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
     };
     let (view, cx) = setup(cx);
     let terminal = add_terminal(&view, cx);
-    view.update(cx, |s, cx| {
-        s.dialog = Some(Dialog::Shortcuts);
-        cx.notify();
+    let (runtime, connection) = view.read_with(cx, |s, _| {
+        (
+            s.runtime.clone(),
+            s.active_tab().unwrap().connection.clone(),
+        )
     });
+    connection.close();
+    runtime.block_on(connection.join());
     redraw(cx);
+    let launcher = cx.debug_bounds("cli-launcher").unwrap();
+    cx.simulate_click(launcher.center(), Modifiers::default());
+    redraw(cx);
+    let settings = cx.debug_bounds("launcher-shortcut-settings").unwrap();
+    let menu = cx.debug_bounds("cli-launcher-menu").unwrap();
+    assert_eq!(settings.size.width, menu.size.width - px(2.));
+    cx.simulate_click(settings.center(), Modifiers::default());
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| {
+        s.launcher.opened.is_none() && matches!(s.dialog, Some(Dialog::Shortcuts))
+    }));
+    assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
     for selector in [
         "shortcut-setting-Ctrl",
         "shortcut-setting-Shift",
@@ -1831,6 +1847,7 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
     redraw(cx);
     cx.simulate_keystrokes("escape");
     redraw(cx);
+    assert!(cx.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
     // Removed keys no longer occupy the front of the bar.
     let bar = cx.debug_bounds("shortcut-bar").unwrap();
     let first = cx.debug_bounds("key-Ctrl+C").unwrap();

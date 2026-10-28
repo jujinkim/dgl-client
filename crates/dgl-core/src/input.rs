@@ -98,6 +98,7 @@ impl TerminalKey {
         Self::ShiftLeft,
         Self::CtrlC,
         Self::CtrlD,
+        Self::CtrlJ,
         Self::CtrlL,
         Self::Up,
         Self::Down,
