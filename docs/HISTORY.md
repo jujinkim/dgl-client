@@ -358,7 +358,8 @@ Android Debug·계측 APK·lint를 확인했습니다. 실제 키보드 계측�
 
 기본 CI에 Rust 코어/UniFFI·web 단위 검사를 추가하고, 수동 `verify_ssh`를 JVM 참조 대신 Rust `ssh_integration`으로 바꿨습니다.
 첫 실행에서 즉시 재시도 전환(`c2d4aca`) 뒤 갱신되지 않은 통합 검사 단언과, `--agent-home` 없이 조용히 통과하던 에이전트 검사를 고쳤습니다.
-의존성 감사에 Cargo.lock(crates.io)을 추가했으며 첫 조회에서 배포 타깃 runtime 권고가 확인되어 감사는 실패 상태입니다.
+의존성 감사에 Cargo.lock(crates.io)을 추가했습니다. 첫 조회의 runtime 권고 중 tokio는 1.54.1로 올렸고,
+gpui 0.2.2·russh·AGP가 버전을 고정한 나머지는 `blockedBy`·완화 조건·90일 만료를 갖춘 예외로 등록했습니다.
 이 검사로 세션 없는 control client의 `refresh-client -B` 구독 타이머가 tmux 3.2~3.6b 서버를 SIGSEGV로 종료시키는
 결함(3.7에서 수정)을 확인했습니다. 3.7 미만에는 구독 대신 같은 format을 1초마다 조회하도록 바꿨고,
 이후 3.3a·3.7c 모두 6개 통과와 새 tmux 크래시 보고서 없음을 확인했습니다.

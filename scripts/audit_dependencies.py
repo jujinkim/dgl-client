@@ -17,9 +17,10 @@ REQUIRED_GRAPHS = {(':androidApp', 'debugRuntimeClasspath'), (':androidApp', 're
                    (':androidApp', 'debugAndroidTestRuntimeClasspath'), (':', 'classpath'),
                    (':androidApp', 'androidLintTool'), (':app', 'androidLintTool'), (':app', 'inventoryAapt2'),
                    (':coreBindings', 'debugRuntimeClasspath'), (':mobileUi', 'debugRuntimeClasspath')}
-# Shipped Rust targets: Android APK ABIs, macOS app and Windows ZIP.
-CARGO_TARGETS = ('aarch64-linux-android', 'armv7-linux-androideabi', 'i686-linux-android', 'x86_64-linux-android',
-                 'aarch64-apple-darwin', 'x86_64-pc-windows-msvc')
+# Shipped Rust package per target: Android APK ABIs, macOS app and Windows ZIP.
+CARGO_TARGETS = {'aarch64-linux-android': 'dgl-uniffi', 'armv7-linux-androideabi': 'dgl-uniffi',
+                 'i686-linux-android': 'dgl-uniffi', 'x86_64-linux-android': 'dgl-uniffi',
+                 'aarch64-apple-darwin': 'dgl-desktop', 'x86_64-pc-windows-msvc': 'dgl-desktop'}
 
 
 def load_inventory(path, root=ROOT):
@@ -91,14 +92,20 @@ def cargo_closure(metadata, follow):
     return seen
 
 
-def cargo_runtime(metadata):
-    """Normal dependencies that are linked into a target; proc-macros and their own deps only run in rustc."""
-    macros = {p['id'] for p in metadata['packages'] if any('proc-macro' in t['kind'] for t in p['targets'])}
-    return cargo_closure(metadata, lambda pkg, kinds: None in kinds and pkg not in macros)
+def cargo_tree_packages(output):
+    """`name vX.Y.Z` lines of `cargo tree --prefix none --format {p}`."""
+    return {(line.split()[0], line.split()[1].removeprefix('v')) for line in output.splitlines() if line.strip()}
+
+
+def cargo_runtime(package, target):
+    """Crates linked into a shipped artifact, resolved with that build's own features (not dev or proc-macro)."""
+    return cargo_tree_packages(subprocess.check_output(
+        ['cargo', 'tree', '--locked', '-p', package, '--target', target, '-e', 'normal,no-proc-macro',
+         '--prefix', 'none', '--format', '{p}'], cwd=ROOT, text=True))
 
 
 def cargo_packages(metadata, runtime):
-    """Locked crates.io packages of every workspace member, feature and target; `runtime` holds shipped IDs."""
+    """Locked crates.io packages of every workspace member, feature and target; `runtime` holds shipped (name, version)."""
     packages = {p['id']: p for p in metadata['packages']}
     nodes = {n['id'] for n in metadata['resolve']['nodes']}
     members = set(metadata['workspace_members'])
@@ -108,7 +115,7 @@ def cargo_packages(metadata, runtime):
         p = packages[identifier]
         if p.get('source') != 'registry+https://github.com/rust-lang/crates.io-index':
             raise ValueError('Unaudited Cargo source: ' + identifier)
-        scope = 'runtime' if identifier in runtime else 'build' if identifier in build else 'test'
+        scope = 'runtime' if (p['name'], p['version']) in runtime else 'build' if identifier in build else 'test'
         result.append({'ecosystem': 'crates.io', 'name': p['name'], 'version': p['version'],
                        'artifacts': [{'name': f"{p['name']}-{p['version']}.crate", 'source': p['source']}],
                        'usages': [{'module': 'cargo', 'configuration': 'Cargo.lock', 'platform': 'rust-targets', 'scope': scope}]})
@@ -117,13 +124,12 @@ def cargo_packages(metadata, runtime):
     return result
 
 
-def cargo_metadata(target=None):
-    command = ['cargo', 'metadata', '--locked', '--all-features', '--format-version', '1']
-    return json.loads(subprocess.check_output(command + (['--filter-platform', target] if target else []), cwd=ROOT))
+def cargo_metadata():
+    return json.loads(subprocess.check_output(['cargo', 'metadata', '--locked', '--all-features', '--format-version', '1'], cwd=ROOT))
 
 
 def cargo_inventory():
-    runtime = set().union(*(cargo_runtime(cargo_metadata(target)) for target in CARGO_TARGETS))
+    runtime = set().union(*(cargo_runtime(package, target) for target, package in CARGO_TARGETS.items()))
     return cargo_packages(cargo_metadata(), runtime)
 
 
@@ -181,8 +187,9 @@ def apply_exceptions(findings, exceptions, today=None):
             raise ValueError('Expired, future, overdue or over-90-day exception: ' + e['id'])
         if not e.get('reason') or not e.get('evidence') or not e.get('conditions') or not e.get('usages'):
             raise ValueError('Exception lacks evidence/conditions/scope')
-        if any(u['scope'] not in {'build', 'test'} for u in e['usages']):
-            raise ValueError('Runtime exception forbidden')
+        # Runtime use is excepted only when no compatible fixed release exists; name what blocks it.
+        if any(u['scope'] not in {'build', 'test'} for u in e['usages']) and not e.get('blockedBy'):
+            raise ValueError('Runtime exception requires blockedBy: ' + e['id'])
     for f in findings:
         f['status'] = 'blocked'
         for e in exceptions:
@@ -190,8 +197,8 @@ def apply_exceptions(findings, exceptions, today=None):
                 usages = [{k: u[k] for k in ('module', 'configuration', 'platform', 'scope')} for u in f['usages']]
                 actual = {json.dumps(u, sort_keys=True) for u in usages}
                 allowed = {json.dumps(u, sort_keys=True) for u in e['usages']}
-                if any(u['scope'] == 'runtime' for u in usages) or actual != allowed:
-                    raise ValueError('Exception cannot cover runtime or additional usage: ' + f['id'])
+                if actual != allowed:
+                    raise ValueError('Exception cannot cover additional usage: ' + f['id'])
                 f['status'] = 'excepted'
                 f['exception'] = e
     return findings

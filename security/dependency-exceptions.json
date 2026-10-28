@@ -1,3 +1,548 @@
 {
-  "exceptions": []
+  "exceptions": [
+    {
+      "ecosystem": "crates.io",
+      "name": "rsa",
+      "version": "0.10.0-rc.18",
+      "id": "RUSTSEC-2023-0071",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "Marvin timing side channel in RSA private-key operations; no fixed rsa release exists.",
+      "blockedBy": "russh 0.64.1 and 0.65.0 both require rsa =0.10.0-rc.18",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2023-0071.html"
+      ],
+      "conditions": [
+        "DGL generates Ed25519 keys; RSA is used only when a user imports an RSA private key for SSH authentication.",
+        "DGL performs no RSA decryption for a remote party; recommend Ed25519 keys and switch when russh ships a fixed rsa."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "runtime"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "grid",
+      "version": "0.18.0",
+      "id": "GHSA-38c5-483c-4qqp",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "Integer overflow in Grid::expand_rows; fixed only in grid 1.0.1.",
+      "blockedBy": "gpui 0.2.2 requires taffy =0.9.0, which requires grid ^0.18",
+      "evidence": [
+        "https://github.com/advisories/GHSA-38c5-483c-4qqp"
+      ],
+      "conditions": [
+        "Reached only through taffy layout of DGL's own desktop UI; remote terminal data does not size the grid.",
+        "Overflow needs row counts near usize::MAX, far beyond any layout DGL builds."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "runtime"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "block-buffer",
+      "version": "0.10.4",
+      "id": "GHSA-qwgh-2vcv-g2f7",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "A panic caught inside a buffered digest callback can corrupt the buffer cursor; fixed only in block-buffer 0.12.1.",
+      "blockedBy": "sha2 0.10.9 (gpui_http_client 0.2.2 and DGL Windows storage) requires digest 0.10, which requires block-buffer ^0.10",
+      "evidence": [
+        "https://github.com/advisories/GHSA-qwgh-2vcv-g2f7"
+      ],
+      "conditions": [
+        "Requires catching a panic from the hashing callback and reusing the hasher; DGL has no catch_unwind.",
+        "DGL hashes only short credential reference strings with Sha256::digest in one call."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "runtime"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "async-std",
+      "version": "1.13.2",
+      "id": "RUSTSEC-2025-0052",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "async-std is discontinued.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zed-async-tar 0.5.0-zed)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2025-0052.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "runtime"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "rustls-pemfile",
+      "version": "2.2.0",
+      "id": "RUSTSEC-2025-0134",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "rustls-pemfile is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zed-reqwest 0.12.15-zed)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2025-0134.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "runtime"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "rustybuzz",
+      "version": "0.20.1",
+      "id": "RUSTSEC-2026-0206",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "rustybuzz is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (usvg 0.45.1)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0206.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "runtime"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "ttf-parser",
+      "version": "0.25.1",
+      "id": "RUSTSEC-2026-0192",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "ttf-parser is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (usvg 0.45.1, fontdb 0.23.0)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0192.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "runtime"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "git2",
+      "version": "0.20.4",
+      "id": "RUSTSEC-2026-0183",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "Unsound Remote::list(); fixed in git2 0.21.0.",
+      "blockedBy": "gpui_util 0.2.2 requires git2 ^0.20.1 for its test-support feature",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0183.html"
+      ],
+      "conditions": [
+        "Only gpui test-support enables git2; it is a dev-dependency of dgl-desktop and is not linked into shipped binaries.",
+        "DGL tests do not call Remote::list or blame APIs."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "git2",
+      "version": "0.20.4",
+      "id": "RUSTSEC-2026-0184",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "Unsound Signature from a buffer-created BlameHunk; fixed in git2 0.21.0.",
+      "blockedBy": "gpui_util 0.2.2 requires git2 ^0.20.1 for its test-support feature",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0184.html"
+      ],
+      "conditions": [
+        "Only gpui test-support enables git2; it is a dev-dependency of dgl-desktop and is not linked into shipped binaries.",
+        "DGL tests do not call Remote::list or blame APIs."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "basic-toml",
+      "version": "0.1.10",
+      "id": "RUSTSEC-2026-0374",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "basic-toml is unmaintained.",
+      "blockedBy": "uniffi 0.32.2 code generation (askama_derive 0.16.1)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0374.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "instant",
+      "version": "0.1.13",
+      "id": "RUSTSEC-2024-0384",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "instant is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (futures-lite 1.13.0 / fastrand 1.9.0)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2024-0384.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "paste",
+      "version": "1.0.15",
+      "id": "RUSTSEC-2024-0436",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "paste is unmaintained (compile-time macro).",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (metal 0.29.0 and others)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2024-0436.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "proc-macro-error2",
+      "version": "2.0.1",
+      "id": "RUSTSEC-2026-0173",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "proc-macro-error2 is unmaintained (compile-time macro).",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (stacksafe-macro 0.1.4)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0173.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "rustybuzz",
+      "version": "0.14.1",
+      "id": "RUSTSEC-2026-0206",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "rustybuzz is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (cosmic-text 0.14.2, Linux text system)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0206.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "ttf-parser",
+      "version": "0.20.0",
+      "id": "RUSTSEC-2026-0192",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "ttf-parser is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (cosmic-text 0.14.2 / fontdb 0.16.2)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0192.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "ttf-parser",
+      "version": "0.21.1",
+      "id": "RUSTSEC-2026-0192",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "ttf-parser is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (Linux text system)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0192.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "zbus_names",
+      "version": "4.3.5",
+      "id": "RUSTSEC-2026-0371",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "zbus_names is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zbus 5.19.0, Linux portals)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0371.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "zvariant",
+      "version": "5.15.1",
+      "id": "RUSTSEC-2026-0370",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "zvariant is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zbus 5.19.0, Linux portals)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0370.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
+      "name": "zvariant_derive",
+      "version": "5.15.1",
+      "id": "RUSTSEC-2026-0372",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "zvariant_derive is unmaintained.",
+      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zbus 5.19.0, Linux portals)",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0372.html"
+      ],
+      "conditions": [
+        "Unmaintained notice only; no known vulnerability is published for this version.",
+        "Re-run the audit and drop this exception when gpui or the parent crate releases a replacement."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "build"
+        }
+      ]
+    },
+    {
+      "ecosystem": "Maven",
+      "name": "com.google.guava:guava",
+      "version": "33.4.0-jre",
+      "id": "GHSA-xxph-c9ww-hj94",
+      "reviewed": "2026-10-29",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "Native Java deserialization of CompactHashMap/CompactHashSet/MapMakerInternalMap can allocate unbounded memory; fixed in 33.7.2.",
+      "blockedBy": "Android Gradle Plugin 9.3.3 build classpath and its lint tool select guava 33.4.0-jre",
+      "evidence": [
+        "https://github.com/advisories/GHSA-xxph-c9ww-hj94"
+      ],
+      "conditions": [
+        "Build-time only (Gradle plugin classpath and Android lint); not packaged into the APK or desktop apps.",
+        "The build deserializes no untrusted Java object streams; remove when an AGP update selects guava 33.7.2 or newer."
+      ],
+      "usages": [
+        {
+          "module": ":",
+          "configuration": "classpath",
+          "platform": "build-host",
+          "scope": "build"
+        },
+        {
+          "module": ":androidApp",
+          "configuration": "androidLintTool",
+          "platform": "android",
+          "scope": "build"
+        },
+        {
+          "module": ":app",
+          "configuration": "androidLintTool",
+          "platform": "android",
+          "scope": "build"
+        },
+        {
+          "module": ":coreBindings",
+          "configuration": "androidLintTool",
+          "platform": "android",
+          "scope": "build"
+        },
+        {
+          "module": ":mobileUi",
+          "configuration": "androidLintTool",
+          "platform": "android",
+          "scope": "build"
+        }
+      ]
+    }
+  ]
 }

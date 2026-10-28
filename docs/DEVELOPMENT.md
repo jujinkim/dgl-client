@@ -274,9 +274,9 @@ python3 scripts/collect_artifacts.py
 python3 scripts/scan_secrets.py
 ```
 
-`audit_dependencies.py`는 Gradle inventory·npm lock과 함께 `cargo metadata --locked --all-features`의
-crates.io 패키지 전체를 OSV에 대조하므로 Rust 툴체인이 필요합니다. 배포 타깃(Android 네 ABI, macOS ARM64, Windows x64)에
-링크되는 일반 의존성만 runtime이며, proc-macro와 다른 플랫폼 전용 의존성은 build로 분류합니다.
+`audit_dependencies.py`는 Gradle inventory·npm lock과 함께 Cargo.lock의 crates.io 패키지 전체를 OSV에 대조하므로
+Rust 툴체인이 필요합니다. runtime은 배포 타깃별(Android 네 ABI의 `dgl-uniffi`, macOS·Windows의 `dgl-desktop`)
+`cargo tree -e normal,no-proc-macro` 결과이며, 나머지는 build/test로 분류합니다. 예외는 `security/dependency-exceptions.json`입니다.
 `collect_artifacts.py`는 빌드된 Debug·Release APK의 ID/SDK·백업 정책·번들 고지·Rust payload를 확인하고
 `artifacts/build-manifest.json`, `artifacts/SHA256SUMS`를 생성합니다.
 보고서와 해시 목록의 APK 경로는 저장소 루트 기준이며, 루트에서 `sha256sum -c artifacts/SHA256SUMS`로 확인합니다.

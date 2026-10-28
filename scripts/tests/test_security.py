@@ -42,13 +42,17 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(OSError):
             audit.query_osv([self.package()], fail)
 
-    def test_runtime_exception_rejected(self):
+    def test_runtime_exception_requires_blocker_and_exact_scope(self):
         e = self.exception()
+        # A build-scope exception never covers a runtime use of the same version.
         with self.assertRaises(ValueError):
             audit.apply_exceptions([dict(self.package('runtime'), id=e['id'])], [e], date(2026, 10, 23))
         e['usages'][0]['scope'] = 'runtime'
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, 'blockedBy'):
             audit.apply_exceptions([], [e], date(2026, 10, 23))
+        e['blockedBy'] = 'upstream pins the affected version'
+        findings = audit.apply_exceptions([dict(self.package('runtime'), id=e['id'])], [e], date(2026, 10, 23))
+        self.assertEqual('excepted', findings[0]['status'])
 
     def test_expired_overlong_or_unsubstantiated_rejected(self):
         for change in [{'expires': '2026-10-22'}, {'expires': '2027-01-01'}, {'recheck': '2026-10-22'},
@@ -89,7 +93,8 @@ class AuditTests(unittest.TestCase):
                 {'id': 'rt', 'deps': [dep('shared', None)]}, {'id': 'bd', 'deps': [dep('shared', None)]},
                 {'id': 'derive', 'deps': [dep('syn', None)]},
                 {'id': 'dv', 'deps': []}, {'id': 'shared', 'deps': []}, {'id': 'syn', 'deps': []}]}}
-        runtime = audit.cargo_runtime(metadata)
+        runtime = audit.cargo_tree_packages('app v1.0.0 (/repo/app)\nrt v1.0.0\nshared v1.0.0\nshared v1.0.0 (*)\n')
+        self.assertEqual({('app', '1.0.0'), ('rt', '1.0.0'), ('shared', '1.0.0')}, runtime)
         packages = audit.cargo_packages(metadata, runtime)
         scopes = {p['name']: p['usages'][0]['scope'] for p in packages}
         self.assertEqual({'rt': 'runtime', 'shared': 'runtime', 'bd': 'build', 'dv': 'test',

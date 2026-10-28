@@ -25,8 +25,9 @@
 
 ## 배포 전
 
-- [ ] 현재 Rust/Gradle/npm 의존성의 취약점·라이선스 검토 및 실제 전달물 고지 확인.
-  과거 OSV 0건 기록을 현재 Rust 전체 그래프의 결과로 재사용하지 않는다.
+- [ ] 현재 Rust/Gradle/npm 의존성의 라이선스 검토 및 실제 전달물 고지 확인.
+- [ ] 의존성 예외 20건을 2026-12-15까지 재검토(만료 2027-01-27). gpui 0.2.2·russh(rsa)·AGP(guava)가
+  수정판을 고정해 남은 항목이며, 상위 갱신 시 업그레이드하고 예외를 제거한다.
 - [ ] Android 정식 서명, macOS Developer ID·공증, Windows 서명·배포 방식 결정과 산출물 검사.
 - [ ] GitHub Secret scanning·Push protection 상태 확인. 미확인 상태를 활성으로 기재하지 않는다.
 
