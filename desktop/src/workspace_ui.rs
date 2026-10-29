@@ -494,44 +494,30 @@ impl Desktop {
                     cx.notify();
                     return;
                 }
-                if !platform::app_shortcut(&e.keystroke.modifiers) {
-                    return;
-                }
-                match e.keystroke.key.as_str() {
-                    "n" if cfg!(target_os = "macos") && e.keystroke.modifiers.shift => {
-                        s.prompt(t("세션 만들기"), PromptOp::Session, cx)
-                    }
-                    "s" if cfg!(target_os = "windows") => {
-                        s.prompt(t("세션 만들기"), PromptOp::Session, cx)
-                    }
-                    "n" => s.edit(None, cx),
-                    "w" => {
+                use platform::AppShortcut::*;
+                match platform::app_shortcut_for(&e.keystroke) {
+                    Some(NewSession) => s.prompt(t("세션 만들기"), PromptOp::Session, cx),
+                    Some(NewHost) => s.edit(None, cx),
+                    Some(CloseTab) => {
                         if let Some(id) = s.workspace.selected() {
                             s.close_tab(id);
                         }
                     }
-                    "," => s.dialog = Some(Dialog::Settings),
-                    "p" if cfg!(target_os = "windows") => s.dialog = Some(Dialog::Settings),
-                    "r" => s.refresh(),
-                    key => {
-                        let key = if cfg!(target_os = "windows") {
-                            key.strip_prefix('f').unwrap_or("")
-                        } else {
-                            key
-                        };
-                        let Some(id) = key
-                            .parse::<usize>()
-                            .ok()
-                            .and_then(|n| n.checked_sub(1))
-                            .and_then(|i| {
-                                s.workspace.groups[&s.workspace.active].tabs.get(i).copied()
-                            })
+                    Some(Settings) => s.dialog = Some(Dialog::Settings),
+                    Some(Refresh) => s.refresh(),
+                    Some(SelectTab(n)) => {
+                        let Some(id) = s.workspace.groups[&s.workspace.active]
+                            .tabs
+                            .get(n - 1)
+                            .copied()
                         else {
                             return;
                         };
                         s.workspace.select(s.workspace.active, id);
                         s.group_focus(s.workspace.active, w, cx);
                     }
+                    // Copy and paste belong to the focused view; quit is a key action.
+                    Some(Copy | Paste | Quit) | None => return,
                 }
                 cx.stop_propagation();
                 cx.notify();

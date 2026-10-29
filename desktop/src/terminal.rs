@@ -299,14 +299,14 @@ impl Terminal {
         if !self.marked.is_empty() {
             return;
         }
-        if crate::platform::app_shortcut(&k.modifiers) && k.key == "c" {
+        if crate::platform::app_shortcut_for(k) == Some(crate::platform::AppShortcut::Copy) {
             if let Some(text) = self.term.selection_to_string() {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
             }
             cx.stop_propagation();
             return;
         }
-        if crate::platform::app_shortcut(&k.modifiers) && k.key == "v" {
+        if crate::platform::app_shortcut_for(k) == Some(crate::platform::AppShortcut::Paste) {
             if let Some(text) = cx.read_from_clipboard().and_then(|i| i.text()) {
                 let bytes = input::paste_bytes(
                     &text,

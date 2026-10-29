@@ -156,6 +156,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 
 | 연결 종료 / 연결 전환 | `Ctrl+Shift+W` / `Ctrl+Shift+F1–F9` |
 | 새로고침 / 설정 / 앱 종료 | `Ctrl+Shift+R` / `Ctrl+Shift+P` / `Ctrl+Shift+Q` |
 
+이 표 밖의 `Ctrl+Shift` 조합(방향키, `F10`–`F12` 등)은 원격 애플리케이션으로 보낸다.
+
 ## 6. 에이전트 알림
 
 탭·패널의 프로세스 식별과 선택적 공식 훅 연동은 [공통 안내](AGENT_STATUS.md)를 따른다.
