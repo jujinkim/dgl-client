@@ -323,6 +323,65 @@ fn host_drag_commits_order_and_cancel_preserves_it_across_reload(cx: &mut TestAp
 }
 
 #[gpui::test]
+fn manual_reconnect_replaces_connection_in_place(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    view.update(ui, |s, cx| {
+        // Hold the real actors in Connecting.
+        s.runtime = Arc::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        );
+        let a = ordered_host("a", Some("$1"));
+        let b = ordered_host("b", Some("$2"));
+        s.local.hosts = vec![a.clone(), b.clone()];
+        s.reconcile_hosts();
+        let a1 = s.create_tab(a.clone(), Credential::default(), None, cx);
+        let middle = s.create_tab(b.clone(), Credential::default(), None, cx);
+        let a2 = s.create_tab(a.clone(), Credential::default(), None, cx);
+        assert!(
+            s.workspace
+                .split(1, super::workspace::Axis::Horizontal, 1200., 800.)
+        );
+        s.workspace.move_tab(a2, s.workspace.active, None);
+        let group = s.workspace.group_for(a1).unwrap();
+        let order = s.workspace.groups[&group].tabs.clone();
+        let ids: Vec<_> = s.tabs.iter().map(|t| t.id).collect();
+        s.tabs
+            .iter_mut()
+            .find(|t| t.id == a1)
+            .unwrap()
+            .session_title = Some("title".into());
+        let old = s
+            .tabs
+            .iter()
+            .find(|t| t.id == a1)
+            .unwrap()
+            .connection
+            .clone();
+        let old_terminal = s.tabs.iter().find(|t| t.id == a1).unwrap().terminal.clone();
+        s.replace_connection(a1, a.clone(), Credential::default(), None, cx);
+        let tab = s.tabs.iter().find(|t| t.id == a1).unwrap();
+        assert!(!Arc::ptr_eq(&tab.connection, &old));
+        assert_ne!(tab.terminal.entity_id(), old_terminal.entity_id());
+        // Released: the old connection refuses new requests.
+        assert_eq!(
+            old.action(dgl_core::connection::Action::Refresh),
+            Err(dgl_core::Error::Closed)
+        );
+        // Same ID, slot, order, session and title; no other tab or history is touched.
+        assert_eq!(s.tabs.iter().map(|t| t.id).collect::<Vec<_>>(), ids);
+        assert_eq!(s.workspace.groups[&group].tabs, order);
+        assert_eq!(s.workspace.selected(), Some(a1));
+        assert_eq!(tab.session.as_deref(), Some("$1"));
+        assert_eq!(tab.session_title.as_deref(), Some("title"));
+        assert_eq!(s.last_host_tab["b"], [middle]);
+        assert_eq!(s.last_host_tab["a"].last(), Some(&a1));
+    });
+}
+
+#[gpui::test]
 fn session_clicks_reuse_tabs_across_groups_keep_entities_and_host_history(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     let (a1, a2, b1, terminal, connection) = view.update(ui, |s, cx| {

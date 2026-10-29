@@ -418,8 +418,21 @@ impl Desktop {
         self.start_tab(host, cx);
     }
     fn start_tab(&mut self, host: HostProfile, cx: &mut Context<Self>) -> Option<TabId> {
+        let id = self
+            .credentials(&host, cx)
+            .map(|(credential, trusted)| self.create_tab(host, credential, trusted, cx));
+        cx.notify();
+        id
+    }
+    /// The host's stored credential and trusted key; a missing or unreadable one is
+    /// reported to the user instead.
+    fn credentials(
+        &mut self,
+        host: &HostProfile,
+        cx: &mut Context<Self>,
+    ) -> Option<(Credential, Option<String>)> {
         if matches!(storage::read_optional(&host.credential_ref), Ok(None)) {
-            self.edit(Some(host), cx);
+            self.edit(Some(host.clone()), cx);
             self.snackbar.show_snackbar_with_duration(
                 t("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요."),
                 SnackbarDuration::Long,
@@ -440,18 +453,14 @@ impl Desktop {
             };
             Ok((credential, trusted))
         })();
-        let id = match result {
-            Ok((credential, trusted)) => Some(self.create_tab(host, credential, trusted, cx)),
-            Err(e) => {
+        result
+            .inspect_err(|e| {
                 self.snackbar.show_snackbar_with_duration(
                     tr!("보호 저장소를 열지 못했습니다: {0}", e),
                     SnackbarDuration::Long,
                 );
-                None
-            }
-        };
-        cx.notify();
-        id
+            })
+            .ok()
     }
     fn active_tab(&self) -> Option<&Tab> {
         let id = self.workspace.selected()?;
@@ -468,14 +477,17 @@ impl Desktop {
             if let Some(history) = self.last_host_tab.get_mut(&tab.host.id) {
                 history.retain(|t| *t != id);
             }
-            tab.connection.close();
-            self.runtime.spawn(async move {
-                tab.connection.join().await;
-            });
+            self.release(tab.connection);
             if let Some(selected) = self.workspace.selected() {
                 self.activate_tab(selected);
             }
         }
+    }
+    fn release(&self, connection: Arc<Connection>) {
+        connection.close();
+        self.runtime.spawn(async move {
+            connection.join().await;
+        });
     }
     fn reconnect(&mut self, cx: &mut Context<Self>) {
         if let Some(tab) = self.active_tab() {
@@ -493,31 +505,11 @@ impl Desktop {
             } else {
                 None
             };
-            let session_title = tab.session_title.clone();
             let id = tab.id;
-            // Keep the slot and its group, even when a manual reconnect replaces SSH.
-            let group = self.workspace.group_for(id).unwrap();
-            let before = self.workspace.groups[&group]
-                .tabs
-                .iter()
-                .position(|t| *t == id)
-                .and_then(|index| self.workspace.groups[&group].tabs.get(index + 1).copied());
-            if let Some(new) = self.start_tab(host, cx) {
-                let mut replacement = self.tabs.pop().unwrap();
-                debug_assert_eq!(replacement.id, new);
-                self.workspace.close(new);
-                for history in self.last_host_tab.values_mut() {
-                    history.retain(|t| *t != new);
-                }
-                self.close_tab(id);
-                replacement.id = id;
-                replacement.session_title = session_title;
-                self.tabs.push(replacement);
-                // Reinsert the original ID in exactly the same group and position.
-                self.workspace.groups.get_mut(&group).unwrap().tabs.push(id);
-                self.workspace.move_tab(id, group, before);
-                self.activate_tab(id);
+            if let Some((credential, trusted)) = self.credentials(&host, cx) {
+                self.replace_connection(id, host, credential, trusted, cx);
             }
+            cx.notify();
         }
     }
     fn save_layout(&mut self) {

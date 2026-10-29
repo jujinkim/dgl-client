@@ -159,21 +159,8 @@ impl Desktop {
         // Install the slot, start order and session identity in this synchronous UI
         // turn, before another selection can be dispatched.
         let id = self.workspace.add_tab();
-        self.host_order.reconcile(&self.local.hosts);
-        if self.host_order.connection_started(&host.id) {
-            self.save_host_order();
-        }
         let session = host.last_session.clone();
-        let _enter = self.runtime.enter();
-        let connection = Connection::start(host.clone(), credential, trusted);
-        let terminal = cx.new(|cx| {
-            Terminal::new(
-                connection.clone(),
-                self.local.preferences.font_size,
-                self.local.preferences.scrollback,
-                cx,
-            )
-        });
+        let (connection, terminal) = self.connect(&host, credential, trusted, cx);
         self.tabs.push(Tab {
             id,
             host,
@@ -189,6 +176,58 @@ impl Desktop {
         id
     }
 
+    fn connect(
+        &mut self,
+        host: &HostProfile,
+        credential: Credential,
+        trusted: Option<String>,
+        cx: &mut Context<Self>,
+    ) -> (Arc<Connection>, Entity<Terminal>) {
+        self.host_order.reconcile(&self.local.hosts);
+        if self.host_order.connection_started(&host.id) {
+            self.save_host_order();
+        }
+        let _enter = self.runtime.enter();
+        let connection = Connection::start(host.clone(), credential, trusted);
+        let terminal = cx.new(|cx| {
+            Terminal::new(
+                connection.clone(),
+                self.local.preferences.font_size,
+                self.local.preferences.scrollback,
+                cx,
+            )
+        });
+        (connection, terminal)
+    }
+    /// A manual reconnect replaces only the SSH connection and its terminal. The tab keeps
+    /// its ID, slot, position, session and title.
+    pub(super) fn replace_connection(
+        &mut self,
+        id: TabId,
+        host: HostProfile,
+        credential: Credential,
+        trusted: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.tabs.iter().any(|t| t.id == id) {
+            return;
+        }
+        let (connection, terminal) = self.connect(&host, credential, trusted, cx);
+        // Drafts and pending requests carry the old connection's request IDs.
+        self.composers.remove(&id);
+        if matches!(self.dialog, Some(Dialog::Compose(tab)) if tab == id) {
+            self.dialog = None;
+        }
+        let tab = self.tabs.iter_mut().find(|t| t.id == id).unwrap();
+        let old = std::mem::replace(&mut tab.connection, connection);
+        tab.terminal = terminal;
+        tab.host = host;
+        tab.refresh = None;
+        tab.pending_target = None;
+        tab.last_sequence = 0;
+        self.release(old);
+        self.activate_tab(id);
+    }
     /// A row is evidence from a specific connection generation. It cannot mutate a
     /// replacement connection. Activation remains available while either tab recovers.
     pub(super) fn select_session_tab(
