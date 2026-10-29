@@ -5,7 +5,7 @@
   const panes = new Map();
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 12, scrollback = 5000, enabled = true, smooth = false;
-  let fontGesture = false, pointerEnabled = true;
+  let fontGesture = false, pointerEnabled = true, imeAnimating = false, imeVersion = 0;
   window.setPointerEnabled = enabled => { pointerEnabled = enabled === true; if (!pointerEnabled) cancelTouchScroll(); };
   let touchSelection = null;
   let geometryObserver = null;
@@ -66,6 +66,8 @@
     recoveryScreen.setAttribute('aria-hidden', 'true'); recoveryScreen.inert = true;
     recoveryScreen.appendChild(previous); document.body.appendChild(recoveryScreen);
   };
+  // Remote input and gestures that change remote state share these gates.
+  const gestureBlocked = () => !enabled || !pointerEnabled || fontGesture || imeAnimating || recoveryScreen !== null;
   function createPane(pane, host) {
   const api = {};
   api.content = null;
@@ -90,6 +92,8 @@
   let cachedSize = null;
   let animations = [];
   let snapshotUpdating = false, snapshotInputModes = null;
+  // Pointer reports also wait for a rendered snapshot and the IME panel gesture.
+  const pointerBlocked = () => gestureBlocked() || snapshotUpdating || panelDragging || panelFling !== null;
   api.snapshotting = () => snapshotUpdating;
   api.refreshContent = () => { if (!snapshotUpdating) api.content = readPaneContent(term); };
   // Use the rendered cursor, with public buffer coordinates as the fallback.
@@ -221,7 +225,6 @@
   };
   // Remote escape sequences cannot access the clipboard.
   term.parser.registerOscHandler(52, () => true);
-  let inputEnabled = true;
   // Native WebView focus alone cannot detect the xterm editor losing DOM focus.
   host.addEventListener('focusin', () => post({ type: 'editor-focus', focused: true }));
   host.addEventListener('focusout', () => post({ type: 'editor-focus', focused: false }));
@@ -230,7 +233,7 @@
   let keyOrigin = null, textOrigin = false, textTarget = null, composing = false, compositionPending = false, compositionVersion = 0, pasting = false;
   const keyboard = (key, text, modifiers = {}, target = pane === active ? inputTarget : null) => {
     if (fontGesture) return;
-    if (!inputEnabled) { post({ type: 'blocked-input' }); return; }
+    if (!enabled) { post({ type: 'blocked-input' }); return; }
     post({ type: 'keyboard', key, text, target, control: modifiers.ctrlKey === true,
       shift: modifiers.shiftKey === true, alt: modifiers.altKey === true,
       applicationCursor: (snapshotInputModes || term.modes)?.applicationCursorKeysMode === true });
@@ -274,7 +277,7 @@
     // Wheel reports belong to the gesture's destination, independently of a
     // pending key/IME origin. xterm emits these synchronously during dispatch.
     if (wheelOrigin) {
-      if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !panelFling && !fontGesture && new TextEncoder().encode(data).length <= 65536)
+      if (!pointerBlocked() && new TextEncoder().encode(data).length <= 65536)
         post({ type: 'input', data, target: wheelOrigin.target, pointer: true });
       return;
     }
@@ -297,20 +300,16 @@
       keyboard('text', data, {}, textTarget); textOrigin = composing; compositionPending = composing;
     } else if (!pasting && textOrigin && ['\r', '\t', '\x7f'].includes(data)) {
       keyboard({ '\r': 'enter', '\t': 'tab', '\x7f': 'backspace' }[data], null, {}, textTarget); textOrigin = composing; compositionPending = composing;
-    } else if (inputEnabled && !fontGesture) {
+    } else if (enabled && !fontGesture) {
       const pointer = /^\x1b\[([<M])/.test(data);
-      if (!pointer || (pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !panelFling)) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}) });
+      if (!pointer || !pointerBlocked()) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}) });
     } else if (!fontGesture) post({ type: 'blocked-input' });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
   term.onBinary(data => {
-    if (inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !panelDragging && !panelFling && !fontGesture && data.length <= 65536)
+    if (!pointerBlocked() && data.length <= 65536)
       post({ type: 'input-binary', data, pointer: true, target: wheelOrigin ? wheelOrigin.target : pane === active ? inputTarget : null });
   });
-  api.setInputEnabled = enabled => {
-    inputEnabled = enabled === true;
-    if (!inputEnabled) api.cancelTouchScroll();
-  };
   // Capture xterm's own paste transformation (including current bracketed-paste mode)
   // without emitting input. Kotlin sends Enter separately after the paste request succeeds.
   api.preparePaste = text => {
@@ -368,8 +367,7 @@
       if (host.hasPointerCapture?.(previous.id)) host.releasePointerCapture(previous.id);
     }
   };
-  const canScroll = gesture => inputEnabled && pointerEnabled && !snapshotUpdating && !imeAnimating && !fontGesture && !recoveryScreen &&
-    !draggingBoundary && pane === active && gesture.target === inputTarget;
+  const canScroll = gesture => !gestureBlocked() && !snapshotUpdating && !draggingBoundary && pane === active && gesture.target === inputTarget;
   const samplePanel = (gesture, event) => {
     if (!Number.isFinite(event.timeStamp)) return;
     const samples = gesture.samples;
@@ -405,7 +403,7 @@
     if (event.isPrimary === false || touch) { cancelTouchScroll(); return; }
     suppressTouchClick = false;
     touchSelection = null;
-    if (!inputEnabled || !pointerEnabled || snapshotUpdating || imeAnimating || fontGesture || recoveryScreen || draggingBoundary) return;
+    if (gestureBlocked() || snapshotUpdating || draggingBoundary) return;
     touch = { id: event.pointerId, x: event.clientX, y: event.clientY, lastY: event.clientY,
       remainder: 0, dragging: false, selected: pane === active, target: inputTarget, panel: panelRange() > 0, offset: panelOffset, samples: [] };
     samplePanel(touch, event);
@@ -484,7 +482,7 @@
     if (panelDragging || panelFling) { event.preventDefault(); event.stopImmediatePropagation(); }
   }, { capture: true, passive: false });
   host.addEventListener('click', () => {
-    if (!inputEnabled || fontGesture) return;
+    if (!enabled || fontGesture) return;
     if (pane !== active) send({ type: 'focus', pane, target: inputTarget });
     api.focusTerminal();
   });
@@ -499,19 +497,18 @@
   window.focusTerminal = () => focused().focusTerminal();
   window.preparePaste = (...args) => focused().preparePaste(...args);
   window.sendShortcut = (...args) => focused().sendShortcut(...args);
-  window.setInputEnabled = value => { enabled = value === true; if (!enabled) cancelTouchScroll(); for (const p of panes.values()) p.setInputEnabled(enabled); };
+  window.setInputEnabled = value => { enabled = value === true; if (!enabled) cancelTouchScroll(); };
   window.setSmoothTransitions = value => { smooth = value === true; for (const p of panes.values()) p.setSmoothTransitions(smooth); };
   function ensure(id) {
     if (!panes.has(id)) {
       const host = document.createElement('div'); host.className = 'pane'; canvas.appendChild(host);
-      const p = createPane(id, host); p.configure(fontSize, scrollback); p.setInputEnabled(enabled); p.setSmoothTransitions(smooth);
+      const p = createPane(id, host); p.configure(fontSize, scrollback); p.setSmoothTransitions(smooth);
       panes.set(id, p);
     }
     return panes.get(id);
   }
   window.outputPane = (id, target) => { ensure(id); output = id; };
   let lastViewport = '';
-  let imeAnimating = false, imeVersion = 0;
   let cell = { width: 8.54, height: 19.6 }, boundaries = [], draggingBoundary = false;
   function readPaneContent(term) {
     const buffer = term.buffer?.active;
@@ -612,7 +609,7 @@
     panelThumb = document.createElement('div'); panelThumb.className = 'panel-scrollbar-thumb';
     panelBar.appendChild(panelThumb); document.body.appendChild(panelBar);
     panelBar.addEventListener('pointerdown', event => {
-      if (!panelRange() || !enabled || !pointerEnabled || fontGesture || imeAnimating || recoveryScreen || barDrag || event.isPrimary === false) return;
+      if (!panelRange() || gestureBlocked() || barDrag || event.isPrimary === false) return;
       cancelTouchScroll();
       barDrag = { id: event.pointerId, y: event.clientY, offset: panelOffset, target: inputTarget };
       panelDragging = true;
@@ -727,7 +724,7 @@
         Object.assign(b.style, horizontal ? { left: `${edge * cell.width}px`, top: `${spec.top * cell.height}px`, width: `${cell.width}px`, height: `${spec.height * cell.height}px` }
           : { left: `${spec.left * cell.width}px`, top: `${edge * cell.height}px`, width: `${spec.width * cell.width}px`, height: `${cell.height}px` });
         b.addEventListener('pointerdown', e => {
-          if (fontGesture || !pointerEnabled || imeAnimating) return;
+          if (gestureBlocked()) return;
           e.preventDefault(); b.setPointerCapture(e.pointerId); draggingBoundary = true;
           b.onpointercancel = () => { draggingBoundary = false; arrange(); };
           const start = horizontal ? e.clientX : e.clientY;
@@ -735,7 +732,8 @@
           b.onpointerup = end => {
             const cells = ((horizontal ? end.clientX : end.clientY) - start) / (horizontal ? cell.width : cell.height);
             const delta = Math.sign(cells) * Math.round(Math.abs(cells));
-            if (delta !== 0) send({ type: 'resize-pane', pane: id, target, columns: Math.max(1, Math.min(65535, spec.width + (horizontal ? delta : 0))), rows: Math.max(1, Math.min(65535, spec.height + (horizontal ? 0 : delta))) });
+            // Input may have been blocked while the boundary was held.
+            if (delta !== 0 && !gestureBlocked()) send({ type: 'resize-pane', pane: id, target, columns: Math.max(1, Math.min(65535, spec.width + (horizontal ? delta : 0))), rows: Math.max(1, Math.min(65535, spec.height + (horizontal ? 0 : delta))) });
             b.onpointerup = null; draggingBoundary = false; arrange();
           };
         });

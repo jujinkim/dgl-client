@@ -1105,6 +1105,30 @@ test('target changes, disabled input, recovery, pinch and cancellation discard u
   }
 });
 
+test('pane boundary drags follow the shared input, recovery, pinch and IME gates', () => {
+  const start = (r, x = 410) => {
+    const b = r.canvas.children.filter(c => c.className === 'boundary vertical').at(-1);
+    b.dispatchEvent({ type: 'pointerdown', pointerId: 1, clientX: x, clientY: 100 });
+    return b;
+  };
+  const resized = r => r.messages.filter(m => m.type === 'resize-pane');
+  const ready = () => { const r = touchRenderer(); r.layout('one', '%1', true); r.messages.length = 0; return r; };
+  const allowed = ready(), b = start(allowed);
+  b.onpointerup({ clientX: 450, clientY: 100 });
+  assert.equal(resized(allowed).length, 1);
+  assert.equal(resized(allowed)[0].target, 'one');
+  for (const block of [r => r.window.setInputEnabled(false), r => r.window.setConnectionRecovery(true),
+    r => r.window.setPointerEnabled(false), r => r.window.setFontGesture(true), r => r.window.setImeAnimation(true, 1)]) {
+    const before = ready(); block(before);
+    const held = start(before);
+    assert.equal(held.captured, undefined, `${block}: a blocked drag must not start`);
+    assert.ok(!held.onpointerup);
+    const during = ready(), active = start(during); block(during);
+    active.onpointerup?.({ clientX: 450, clientY: 100 });
+    assert.deepEqual(resized(during), [], `${block}: a drag blocked before release must not resize`);
+  }
+});
+
 test('semantic keys use the shared encoder channel once and preserve cursor mode and physical modifiers', () => {
   const r = keyboardRenderer();
   r.terminal.modes.applicationCursorKeysMode = true;
