@@ -22,8 +22,10 @@ class MacPackageTest(unittest.TestCase):
             metadata = {"target_directory": str(root / "custom-target"), "packages": [{"name": "dgl-desktop", "version": "9.8.7"}]}
             with patch.object(mac, "ROOT", root), patch.object(sys, "argv", ["package_rust_mac.py", "--release"]), \
                  patch.object(mac.subprocess, "run"), patch.object(mac.subprocess, "check_output", return_value=json.dumps(metadata)), \
-                 patch.object(mac, "collect"):
+                 patch.object(mac, "host_target", return_value="aarch64-apple-darwin"), patch.object(mac, "collect") as notices:
                 mac.main()
+            notices.assert_called_once_with("dgl-desktop", root / "artifacts/rust-candidate/mac/DaGaLi.app/Contents/Resources/third-party-rust",
+                                            target="aarch64-apple-darwin")
             output = root / "artifacts/rust-candidate/mac"
             info = plistlib.loads((output / "DaGaLi.app/Contents/Info.plist").read_bytes())
             self.assertEqual(info["CFBundleShortVersionString"], "9.8.7")

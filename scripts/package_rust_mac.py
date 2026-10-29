@@ -8,7 +8,7 @@ from pathlib import Path
 import plistlib
 import shutil
 import subprocess
-from collect_rust_notices import collect
+from collect_rust_notices import collect, host_target
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,7 +34,8 @@ def main():
     for name in ["NOTICE", "LICENSE-APACHE-GPUI"]:
         shutil.copy2(ROOT / "desktop" / name, app / "Resources" / name)
     shutil.copy2(ROOT / "licenses/simple-icons-LICENSE.md", app / "Resources/simple-icons-LICENSE.md")
-    collect("dgl-desktop", app / "Resources/third-party-rust")
+    # cargo build above has no --target, so the bundled binary is built for the host triple.
+    collect("dgl-desktop", app / "Resources/third-party-rust", target=host_target())
     # Local ad-hoc signing only; no Developer ID or notarization is claimed.
     subprocess.run(["codesign", "--force", "--sign", "-", str(app.parent)], check=True)
     subprocess.run(["codesign", "--verify", "--strict", str(app.parent)], check=True)

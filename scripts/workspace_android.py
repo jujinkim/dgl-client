@@ -5,12 +5,13 @@ import os
 from pathlib import Path
 import subprocess
 
+from android_device import APKS, RUNNER, adb_base, restore_setting
 from verify_android_results import expected_for_selection, verify
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "artifacts/android-workspace"
 SERIAL = os.environ["ANDROID_SERIAL"]
-ADB = [str(Path(os.environ["ANDROID_HOME"]) / "platform-tools/adb"), "-s", SERIAL]
+ADB = adb_base(SERIAL)
 
 
 def run(*args, timeout=120):
@@ -24,8 +25,8 @@ def main():
     assert SERIAL.startswith("emulator-"), "Use a dedicated emulator"
     assert run("shell", "getprop", "ro.build.version.sdk") == "36"
     OUT.mkdir(parents=True, exist_ok=True)
-    run("install", "-r", str(ROOT / "androidApp/build/outputs/apk/debug/androidApp-debug.apk"))
-    run("install", "-r", str(ROOT / "androidApp/build/outputs/apk/androidTest/debug/androidApp-debug-androidTest.apk"))
+    for apk in APKS:
+        run("install", "-r", str(ROOT / apk))
     original = {}
     for key in ("size", "density"):
         output = run("shell", "wm", key)
@@ -47,8 +48,7 @@ def main():
             if name != "workspace":
                 run("shell", "am", "force-stop", "kim.jujin.dglc")
                 run("shell", "wm", "size", "320x760" if name == "mobile-input" else "411x914")
-            result = run("shell", "am", "instrument", "-w", "-r", "-e", "class", classes,
-                         "kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner", timeout=240)
+            result = run("shell", "am", "instrument", "-w", "-r", "-e", "class", classes, RUNNER, timeout=240)
             (OUT / f"{name}.txt").write_text(result + "\n")
             print(result)
             verify(result, expected_for_selection(classes))
@@ -57,10 +57,7 @@ def main():
         for key, value in original.items():
             run("shell", "wm", key, value)
         for key, value in old_settings.items():
-            if value == "null":
-                run("shell", "settings", "delete", *key)
-            else:
-                run("shell", "settings", "put", *key, value)
+            run(*restore_setting(*key, value))
 
 
 if __name__ == "__main__":

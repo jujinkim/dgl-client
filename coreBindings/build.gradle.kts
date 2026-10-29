@@ -27,6 +27,7 @@ val prepareRustNotices by tasks.registering(RustNotices::class) {
     commandLine("python3", "scripts/collect_rust_notices.py", "--package", "dgl-uniffi", "--output", "coreBindings/build/generated/rustNotices/third-party-rust")
     inputs.file(rootProject.file("Cargo.lock"))
     inputs.file(rootProject.file("scripts/collect_rust_notices.py"))
+    inputs.file(rootProject.file("scripts/build_rust_android.py")) // default Android target triples
     outputs.dir(layout.buildDirectory.dir("generated/rustNotices"))
 }
 tasks.named("preBuild") { dependsOn(prepareRustNotices) }

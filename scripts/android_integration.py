@@ -4,13 +4,12 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from android_device import APKS, REMOVE_FIXTURE, RUNNER, WRITE_FIXTURE, adb_base, pull_cache_png, restore_setting, ssh_fixture
 from evidence import context, write_report
 from verify_android_results import verify
 
-sdk = Path(os.environ['ANDROID_HOME'])
-adb = str(sdk / 'platform-tools/adb')
 serial = os.environ.get('ANDROID_SERIAL', 'emulator-5554')
-base = [adb, '-s', serial]
+base = adb_base(serial)
 port = os.environ['DGL_TEST_PORT']
 
 def command(args, **kwargs):
@@ -25,37 +24,27 @@ report = {'schema': 1, 'complete': False, 'status': 'failed', 'context': context
 write_report(report_path, report)
 
 subprocess.run(['./gradlew', ':androidApp:assembleDebug', ':androidApp:assembleDebugAndroidTest'], check=True, timeout=600)
-command(['install', '-r', 'androidApp/build/outputs/apk/debug/androidApp-debug.apk'])
-command(['install', '-r', 'androidApp/build/outputs/apk/androidTest/debug/androidApp-debug-androidTest.apk'])
+for apk in APKS:
+    command(['install', '-r', apk])
 command(['reverse', f'tcp:{port}', f'tcp:{port}'])
 keyboard_setting = command(['shell', 'settings', 'get', 'secure', 'show_ime_with_hard_keyboard'], text=True, encoding="utf-8").stdout.strip()
 command(['shell', 'settings', 'put', 'secure', 'show_ime_with_hard_keyboard', '1'])
-fixture = {
-    'port': int(port), 'user': os.environ['DGL_TEST_USER'], 'fingerprint': os.environ['DGL_TEST_FINGERPRINT'],
-    'key': Path(os.environ['DGL_TEST_KEY_FILE']).read_text(encoding="utf-8"),
-    'rsa': Path(os.environ['DGL_TEST_RSA_FILE']).read_text(encoding="utf-8"),
-    'encrypted': Path(os.environ['DGL_TEST_ENCRYPTED_FILE']).read_text(encoding="utf-8"),
-    'passphrase': os.environ['DGL_TEST_PASSPHRASE'],
-}
+fixture = ssh_fixture()
 try:
-    command(['shell', 'run-as', 'kim.jujin.dglc', 'sh', '-c', '"mkdir -p cache && cat > cache/integration.json"'], input=json.dumps(fixture).encode())
-    result = command(['shell', 'am', 'instrument', '-w', '-r', '-e', 'dgl.fixture', 'true',
-                      'kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner'], text=True, encoding="utf-8", timeout=240)
+    command(WRITE_FIXTURE, input=json.dumps(fixture).encode())
+    result = command(['shell', 'am', 'instrument', '-w', '-r', '-e', 'dgl.fixture', 'true', RUNNER], text=True, encoding="utf-8", timeout=240)
     print(result.stdout)
     if 'FAILURES' in result.stdout or 'INSTRUMENTATION_FAILED' in result.stdout or 'OK (' not in result.stdout:
-        diagnostic = subprocess.run(base + ['exec-out', 'run-as', 'kim.jujin.dglc', 'cat', 'cache/ui-failure.png'], capture_output=True)
-        if diagnostic.returncode == 0 and diagnostic.stdout.startswith(b'\x89PNG'):
-            Path('.tools/p403-ui-failure.png').write_bytes(diagnostic.stdout)
+        diagnostic = pull_cache_png(base, 'ui-failure')
+        if diagnostic is not None:
+            Path('.tools/p403-ui-failure.png').write_bytes(diagnostic)
         raise SystemExit(1)
     report.update(verify(result.stdout))
 finally:
-    command(['shell', 'run-as', 'kim.jujin.dglc', 'rm', '-f', 'cache/integration.json'])
+    command(REMOVE_FIXTURE)
     command(['shell', 'run-as', 'kim.jujin.dglc', 'rm', '-f', 'cache/ui-failure.png'])
     command(['reverse', '--remove', f'tcp:{port}'])
-    if keyboard_setting == 'null':
-        command(['shell', 'settings', 'delete', 'secure', 'show_ime_with_hard_keyboard'])
-    else:
-        command(['shell', 'settings', 'put', 'secure', 'show_ime_with_hard_keyboard', keyboard_setting])
+    command(restore_setting('secure', 'show_ime_with_hard_keyboard', keyboard_setting))
 
 report.update(complete=True, status='passed')
 write_report(report_path, report)

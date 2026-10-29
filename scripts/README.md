@@ -17,10 +17,11 @@
 | `windows_tools.ps1` | Windows 필수 도구 전체 점검·선택적 설치/업데이트 |
 | `build_windows.ps1` | Windows MSVC 환경 구성·빌드. `-CheckOnly`, `-Test`, `-Run` 지원 |
 | `package_rust_windows.py` | x64 PE 검사·고지·해시를 포함한 미서명 ZIP 생성 |
-| `collect_rust_notices.py` | Cargo registry의 고지·manifest·의존성 목록 수집, 패키저에서 사용 |
+| `collect_rust_notices.py` | 배포 대상(Android 네 ABI·macOS host·Windows MSVC)으로 걸러낸 Cargo registry 고지·manifest·의존성 목록 수집, 패키저와 `:coreBindings`에서 사용 |
 | `generate_app_icons.py` | 공통 도형에서 투명 원본·Android 전경/단색/알림 벡터·모바일 Compose 벡터·macOS ICNS·Windows ICO·미리보기 생성. `--check`로 저장 파일 비교; [아이콘 안내](../assets/app-icon/README.md) |
 
 `collect_artifacts.py`와 `collect_rust_android.py`는 각각 전체 배포 정책 검사와 Debug 서명·Rust payload 검사를 담당합니다.
+`collect_artifacts.py`는 APK의 `assets/third-party/`가 참조·테스트 전용 라이브러리(JediTerm·SSHJ·Bouncy Castle·SLF4J) 원문과 JediTerm 재빌드 자료를 뺀 `licenses/` 선택과 정확히 같은지 확인합니다.
 둘 다 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본을 사용하고 APK 복사본을 만들지 않습니다.
 이전 JVM 엔진이 제품 APK에 들어가면 실패합니다.
 현재 Windows 배포 경로는 Rust ZIP입니다. 폐기된 JVM MSI/EXE 도구는 [이력](../docs/HISTORY.md)에서 찾을 수 있습니다.
@@ -58,6 +59,7 @@ JVM·Android 테스트를 추가/삭제하면 `verify_test_results.py` / `verify
 | `rust_android_integration.py` | 빌드된 APK의 API36 후보 검사·화면 수집. 명시적 이름 목록과 대조하며 fixture 안에서 실행 |
 | `workspace_android.py` | 전용 API36 한 대에서 839/840dp·분할·WebView 동일성·IME·활성 입력/모달 차단·드래그·세션 폰트 핀치/초기화·가로 스크롤 경계와 기존 모바일 회귀 검사. 화면/키보드 설정 원복, `artifacts/android-workspace/` 출력 |
 | `mobile_input_android.py` | 전용 API36의 모바일 탭·알림·입력·About·WebView 검사·화면 수집 |
+| `android_device.py` | 위 Android 계측 도구가 공유하는 adb 경로·APK 설치 목록·fixture 전달·설정 원복·화면 수집 함수 |
 | `verify_android_matrix.py` | API별 전용 AVD 실행·결과 수집. 명시적으로 전체 범위를 요청할 때만 실행 |
 | `verify_agent_cli.py` | 격리된 환경에서 실제 Claude/Codex 훅 검사; 설치·인증·호출 범위 확인 필요 |
 

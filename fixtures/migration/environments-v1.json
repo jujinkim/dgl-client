@@ -16,7 +16,7 @@
     "jdk": "OpenJDK 17.0.20.1",
     "xcode": "26.6 (17F113)",
     "developerDirectory": "/Applications/Xcode.app/Contents/Developer",
-    "guiBaseline": "unavailable: Gradle :app:run raised HeadlessException in this execution session"
+    "guiBaseline": "unavailable: the legacy JVM GUI could not be launched headless when this record was frozen (HeadlessException); that JVM app and its :app:run task have since been removed, so no legacy GUI baseline exists"
   },
   "android": {
     "id": "android-api36-avd",

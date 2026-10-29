@@ -54,9 +54,12 @@ def verify_apk(source, aapt, release=False):
         expected = {'assets/terminal/' + p.relative_to(terminal).as_posix(): p for p in terminal.rglob('*') if p.is_file()}
         if {n for n in names if n.startswith('assets/terminal/') and not n.endswith('/')} != set(expected):
             raise ValueError('Terminal asset set differs from source')
-        expected['assets/third-party/THIRD_PARTY_NOTICES.md'] = ROOT / 'THIRD_PARTY_NOTICES.md'
+        notices = {'assets/third-party/THIRD_PARTY_NOTICES.md': ROOT / 'THIRD_PARTY_NOTICES.md'}
         for path in license_files():
-            expected['assets/third-party/' + path.relative_to(ROOT).as_posix()] = path
+            notices['assets/third-party/' + path.relative_to(ROOT).as_posix()] = path
+        if {n for n in names if n.startswith('assets/third-party/') and not n.endswith('/')} != set(notices):
+            raise ValueError('Bundled notice set differs from licenses/')
+        expected.update(notices)
         for name, path in expected.items():
             if apk.read(name) != path.read_bytes():
                 raise ValueError('Bundled asset mismatch: ' + name)

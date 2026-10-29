@@ -41,7 +41,8 @@ No repository-wide license for new project code is inferred on the owner's behal
 The Rust Android application and macOS/Windows GPUI candidates use the versions and checksums in `Cargo.lock`.
 `scripts/collect_rust_notices.py` bundles registry-provided license texts, Cargo manifests,
 and `DEPENDENCIES.json` with each candidate (Mac Resources / Android assets / Windows ZIP).
-The inventory includes build and target-specific dependencies; entries without an upstream
+The inventory is filtered to the packaged target(s) (Android ABIs, macOS host or Windows MSVC)
+and includes build dependencies of that graph; entries without an upstream
 license text explicitly have an empty `licenseFiles` map. This is not a completed public
 release license audit. The GPUI-derived text input additionally includes
 `desktop/NOTICE` and `desktop/LICENSE-APACHE-GPUI`.
