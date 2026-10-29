@@ -19,7 +19,7 @@ mod input_tests;
 mod paint;
 mod window;
 use input::{ScrollAccumulator, button_code, key_sequence, mouse_modifiers, mouse_sequence};
-use paint::{CellLayer, paint_grid};
+use paint::{CellLayer, Run, Runs, paint_grid};
 pub use window::WindowTerminal;
 #[derive(Clone)]
 struct Listener(Arc<Connection>, Option<String>);
@@ -647,6 +647,22 @@ fn font_wheel_delta(e: &ScrollWheelEvent) -> Option<i32> {
     (e.modifiers.control && vertical.is_finite() && vertical != 0.)
         .then(|| if vertical > 0. { 1 } else { -1 })
 }
+const DEFAULT_BACKGROUND: u32 = 0x11151b;
+/// Printable ASCII, sliced so the common one-character glyph needs no allocation.
+const ASCII: &str = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+fn glyph_text(cell: &alacritty_terminal::term::cell::Cell) -> SharedString {
+    match (cell.c, cell.zerowidth()) {
+        (' '..='~', None) => {
+            let i = cell.c as usize - ' ' as usize;
+            SharedString::new_static(&ASCII[i..=i])
+        }
+        (c, zerowidth) => {
+            let mut text = c.to_string();
+            text.extend(zerowidth.into_iter().flatten());
+            text.into()
+        }
+    }
+}
 fn color(c: Color) -> Hsla {
     let palette = [
         0x11151b, 0xe06c75, 0x98c379, 0xe5c07b, 0x61afef, 0xc678dd, 0x8acdd0, 0xd8dee9, 0x596273,
@@ -690,7 +706,7 @@ impl Render for Terminal {
             .min_h_0()
             .track_focus(&self.focus)
             .key_context("Terminal")
-            .bg(rgb(0x11151b))
+            .bg(rgb(DEFAULT_BACKGROUND))
             .overflow_hidden()
             .on_key_down(cx.listener(Self::key))
             .on_any_mouse_down(cx.listener(Self::mouse_down))
@@ -720,6 +736,23 @@ impl Render for Terminal {
                             let content = this.term.renderable_content();
                             let cursor = content.cursor.point;
                             let offset = content.display_offset as i32;
+                            // Same-coloured neighbours share one quad; the default colour
+                            // is the container's own background.
+                            let mut runs = Runs::new();
+                            let paint_run = |run: Option<Run<Hsla>>, window: &mut Window| {
+                                if let Some(r) = run {
+                                    window.paint_quad(fill(
+                                        Bounds::new(
+                                            point(
+                                                bounds.left() + px(r.start as f32 * w),
+                                                bounds.top() + px(r.row as f32 * h),
+                                            ),
+                                            size(px((r.end - r.start) as f32 * w), px(h)),
+                                        ),
+                                        r.key,
+                                    ));
+                                }
+                            };
                             paint_grid(&this.term, |layer, indexed| {
                                 let cell = indexed.cell;
                                 let row = indexed.point.line.0 + offset;
@@ -745,24 +778,26 @@ impl Render for Terminal {
                                     fg = rgb(0x11151b).into();
                                 }
                                 if layer == CellLayer::Background {
-                                    window.paint_quad(fill(
-                                        Bounds::new(origin, size(px(w), px(h))),
-                                        bg,
-                                    ));
+                                    let default = bg == Hsla::from(rgb(DEFAULT_BACKGROUND));
+                                    let run = runs.push(
+                                        row,
+                                        indexed.point.column.0,
+                                        (!default).then_some(bg),
+                                    );
+                                    paint_run(run, window);
                                 } else {
-                                    let mut text = cell.c.to_string();
-                                    if let Some(z) = cell.zerowidth() {
-                                        text.extend(z);
-                                    }
+                                    paint_run(runs.finish(), window);
+                                    let text = glyph_text(cell);
                                     let mut font = font(crate::platform::TERMINAL_FONT);
                                     if cell.flags.contains(Flags::BOLD) {
                                         font.weight = FontWeight::BOLD;
                                     }
+                                    let len = text.len();
                                     let line = window.text_system().shape_line(
-                                        text.clone().into(),
+                                        text,
                                         px(this.font_size),
                                         &[TextRun {
-                                            len: text.len(),
+                                            len,
                                             font,
                                             color: fg,
                                             background_color: None,
@@ -774,6 +809,7 @@ impl Render for Terminal {
                                     let _ = line.paint(origin, px(h), window, cx);
                                 }
                             });
+                            paint_run(runs.finish(), window);
                             if !this.marked.is_empty() {
                                 let origin = point(
                                     bounds.left() + px(cursor.column.0 as f32 * w),
@@ -826,6 +862,23 @@ mod tests {
         model::{AuthKind, Credential, HostProfile},
     };
     use gpui::{AppContext, TestAppContext};
+    #[test]
+    fn glyph_text_matches_the_cell_with_or_without_allocation() {
+        use alacritty_terminal::term::cell::Cell;
+        for c in (' '..='~').chain(['한', '🙂']) {
+            let cell = Cell {
+                c,
+                ..Cell::default()
+            };
+            assert_eq!(super::glyph_text(&cell).as_ref(), c.to_string());
+        }
+        let mut cell = Cell {
+            c: 'e',
+            ..Cell::default()
+        };
+        cell.push_zerowidth('\u{301}');
+        assert_eq!(super::glyph_text(&cell).as_ref(), "e\u{301}");
+    }
     #[test]
     fn pane_and_window_share_one_cell_size() {
         assert_eq!(super::cell_size_for(10.0), (10.0 * 0.61, 10.0 * 1.4));

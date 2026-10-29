@@ -960,7 +960,7 @@ impl Render for Desktop {
         }
         if let Some(snackbar) = self.snackbar.current.clone() {
             let id = snackbar.id;
-            let remaining = snackbar.remaining_fraction(std::time::Instant::now());
+            let remaining = snackbar.gauge_fraction(std::time::Instant::now());
             root = root.child(
                 div()
                     .id("snackbar")

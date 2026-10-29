@@ -46,7 +46,19 @@ pub struct Snackbar {
     pub started_at: Instant,
 }
 
+/// Every gauge step repaints the whole window, terminals included, so it moves in
+/// steps of this length rather than every frame.
+const GAUGE_STEP: Duration = Duration::from_millis(100);
+
 impl Snackbar {
+    fn step(&self, now: Instant) -> u128 {
+        now.saturating_duration_since(self.started_at).as_millis() / GAUGE_STEP.as_millis()
+    }
+    /// The gauge as drawn: the remaining fraction at the start of the current step.
+    pub fn gauge_fraction(&self, now: Instant) -> Option<f32> {
+        let step = GAUGE_STEP * self.step(now) as u32;
+        self.remaining_fraction(self.started_at + step)
+    }
     pub fn remaining_fraction(&self, now: Instant) -> Option<f32> {
         self.request.duration.timeout().map(|timeout| {
             if timeout.is_zero() {
@@ -65,6 +77,8 @@ impl Snackbar {
 pub struct SnackbarState {
     pub current: Option<Snackbar>,
     next_id: u64,
+    /// The gauge step last reported by `tick`.
+    drawn: Option<u128>,
 }
 
 impl SnackbarState {
@@ -82,6 +96,7 @@ impl SnackbarState {
 
     fn show_at(&mut self, request: SnackbarRequest, now: Instant) {
         self.next_id += 1;
+        self.drawn = None;
         self.current = Some(Snackbar {
             id: self.next_id,
             request,
@@ -106,7 +121,7 @@ impl SnackbarState {
         }
     }
 
-    /// True while a timed gauge needs repainting, including the frame that removes it.
+    /// True when a timed gauge moved to a new step, or on the frame that removes it.
     pub fn tick(&mut self, now: Instant) -> bool {
         let Some(current) = &self.current else {
             return false;
@@ -116,8 +131,10 @@ impl SnackbarState {
         };
         if remaining <= 0. {
             self.current = None;
+            return true;
         }
-        true
+        let step = Some(current.step(now));
+        step != std::mem::replace(&mut self.drawn, step)
     }
 }
 
@@ -157,6 +174,25 @@ mod tests {
             now,
         );
         assert!(state.tick(now));
+        assert!(state.is_none());
+    }
+
+    #[test]
+    fn gauge_repaints_once_per_step_not_every_frame() {
+        let now = Instant::now();
+        let mut state = SnackbarState::default();
+        state.show_at(SnackbarRequest::new("timed", SnackbarDuration::Normal), now);
+        let frames = (0..5_000)
+            .step_by(16)
+            .map(|ms| now + Duration::from_millis(ms));
+        let repaints = frames.filter(|at| state.tick(*at)).count();
+        assert_eq!(repaints, 50, "one per 100 ms step over 5 s at 60 Hz");
+        let message = state.current.as_ref().unwrap();
+        assert_eq!(
+            message.gauge_fraction(now + Duration::from_millis(2_599)),
+            Some(0.5)
+        );
+        assert!(state.tick(now + Duration::from_secs(5)));
         assert!(state.is_none());
     }
 

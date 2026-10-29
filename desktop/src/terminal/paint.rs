@@ -29,9 +29,84 @@ pub(super) fn paint_grid<T>(term: &Term<T>, mut paint: impl FnMut(CellLayer, Ind
     }
 }
 
+/// Adjacent cells of one row with the same key, painted as one quad.
+#[derive(Debug, PartialEq)]
+pub(super) struct Run<K> {
+    pub row: i32,
+    pub start: usize,
+    pub end: usize,
+    pub key: K,
+}
+
+pub(super) struct Runs<K>(Option<Run<K>>);
+
+impl<K: PartialEq> Runs<K> {
+    pub fn new() -> Self {
+        Self(None)
+    }
+    /// Adds the next cell in row-major order; `None` paints nothing. Returns the
+    /// previous run once this cell does not continue it.
+    pub fn push(&mut self, row: i32, column: usize, key: Option<K>) -> Option<Run<K>> {
+        if let (Some(run), Some(k)) = (&mut self.0, &key)
+            && run.row == row
+            && run.end == column
+            && run.key == *k
+        {
+            run.end += 1;
+            return None;
+        }
+        std::mem::replace(
+            &mut self.0,
+            key.map(|key| Run {
+                row,
+                start: column,
+                end: column + 1,
+                key,
+            }),
+        )
+    }
+    pub fn finish(&mut self) -> Option<Run<K>> {
+        self.0.take()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runs_join_same_key_neighbours_within_a_row_only() {
+        let mut runs = Runs::new();
+        let mut out = vec![];
+        for (row, column, key) in [
+            (0, 0, Some('a')),
+            (0, 1, Some('a')),
+            (0, 2, None),
+            (0, 3, Some('a')),
+            (0, 4, Some('b')),
+            (1, 0, Some('b')),
+            (1, 1, Some('b')),
+        ] {
+            out.extend(runs.push(row, column, key));
+        }
+        out.extend(runs.finish());
+        let run = |row, start, end, key| Run {
+            row,
+            start,
+            end,
+            key,
+        };
+        assert_eq!(
+            out,
+            [
+                run(0, 0, 2, 'a'),
+                run(0, 3, 4, 'a'),
+                run(0, 4, 5, 'b'),
+                run(1, 0, 2, 'b')
+            ]
+        );
+        assert_eq!(runs.finish(), None);
+    }
     use alacritty_terminal::{
         event::VoidListener,
         term::{Config, test::TermSize},
