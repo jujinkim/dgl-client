@@ -15,7 +15,7 @@
 | CLI 프로세스·훅·알림 | [에이전트 상태](AGENT_STATUS.md) |
 | 빌드·기본 검사·CI | [개발 안내](DEVELOPMENT.md), [Windows](WINDOWS.md), [스크립트](../scripts/README.md) |
 | 모듈과 계약 | [아키텍처](ARCHITECTURE.md), [코어 API](CORE_API.md), [화면 복원 ADR](decisions/002-terminal-restoration.md) |
-| 결과·미검증 항목 | [검증](VALIDATION.md), [남은 작업](../TASKS.md) |
+| 검증 범위·미검증 항목 | [검증](VALIDATION.md), [남은 작업](../TASKS.md) |
 | 선택적 성능 계측 | [성능 계약](PERFORMANCE.md) |
 | 보호 저장·의존성·라이선스 | [보안](SECURITY.md), [제3자 고지](../THIRD_PARTY_NOTICES.md) |
 

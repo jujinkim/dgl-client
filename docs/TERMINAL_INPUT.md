@@ -124,4 +124,4 @@ IME 높이는 composition에서 매 프레임 읽지 않고 layout에서 적용�
 
 Rust GPUI 이벤트 주입, Kotlin 입력 모델, 웹 브리지 단위 검사를 사용합니다.
 이 결과를 실제 OS 키보드·IME·원격 TUI·Windows GUI 검증으로 간주하지 않습니다.
-현재 결과와 남은 실기 인수는 [VALIDATION.md](VALIDATION.md)를 따릅니다.
+검증 범위와 남은 실기 인수는 [VALIDATION.md](VALIDATION.md)를 따릅니다.

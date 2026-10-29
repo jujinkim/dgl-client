@@ -33,18 +33,17 @@ python3 scripts/verify_test_results.py --mode linux --output artifacts/jvm-tests
 npm test --prefix web
 ```
 
-단축키 회귀 검사는 Rust 공통 인코더·UniFFI, Kotlin 저장 호환/조합키 수명, 웹 키·IME 출처/붙여넣기·마우스 비간섭/지연된 대상 검사를 포함합니다.
-크기·폰트 회귀 검사는 즉시 제출·50ms 제한·실패 후 150ms 재시도·최신 크기 병합, 렌더러 소유 IME 세대의 취소·재부착,
-지연된 폰트 측정·숨김 후 표시, 조합 중 스냅샷 교체·커서 좌표와 입력 보조 요소 캐시 제외를 포함합니다.
-모바일 웹 검사는 이동 모드의 IME 표시·숨김·높이 변경·빠른 반전의 resize 없음, 자동/리사이즈의 최종 행 수·복원,
-짧은 출력·공백·커서·전체 화면 앱 전환·표시 pane 위치와 설정 전환, 논리 크기·CSS 픽셀·렌더러 세대,
-패널 1:1 이동·80ms 속도/250ms 감속·경계 정지·관성 취소·오래된 프레임/입력 누출 방지·scrollbar 비례·
-이동 모드의 동일 논리 크기 셀 측정 생략·재개방 콘텐츠 하단 정렬과 원격 열 수 유지·세로 드래그 방향·행 단위 누적,
-비활성 pane 선택·대상 세대·취소·핀치·IME 분리와 합성 클릭 차단도 확인합니다.
+`verify_test_results.py`는 `--mode linux|ssh`와 `--output`이 필수이며 `app/build/test-results/desktopTest`의
+모든 지정 JVM 테스트를 대조합니다. `linux` 모드는 macOS에서도 쓰는 비 SSH 모드입니다.
+JVM 테스트 이름을 바꾸거나 추가·삭제하면 이 검증기의 명시적 목록도 갱신합니다.
 
-검증기의 `linux` 모드는 macOS에서도 사용하는 비 SSH JVM 검사 모드입니다.
-외부 SSH 환경이 필요한 JVM 참조 엔진 검사는 예상 skip, Rust 통합/Keychain 검사는 기본 ignore입니다.
-이 결과를 실기 검사로 보고하지 않습니다.
+| 예상 결과 | 대상 | 이유 |
+|---|---|---|
+| JVM skip (`linux` 모드) | `IntegrationTest`, `RecoveryTest`, `PerformanceTest` | JVM 참조 엔진의 외부 SSH 환경 필요 |
+| Rust ignore | `dgl-core` `--test ssh_integration` 전체 | `scripts/integration.py`의 격리 OpenSSH/tmux 필요 |
+| Rust ignore | `dgl-desktop` `keychain_roundtrip_and_delete` | 잠금 해제된 대화형 macOS Keychain 필요 |
+
+skip·ignore 결과를 통과나 실기 검사로 보고하지 않습니다.
 
 macOS 데스크톱까지 확인할 때:
 
@@ -53,19 +52,13 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cargo test --locked --w
 ```
 
 데스크톱 변경만 검사할 때는 같은 환경에서 `cargo test --locked -p dgl-desktop`을 실행합니다.
-재시도 버튼 검사는 테스트 전용 임의 포트 loopback 서버가 연결을 수락한 뒤 닫고, 정지한 Tokio 시간을 명시적으로 진행합니다.
-실제 I/O 대기는 가상 시간을 진행하지 않으며 실패 시 단계와 연결·재시도 상태를 출력합니다. 제품 재접속 정책은 바꾸지 않습니다.
-GPUI 검사는 실제 Ctrl+휠의 확대·축소/원격 전송 차단과 좁은 창·분할 화면의 우측 상단 초기화 FAB 위치·클릭·포커스를 포함합니다.
-제목 빠른 갱신 검사는 조각난 OSC·BEL/ST·다른 제어 문자열, 가상 시간 499/500ms·연속 신호 병합·동시 조회 차단,
-숨김/연결/pane 세대의 오래된 응답 거부와 전면·그룹별 표시 상태 전달을 포함합니다.
-호스트·하단 단축키 순서 모델, 설정 상세 화면 왕복·포커스, GPUI 드래그 확정/취소·조합키 1회 소비·세션 탭 재사용 검사를 포함하며 대화형 Keychain 검사는 기본 ignore입니다.
-알림 패널은 버튼 기준 위치·좁은 창·빈/긴 목록·내부 스크롤·닫기·입력 차단·포커스 복원을 검사합니다.
-네이티브 툴팁은 영역 클리핑·스크롤·크기 갱신·가림·제거·창 수명을 GPUI로 검사하며 실제 OS 표시와 Windows MSVC 빌드는 별도 확인합니다.
-스낵바는 Rust·Kotlin에서 프리셋·기본값·사용자 지정 ms의 만료 경계, 같은 문구 재호출과 오래된 닫기/만료 거부를 검사합니다.
-GPUI 검사는 하단 3px 게이지의 남은 시간·위치, 영구 노출 시 게이지 없음, 닫기·포커스를 포함합니다.
+GPUI 검사는 실제 OS 표시와 Windows MSVC 빌드를 대신하지 않습니다.
+
+`npm test --prefix web`은 `app/src/androidMain/assets/terminal/`의 커밋된 터미널 스크립트를 검사합니다.
+`npm run bundle --prefix web`은 xterm 파일을 같은 디렉터리로 복사하며, CI는 번들 후 커밋본과 차이가 있으면 실패합니다.
 
 기본은 위 기능·단위 검사이며 전체 Android API 계측과 장시간 자원 측정은 별도 선택입니다.
-검사 결과·남은 한계는 [VALIDATION.md](VALIDATION.md)에 기록합니다.
+검증 범위·남은 한계는 [VALIDATION.md](VALIDATION.md), 변경별 실행 요약은 [HISTORY.md](HISTORY.md)에 둡니다.
 
 ### 스낵바 API
 
@@ -77,8 +70,8 @@ Rust 데스크톱은 `SnackbarState::show_snackbar(message)`가 기본 5초이�
 Kotlin의 연결별 `inputNotice: SnackbarState`는 `show(message)` 또는 `show(message, duration)`으로
 같은 네 프리셋을 받으며, `show(message, durationMs = 7500)`처럼 밀리초를 직접 지정할 수 있습니다.
 밀리초 0은 즉시 종료, 음수는 허용하지 않습니다. 영구 노출은 `Indefinite`로 지정하고 게이지를 만들지 않습니다.
-기존 호출부에는 영구 노출을 배정하지 않습니다. 문구 비교 대신 호출 지점에서 프리셋을 정하고,
-알림 ID와 단조 시계로 교체·닫기·만료 및 게이지를 관리합니다. Android 일반 오류의 `notice` 대화상자는 별도 경로입니다.
+기존 호출부에는 영구 노출을 배정하지 않습니다. 문구 비교 대신 호출 지점에서 프리셋을 정합니다.
+Android 일반 오류의 `notice` 대화상자는 별도 경로입니다.
 
 ### UI 번역
 
@@ -86,7 +79,7 @@ Kotlin의 연결별 `inputNotice: SnackbarState`는 `show(message)` 또는 `show
 추가·수정한 뒤 `python3 scripts/generate_locales.py`로 Kotlin 목록을 갱신합니다.
 Rust는 같은 JSON을 바이너리에 포함합니다. `--check`는 누락된 키·번역·자리표시자와 생성 파일 일치를 검사합니다.
 표시 문구는 `t`, 인수가 있는 문구는 `tr!`(Rust)/`tr`(Kotlin)를 사용하며 완성된 사용자 문자열에 번역을 적용하지 않습니다.
-언어 선택은 `preferences.language`의 `system|ko|en`이며 예전 설정은 `system`, 알 수 없는 언어 선택도 시스템으로 해석합니다.
+언어 선택은 `preferences.language`의 `system|ko|en`이며 예전 설정과 알 수 없는 값은 `system`으로 해석합니다.
 tmux 명령·에러 코드·원격 터미널 바이트는 언어와 무관하게 유지합니다.
 
 ### UI 아이콘
@@ -94,7 +87,6 @@ tmux 명령·에러 코드·원격 터미널 바이트는 언어와 무관하게
 공통 SVG 원본과 도형 규칙은 [UI 아이콘 안내](../assets/ui-icons/README.md)에 있습니다.
 `scripts/generate_ui_icons.py`로 Compose `ImageVector`와 Rust 포함 목록을 생성합니다.
 `--check`는 SVG 형식과 생성물 일치를 검사합니다. 일반 빌드에는 생성 도구·외부 SVG 파일이 필요하지 않습니다.
-에이전트 상태 아이콘은 사건 종류와 읽지 않은 사건 우선순위로 고르며, 오래된 관측은 미확인으로 표시합니다.
 
 ## Android 빌드
 
@@ -146,28 +138,34 @@ python3 scripts/package_rust_mac.py --release
 스크립트는 Xcode 경로를 설정하고 로컬 ad-hoc 서명·검증을 수행합니다. Developer ID·공증은 하지 않습니다.
 저장된 `desktop/resources/dgl.icns`를 번들 Resources에 넣고 `CFBundleIconFile`로 연결한 뒤 서명합니다.
 Windows는 `scripts/run_windows.cmd` 또는 `scripts/build_windows.ps1`로 빌드·ZIP을 생성합니다.
-기본은 빌드만, `-Test`는 단위 검사, `-Run`은 빌드 후 앱 실행입니다.
+기본은 빌드만, `-CheckOnly`는 필수 도구 점검만, `-Test`는 단위 검사, `-Run`은 빌드 후 앱 실행입니다.
 
 ### 앱 아이콘 갱신
 
 공통 도형·디자인 명세·크기별 미리보기와 변환 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있습니다.
 일반 빌드는 저장된 리소스를 사용합니다. 갱신할 때만 Python 가상환경에 Pillow 11.3.0을 설치하고
-`scripts/generate_app_icons.py`로 원본 PNG부터 플랫폼별 리소스·모바일 상단 Compose 벡터·알림 전용 단색 벡터까지 생성합니다. `--check`로 파일 일치를 확인한 뒤
+`scripts/generate_app_icons.py`로 플랫폼별 리소스를 생성합니다. `--check`로 파일 일치를 확인한 뒤
 Android Debug·lint와 macOS 패키징을 확인합니다. Windows는 기존 SDK `rc.exe`로
 실행 파일의 아이콘 ID `1`을 컴파일하며 네이티브 빌드·GUI 확인은 Windows에서 별도로 수행합니다.
 
 ## 선택 검사
 
-격리 SSH 검사는 OpenSSH·임시 키·독립 tmux socket을 사용합니다. 기존 사용자 서버·키를 사용하지 않습니다.
-`integration.py`의 기본 명령은 Rust 엔진의 `ssh_integration` ignore 검사 전체이며, CI `verify_ssh`와 같습니다.
-에이전트 관측 검사는 격리 HOME이 필요해 `--agent-home` 없이 실행하면 실패합니다.
-개별 Rust 검사·JVM 참조·Android 실행은 `--command`로 지정합니다.
+격리 SSH 검사는 OpenSSH·임시 키·독립 tmux socket을 사용하며 기존 사용자 서버·키·tmux 설정을 사용하지 않습니다.
+tmux 소스 빌드에는 C 컴파일러·make·libevent·ncurses 개발 헤더가 필요합니다(`build_test_tmux.py`는 `3.3a`·`3.7c`).
+`integration.py`의 기본 명령은 Rust 엔진의 `ssh_integration` ignore 검사 전체이며 CI `verify_ssh`와 같습니다.
+에이전트 관측 검사가 포함되므로 기본 명령은 `--agent-home` 없이 실행하면 실패합니다.
+개별 Rust 검사·JVM 참조·Android 실행은 `--command`로 지정합니다. `--command` 이후 인수와
+Cargo의 `--` 구분자는 자식 명령에 그대로 전달합니다.
 
 ```sh
 python3 scripts/build_test_tmux.py 3.7c
 python3 scripts/integration.py --agent-home --tmux .tools/tmux-3.7c/tmux-3.7c/tmux
 python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command cargo test --locked -p dgl-core --test ssh_integration isolated_auth_management_input_reconnect -- --ignored --exact
 ```
+
+개별 선택 이름은 `isolated_auth_management_input_reconnect`, `workspace_focus_tree_and_independent_connections`,
+`hierarchy_titles_all_sessions_without_screen_reset`, `resume::healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_input`처럼
+`crates/dgl-core/tests/ssh_integration*`의 함수 경로를 사용합니다.
 
 JVM 참조 엔진의 SSH 회귀가 필요할 때만 아래처럼 실행하고 `ssh` 모드 검증기로 결과를 대조합니다.
 
@@ -176,92 +174,57 @@ python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command 
 python3 scripts/verify_test_results.py --mode ssh --output artifacts/jvm-ssh-tests.json
 ```
 
-복귀 응답 확인·소켓을 닫지 않는 무응답·출력 역압력 중 3초 판정·동일 tmux 작업/입력 복원과
-크기 변경 중 큐 입력의 한글·영문 순서/중복 여부는 아래 한 검사로 확인합니다.
-`--command` 이후 인수와 Cargo의 `--` 구분자는 자식 명령에 그대로 전달합니다.
+### Android 계측
 
-```sh
-python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command cargo test --locked -p dgl-core --test ssh_integration resume::healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_input -- --ignored --exact
-```
+전용 에뮬레이터와 명시적인 `ANDROID_SERIAL`을 사용하며 API36 한 대로 짧게 확인합니다. 전체 API matrix로 확장하지 않습니다.
+앱·계측 APK를 먼저 빌드합니다. 계측 APK는 `androidApp/build/outputs/apk/androidTest/debug/androidApp-debug-androidTest.apk`입니다.
+선택 이름은 `am instrument -e class` 형식(쉼표로 구분한 `kim.jujin.dglc.Class` 또는 `kim.jujin.dglc.Class#method`)입니다.
+실행 스크립트(`rust_android_integration.py`·`workspace_android.py`·`mobile_input_android.py`)는 `scripts/verify_android_results.py`로
+선택한 이름의 완료·실패·skip을 대조합니다. `am instrument`를 직접 실행한 결과는 이름 목록과 대조되지 않습니다.
+Android 테스트 이름을 바꾸면 이 검증기의 명시적 목록도 갱신합니다.
 
-제목 빠른 조회와 기존 숨김 구독을 함께 확인할 때:
-
-```sh
-python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command cargo test --locked -p dgl-core --test ssh_integration hierarchy_titles_all_sessions_without_screen_reset -- --ignored --exact
-```
-
-검사 중 해당 fixture 클라이언트의 메타데이터 구독을 잠시 제거하여 OSC 빠른 경로를 분리합니다.
-제목 조회·숨김/전면 복귀·출력 원문·입력 대상/화면 보존을 확인한 뒤 구독을 복원하고
-숨긴 창/다른 세션 제목·재접속 검사를 이어갑니다. 사용자 tmux 설정·서버는 사용하지 않습니다.
-
-tmux 소스 빌드에는 C 컴파일러·make·libevent·ncurses 개발 헤더가 필요합니다.
-Android 계측은 전용 에뮬레이터와 명시적인 `ANDROID_SERIAL`을 사용합니다.
-하단 CLI 메뉴만 확인할 때는 `AndroidMobileInputTest#cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput`과
-`AndroidVolumeKeyTest#cliLauncherCommandsLayoutDismissalAndTargetChanges`를 선택합니다(패키지 `kim.jujin.dglc`).
-메뉴 열기·선택·닫기 동안 매 프레임의 IME 표시와 WebView/창 포커스를 감시하며, 일시적인 숨김·재표시도 실패로 판정합니다.
-같은 Activity 창·바깥 터치·Back/Escape·콜백 해제·입력 차단·도구 줄 크기 변경·가로 스크롤을 함께 확인합니다.
-이 에뮬레이터 검사는 삼성 키보드 실기 확인을 대신하지 않습니다.
-‘키보드 항상 보이기’만 확인할 때는 `AndroidMobileInputTest#alwaysVisibleKeyboardRespectsEditorsLifecycleAndActiveTerminal`을 선택합니다.
-설정 토글·크기 옵션 잠금/복원·DOM 포커스 이탈·Back·복구 중 입력 차단·텍스트 작성·pause/resume·활성 분할 터미널을 확인합니다.
-추가 설정은 기기 로컬이며 Kotlin/Rust 저장·동기화 보존과 지연된 IME 요청 취소는 기본 단위 검사에 포함합니다.
-API36 후보 검사는 앱/계측 APK를 먼저 빌드하고 fixture 안에서 실행합니다.
-연결 수명·IME·정상 복귀의 즉시 확인 dim과 SSH 유지·유지 끔의 자동 재연결/취소·삭제된 세션/인증 실패 보존·알림 인텐트·task 제거 후 새 실행만 짧게 확인할 때는 아래 실행에
-`DGL_ANDROID_TEST_CLASSES=kim.jujin.dglc.AndroidConnectionLifetimeTest`를 추가합니다.
-전체 API matrix로 확장하지 않습니다.
-
-`kim.jujin.dglc.AndroidOutputRecoveryTest`는 같은 fixture에서 렌더러 ACK를 실제 15초 넘게 지연시킵니다.
-구독 종료 후 SSH 세대·tmux client·원격 프로세스 유지, 모든 표시 pane의 ACK 대기, 늦은 ACK·표면 교체,
-자동 화면 복원 실패 후 수동 재시도를 확인합니다. 물리 기기의 장시간 잠금·Doze 재현을 대신하지 않습니다.
-같은 클래스의 `tabRebindAndWindowSwitchWaitForFreshVisiblePanes`는 실제 WebView·일반/alternate 버퍼로
-탭 재부착·창 전환 중 불투명 표시, 마지막 pane ACK 전 입력 차단, pane당 묶음 전송과 원격 PID 유지를 검사합니다.
-`DglPresentationTest`의 `elapsedMs`는 요청부터 복원 완료 콜백까지이며 실제 첫 표시 프레임의 측정값이 아닙니다.
-Debug 진단은 `adb -s "$ANDROID_SERIAL" logcat -s DglResume`으로 복귀·검사 제출/완료·구독/연결 세대·화면 ACK·입력 허용 시각을 확인합니다.
+API36 후보 검사는 SSH fixture 안에서 실행합니다. 기본 선택은 `AndroidPlatformTest`·`AndroidAppFlowTest`·
+`AndroidVolumeKeyTest`·`AndroidHierarchyTest`·`AndroidMobileInputTest`이며,
+`DGL_ANDROID_TEST_CLASSES`로 바꿀 수 있습니다(예: `kim.jujin.dglc.AndroidConnectionLifetimeTest`,
+`kim.jujin.dglc.AndroidOutputRecoveryTest#tabRebindAndWindowSwitchWaitForFreshVisiblePanes`).
+`AndroidAppFlowTest`·`AndroidConnectionLifetimeTest`·`AndroidOutputRecoveryTest`는 `dgl.fixture` 인수가 없으면 skip되며
+검증기는 이를 실패로 판정하므로 이 경로로만 실행합니다. 결과는 `artifacts/rust-candidate/android/`에 남습니다.
 
 ```sh
 ./gradlew :androidApp:assembleDebug :androidApp:assembleDebugAndroidTest
 ANDROID_SERIAL=emulator-5554 python3 scripts/integration.py --command python3 scripts/rust_android_integration.py
 ```
 
-성능·자원 측정은 [PERFORMANCE.md](PERFORMANCE.md)의 표본·종료 조건을 먼저 정합니다.
-에이전트 실제 CLI 검사에는 설치·로그인과 경우에 따라 유료 호출이 필요하므로 [AGENT_STATUS.md](AGENT_STATUS.md)의 범위를 따릅니다.
-
-Android 작업 공간과 기존 모바일 입력·볼륨키·계층을 전용 API36 한 대에서 짧게 검사할 때:
+작업 공간·모바일 입력·볼륨키·계층은 `workspace_android.py`로 검사합니다. `ANDROID_SERIAL`이 `emulator-`로 시작하는 API36이어야 하며,
+화면 크기·밀도·IME·글꼴·애니메이션 설정은 `finally`에서 복원합니다. 결과는 `artifacts/android-workspace/`에 남습니다.
+`--section workspace`, `--section mobile-input`, `--section compact`로 필요한 구간만 재검사할 수 있습니다.
 
 ```sh
 ./gradlew :androidApp:assembleDebug :androidApp:assembleDebugAndroidTest :androidApp:lintDebug
 ANDROID_SERIAL=emulator-5554 python3 scripts/workspace_android.py
 ```
 
-839/840dp 경계·넓은 분할·IME 전후 모든 그룹의 논리 크기와 WebView 유지·실제 높이 부족 시 임시 확대·탭 이동/폭 전환 전후 WebView 동일성·
-활성 그룹 입력·전역 모달 차단·드래그 확정/취소, 320dp 상단 버튼·36dp 탭·70dp 두 줄/36dp 한 줄 단축키의 독립 폭·짧은 줄 우선 배치·동률 시 위 줄 배치·고정 버튼·공동 스크롤·설정 복원,
-알림 빈/긴 목록·내부 스크롤·IME 공간·닫기/바깥 터치/뒤로 가기·입력 차단/포커스 복원, 세션 폰트 핀치·취소·최신 기본값 초기화·탭/Activity 수명과
-터미널 가로 스크롤 경계도 검사합니다. 화면 크기·밀도·IME·글꼴·애니메이션 설정은
-`finally`에서 복원합니다. 결과는 `artifacts/android-workspace/`에 남기며 명시적 검사 이름 목록과 대조합니다.
-하단 CLI 메뉴는 키보드 표시/숨김 유지·크기 변경 복원 중 메뉴 유지·명령 1회 전송·닫기 후 포커스와
-입력 차단·가로 화면의 내부 스크롤을 `AndroidMobileInputTest.cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput`으로 확인합니다.
-JVM 기본 검사에는 분할·이동·합치기·선택·최소 공간/최대 그룹·배치 저장·세션 예약·오래된 연결 대상 거부가 포함됩니다.
-`--section workspace`, `--section mobile-input`, `--section compact`로 필요한 구간만 재검사할 수 있습니다.
-전체 Android API matrix로 확대하지 않습니다.
-`AndroidMobileInputTest#imeTransitionsRecordFrameDurations`는 480×800dp·애니메이션 1배에서
-키보드 열기/닫기 각 5회를 실행하고 `cache/ime-frames.json`에 `FrameMetrics.TOTAL_DURATION` 원시 ns·
-누락 콜백 수·WebView 크기 변경·원격 resize 수를 저장합니다. 디스플레이·키보드·애니메이션 설정은 복원합니다.
-독립 실행은 위와 같은 앱/계측 APK 설치 후 아래 명령을 사용합니다.
+fixture가 필요 없는 메서드는 APK 설치 후 직접 실행할 수 있습니다. 자주 쓰는 선택:
+
+| 범위 | 선택 |
+|---|---|
+| 하단 CLI 메뉴 | `AndroidMobileInputTest#cliLauncherKeepsImeAndSurvivesResizeWithoutLeakingInput`, `AndroidVolumeKeyTest#cliLauncherCommandsLayoutDismissalAndTargetChanges` |
+| 키보드 항상 보이기 | `AndroidMobileInputTest#alwaysVisibleKeyboardRespectsEditorsLifecycleAndActiveTerminal` |
+| 터미널 너비·터치 스크롤 | `AndroidPlatformTest#bundledRendererRemoteColumnsAndTouchScrolling`, `AndroidPlatformTest#windowPanesKeepIndependentScreensAndOnlyTheContainerRequestsSize` |
+| IME 프레임 시간 | `AndroidMobileInputTest#imeTransitionsRecordFrameDurations` (결과 `cache/ime-frames.json`) |
 
 ```sh
 adb -s "$ANDROID_SERIAL" shell am instrument -w -r -e class kim.jujin.dglc.AndroidMobileInputTest#imeTransitionsRecordFrameDurations kim.jujin.dglc.test/androidx.test.runner.AndroidJUnitRunner
 adb -s "$ANDROID_SERIAL" shell run-as kim.jujin.dglc cat cache/ime-frames.json
 ```
 
-앱 창의 처리 시간 진단이며 SurfaceFlinger 표시 지연·전체 성능 인수로 해석하지 않습니다.
-삼성 키보드 실기 인수는 키보드를 열자마자 한글을 입력해 조합 글자가 커서에 붙어 있는지와 최종 문자열이 정확한지를 확인합니다.
-영문·숫자도 비교하며, 자동 좌표 검사·계측 APK 컴파일을 이 실기 결과로 계산하지 않습니다.
+IME 프레임 결과는 앱 창의 처리 시간 진단이며 SurfaceFlinger 표시 지연·전체 성능 인수로 해석하지 않습니다.
+로그 태그 `DglPresentationTest`의 `elapsedMs`는 요청부터 복원 완료 콜백까지이며 첫 표시 프레임 측정값이 아닙니다.
+Debug 빌드의 복귀·구독/연결 세대·화면 ACK·입력 허용 진단은 `adb -s "$ANDROID_SERIAL" logcat -s DglResume`으로 확인합니다.
+에뮬레이터 결과는 삼성 키보드 실기·물리 기기의 장시간 잠금/Doze 확인을 대신하지 않습니다.
 
-터미널 너비·터치 스크롤만 검사할 때는 위 Debug·계측 APK를 전용 API36에 설치한 뒤
-`am instrument -w -r -e class`의 선택을
-`kim.jujin.dglc.AndroidPlatformTest#bundledRendererRemoteColumnsAndTouchScrolling,kim.jujin.dglc.AndroidPlatformTest#windowPanesKeepIndependentScreensAndOnlyTheContainerRequestsSize`로 제한합니다.
-실제 번들 xterm의 80열·분할 pane 마지막 열과 줄바꿈, 스크롤바 숨김·가로 이동,
-SGR·바이너리 휠·방향키 대체·로컬 이력 및 실제 Android 터치의 키보드 미표시를 확인합니다.
-`scripts/verify_android_results.py`의 `expected_for_selection`과 `verify`로 해당 이름의 완료·실패·skip을 대조합니다.
+성능·자원 측정은 [PERFORMANCE.md](PERFORMANCE.md)의 표본·종료 조건을 먼저 정합니다.
+에이전트 실제 CLI 검사에는 설치·로그인과 경우에 따라 유료 호출이 필요하므로 [AGENT_STATUS.md](AGENT_STATUS.md)의 범위를 따릅니다.
 
 ## 의존성·배포 검사
 
@@ -277,12 +240,11 @@ python3 scripts/scan_secrets.py
 `audit_dependencies.py`는 Gradle inventory·npm lock과 함께 Cargo.lock의 crates.io 패키지 전체를 OSV에 대조하므로
 Rust 툴체인이 필요합니다. runtime은 배포 타깃별(Android 네 ABI의 `dgl-uniffi`, macOS·Windows의 `dgl-desktop`)
 `cargo tree -e normal,no-proc-macro` 결과이며, 나머지는 build/test로 분류합니다. 예외는 `security/dependency-exceptions.json`입니다.
-`collect_artifacts.py`는 빌드된 Debug·Release APK의 ID/SDK·백업 정책·번들 고지·Rust payload를 확인하고
-`artifacts/build-manifest.json`, `artifacts/SHA256SUMS`를 생성합니다.
-보고서와 해시 목록의 APK 경로는 저장소 루트 기준이며, 루트에서 `sha256sum -c artifacts/SHA256SUMS`로 확인합니다.
+`collect_artifacts.py`는 빌드된 Debug·Release APK를 확인하고 `artifacts/build-manifest.json`, `artifacts/SHA256SUMS`를 생성합니다.
+해시 목록의 APK 경로는 저장소 루트 기준이며, 루트에서 `sha256sum -c artifacts/SHA256SUMS`로 확인합니다.
 `collect_rust_android.py`는 원본 Debug APK의 서명·Rust payload를 확인하고
-`artifacts/rust-candidate/android/build.json`에 원본 경로와 검사 결과를 기록합니다. 두 도구 모두 APK를 복사하지 않습니다.
-잠금·검증 메타데이터·라이선스 갱신은 생성 결과를 검토하고 반영합니다.
+`artifacts/rust-candidate/android/build.json`에 기록합니다. 두 도구 모두 APK를 복사하지 않습니다.
+`scan_secrets.py`는 Gitleaks가 필요합니다. 잠금·검증 메타데이터·라이선스 갱신은 생성 결과를 검토하고 반영합니다.
 
 ## CI
 

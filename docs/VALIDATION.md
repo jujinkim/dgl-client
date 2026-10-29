@@ -1,47 +1,50 @@
-# 검증 범위와 현재 상태
+# 검증 범위와 한계
 
-기본 검증은 기능 검사·유닛 테스트입니다. 전체 Android API 계측·장시간 soak·실기 인수는 별도 범위입니다.
-검사 명령은 [DEVELOPMENT.md](DEVELOPMENT.md), 남은 작업은 [TASKS.md](../TASKS.md)를 따릅니다.
-과거 실행 로그·시도별 결과는 [HISTORY.md](HISTORY.md)와 Git 이력에 요약·보존합니다.
+기본 검증은 기능 검사·유닛 테스트입니다. 명령은 [DEVELOPMENT.md](DEVELOPMENT.md), 남은 작업은 [TASKS.md](../TASKS.md)를 따릅니다.
+이 문서는 현재 범위와 알려진 한계만 다룹니다. 변경별 실행 결과는 [HISTORY.md](HISTORY.md)에 요약하고 상세는 Git 이력에서 찾습니다.
+실행하지 않았거나 skip·ignore된 검사를 통과로 기록하지 않습니다.
 
-## 현재 변경 검사 (2026-10-28)
+## 기본 검증
 
-Android 설정에 기기 로컬 ‘키보드 항상 보이기’를 추가했습니다. 기본은 꺼짐이며, 켜면 활성 터미널에서
-키보드를 자동 표시·복원하고 리사이즈를 적용합니다. 크기 옵션과 키보드 닫기 버튼은 비활성화하며,
-끄면 저장된 이전 크기 옵션을 복원합니다. 토글 해제 자체는 키보드를 닫지 않습니다.
-렌더러 준비·Activity 수명·창/DOM 포커스·IME 애니메이션을 확인하고, 대화상자·작성 창·비활성 터미널에서는
-포커스를 가져오지 않습니다. 지연된 요청을 무효화하고 복구 중 입력 차단·대상 세대 검사를 유지합니다.
+| 영역 | 내용 | 예상 제외 |
+|---|---|---|
+| 원문·도구 | `check_prompt.py`·`verify_wrapper.py`, 번역·UI 아이콘 생성물 `--check`, `scripts/tests` 단위 검사 | 없음 |
+| Rust | `cargo test --locked -p dgl-core -p dgl-uniffi`. 공통 계약 fixture 포함. 데스크톱 변경은 macOS에서 `dgl-desktop`까지 | `ssh_integration`(격리 SSH/tmux 필요)과 macOS Keychain 왕복은 기본 ignore |
+| JVM | `:app:desktopTest` 후 `verify_test_results.py --mode linux`로 명시적 이름 목록 대조 | 외부 SSH가 필요한 `IntegrationTest`·`RecoveryTest`·`PerformanceTest`만 예상 skip |
+| 웹 | `npm test --prefix web`(Android 터미널 assets) | 없음 |
+| Android 빌드 | CI 기본 job의 Debug APK·`lintDebug`와 `verify_lint.py` 검토 목록 대조 | 계측 실행은 선택 |
 
-| 검사 | 이번 결과·범위 |
+Android Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본만 검증하며 복사본을 만들지 않습니다.
+`main` push/PR의 **Build and verify**가 위 검사를 실행합니다. GPUI 데스크톱 검사는 macOS 로컬,
+Windows는 `build_windows.ps1 -Test`로 별도 실행합니다.
+
+## 기본 범위 밖
+
+| 항목 | 실행 조건 |
 |---|---|
-| JVM | `:app:desktopTest`: 99 통과·예상 환경 skip 9. 명시적 이름 목록 대조 통과 |
-| Rust | 코어·UniFFI 46 통과·환경 의존 ignore 6. 설정 왕복·127개 계약 fixture·동기화 로컬 보존 포함 |
-| 웹·스크립트 | 웹 56·Python 99 통과. DOM 포커스 알림·기존 IME/입력 회귀와 검사 목록 대조 포함 |
-| Android 빌드 | 원본 Debug APK·계측 APK·`lintDebug` 통과. 기존 검토 진단 12개 목록 검증 통과 |
-| Android 계측 | 전용 API36에서 이번 기능 1개 통과·skip 0, 62.790초. 명시적 이름 목록 검증 통과 |
-| IME·포커스 | 설정 토글·크기 옵션 잠금/복원·DOM 포커스 이탈·Back·복구 중 입력 차단·작성 창·pause/resume·활성 분할 터미널·해제 후 수동 닫기 확인 |
-| 정적 | 번역·버전 대조·변경 문서 로컬 링크·diff 공백·대시보드 메타데이터 검증 통과. 변경 Rust 파일의 edition 2024 형식 검사 통과 |
+| 격리 SSH/tmux 통합 | `scripts/integration.py`로 Rust `ssh_integration` ignore 검사 실행. 에이전트 관측은 `--agent-home` 필수. CI 수동 `verify_ssh`(tmux 3.3a·3.7c) |
+| JVM 참조 엔진 SSH 회귀 | `integration.py --command ./gradlew :app:desktopTest --rerun-tasks` 후 `verify_test_results.py --mode ssh` |
+| Android 계측 | 전용 에뮬레이터·명시적 `ANDROID_SERIAL`에서 필요한 `Class#method`만 선택. `verify_android_results.py`는 skip을 허용하지 않음. 전체 API 34·35·36은 CI 수동 `verify_android` |
+| 배포 검사 | Release·계측 APK, Gradle·Cargo·npm 의존성 감사, 라이선스·산출물 검사. CI 수동 `verify_packaging` |
+| 성능·자원 | [PERFORMANCE.md](PERFORMANCE.md)의 표본·종료 조건을 먼저 정한 뒤 실행. 계측 코드·의존성은 계측 APK(androidTest)에만 포함 |
+| 실제 CLI 훅 | 설치·로그인·유료 호출이 필요할 수 있어 [AGENT_STATUS.md](AGENT_STATUS.md) 범위를 따름 |
 
-최종 계측 결과·원문은 `artifacts/keyboard-always-visible/summary.json`·`instrumentation-final.txt`,
-빌드는 `.tools/keyboard-always-android-check.log`에 있습니다. 초기 설정 fixture 예상값 실패,
-접근성 선택 상태·해제 후 IME 준비 실패와 Back 전환 시 Activity 종료는 최종 통과에 포함하지 않았습니다.
-Back이 Activity까지 전달될 때 소비하도록 보완했고, 초기 계측 원문은 같은 artifacts 폴더에 보존했습니다.
-전체 `cargo fmt --all -- --check`는 이번 변경 밖 `crates/dgl-core/tests/password_shell.rs`의 기존 형식 차이로 실패했습니다.
-
-APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본입니다.
-Android/IME가 강제로 숨긴 경우 재표시까지 잠시 사라질 수 있으며, 백그라운드·다른 창에서 강제 표시하지 않습니다.
-삼성 키보드·물리 기기·실제 SSH·macOS GUI/Keychain·데스크톱 재패키징·Windows 네이티브·전체 API matrix·장시간 반복은 수행하지 않았습니다.
-이전 변경의 실행 요약은 [HISTORY.md](HISTORY.md)에 있습니다.
+전체 Android API matrix·장시간 반복 계측은 기본 작업에 자동으로 추가하지 않습니다.
+CI 성공은 서명·공개 릴리스·실기 인수 완료를 뜻하지 않습니다.
 
 ## 남은 한계
 
-- macOS 실제 GUI·네이티브 선택창·IME·Keychain 저장/재기동·OS 알림 인수.
-- Windows MSVC 네이티브 빌드·DPAPI·파일 선택·GUI·알림: 사용자 확인 범위.
-- Android 물리 기기·실제 한국어/일본어 키보드·Wi-Fi↔셀룰러 전환·장시간 백그라운드 연결.
-- 실제 에이전트 훅의 서비스별 범위는 [AGENT_STATUS.md](AGENT_STATUS.md). 전체 로그인·승인·장시간 인수와 실험 서비스 검증은 남음.
-- tmux capture/format은 모든 VT 내부 상태·현재 SGR pen을 직렬화하지 않음.
-  로컬 기록·선택·스크롤 위치는 기기 상태이며 원격 tmux 전체 히스토리 복원을 보장하지 않음.
-- tmux prefix·키 바인딩·상태줄·팝업·copy-mode 화면 재현은 GUI 범위 밖.
-- 정확한 첫 표시 프레임: 17개 unresolved, proven 0, invalid_trace.
-  성능·자원 수집 도구의 존재와 일부 수집 성공은 전체 성능 인수 완료가 아님.
-- 공개 배포용 서명·공증·현재 의존성 전체 감사는 미완료. [SECURITY.md](SECURITY.md) 참고.
+- 실기 인수(macOS GUI·IME·Keychain·OS 알림, Windows MSVC 네이티브 빌드·DPAPI·GUI, Android 물리 기기·실제 키보드·네트워크 전환)는
+  미수행입니다. 항목은 [TASKS.md](../TASKS.md)의 기능 인수, Windows 절차는 [WINDOWS.md](WINDOWS.md)를 따릅니다.
+- Android 성능·자원 계측 하네스(`ResourceScenario`·`ResourceInstrumentation`·`MigrationPresentationProbe`)는
+  제품 WebView를 SSHJ 참조 엔진으로 구동합니다. 결과는 Rust 엔진 성능 근거가 아닙니다.
+- 정확한 첫 표시 프레임은 `proven 0`, `unresolved 17`, `invalid_trace`로 미해결입니다.
+  수집 도구의 `collected`나 일부 계측 성공은 성능 인수 통과가 아닙니다.
+- tmux format/capture는 모든 VT 내부 상태·현재 pen 속성을 직렬화하지 않습니다([ADR 002](decisions/002-terminal-restoration.md)).
+  로컬 기록·선택·스크롤 위치는 기기 상태이며 원격 tmux 전체 히스토리 복원을 보장하지 않습니다.
+- 사용자 정의 tmux prefix·키 바인딩과 상태줄·팝업·copy-mode 화면 재현은 GUI 범위 밖입니다([TMUX_WINDOW_SYNC.md](TMUX_WINDOW_SYNC.md)).
+- 실제 에이전트 훅의 서비스별 수신 범위는 [AGENT_STATUS.md](AGENT_STATUS.md)에 있습니다. 전체 로그인·승인·장시간 인수와 AGY·Grok 실제 수신은 남아 있습니다.
+- `AgentNotificationTest#channelPermissionAndClickIntentRetainOnlyEventId`는 시작 시 알림 권한이 허용돼 있으면 실패합니다([TASKS.md](../TASKS.md)의 검사 보완).
+- 전체 `cargo fmt --all -- --check`는 `crates/dgl-core/src/command.rs`·`crates/dgl-core/tests/password_shell.rs`의
+  형식 차이로 통과하지 않습니다. 기본 검사·CI에는 포함되지 않습니다.
+- 공개 배포용 서명·공증과 현재 의존성 전체 감사는 미완료입니다. [SECURITY.md](SECURITY.md)를 따릅니다.

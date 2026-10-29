@@ -1,6 +1,6 @@
 # Claude Code·Codex·AGY·Grok Build 관측과 알림
 
-2026-10-25 구현. Mac·Windows·Android는 같은 Rust 관측 모델과 알림 큐를 사용한다.
+Mac·Windows·Android는 같은 Rust 관측 모델과 알림 큐를 사용한다.
 SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH 셸에는 세부 관측을 제공하지 않는다.
 
 ## CLI 실행 메뉴
@@ -18,7 +18,7 @@ CLI 설치·로그인은 원격 환경에서 준비하며 DGL은 기존 프로�
 입력 불가 상태에서는 실행하지 않습니다. 메뉴를 연 뒤 연결·탭·pane이 바뀌면 닫으며 실패한 입력을 재전송하지 않습니다.
 서비스명은 일반 실행, 바로 뒤의 번개 아이콘은 Bypass 실행입니다. Bypass는 각 CLI의 권한 확인을 건너뛰는 옵션입니다.
 메뉴는 가장 긴 행에 맞는 폭으로 표시하고 외곽 테두리만 유지합니다.
-AGY·Grok Build의 실행 메뉴 배지는 제거했으며, 에이전트 관측의 실험 지원·실제 CLI 훅 수신 미검증 상태는 유지합니다.
+실행 메뉴에는 AGY·Grok Build 배지를 표시하지 않습니다. 두 CLI의 에이전트 관측은 실험 지원이며 실제 CLI 훅 수신은 미검증입니다.
 
 ## 사용 방법
 
@@ -106,18 +106,18 @@ Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다
 |---|---|
 | Python 도우미 12개 검사 | 기존 5개 회귀, 연결당 도우미의 줄 단위 응답·오류 코드, 화면 문구 미포함과 공식 형식 24개 fixture, 중립 출력·실패 출력, AGY/Grok 설정·사용자 훅 보존, 반복 설치/해제, CLI별 오류 격리, 버전·호환 훅 오인·대화/자식 분리·중복·본문 미저장 통과 |
 | Rust·UniFFI | 관측 3개 검사: 기존 2개 및 네 서비스 wire ID·질문/승인/응답/오류의 공통 알림 경로. 전체 Rust 코어·UniFFI 회귀 통과 |
-| GPUI·Kotlin 실행/이동 | 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단·닫힘·포커스 복귀·종료 알림 대상 이동 거부를 회귀 검사한다. 현재 메뉴 배치 검사의 결과는 [VALIDATION.md](VALIDATION.md)를 따른다 |
+| GPUI·Kotlin 실행/이동 | 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단·닫힘·포커스 복귀·종료 알림 대상 이동 거부를 회귀 검사한다 |
 | 격리 SSH/tmux 3.3a·3.7c | 네 합성 CLI 각각 숨겨진 창, 출력 미구독 수집, 최초 DB 동기화, 새 사건, 패널 이동, 재연결 재알림 방지, 같은 패널의 프로세스 재시작·종료 확인. 생산자는 C로 만든 합성 CLI이며 실제 CLI 검사는 아래와 별개 |
 | 실제 Codex 0.163.0 | 임시 HOME·독립 tmux에서 정상 신뢰 UI로 훅을 검토하고 SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SubagentStart/Stop 수신 확인 |
 | 실제 Claude Code 2.1.310 | 같은 격리 방식으로 SessionStart, UserPromptSubmit, 도구 전후, AskUserQuestion, PermissionRequest, PostToolUseFailure, Stop, SubagentStart/Stop, SessionEnd 수신 확인 |
-| Android API 36 | 네 ABI Debug APK, JVM 회귀, lint, 알림 계측 2개 통과: 네 서비스의 네이티브 Inbox·중복·읽음/관측 분리, 권한 거부/허용·채널, AGY/Grok OS 알림 제목 갱신, 실제 PendingIntent 클릭의 종료 대상 처리 |
-| macOS | GPUI 빌드·ad-hoc 패키징·단위 UI 검사 통과. 테스트 알림 요청은 발생했으나 CUA가 `cgWindowNotFound`로 창을 찾지 못해 OS 배너·클릭 실기 확인은 미완료 |
-| Windows | 토스트 어댑터의 Windows GNU 대상 독립 타입 검사와 ZIP 패키저 단위 검사 통과. Windows MSVC 전체 빌드·실행·COM/토스트·DPAPI 실기는 사용자 담당이며 미수행 |
+| Android API 36 | 네 ABI Debug APK, JVM 회귀, lint, 알림 계측 2개 통과(`channelPermissionAndClickIntentRetainOnlyEventId`는 시작 시 알림 권한이 이미 허용돼 있으면 실패, [TASKS.md](../TASKS.md)): 네 서비스의 네이티브 Inbox·중복·읽음/관측 분리, 권한 거부/허용·채널, AGY/Grok OS 알림 제목 갱신, 실제 PendingIntent 클릭의 종료 대상 처리 |
+| macOS | GPUI 빌드·ad-hoc 패키징·단위 UI 검사 통과. OS 배너 표시·클릭 실기는 미검증 |
+| Windows | ZIP 패키저 단위 검사(`scripts/tests/test_windows_package.py`) 통과. 토스트 어댑터는 Mac에서 Windows GNU 대상 타입 검사를 한 번 했을 뿐 반복 실행 진입점이 없다. Windows MSVC 전체 빌드·실행·COM/토스트·DPAPI 실기는 사용자 담당이며 미검증 |
 
-2026-10-25 AGY·Grok 확장 검증은 `fixtures/agent-hooks/contracts.json`의 합성 입력과 격리 SSH/tmux 생산자를 사용한다. 로컬 `--version` 조회는 AGY **1.4.7**, Codex **0.164.0**이며 로그인·모델 호출을 실행하지 않았다. Codex 0.164.0은 설치 버전 처리·공식 형식 fixture 회귀 범위이며, 위의 실제 수신 기록은 0.163.0에 대한 기존 기록이다. AGY·Grok의 인증된 실제 훅 수신은 미검증이다.
+AGY·Grok 검사는 `fixtures/agent-hooks/contracts.json`의 합성 입력과 격리 SSH/tmux 생산자를 사용한다. AGY·Grok의 인증된 실제 훅 수신은 미검증이다. 확인한 로컬 `--version`은 AGY 1.4.7·Codex 0.164.0이며 로그인·모델 호출은 하지 않았다.
+Codex 0.164.0은 설치 버전 처리·공식 형식 fixture 회귀 범위이며, 실제 훅 수신 기록은 0.163.0에만 있다.
 
-Codex PermissionRequest 실검증은 현재 실행 정책의 자동 승인 검토가 테스트용 sandbox 승인 요청을 거부하여
-완료하지 못했다. Codex 질문 도구와 일반 오류는 수집 지원으로 표시하지 않는다.
+Codex PermissionRequest의 실제 수신은 미검증이다. 실행 정책의 자동 승인 검토가 테스트용 sandbox 승인 요청을 거부해 발생시키지 못했다. Codex 질문 도구와 일반 오류는 수집 지원으로 표시하지 않는다.
 Claude StopFailure와 Codex Interrupt/SessionEnd 등 모든 설정 훅의 실제 발생을 재현한 것은 아니다.
 설치 가능한 훅 목록과 실제 **수신 확인 사건**을 혼동하지 않는다. 지원하지 않는 사건은 터미널이나 대화 로그로 보충하지 않는다.
 실제 CLI 로그인 전 과정, 장시간 실행·네트워크 전환·macOS 네이티브 알림 클릭은 이 결과에 포함되지 않는다.
@@ -137,7 +137,7 @@ python3 scripts/verify_agent_cli.py --agent Codex --interactive --report artifac
 
 실제 CLI 도구는 임시 HOME에 인증 파일을 0600으로 복사하고 종료 시 지운다. 사용자 설정·기존 CLI를 변경하지 않는다.
 대화 본문 대신 사건 이름·종류만 보고서에 남긴다. Codex 신뢰 검토를 건너뛰는 옵션은 없다.
-검증 실행 환경의 Java는 Android Studio 내장 JBR 25였으며 Kotlin/JVM 출력 대상 17은 유지했다.
+Kotlin/JVM 출력 대상은 17이다. 필요한 JDK는 [개발 안내](DEVELOPMENT.md)를 따른다.
 
 Debug 데스크톱 패키지에서 `DGL_CANDIDATE_DIR`를 임시 디렉터리로, `DGL_NOTIFICATION_PROBE=1`로 실행하면
 권한 요청 후 20초 뒤 합성 알림 1건을 보낸다. 클릭 시 대상 종료 안내가 나오고 SSH에 연결하지 않아야 한다.

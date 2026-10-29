@@ -103,7 +103,7 @@ Android 검사는 테스트 APK 전용 ContentProvider로 영속 권한·실제 
 
 실제 Google Drive·iCloud 계정에서의 업로드 완료·다른 물리 기기로의 전달,
 Windows 네이티브 실행, 실제 파일 선택기 UX는 별도 인수 대상이다.
-구체적인 실행 결과는 [검증 기록](VALIDATION.md)을 따른다.
+검증 범위와 한계는 [VALIDATION.md](VALIDATION.md)를 따른다.
 
 공식 동작 근거:
 [Drive 데스크톱 스트리밍·미러링](https://support.google.com/drive/answer/13401938),

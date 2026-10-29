@@ -1,11 +1,11 @@
 # Windows Rust 데스크톱 빌드·테스트
 
-Windows **빌드 환경은 유지하며 실제 Windows 실행·실기 검증은 별도로 수행**한다.
-현재 대상은 네이티브 Windows 10/11 x64, Rust GPUI 앱이다. 이전 JVM/MSI/EXE
-설치물 작업은 사용하지 않는다. 아래 스크립트와 수동 CI를 추가했으며, 이 Mac 작업에서
-Windows 네이티브 빌드·DPAPI 실행·GUI 인수를 통과했다고 표시하지 않는다.
+Windows **빌드 환경은 유지하며 실제 Windows 실행·실기 검증은 사용자가 별도로 수행**한다.
+현재 대상은 네이티브 Windows 10/11 x64, Rust GPUI 앱이다. 이전 JVM/MSI/EXE 설치물은 사용하지 않는다.
+아래 스크립트와 수동 CI는 빌드·ZIP 생성을 담당한다. Windows 네이티브 빌드·DPAPI 실행·GUI 인수는
+미검증이며 [남은 작업](../TASKS.md)에서 관리한다.
 
-하단 `…`의 Claude Code·Codex 실행 메뉴도 공통 GPUI 구현에 포함된다.
+하단 `…`의 CLI 실행 메뉴(Claude Code·Codex·AGY·Grok Build)도 공통 GPUI 구현에 포함된다.
 아이콘은 실행 파일에 내장되며 ZIP에는 `simple-icons-LICENSE.md`가 함께 포함된다.
 앱 아이콘은 `desktop/resources/windows/dgl.ico`의 여러 크기를 Windows 리소스 ID `1`에
 포함한다. Windows target에서만 `embed-resource`가 기존 SDK `rc.exe`로 컴파일하고
@@ -179,8 +179,8 @@ ZIP 배포와 기존 빌드 진입점은 유지한다. 추가 빌드 도구는 �
 등록은 남는다. 앱을 완전히 제거할 때 위 **dgl 전용** 바로가기와 두 레지스트리 하위 트리만 제거할 수 있다.
 사용자 설정·자격 증명과 다른 앱의 등록은 별개다.
 
-이번 Mac 작업에서는 Windows GNU 대상 토스트 어댑터의 독립 타입 검사와 패키저 단위 검사를 수행했다.
-MSVC 전체 빌드와 Windows에서의 COM 활성화·알림 표시 검증을 대체하지 않는다. 사용자 실기 항목:
+Mac에서 반복 실행할 수 있는 확인은 패키저 단위 검사(`scripts/tests/test_windows_package.py`)뿐이다.
+토스트 어댑터는 Windows GNU 대상으로 한 번 타입 검사했으나 실행 진입점이 없다. 이는 MSVC 전체 빌드와 Windows에서의 COM 활성화·알림 표시 검증을 대체하지 않으며, 후자는 미검증이다. 사용자 실기 항목:
 
 1. ZIP을 풀어 실행하고 OS 알림을 켠 뒤 Windows 알림 설정에 dgl 자체 이름이 나타나는지 확인한다.
 2. 다른 탭·패널 또는 다른 앱을 보는 동안 공식 훅 사건을 발생시켜 알림·클릭 이동을 확인한다.

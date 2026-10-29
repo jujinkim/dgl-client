@@ -67,4 +67,4 @@ tmux 세션 연결을 유지하는 동안 전면·백그라운드나 렌더러 �
 
 공통 표시 기대값은 `fixtures/migration/hierarchy-v2.json`, wire·저장 호환은 `contract-v1.json`에 있다.
 Rust와 Kotlin이 같은 fixture를 읽고, GPUI 자동화와 Android 계측이 pane 행 부재·창 집계·메뉴·펼침을 검사한다.
-격리 SSH/tmux의 실행 결과와 실제 기기 제외 범위는 [VALIDATION.md](VALIDATION.md)를 따른다.
+격리 SSH/tmux 검사의 실행 조건과 실제 기기 제외 범위는 [VALIDATION.md](VALIDATION.md)를 따른다.

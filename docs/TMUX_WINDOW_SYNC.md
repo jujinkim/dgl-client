@@ -53,4 +53,4 @@ format/capture만으로 VT의 모든 내부 상태를 직렬화할 수는 없다
 Windows MSVC x64 빌드·ZIP·수동 CI 경로는 유지하며 실제 Windows 검증은 사용자 담당이다.
 
 근거: [tmux 3.3a 매뉴얼](https://github.com/tmux/tmux/blob/3.3a/tmux.1)의 Control Mode,
-window/pane formats, refresh-client와 resize-pane. 검사 결과는 [VALIDATION.md](VALIDATION.md)를 따른다.
+window/pane formats, refresh-client와 resize-pane. 검증 범위는 [VALIDATION.md](VALIDATION.md)를 따른다.
