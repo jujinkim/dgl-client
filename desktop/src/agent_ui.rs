@@ -1,6 +1,17 @@
 use super::*;
 use dgl_core::agent::{self, Agent};
 
+/// Agent notices collected from every connection and the notification button's state.
+#[derive(Default)]
+pub(crate) struct AgentState {
+    pub inbox: agent::Inbox,
+    pub tick: u64,
+    pub status: String,
+    pub anchor: Rc<RefCell<Bounds<Pixels>>>,
+    #[cfg(debug_assertions)]
+    pub probe_at: Option<u64>,
+}
+
 fn endpoint(host: &HostProfile) -> String {
     format!("{}@{}", host.username, host.endpoint())
 }
@@ -22,17 +33,17 @@ fn badge_kind(
 impl Desktop {
     pub fn tick_agents(&mut self, cx: &mut Context<Self>) {
         let now = agent::now_ms();
-        if now.saturating_sub(self.agent_tick) < 250 {
+        if now.saturating_sub(self.agents.tick) < 250 {
             return;
         }
-        self.agent_tick = now;
+        self.agents.tick = now;
         let active = cx.windows().into_iter().any(|h| {
             cx.update_window(h, |_, w, _| w.is_window_active())
                 .unwrap_or(false)
         });
         let mut visible = HashSet::new();
-        let old_count = self.inbox.recent.len();
-        let old_unread = self.inbox.recent.iter().filter(|n| !n.read).count();
+        let old_count = self.agents.inbox.recent.len();
+        let old_unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
         let sources: Vec<_> = self
             .tabs
             .iter()
@@ -59,14 +70,14 @@ impl Desktop {
             .iter()
             .filter(|(_, state)| state.observing_agents())
             .map(|(key, state)| (key.as_str(), &state.agents));
-        for notice in self.inbox.tick(
+        for notice in self.agents.inbox.tick(
             observed,
             &visible,
             &self.local.preferences.agent_notifications,
             now,
         ) {
             if !notifications::show(&notice) {
-                self.notification_status =
+                self.agents.status =
                     "OS 알림을 요청하지 못했습니다. 앱 내 알림은 유지됩니다.".into();
             }
         }
@@ -74,8 +85,8 @@ impl Desktop {
             self.open_agent_notice(&id, cx);
             cx.activate(true);
         }
-        if old_count != self.inbox.recent.len()
-            || old_unread != self.inbox.recent.iter().filter(|n| !n.read).count()
+        if old_count != self.agents.inbox.recent.len()
+            || old_unread != self.agents.inbox.recent.iter().filter(|n| !n.read).count()
         {
             cx.notify();
         }
@@ -85,8 +96,14 @@ impl Desktop {
         if id == "native-probe:native-probe" {
             eprintln!("DGL_NOTIFICATION_PROBE_CLICKED");
         }
-        let notice = self.inbox.recent.iter().find(|n| n.id() == id).cloned();
-        self.inbox.mark_read(id);
+        let notice = self
+            .agents
+            .inbox
+            .recent
+            .iter()
+            .find(|n| n.id() == id)
+            .cloned();
+        self.agents.inbox.mark_read(id);
         let Some(n) = notice else {
             self.snackbar
                 .show_snackbar(t("대상 연결이 종료되었습니다."));
@@ -161,7 +178,8 @@ impl Desktop {
         let now = agent::now_ms();
         let mut label = snapshot.label(None, now);
         let unread: Vec<_> =
-            self.inbox
+            self.agents
+                .inbox
                 .recent
                 .iter()
                 .filter(|n| {
@@ -473,7 +491,7 @@ impl Desktop {
     }
     pub fn recent_agents(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let mut body = div().id("recent-agents").flex().flex_col().gap_2();
-        if self.inbox.recent.is_empty() {
+        if self.agents.inbox.recent.is_empty() {
             return body.child(
                 div()
                     .id("notifications-empty")
@@ -484,7 +502,7 @@ impl Desktop {
                     .child(t("수신한 알림이 없습니다.")),
             );
         }
-        for n in &self.inbox.recent {
+        for n in &self.agents.inbox.recent {
             let id = n.id();
             let details = tr!(
                 "진단 정보 · 세션 ID: {0} · 창 ID: {1} · 패널 ID: {2}",
@@ -575,12 +593,12 @@ impl Desktop {
                 let settings = &mut s.local.preferences.agent_notifications;
                 match i { 0 => settings.questions = !settings.questions, 1 => settings.responses = !settings.responses, 2 => settings.errors = !settings.errors, _ => {
                     settings.os = !settings.os;
-                    if settings.os && !notifications::authorize() { s.notification_status = "OS 알림 등록 실패: 패키지 실행과 시스템 알림 설정을 확인하세요.".into(); }
+                    if settings.os && !notifications::authorize() { s.agents.status = "OS 알림 등록 실패: 패키지 실행과 시스템 알림 설정을 확인하세요.".into(); }
                 } }
                 s.save();
             }));
         }
-        body.child(t(&self.notification_status).to_owned())
+        body.child(t(&self.agents.status).to_owned())
     }
 }
 

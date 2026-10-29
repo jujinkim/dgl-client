@@ -129,27 +129,17 @@ struct Desktop {
     expanded: HashSet<String>,
     menu: Option<String>,
     launcher: launcher::LaunchMenu,
-    group_bounds: HashMap<GroupId, Bounds<Pixels>>,
     shortcut_target: Option<(GroupId, Option<TabId>)>,
     settings: settings::SettingsState,
     window_title: String,
-    split_bounds: HashMap<Vec<bool>, Bounds<Pixels>>,
-    resizing: Option<Vec<bool>>,
-    dragging_tab: Option<TabId>,
-    dragging_host: Option<String>,
-    host_drop: Option<Option<String>>,
+    pointer: workspace_ui::PointerState,
     dialog: Option<Dialog>,
     composers: HashMap<TabId, composer::Composer>,
     snackbar: SnackbarState,
     focus: FocusHandle,
-    inbox: dgl_core::agent::Inbox,
+    agents: agent_ui::AgentState,
     resume: resume::ResumeDetector,
-    agent_tick: u64,
-    notification_status: String,
-    notification_anchor: Rc<RefCell<Bounds<Pixels>>>,
     cloud_sync: cloud_sync::CloudSync,
-    #[cfg(debug_assertions)]
-    notification_probe_at: Option<u64>,
 }
 impl Desktop {
     fn new(runtime: Arc<tokio::runtime::Runtime>, path: PathBuf, cx: &mut Context<Self>) -> Self {
@@ -221,27 +211,21 @@ impl Desktop {
             expanded: HashSet::new(),
             menu: None,
             launcher: launcher::LaunchMenu::default(),
-            group_bounds: HashMap::new(),
             shortcut_target: None,
             settings: settings::SettingsState::default(),
             window_title: String::new(),
-            split_bounds: HashMap::new(),
-            resizing: None,
-            dragging_tab: None,
-            dragging_host: None,
-            host_drop: None,
+            pointer: Default::default(),
             dialog: None,
             composers: HashMap::new(),
             snackbar,
             focus: cx.focus_handle(),
-            inbox: Default::default(),
+            agents: agent_ui::AgentState {
+                #[cfg(debug_assertions)]
+                probe_at: notification_probe_at,
+                ..Default::default()
+            },
             resume: Default::default(),
-            agent_tick: 0,
-            notification_status: String::new(),
-            notification_anchor: Default::default(),
             cloud_sync,
-            #[cfg(debug_assertions)]
-            notification_probe_at,
         }
     }
     fn sync_title_updates(&self, foreground: bool) {
@@ -267,10 +251,11 @@ impl Desktop {
         }
         #[cfg(debug_assertions)]
         if self
-            .notification_probe_at
+            .agents
+            .probe_at
             .is_some_and(|at| dgl_core::agent::now_ms() >= at)
         {
-            self.notification_probe_at = None;
+            self.agents.probe_at = None;
             let notice = dgl_core::agent::Notice {
                 endpoint: "native-probe".into(),
                 read: false,
@@ -289,7 +274,7 @@ impl Desktop {
                     at: dgl_core::agent::now_ms(),
                 },
             };
-            self.inbox.recent.push_front(notice.clone());
+            self.agents.inbox.recent.push_front(notice.clone());
             eprintln!(
                 "DGL_NOTIFICATION_PROBE_REQUESTED={}",
                 notifications::show(&notice)

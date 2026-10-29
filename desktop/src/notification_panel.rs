@@ -56,7 +56,7 @@ impl Desktop {
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .child(AtNotificationButton {
                 child: panel.into_any_element(),
-                anchor: self.notification_anchor.clone(),
+                anchor: self.agents.anchor.clone(),
             })
     }
 }

@@ -524,11 +524,11 @@ fn session_clicks_reuse_tabs_across_groups_keep_entities_and_host_history(cx: &m
         }))
         .unwrap();
         let notice_id = notice.id();
-        s.inbox.recent.push_back(notice);
+        s.agents.inbox.recent.push_back(notice);
         s.open_agent_notice(&notice_id, cx);
         assert_eq!(s.workspace.selected(), Some(a1));
         assert_eq!(s.tabs.len(), 3);
-        assert!(s.inbox.recent.back().unwrap().read);
+        assert!(s.agents.inbox.recent.back().unwrap().read);
         s.close_tab(a1);
         s.open(ordered_host("a", None), cx);
         assert_eq!(s.workspace.selected(), Some(a2));
@@ -892,7 +892,8 @@ fn status_actions_stay_at_right_with_long_status_badges_themes_and_splits(cx: &m
                 let mut previous = None;
                 for unread in [0, 1, 12, 100, 0] {
                     view.update(cx, |s, cx| {
-                        s.inbox.recent = std::iter::repeat_n(notice.clone(), unread).collect();
+                        s.agents.inbox.recent =
+                            std::iter::repeat_n(notice.clone(), unread).collect();
                         cx.notify();
                     });
                     redraw(cx);
@@ -1027,7 +1028,7 @@ fn notification_panel_anchors_resizes_scrolls_and_dismisses_without_background_a
     }
     ui.simulate_resize(gpui::size(px(640.), px(600.)));
     view.update(ui, |s, cx| {
-        s.inbox.recent = (0..100)
+        s.agents.inbox.recent = (0..100)
             .map(|i| Notice {
                 endpoint: "fixture@127.0.0.1:1".into(),
                 read: false,
@@ -1337,7 +1338,7 @@ fn agent_notice_missing_target_is_read_without_reconnect_or_input(cx: &mut TestA
     let (view, cx) = setup(cx);
     let terminal = add_terminal(&view, cx);
     view.update(cx, |s, cx| {
-        s.inbox.recent.push_back(Notice {
+        s.agents.inbox.recent.push_back(Notice {
             endpoint: "fixture@127.0.0.1:1".into(),
             read: false,
             event: AgentEvent {
@@ -1362,7 +1363,7 @@ fn agent_notice_missing_target_is_read_without_reconnect_or_input(cx: &mut TestA
     let button = cx.debug_bounds("notice-fixture@127.0.0.1:1:test").unwrap();
     cx.simulate_click(button.center(), Modifiers::default());
     redraw(cx);
-    assert!(view.read_with(cx, |s, _| s.inbox.recent[0].read));
+    assert!(view.read_with(cx, |s, _| s.agents.inbox.recent[0].read));
     assert!(view.read_with(cx, |s, _| {
         s.snackbar
             .current
@@ -1632,7 +1633,7 @@ fn group_split_drag_move_merge_and_terminal_identity(cx: &mut TestAppContext) {
     let right = view.read_with(cx, |s, _| s.workspace.active);
     assert!(view.read_with(cx, |s, _| s.workspace.selected().is_none()));
     let divider = view.read_with(cx, |s, _| {
-        let b = s.group_bounds[&1];
+        let b = s.pointer.group_bounds[&1];
         gpui::point(b.right() + px(2.), b.center().y)
     });
     cx.simulate_mouse_down(divider, gpui::MouseButton::Left, Modifiers::default());
@@ -1645,7 +1646,7 @@ fn group_split_drag_move_merge_and_terminal_identity(cx: &mut TestAppContext) {
         assert_eq!(super::workspace::Layout::load(&s.path.with_file_name("workspace-layout.json")), s.workspace.layout);
     });
     view.update(cx, |s, cx| {
-        let b = s.group_bounds[&right];
+        let b = s.pointer.group_bounds[&right];
         assert!(s.workspace.split(
             right,
             Axis::Vertical,
@@ -1658,7 +1659,7 @@ fn group_split_drag_move_merge_and_terminal_identity(cx: &mut TestAppContext) {
     let bottom = view.read_with(cx, |s, _| s.workspace.active);
     // Use GPUI's actual drag/drop dispatch to move the tab into the empty group.
     let from = cx.debug_bounds("tab-1").unwrap().center();
-    let to = view.read_with(cx, |s, _| s.group_bounds[&bottom].center());
+    let to = view.read_with(cx, |s, _| s.pointer.group_bounds[&bottom].center());
     cx.simulate_mouse_down(from, gpui::MouseButton::Left, Modifiers::default());
     cx.simulate_mouse_move(
         gpui::point(from.x + px(20.), from.y),
@@ -1979,7 +1980,7 @@ fn tab_drag_splits_at_each_edge_and_preview_matches_result(cx: &mut TestAppConte
         let terminal = add_terminal(&view, cx);
         add_terminal(&view, cx);
         redraw(cx);
-        let before = view.read_with(cx, |s, _| s.group_bounds[&1]);
+        let before = view.read_with(cx, |s, _| s.pointer.group_bounds[&1]);
         let to = match edge {
             DockEdge::Left => point(before.left() + px(8.), before.center().y),
             DockEdge::Right => point(before.right() - px(8.), before.center().y),
@@ -2010,12 +2011,12 @@ fn tab_drag_splits_at_each_edge_and_preview_matches_result(cx: &mut TestAppConte
                 Layout::load(&s.path.with_file_name("workspace-layout.json")),
                 s.workspace.layout
             );
-            let actual = s.group_bounds[&active];
+            let actual = s.pointer.group_bounds[&active];
             assert!((f32::from(actual.origin.x - preview.origin.x)).abs() <= 3.);
             assert!((f32::from(actual.origin.y - preview.origin.y)).abs() <= 3.);
             assert!((f32::from(actual.size.width - preview.size.width)).abs() <= 3.);
             assert!((f32::from(actual.size.height - preview.size.height)).abs() <= 3.);
-            assert!(s.dragging_tab.is_none());
+            assert!(s.pointer.dragging_tab.is_none());
         });
         assert!(!cx.update(|_, cx| cx.has_active_drag()));
         assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
@@ -2036,7 +2037,7 @@ fn tab_drag_moves_into_occupied_group_and_reorders_in_header(cx: &mut TestAppCon
     let right = view.read_with(cx, |s, _| s.workspace.active);
     add_terminal(&view, cx);
     redraw(cx);
-    let to = view.read_with(cx, |s, _| s.group_bounds[&right].center());
+    let to = view.read_with(cx, |s, _| s.pointer.group_bounds[&right].center());
     begin_tab_drag(cx);
     cx.simulate_mouse_move(to, gpui::MouseButton::Left, Modifiers::default());
     redraw(cx);
@@ -2071,7 +2072,7 @@ fn tab_drag_cancel_outside_and_small_groups_do_not_split(cx: &mut TestAppContext
     let terminal = add_terminal(&view, cx);
     add_terminal(&view, cx);
     redraw(cx);
-    let bounds = view.read_with(cx, |s, _| s.group_bounds[&1]);
+    let bounds = view.read_with(cx, |s, _| s.pointer.group_bounds[&1]);
     let edge = point(bounds.right() - px(8.), bounds.center().y);
     begin_tab_drag(cx);
     cx.simulate_mouse_move(edge, gpui::MouseButton::Left, Modifiers::default());
@@ -2081,7 +2082,7 @@ fn tab_drag_cancel_outside_and_small_groups_do_not_split(cx: &mut TestAppContext
     cx.simulate_mouse_up(edge, gpui::MouseButton::Left, Modifiers::default());
     redraw(cx);
     assert!(!cx.update(|_, cx| cx.has_active_drag()));
-    assert!(view.read_with(cx, |s, _| s.dragging_tab.is_none()));
+    assert!(view.read_with(cx, |s, _| s.pointer.dragging_tab.is_none()));
     assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 1);
     let outside = point(px(20.), px(150.));
     begin_tab_drag(cx);
@@ -2094,7 +2095,7 @@ fn tab_drag_cancel_outside_and_small_groups_do_not_split(cx: &mut TestAppContext
     );
     cx.simulate_resize(gpui::size(px(640.), px(360.)));
     redraw(cx);
-    let bounds = view.read_with(cx, |s, _| s.group_bounds[&1]);
+    let bounds = view.read_with(cx, |s, _| s.pointer.group_bounds[&1]);
     let edge = point(bounds.right() - px(8.), bounds.center().y);
     begin_tab_drag(cx);
     cx.simulate_mouse_move(edge, gpui::MouseButton::Left, Modifiers::default());

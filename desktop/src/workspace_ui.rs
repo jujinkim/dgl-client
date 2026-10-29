@@ -1,6 +1,17 @@
 use super::*;
 use workspace::{DIVIDER, DockEdge};
 
+/// Pointer drags in progress and the layout bounds they measure against.
+#[derive(Default)]
+pub(crate) struct PointerState {
+    pub dragging_tab: Option<TabId>,
+    pub dragging_host: Option<String>,
+    pub host_drop: Option<Option<String>>,
+    pub resizing: Option<Vec<bool>>,
+    pub split_bounds: HashMap<Vec<bool>, Bounds<Pixels>>,
+    pub group_bounds: HashMap<GroupId, Bounds<Pixels>>,
+}
+
 const TAB_BAR_HEIGHT: f32 = 48.;
 
 #[derive(Clone, Copy)]
@@ -65,7 +76,7 @@ impl Desktop {
             return None;
         }
         for group in self.workspace.layout.groups() {
-            let Some(bounds) = self.group_bounds.get(&group) else {
+            let Some(bounds) = self.pointer.group_bounds.get(&group) else {
                 continue;
             };
             let content_top = bounds.top() + px(TAB_BAR_HEIGHT + 1.);
@@ -103,7 +114,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         if let Some(edge) = target.edge {
-            let Some(bounds) = self.group_bounds.get(&target.group) else {
+            let Some(bounds) = self.pointer.group_bounds.get(&target.group) else {
                 return;
             };
             if !self.workspace.split_tab(
@@ -129,11 +140,11 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         if !cx.has_active_drag() {
-            self.dragging_tab = None;
-            self.dragging_host = None;
-            self.host_drop = None;
+            self.pointer.dragging_tab = None;
+            self.pointer.dragging_host = None;
+            self.pointer.host_drop = None;
         }
-        let preview = self.dragging_tab.and_then(|tab| {
+        let preview = self.pointer.dragging_tab.and_then(|tab| {
             self.tab_drop_target(tab, window.mouse_position())
                 .filter(|target| {
                     target.edge.is_some()
@@ -201,8 +212,8 @@ impl Desktop {
                 .and_then(|i| self.host_order.ids().get(i + 1))
                 .cloned();
             let drag_view = cx.entity();
-            let before_line = self.host_drop.as_ref() == Some(&Some(id.clone()));
-            let after_line = next.is_none() && self.host_drop == Some(None);
+            let before_line = self.pointer.host_drop.as_ref() == Some(&Some(id.clone()));
+            let after_line = next.is_none() && self.pointer.host_drop == Some(None);
             explorer = explorer.child(
                 div()
                     .id(SharedString::from(format!("host-row-{id}")))
@@ -218,25 +229,26 @@ impl Desktop {
                     .on_drag_move::<DragHost>(cx.listener(
                         move |s, e: &DragMoveEvent<DragHost>, _, cx| {
                             if e.bounds.contains(&e.event.position) {
-                                s.host_drop = Some(if e.event.position.y < e.bounds.center().y {
-                                    Some(before.clone())
-                                } else {
-                                    next.clone()
-                                });
+                                s.pointer.host_drop =
+                                    Some(if e.event.position.y < e.bounds.center().y {
+                                        Some(before.clone())
+                                    } else {
+                                        next.clone()
+                                    });
                                 cx.notify();
                                 cx.stop_propagation();
                             }
                         },
                     ))
                     .on_drop(cx.listener(move |s, dragged: &DragHost, _, cx| {
-                        if s.dragging_host.as_ref() == Some(&dragged.id)
-                            && let Some(before) = s.host_drop.take()
+                        if s.pointer.dragging_host.as_ref() == Some(&dragged.id)
+                            && let Some(before) = s.pointer.host_drop.take()
                             && s.local.hosts.iter().any(|h| h.id == drop_id)
                             && s.host_order.drop_before(&dragged.id, before.as_deref())
                         {
                             s.save_host_order();
                         }
-                        s.dragging_host = None;
+                        s.pointer.dragging_host = None;
                         cx.notify();
                         cx.stop_propagation();
                     }))
@@ -281,8 +293,8 @@ impl Desktop {
                             },
                             move |host, _, _, cx| {
                                 drag_view.update(cx, |s, cx| {
-                                    s.dragging_host = Some(host.id.clone());
-                                    s.host_drop = None;
+                                    s.pointer.dragging_host = Some(host.id.clone());
+                                    s.pointer.host_drop = None;
                                     s.menu = None;
                                     cx.notify();
                                 });
@@ -356,7 +368,7 @@ impl Desktop {
         }
         explorer = explorer.child(self.render_tree(cx));
         sidebar = sidebar.child(explorer);
-        let unread = self.inbox.recent.iter().filter(|n| !n.read).count();
+        let unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
         let layout = self.workspace.layout.clone();
         let workspace = self.render_layout(layout, vec![], preview, cx);
         let status = self
@@ -435,12 +447,12 @@ impl Desktop {
             .track_focus(&self.focus)
             .capture_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
                 if e.keystroke.key == "escape"
-                    && (s.dragging_tab.is_some() || s.dragging_host.is_some())
+                    && (s.pointer.dragging_tab.is_some() || s.pointer.dragging_host.is_some())
                     && cx.has_active_drag()
                 {
-                    s.dragging_tab = None;
-                    s.dragging_host = None;
-                    s.host_drop = None;
+                    s.pointer.dragging_tab = None;
+                    s.pointer.dragging_host = None;
+                    s.pointer.host_drop = None;
                     cx.stop_active_drag(w);
                     cx.stop_propagation();
                     w.prevent_default();
@@ -527,15 +539,15 @@ impl Desktop {
                 cx.stop_propagation();
             }))
             .on_drag_move::<DragHost>(cx.listener(|s, _, _, cx| {
-                s.host_drop = None;
+                s.pointer.host_drop = None;
                 cx.notify();
             }))
             .on_mouse_move(cx.listener(|s, e: &MouseMoveEvent, _, cx| {
                 if s.dialog.is_some() {
                     return;
                 }
-                if let Some(path) = s.resizing.clone()
-                    && let Some(bounds) = s.split_bounds.get(&path).copied()
+                if let Some(path) = s.pointer.resizing.clone()
+                    && let Some(bounds) = s.pointer.split_bounds.get(&path).copied()
                     && let Some(Layout::Split {
                         axis,
                         ratio,
@@ -565,7 +577,7 @@ impl Desktop {
                 }
             }))
             .capture_any_mouse_up(cx.listener(|s, e: &MouseUpEvent, w, cx| {
-                if let Some(tab) = s.dragging_tab.take() {
+                if let Some(tab) = s.pointer.dragging_tab.take() {
                     if cx.has_active_drag()
                         && e.button == MouseButton::Left
                         && let Some(target) = s.tab_drop_target(tab, e.position)
@@ -576,7 +588,7 @@ impl Desktop {
                     }
                     cx.notify();
                 }
-                if s.resizing.take().is_some() {
+                if s.pointer.resizing.take().is_some() {
                     s.save_layout();
                     cx.notify();
                 }
@@ -675,7 +687,7 @@ impl Desktop {
                                         .child(
                                             canvas(
                                                 {
-                                                    let anchor = self.notification_anchor.clone();
+                                                    let anchor = self.agents.anchor.clone();
                                                     move |bounds, _, _| {
                                                         // The canvas is inset by the button's 1px border.
                                                         *anchor.borrow_mut() = bounds.dilate(px(1.))
@@ -780,7 +792,7 @@ impl Desktop {
                         canvas(
                             move |bounds, _, cx| {
                                 entity.update(cx, |s, _| {
-                                    s.split_bounds.insert(measure.clone(), bounds);
+                                    s.pointer.split_bounds.insert(measure.clone(), bounds);
                                 });
                             },
                             |_, _, _, _| {},
@@ -816,7 +828,7 @@ impl Desktop {
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |s, _, _, cx| {
-                                    s.resizing = Some(drag.clone());
+                                    s.pointer.resizing = Some(drag.clone());
                                     cx.stop_propagation();
                                 }),
                             ),
@@ -910,7 +922,7 @@ impl Desktop {
                         .cursor_move()
                         .on_drag(DragTab { id: tab_id, label }, move |tab, _, _, cx| {
                             drag_view.update(cx, |s, cx| {
-                                s.dragging_tab = Some(tab.id);
+                                s.pointer.dragging_tab = Some(tab.id);
                                 s.menu = None;
                                 cx.notify();
                             });
@@ -935,7 +947,12 @@ impl Desktop {
                     )),
             );
         }
-        let bounds = self.group_bounds.get(&id).copied().unwrap_or_default();
+        let bounds = self
+            .pointer
+            .group_bounds
+            .get(&id)
+            .copied()
+            .unwrap_or_default();
         let width = f32::from(bounds.size.width);
         let height = f32::from(bounds.size.height);
         let mut tools = div()
@@ -1005,7 +1022,7 @@ impl Desktop {
                 canvas(
                     move |bounds, _, cx| {
                         entity.update(cx, |s, cx| {
-                            if s.group_bounds.insert(id, bounds) != Some(bounds) {
+                            if s.pointer.group_bounds.insert(id, bounds) != Some(bounds) {
                                 cx.notify();
                             }
                         });
