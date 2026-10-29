@@ -62,7 +62,12 @@ Android 어댑터는 네이티브 연결을 다시 만들 때도 최신 값을 �
 
 연결별 actor 한 개가 명령을 직렬화한다. 입력 요청 하나의 조각들은 해당 요청 내에서
 연속 전송하며 snapshot/관리 명령이 중간에 끼지 않는다. tmux 입력은 최대 256바이트씩
-hex 인코딩한다. 입력 한 요청은 UTF-8 변환 후 1..65,536바이트, 대기 요청은 32개 이하다.
+hex 인코딩한다. 같은 대상·revision으로 대기 중인 입력 요청은 최대 16개를 묶고, 조각을
+한 번에 최대 16줄씩 써서 응답을 함께 기다린다. 대상·허용 상태는 쓰기마다 다시 검사하며,
+실패한 요청의 남은 조각은 보내지 않는다. 같은 쓰기에 이미 실린 조각은 tmux가 실행한다.
+목록 갱신(`list-sessions`·`list-windows -a`·`list-panes -a`)과 그 앞의 선택·관리·크기 명령도
+줄마다 별도 명령으로 한 번에 써서 한 번 왕복으로 처리한다. Control Mode가 없을 때의 목록은
+태그를 붙인 세 목록을 `tmux` 한 번의 exec으로 받는다. 입력 한 요청은 UTF-8 변환 후 1..65,536바이트, 대기 요청은 32개 이하다.
 이는 **요청별 64KiB, 32개 대기 슬롯**이며 기존 구현이 64KiB 총 대기 메모리를 보장했다는
 의미가 아니다. 실행 중 요청 1개를 포함한 입력 payload 상한은 33×64KiB다.
 
@@ -179,7 +184,7 @@ Kotlin 패키지 변경은 저장 키 교체나 초기 앱 데이터 자동 이�
 
 ## 탐색·포커스
 
-- `Action::SelectTarget { session, window?, pane? }` / JSON `selectTarget`는 세션 ID와 선택적인 창·패널 ID를 받는다. 전체 원격 목록에서 소속 관계를 검증하고 세션 연결 → 창/패널 선택 → snapshot을 하나의 actor 요청으로 순차 실행한다. 생략된 대상은 해당 세션/창의 활성 패널을 우선한다. 기존 `selectSession`·`selectPane`는 유지한다.
+- `Action::SelectTarget { session, window?, pane? }` / JSON `selectTarget`는 세션 ID와 선택적인 창·패널 ID를 받는다. 연결된 control client의 목록(없으면 exec 목록 한 번)에서 소속 관계를 검증하고 세션 연결 → 창/패널 선택 → snapshot을 하나의 actor 요청으로 순차 실행한다. 생략된 대상은 해당 세션/창의 활성 패널을 우선한다. 기존 `selectSession`·`selectPane`는 유지한다.
 - 연결 전 초기 목록도 세션·창·패널을 모두 제공한다. 빈 세션 목록이면 하위 조회를 생략한다.
 - `Operation::FocusPane { target, direction }` / JSON `focusPane`는 `%N`과 `L/R/U/D`만 허용한다. `select-pane -t '%N' -L/-R/-U/-D` 실행 뒤 창의 실제 활성 패널을 다시 조회하고 PaneTarget·패널 세대·화면을 함께 갱신한다. 현재 표시 패널과 다른 시작 target은 StaleGeneration으로 거부한다.
 - 같은 세션의 외부 창·활성 pane 선택을 반영한다. 다른 세션으로의 이동은 따라가지 않는다. 출력 target은 pane별 렌더링 식별자, 입력 target은 현재 포커스를 사용한다.

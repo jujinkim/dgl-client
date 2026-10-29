@@ -378,6 +378,31 @@ pub fn panes(rows: &[Vec<u8>]) -> Result<Vec<RemotePane>> {
         })
         .collect()
 }
+/// tmux lists a pane once per session its window is linked into; keep the first.
+pub fn remote(sessions: &[Vec<u8>], windows: &[Vec<u8>], panes: &[Vec<u8>]) -> Result<RemoteState> {
+    let mut panes = self::panes(panes)?;
+    let mut seen = std::collections::HashSet::new();
+    panes.retain(|p| seen.insert(p.id.clone()));
+    Ok(RemoteState {
+        sessions: self::sessions(sessions)?,
+        windows: self::windows(windows)?,
+        panes,
+    })
+}
+/// Rows of `Command::inventory`, sorted back into their listings by tag.
+pub fn inventory(rows: &[Vec<u8>]) -> Result<RemoteState> {
+    let mut lists: [Vec<Vec<u8>>; 3] = Default::default();
+    for row in rows {
+        let list = match row.get(..2) {
+            Some(b"s|") => 0,
+            Some(b"w|") => 1,
+            Some(b"p|") => 2,
+            _ => return Err(Error::Protocol),
+        };
+        lists[list].push(row[2..].to_vec());
+    }
+    remote(&lists[0], &lists[1], &lists[2])
+}
 
 /// Same quoting and control-character normalization as the full pane listing.
 pub fn pane_title(rows: &[Vec<u8>]) -> Result<String> {

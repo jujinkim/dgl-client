@@ -114,6 +114,9 @@ pub enum Operation {
     /// The subscription format read once, for servers that cannot keep a subscription safely.
     MetadataPoll,
 }
+const SESSIONS_FORMAT: &str = "#{session_id}|#{q:session_name}|#{session_attached}";
+const WINDOWS_FORMAT: &str = "#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}|#{window_width}|#{window_height}|#{window_zoomed_flag}|#{window_visible_layout}";
+const PANES_FORMAT: &str = "#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}|#{pane_left}|#{pane_top}";
 /// Every session's windows and panes; any change requires a metadata refresh.
 const METADATA_FORMAT: &str = "#{S:#{session_id}|#{q:session_name}|#{W:#{window_id}|#{window_index}|#{q:window_name}|#{window_active}|#{P:#{pane_id}|#{pane_active}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title};}}}";
 #[derive(Clone, Debug)]
@@ -148,9 +151,9 @@ impl Command {
             Pause{target:t}|Resume{target:t}=>{target(t,'%')?;format!("refresh-client -A {}",quote(&format!("{}:{}",t,if matches!(op,Pause{..}){"pause"}else{"continue"}))?)},
             Modes{target:t}=>format!("display-message -p -t {} '#{{cursor_x}}|#{{cursor_y}}|#{{alternate_on}}|#{{cursor_flag}}|#{{keypad_cursor_flag}}|#{{keypad_flag}}|#{{mouse_any_flag}}|#{{mouse_button_flag}}|#{{mouse_standard_flag}}|#{{mouse_utf8_flag}}|#{{mouse_sgr_flag}}|#{{bracketed_paste}}|#{{scroll_region_upper}}|#{{scroll_region_lower}}|#{{insert_flag}}|#{{pane_width}}|#{{pane_height}}'",target(t,'%')?),
             PaneTitle{target:t}=>format!("display-message -p -t {} '#{{q;s/[[#:cntrl#:]]/ /:pane_title}}'",target(t,'%')?),
-            Sessions=>"list-sessions -F '#{session_id}|#{q:session_name}|#{session_attached}'".into(),
-            Windows=>"list-windows -a -F '#{session_id}|#{window_id}|#{q:window_name}|#{window_active}|#{window_layout}|#{window_index}|#{window_width}|#{window_height}|#{window_zoomed_flag}|#{window_visible_layout}'".into(),
-            Panes=>"list-panes -a -F '#{pane_id}|#{window_id}|#{pane_width}|#{pane_height}|#{pane_active}|#{q:pane_mode}|#{q:pane_current_command}|#{q;s/[[#:cntrl#:]]/ /:pane_title}|#{pane_left}|#{pane_top}'".into(),
+            Sessions=>format!("list-sessions -F '{SESSIONS_FORMAT}'"),
+            Windows=>format!("list-windows -a -F '{WINDOWS_FORMAT}'"),
+            Panes=>format!("list-panes -a -F '{PANES_FORMAT}'"),
             MetadataSubscription=>format!("refresh-client -B 'dgl-metadata::{METADATA_FORMAT}'"),
             MetadataPoll=>format!("display-message -p '{METADATA_FORMAT}'"),
             FlowControl=>"refresh-client -f 'pause-after=2'".into(),
@@ -167,6 +170,19 @@ impl Command {
             format!("tmux {wire}")
         };
         Ok(Self { wire, shell_wire })
+    }
+    /// The three listings in one `tmux` process outside control mode. Their output is
+    /// concatenated, so each row is tagged `s|`, `w|` or `p|` (see `model::inventory`).
+    pub fn inventory() -> Self {
+        let parts = [
+            format!("list-sessions -F 's|{SESSIONS_FORMAT}'"),
+            format!("list-windows -a -F 'w|{WINDOWS_FORMAT}'"),
+            format!("list-panes -a -F 'p|{PANES_FORMAT}'"),
+        ];
+        Self {
+            wire: parts.join(" ; "),
+            shell_wire: format!("tmux {}", parts.join(" \\; ")),
+        }
     }
     pub fn shell_with_executable(&self, path: &str) -> Result<String> {
         if !path.starts_with('/') {

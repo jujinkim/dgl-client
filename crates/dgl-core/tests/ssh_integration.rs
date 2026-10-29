@@ -6,6 +6,7 @@ use dgl_core::{
     ssh,
 };
 use std::{
+    collections::HashSet,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -469,6 +470,41 @@ async fn isolated_auth_management_input_reconnect() {
     })
     .await
     .unwrap();
+    // Keys queued behind one in flight share its write, and a paste longer than one
+    // write continues in order; the echo is lowercase and has no count.
+    let mut typed = vec![b"printf '%s:' ".to_vec()];
+    typed.extend((b'a'..=b'z').map(|b| vec![b]));
+    typed.push(b" | tr a-z A-Z; printf %s ".to_vec());
+    typed.push(vec![b'q'; 6000]);
+    typed.push(b" | wc -c\r".to_vec());
+    let mut ids: HashSet<_> = typed
+        .into_iter()
+        .map(|bytes| c.input(target.clone(), bytes).unwrap())
+        .collect();
+    output.clear();
+    // The echo is drained meanwhile: a full output queue stalls the replies.
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            for result in c.completions() {
+                assert_eq!(result.error, None, "request {}", result.request_id);
+                ids.remove(&result.request_id);
+            }
+            while let Some(e) = c.output().poll(sub).unwrap() {
+                output.extend(e.bytes);
+                c.output().ack(sub, e.sequence).unwrap();
+            }
+            let text = String::from_utf8_lossy(&output);
+            if ids.is_empty()
+                && text.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ:")
+                && text.contains("6000")
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("queued and long input arrives once and in order");
     completion(
         &c,
         c.action(Action::Manage {

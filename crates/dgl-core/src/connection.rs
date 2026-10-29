@@ -968,29 +968,49 @@ impl Control {
         .map_err(|_| Error::Network)?
     }
     async fn command(&mut self, op: Operation) -> Result<Vec<Vec<u8>>> {
-        let command = Command::new(&op)?;
+        self.commands(&[op]).await?.pop().unwrap()
+    }
+    /// Writes the commands at once and reads their replies in order: one round trip.
+    /// Each is its own line, so a failed command (`Err` in its reply) does not stop
+    /// the ones after it the way a `;` command list would.
+    async fn commands(&mut self, ops: &[Operation]) -> Result<Vec<Result<Vec<Vec<u8>>>>> {
+        let mut wire = String::new();
+        for op in ops {
+            wire.push_str(&Command::new(op)?.wire);
+            wire.push('\n');
+        }
         self.stream
-            .data(format!("{}\n", command.wire).as_bytes())
+            .data(wire.as_bytes())
             .await
             .map_err(|_| Error::Network)?;
-        self.response().await
+        let mut replies = Vec::with_capacity(ops.len());
+        for _ in ops {
+            replies.push(match self.response().await {
+                Err(Error::InvalidArgument) => Err(Error::InvalidArgument),
+                reply => Ok(reply?),
+            });
+        }
+        Ok(replies)
     }
     async fn refresh(&mut self) -> Result<()> {
+        self.refresh_after(&[]).await.map(drop)
+    }
+    /// Runs `ops`, then lists every session, in one round trip. The listing is applied
+    /// even if an operation failed; the first failure is returned after it.
+    async fn refresh_after(&mut self, ops: &[Operation]) -> Result<Vec<Vec<Vec<u8>>>> {
         // Clear before reading: notifications received during the queries still
         // require another pass, otherwise a concurrent title change can be lost.
         self.dirty = false;
-        let sessions = model::sessions(&self.command(Operation::Sessions).await?)?;
-        let windows = model::windows(&self.command(Operation::Windows).await?)?;
+        // Title output after this point gets its own query even if the listing covers it.
         self.titles.covered_by_refresh();
-        let mut panes = model::panes(&self.command(Operation::Panes).await?)?;
-        let mut seen = HashSet::new();
-        panes.retain(|p| seen.insert(p.id.clone()));
+        let mut all = ops.to_vec();
+        all.extend([Operation::Sessions, Operation::Windows, Operation::Panes]);
+        let mut replies = self.commands(&all).await?;
+        let lists = replies.split_off(ops.len());
+        let [sessions, windows, panes] = <[_; 3]>::try_from(lists).unwrap();
+        let remote = model::remote(&sessions?, &windows?, &panes?)?;
         self.shared.update(|s| {
-            s.remote = RemoteState {
-                sessions,
-                windows,
-                panes,
-            };
+            s.remote = remote;
             if s.session
                 .as_ref()
                 .is_some_and(|id| !s.remote.sessions.iter().any(|v| &v.id == id))
@@ -1016,7 +1036,7 @@ impl Control {
                 s.window = window.map(|w| w.id.clone());
             }
         });
-        Ok(())
+        replies.into_iter().collect()
     }
     async fn refresh_title(&mut self) -> Result<()> {
         self.titles.reconcile(self.shared.title_scope());
@@ -1054,13 +1074,29 @@ impl Control {
         Ok(())
     }
     async fn refresh_screen_if_needed(&mut self, resizing: bool) -> Result<()> {
+        self.refresh_screen_after(&[], resizing).await.map(drop)
+    }
+    /// `refresh_after`, then captures the panes it changed. A failed operation still
+    /// leaves the screens in step with the listing before its error is returned.
+    async fn refresh_screen_after(
+        &mut self,
+        ops: &[Operation],
+        resizing: bool,
+    ) -> Result<Vec<Vec<Vec<u8>>>> {
         let before = self.shared.target();
-        self.refresh().await?;
+        let result = self.refresh_after(ops).await;
+        if result
+            .as_ref()
+            .is_err_and(|error| *error != Error::InvalidArgument)
+        {
+            return result;
+        }
         let same = before
             .as_ref()
             .zip(self.shared.target().as_ref())
             .is_some_and(|(a, b)| a.same_input_destination(b));
-        self.sync_screens(resizing && same, false).await
+        self.sync_screens(resizing && same, false).await?;
+        result
     }
     async fn select_pane(&mut self, id: String) -> Result<()> {
         let state = self.shared.state.lock().unwrap().clone();
@@ -1076,12 +1112,13 @@ impl Control {
             .iter()
             .find(|w| w.id == p.window && Some(&w.session) == state.session.as_ref())
             .ok_or(Error::InvalidArgument)?;
-        self.command(Operation::SelectWindow {
-            target: window.id.clone(),
-        })
-        .await?;
-        self.command(Operation::SelectPane { target: id }).await?;
-        self.refresh_screen_if_needed(false).await
+        let ops = [
+            Operation::SelectWindow {
+                target: window.id.clone(),
+            },
+            Operation::SelectPane { target: id },
+        ];
+        self.refresh_screen_after(&ops, false).await.map(drop)
     }
     async fn sync_screens(&mut self, resizing: bool, force: bool) -> Result<()> {
         let state = self.shared.state.lock().unwrap().clone();
@@ -1282,42 +1319,21 @@ impl Control {
     }
 }
 async fn list(ssh: &Ssh) -> Result<RemoteState> {
-    let (code, bytes) = ssh
-        .execute_tmux(&Command::new(&Operation::Sessions)?)
-        .await?;
+    let (code, bytes) = ssh.execute_tmux(&Command::inventory()).await?;
+    let rows: Vec<_> = bytes
+        .split(|b| *b == b'\n')
+        .filter(|s| !s.is_empty())
+        .map(<[u8]>::to_vec)
+        .collect();
     if code != 0 {
-        return Ok(RemoteState::default());
+        // Without a server there is no session to list; a later listing failure is an error.
+        return if rows.is_empty() {
+            Ok(RemoteState::default())
+        } else {
+            Err(Error::InvalidArgument)
+        };
     }
-    fn rows(bytes: &[u8]) -> Vec<Vec<u8>> {
-        bytes
-            .split(|b| *b == b'\n')
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_vec())
-            .collect()
-    }
-    let sessions = model::sessions(&rows(&bytes))?;
-    if sessions.is_empty() {
-        return Ok(RemoteState::default());
-    }
-    let (code, bytes) = ssh
-        .execute_tmux(&Command::new(&Operation::Windows)?)
-        .await?;
-    if code != 0 {
-        return Err(Error::InvalidArgument);
-    }
-    let windows = model::windows(&rows(&bytes))?;
-    let (code, bytes) = ssh.execute_tmux(&Command::new(&Operation::Panes)?).await?;
-    if code != 0 {
-        return Err(Error::InvalidArgument);
-    }
-    let mut panes = model::panes(&rows(&bytes))?;
-    let mut seen = HashSet::new();
-    panes.retain(|p| seen.insert(p.id.clone()));
-    Ok(RemoteState {
-        sessions,
-        windows,
-        panes,
-    })
+    model::inventory(&rows)
 }
 fn resolve_target(
     remote: &RemoteState,
@@ -1383,27 +1399,30 @@ async fn attach(
     c.titles
         .set_last_start(c.shared.title_visibility.lock().unwrap().last_start);
     c.response().await?;
-    c.command(Operation::FlowControl).await?;
-    if ssh
+    let subscribe = ssh
         .tmux_version
         .as_deref()
-        .is_some_and(crate::command::safe_subscriptions)
-    {
-        c.command(Operation::MetadataSubscription).await?;
-    } else {
-        // Read the baseline before the refresh below so later changes are not missed.
-        let last = c.command(Operation::MetadataPoll).await?;
+        .is_some_and(crate::command::safe_subscriptions);
+    let setup = [
+        Operation::FlowControl,
+        // A polled baseline is read before the listing, so later changes are not missed.
+        if subscribe {
+            Operation::MetadataSubscription
+        } else {
+            Operation::MetadataPoll
+        },
+        Operation::ClientSize {
+            columns: size.columns,
+            rows: size.rows,
+        },
+    ];
+    let mut replies = c.refresh_after(&setup).await?;
+    if !subscribe {
         c.metadata = Some(MetadataPoll {
             due: tokio::time::Instant::now() + METADATA_POLL,
-            last,
+            last: replies.swap_remove(1),
         });
     }
-    c.command(Operation::ClientSize {
-        columns: size.columns,
-        rows: size.rows,
-    })
-    .await?;
-    c.refresh().await?;
     let state = c.shared.state.lock().unwrap().clone();
     let windows: Vec<_> = state
         .remote
@@ -1764,6 +1783,168 @@ async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
     }
 }
 
+/// Keys typed while one is in flight go out together instead of a round trip each.
+const INPUT_PIPELINE: usize = 16;
+/// Checks an input request before any of it is sent.
+fn admit_input(shared: &Shared, r: &Request) -> Result<()> {
+    let RequestKind::Input {
+        target,
+        revision,
+        coordinates,
+        ..
+    } = &r.kind
+    else {
+        unreachable!()
+    };
+    if *revision != shared.input_revision.load(Ordering::SeqCst) {
+        return Err(Error::Cancelled);
+    }
+    if shared.target().is_none_or(|current| {
+        !current.same_input_destination(target) || (*coordinates && &current != target)
+    }) {
+        return Err(Error::StaleGeneration);
+    }
+    let state = shared.state.lock().unwrap().clone();
+    if !state.accepts_input() || (*coordinates && !state.accepts_pointer()) {
+        return Err(Error::NotReady);
+    }
+    if shared.cancelled.lock().unwrap().contains(&r.id) {
+        return Err(Error::Cancelled);
+    }
+    Ok(())
+}
+/// Checks a partly sent input request before its next chunks.
+fn input_continues(shared: &Shared, r: &Request) -> Result<()> {
+    let RequestKind::Input {
+        target,
+        revision,
+        coordinates,
+        ..
+    } = &r.kind
+    else {
+        unreachable!()
+    };
+    if !shared.state.lock().unwrap().accepts_input()
+        || *revision != shared.input_revision.load(Ordering::SeqCst)
+    {
+        return Err(Error::NotReady);
+    }
+    if shared.target().is_none_or(|current| {
+        !current.same_input_destination(target) || (*coordinates && &current != target)
+    }) {
+        return Err(Error::StaleGeneration);
+    }
+    if shared.cancelled.lock().unwrap().contains(&r.id) {
+        return Err(Error::Cancelled);
+    }
+    Ok(())
+}
+fn same_input(a: &Request, b: &Request) -> bool {
+    match (&a.kind, &b.kind) {
+        (
+            RequestKind::Input {
+                target,
+                revision,
+                coordinates,
+                ..
+            },
+            RequestKind::Input {
+                target: t,
+                revision: r,
+                coordinates: c,
+                ..
+            },
+        ) => target == t && revision == r && coordinates == c,
+        _ => false,
+    }
+}
+/// What remains of a batch after `error` ended it: the requests none of which was written.
+struct Unsent {
+    requests: Vec<Request>,
+    error: Option<Error>,
+}
+/// Sends the batch's 256-byte `send-keys` chunks in order, up to `INPUT_PIPELINE` per
+/// write, checking the target before each write. A request stops at its first failed
+/// chunk and is never resent; chunks already written behind it in the same write still run.
+/// Each request completes as soon as its last reply is read, so a later write that is
+/// dropped or fails cannot report delivered input as lost.
+async fn send_input(c: &mut Control, shared: &Shared, batch: Vec<Request>) -> Unsent {
+    let mut items: Vec<_> = batch.into_iter().map(|r| Some((r, 0, None))).collect();
+    let finish = |items: &mut Vec<Option<(Request, usize, Option<Error>)>>| {
+        for item in items.iter_mut() {
+            let done = item.as_ref().is_some_and(|(r, sent, error)| {
+                let RequestKind::Input { bytes, .. } = &r.kind else {
+                    unreachable!()
+                };
+                error.is_some() || *sent == bytes.len()
+            });
+            if done {
+                let (r, _, error) = item.take().unwrap();
+                shared.complete(r, error);
+            }
+        }
+    };
+    let error = loop {
+        let mut ops = Vec::new();
+        let mut owners = Vec::new();
+        for (i, item) in items.iter_mut().enumerate() {
+            let Some((r, sent, error)) = item else {
+                continue;
+            };
+            if ops.len() == INPUT_PIPELINE {
+                break;
+            }
+            let RequestKind::Input { target, bytes, .. } = &r.kind else {
+                unreachable!()
+            };
+            let check = if *sent == 0 {
+                admit_input(shared, r)
+            } else {
+                input_continues(shared, r)
+            };
+            if let Err(e) = check {
+                *error = Some(e);
+                continue;
+            }
+            for chunk in bytes[*sent..].chunks(256).take(INPUT_PIPELINE - ops.len()) {
+                ops.push(Operation::Send {
+                    target: target.pane_id.clone(),
+                    bytes: chunk.to_vec(),
+                });
+                owners.push(i);
+                *sent += chunk.len();
+            }
+        }
+        if ops.is_empty() {
+            finish(&mut items);
+            break None;
+        }
+        match c.commands(&ops).await {
+            Ok(replies) => {
+                for (i, reply) in owners.into_iter().zip(replies) {
+                    if let (Err(e), Some((_, _, error))) = (reply, &mut items[i]) {
+                        error.get_or_insert(e);
+                    }
+                }
+                finish(&mut items);
+            }
+            Err(e) => break Some(e),
+        }
+    };
+    let mut unsent = Unsent {
+        requests: Vec::new(),
+        error,
+    };
+    for (r, sent, e) in items.into_iter().flatten() {
+        match error {
+            Some(_) if e.is_none() && sent == 0 => unsent.requests.push(r),
+            // Delivery of the failed write, or of what was left, is unknown.
+            _ => shared.complete(r, e.or(error)),
+        }
+    }
+    unsent
+}
+
 async fn missing_session(ssh: &Ssh, shared: &Shared, control: &mut Option<Control>) -> Result<()> {
     if let Some(c) = control.take() {
         let _ = c.stream.close().await;
@@ -1791,6 +1972,8 @@ async fn connected(
 ) -> Result<()> {
     let mut control = None;
     let mut shell = None;
+    // Requests taken from `rx` while merging input, served before newer ones.
+    let mut backlog = VecDeque::new();
     if tmux {
         let remote = list(ssh).await?;
         let session = shared.state.lock().unwrap().session.clone();
@@ -1852,7 +2035,9 @@ async fn connected(
             Metadata,
             Visibility,
         }
-        let incoming = if let Some(c) = control.as_mut() {
+        let incoming = if let Some(r) = backlog.pop_front() {
+            Incoming::Request(Some(r))
+        } else if let Some(c) = control.as_mut() {
             c.titles.reconcile(shared.title_scope());
             let title_deadline = c.titles.deadline();
             let metadata_due = c.metadata.as_ref().map(|m| m.due);
@@ -1957,37 +2142,45 @@ async fn connected(
                     shared.complete(r, Some(Error::Cancelled));
                     continue;
                 }
+                if let Some(c) = control
+                    .as_mut()
+                    .filter(|_| matches!(r.kind, RequestKind::Input { .. }))
+                {
+                    let mut batch = vec![r];
+                    while batch.len() < INPUT_PIPELINE {
+                        match rx.try_recv() {
+                            Ok(next) if same_input(&batch[0], &next) => batch.push(next),
+                            Ok(next) => {
+                                backlog.push_back(next);
+                                break;
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                    let unsent = send_input(c, &shared, batch).await;
+                    for r in unsent.requests.into_iter().rev() {
+                        backlog.push_front(r);
+                    }
+                    match unsent.error {
+                        Some(Error::MissingSession) => {
+                            missing_session(ssh, &shared, &mut control).await?
+                        }
+                        Some(error @ (Error::Network | Error::Protocol)) => return Err(error),
+                        _ => {}
+                    }
+                    continue;
+                }
                 let result = async {
                     match &r.kind {
-                        RequestKind::Input { target, bytes, revision, coordinates } => {
-                            if *revision != shared.input_revision.load(Ordering::SeqCst) { return Err(Error::Cancelled); }
-                            if shared.target().is_none_or(|current| !current.same_input_destination(target) || (*coordinates && &current != target)) {
-                                return Err(Error::StaleGeneration);
-                            }
-                            let state = shared.state.lock().unwrap().clone();
-                            if !state.accepts_input() || (*coordinates && !state.accepts_pointer()) {
-                                return Err(Error::NotReady);
-                            }
-                            if let Some(sh) = &shell {
-                                sh.data(bytes.as_slice())
-                                    .await
-                                    .map_err(|_| Error::Network)?;
-                            } else if let Some(c) = control.as_mut() {
-                                for chunk in bytes.chunks(256) {
-                                    if !shared.state.lock().unwrap().accepts_input() || *revision != shared.input_revision.load(Ordering::SeqCst) { return Err(Error::NotReady); }
-                                    if shared.target().is_none_or(|current| !current.same_input_destination(target) || (*coordinates && &current != target)) { return Err(Error::StaleGeneration); }
-                                    if shared.cancelled.lock().unwrap().contains(&r.id) {
-                                        return Err(Error::Cancelled);
-                                    }
-                                    c.command(Operation::Send {
-                                        target: target.pane_id.clone(),
-                                        bytes: chunk.to_vec(),
-                                    })
-                                    .await?;
-                                }
-                            } else {
-                                return Err(Error::NotReady);
-                            }
+                        RequestKind::Input { bytes, .. } => {
+                            // tmux input goes through `send_input` above.
+                            admit_input(&shared, &r)?;
+                            shell
+                                .as_ref()
+                                .ok_or(Error::NotReady)?
+                                .data(bytes.as_slice())
+                                .await
+                                .map_err(|_| Error::Network)?;
                         }
                         RequestKind::Action(a) => match a {
                             Action::RetryNow | Action::StopRetrying | Action::CheckConnection => return Err(Error::NotReady),
@@ -2010,19 +2203,31 @@ async fn connected(
                                 if !tmux {
                                     return Err(Error::NotReady);
                                 }
-                                let remote = list(ssh).await?;
-                                let selected = resolve_target(
-                                    &remote,
-                                    session,
-                                    window.as_deref(),
-                                    pane.as_deref(),
-                                )?;
+                                let selected = if let Some(c) = control.as_mut() {
+                                    // The attached client already lists every session.
+                                    c.refresh().await?;
+                                    let state = shared.state.lock().unwrap().clone();
+                                    resolve_target(
+                                        &state.remote,
+                                        session,
+                                        window.as_deref(),
+                                        pane.as_deref(),
+                                    )
+                                    // The refresh may have moved the active pane.
+                                    .inspect_err(|_| c.dirty = true)?
+                                } else {
+                                    resolve_target(
+                                        &list(ssh).await?,
+                                        session,
+                                        window.as_deref(),
+                                        pane.as_deref(),
+                                    )?
+                                };
                                 let current = shared.state.lock().unwrap().session.clone();
                                 if let Some(c) = control
                                     .as_mut()
                                     .filter(|_| current.as_ref() == Some(session))
                                 {
-                                    c.refresh().await?;
                                     c.select_pane(selected.clone()).await?;
                                 } else {
                                     if let Some(c) = control.take() {
@@ -2077,8 +2282,11 @@ async fn connected(
                                     if let Operation::SelectPane { target } = operation {
                                         c.select_pane(target.clone()).await?;
                                     } else {
-                                        c.command(operation.clone()).await?;
-                                        c.refresh_screen_if_needed(false).await?;
+                                        c.refresh_screen_after(
+                                            std::slice::from_ref(operation),
+                                            false,
+                                        )
+                                        .await?;
                                         if let Some(window) = selected_window {
                                             let remote =
                                                 shared.state.lock().unwrap().remote.clone();
@@ -2153,8 +2361,7 @@ async fn connected(
                                     shared.emit(OutputKind::Resize, next, &[]).await?;
                                 }
                                 if let Some(c) = control.as_mut() {
-                                    c.command(Operation::ClientSize { columns: *columns, rows: *rows }).await?;
-                                    c.refresh_screen_if_needed(true).await?;
+                                    c.refresh_screen_after(&[Operation::ClientSize { columns: *columns, rows: *rows }], true).await?;
                                 }
                             }
                         },

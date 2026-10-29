@@ -357,3 +357,40 @@ fn format_subscriptions_only_on_tmux_that_survives_sessionless_clients() {
         .unwrap();
     assert_eq!(poll, format!("display-message -p '{format}"));
 }
+
+#[test]
+fn inventory_lists_every_session_in_one_tmux_process() {
+    let inventory = Command::inventory();
+    let separate = [Operation::Sessions, Operation::Windows, Operation::Panes]
+        .map(|op| Command::new(&op).unwrap().wire);
+    // The same listings, each row tagged; the shell sees escaped command separators.
+    let tagged = separate.map(|wire| {
+        let (command, format) = wire.split_once(" -F '").unwrap();
+        (command.to_string(), format.to_string())
+    });
+    let parts: Vec<_> = tagged
+        .iter()
+        .zip(["s", "w", "p"])
+        .map(|((command, format), tag)| format!("{command} -F '{tag}|{format}"))
+        .collect();
+    assert_eq!(inventory.wire, parts.join(" ; "));
+    assert_eq!(
+        inventory.shell_with_executable("/usr/bin/tmux").unwrap(),
+        format!("'/usr/bin/tmux' -u {}", parts.join(" \\; "))
+    );
+    let rows: Vec<Vec<u8>> = [
+        "s|$1|work\\ 1|1",
+        "w|$1|@1|edit|1|layout|0|80|24|0|layout",
+        "w|$2|@1|edit|1|layout|0|80|24|0|layout",
+        "p|%1|@1|80|24|1||bash|title \\| x|0|0",
+        "p|%1|@1|80|24|1||bash|title \\| x|0|0",
+    ]
+    .map(|row| row.as_bytes().to_vec())
+    .into();
+    let remote = model::inventory(&rows).unwrap();
+    assert_eq!(remote.sessions[0].name, "work 1");
+    assert_eq!(remote.windows.len(), 2, "a window per linked session");
+    assert_eq!(remote.panes.len(), 1, "a linked window's pane once");
+    assert_eq!(remote.panes[0].title, "title | x");
+    assert!(model::inventory(&[b"$1|work|1".to_vec()]).is_err());
+}
