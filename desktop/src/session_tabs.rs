@@ -43,6 +43,15 @@ pub(super) struct PendingTarget {
     pub operation: Option<Operation>,
 }
 impl PendingTarget {
+    /// A target waits while the connection settles; a reconnect cycle or failure drops it.
+    pub fn waits_for(phase: &Phase) -> bool {
+        matches!(
+            phase,
+            Phase::Connecting | Phase::TrustRequired | Phase::Authenticating | Phase::Restoring
+        )
+    }
+}
+impl PendingTarget {
     pub fn action(&self) -> Action {
         Action::SelectTarget {
             session: self.session.clone(),
@@ -200,10 +209,7 @@ impl Desktop {
             return None;
         }
         let host = source_tab.host.clone();
-        let browse = matches!(
-            state.phase,
-            Phase::Selecting | Phase::Ready | Phase::MissingSession
-        );
+        let browse = state.browses_sessions();
         let route = route(
             self.tabs
                 .iter()
@@ -228,20 +234,11 @@ impl Desktop {
                     generation: target_state.generation.connection,
                     operation: None,
                 };
-                if matches!(
-                    target_state.phase,
-                    Phase::Selecting | Phase::Ready | Phase::MissingSession
-                ) {
+                if target_state.browses_sessions() {
                     if let Err(e) = tab.connection.action(target.action()) {
                         self.snackbar.show_snackbar(tr!("대상 선택 실패: {0}", e));
                     }
-                } else if matches!(
-                    target_state.phase,
-                    Phase::Connecting
-                        | Phase::TrustRequired
-                        | Phase::Authenticating
-                        | Phase::Restoring
-                ) {
+                } else if PendingTarget::waits_for(&target_state.phase) {
                     tab.pending_target = Some(target);
                 }
                 tab.id
@@ -274,10 +271,7 @@ impl Desktop {
         if existing && (window.is_some() || pane.is_some()) && browse {
             let tab = self.tabs.iter_mut().find(|t| t.id == id)?;
             let current = tab.connection.state();
-            if matches!(
-                current.phase,
-                Phase::Selecting | Phase::Ready | Phase::MissingSession
-            ) {
+            if current.browses_sessions() {
                 if let Err(e) = tab.connection.action(Action::SelectTarget {
                     session: session.into(),
                     window,
@@ -299,7 +293,26 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{Route, route};
+    use super::{PendingTarget, Route, route};
+    use dgl_core::connection::Phase::*;
+    #[test]
+    fn pending_targets_wait_only_while_the_connection_settles() {
+        for phase in [Connecting, TrustRequired, Authenticating, Restoring] {
+            assert!(PendingTarget::waits_for(&phase), "{phase:?}");
+        }
+        // A reconnect cycle or a settled phase drops or submits the target instead.
+        for phase in [
+            Reconnecting,
+            Selecting,
+            Ready,
+            MissingSession,
+            Failed,
+            Shell,
+            Closed,
+        ] {
+            assert!(!PendingTarget::waits_for(&phase), "{phase:?}");
+        }
+    }
     #[test]
     fn identity_reservation_reuses_sessions_across_hosts_and_blocks_creation_during_recovery() {
         let mut tabs = vec![(1, "a", None), (2, "b", Some("$1"))];

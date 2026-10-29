@@ -1411,10 +1411,7 @@ impl Desktop {
         let connection = tab.connection.clone();
         let tid = tab.id;
         let refreshing = tab.refresh.is_some();
-        let browse = matches!(
-            state.phase,
-            Phase::Selecting | Phase::Ready | Phase::MissingSession
-        );
+        let browse = state.browses_sessions();
         tree = tree.child(
             div()
                 .flex()
@@ -1464,10 +1461,7 @@ impl Desktop {
         state: &dgl_core::connection::State,
         cx: &mut Context<Self>,
     ) -> Div {
-        let browse = matches!(
-            state.phase,
-            Phase::Selecting | Phase::Ready | Phase::MissingSession
-        );
+        let browse = state.browses_sessions();
         let p = self.palette;
         let expand = format!("{tid}/{}", row.key);
         let toggle = expand.clone();
@@ -1703,10 +1697,7 @@ impl Desktop {
                             let tab = s.tabs.iter_mut().find(|t| t.id == id).unwrap();
                             if let Some(pending) = &mut tab.pending_target {
                                 pending.operation = Some(operation);
-                            } else if matches!(
-                                tab.connection.state().phase,
-                                Phase::Ready | Phase::Selecting | Phase::MissingSession
-                            ) {
+                            } else if tab.connection.state().browses_sessions() {
                                 let connection = tab.connection.clone();
                                 s.submit(&connection, Action::Manage { operation });
                             }

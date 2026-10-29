@@ -47,6 +47,10 @@ impl Dimensions for GridSize {
         self.0
     }
 }
+/// Fixed monospace cell ratios, shared by pane painting and the size requested from tmux.
+fn cell_size_for(font_size: f32) -> (f32, f32) {
+    (font_size * 0.61, font_size * 1.4)
+}
 pub struct Terminal {
     pub connection: Arc<Connection>,
     pane_id: Option<String>,
@@ -273,7 +277,7 @@ impl Terminal {
         self.font_size = n.clamp(10, 28) as f32;
     }
     fn cell_size(&self) -> (f32, f32) {
-        (self.font_size * 0.61, self.font_size * 1.4)
+        cell_size_for(self.font_size)
     }
     fn point(&self, p: Point<Pixels>) -> CellPoint {
         let (w, h) = self.cell_size();
@@ -822,6 +826,11 @@ mod tests {
         model::{AuthKind, Credential, HostProfile},
     };
     use gpui::{AppContext, TestAppContext};
+    #[test]
+    fn pane_and_window_share_one_cell_size() {
+        assert_eq!(super::cell_size_for(10.0), (10.0 * 0.61, 10.0 * 1.4));
+        assert_eq!(super::cell_size_for(28.0), (28.0 * 0.61, 28.0 * 1.4));
+    }
     #[gpui::test]
     fn same_pane_snapshot_preserves_history(cx: &mut TestAppContext) {
         // This runtime deliberately stays unpolled: an in-flight request cannot complete.

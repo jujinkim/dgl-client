@@ -307,10 +307,7 @@ impl Desktop {
             tab.update_session(&state);
             if let Some(target) = tab.pending_target.take() {
                 if target.generation == state.generation.connection {
-                    if matches!(
-                        state.phase,
-                        Phase::Selecting | Phase::Ready | Phase::MissingSession
-                    ) {
+                    if state.browses_sessions() {
                         match tab.connection.action(target.action()) {
                             Ok(_) => {
                                 if let Some(operation) = target.operation
@@ -322,13 +319,7 @@ impl Desktop {
                             }
                             Err(e) => self.snackbar.show_snackbar(tr!("대상 선택 실패: {0}", e)),
                         }
-                    } else if matches!(
-                        state.phase,
-                        Phase::Connecting
-                            | Phase::TrustRequired
-                            | Phase::Authenticating
-                            | Phase::Restoring
-                    ) {
+                    } else if session_tabs::PendingTarget::waits_for(&state.phase) {
                         tab.pending_target = Some(target);
                     }
                 }

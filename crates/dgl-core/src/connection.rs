@@ -77,6 +77,14 @@ impl State {
     pub fn accepts_pointer(&self) -> bool {
         self.accepts_input() && !self.resizing
     }
+    /// tmux sessions can be listed and targeted (select, create, manage) without
+    /// waiting for a transport attempt.
+    pub fn browses_sessions(&self) -> bool {
+        matches!(
+            self.phase,
+            Phase::Selecting | Phase::Ready | Phase::MissingSession
+        )
+    }
     /// The phases in which the connection runs its agent observer.
     pub fn observing_agents(&self) -> bool {
         matches!(
@@ -2551,6 +2559,30 @@ mod tests {
             last_connected: 0,
             last_session: Some("$12".into()),
             last_pane: Some("%34".into()),
+        }
+    }
+    #[tokio::test]
+    async fn session_browsing_is_exactly_the_settled_tmux_phases() {
+        let c = Connection::start(host(1), Credential::default(), None);
+        let mut s = (*c.state()).clone();
+        c.close();
+        use Phase::*;
+        for phase in [
+            Connecting,
+            TrustRequired,
+            Authenticating,
+            Selecting,
+            Restoring,
+            Ready,
+            Reconnecting,
+            MissingSession,
+            Failed,
+            Shell,
+            Closed,
+        ] {
+            let expected = matches!(phase, Selecting | Ready | MissingSession);
+            s.phase = phase.clone();
+            assert_eq!(s.browses_sessions(), expected, "{phase:?}");
         }
     }
     #[tokio::test]

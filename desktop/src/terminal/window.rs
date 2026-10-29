@@ -300,7 +300,7 @@ impl Render for WindowTerminal {
             current
         };
         let font_size = self.font.effective();
-        let cell = (font_size as f32 * 0.61, font_size as f32 * 1.4);
+        let cell = super::cell_size_for(font_size as f32);
         let remote_window = state.remote.windows.iter().find(|w| {
             Some(&w.id) == state.window.as_ref() && Some(&w.session) == state.session.as_ref()
         });
