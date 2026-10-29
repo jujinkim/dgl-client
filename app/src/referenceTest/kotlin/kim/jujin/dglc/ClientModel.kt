@@ -98,8 +98,8 @@ class ClientModel(
                         ssh.tmuxDiagnostics, detected))
                     return
                 }
-                val rows = try { ssh.executeTmux(TmuxCommand.sessions) } catch (_: RemoteCommandException) { byteArrayOf() }
-                val sessions = RemoteStateDecoder.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList())
+                val rows = try { ssh.executeTmux(TmuxWire.sessions) } catch (_: RemoteCommandException) { byteArrayOf() }
+                val sessions = TmuxRows.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList())
                 remote.value = RemoteState(sessions)
                 updateLocal { current -> current.copy(hosts = current.hosts.map { if (it.id == host.id) it.copy(lastConnected = System.currentTimeMillis()) else it }) }
                 if (rememberedSession != null) {
@@ -175,7 +175,7 @@ class ClientModel(
                 }
             }
         }
-        controller.command(TmuxCommand.clientSize(size))
+        controller.command(TmuxWire.clientSize(size))
         val windowIds = remote.value.windows.filter { it.session == id }.map { it.id }
         val activeWindow = remote.value.windows.firstOrNull { it.session == id && it.active }?.id
         val target = remote.value.panes.firstOrNull { it.id == rememberedPane && it.window in windowIds }
@@ -196,8 +196,8 @@ class ClientModel(
         val target = remote.value.panes.firstOrNull { it.id == id } ?: return
         status.value = ConnectionStatus(Phase.Restoring, "화면 복원 중…")
         paneGeneration.incrementAndGet(); pane.value = id; rememberedPane = id
-        controller.command(TmuxCommand.selectWindow(target.window))
-        controller.command(TmuxCommand.selectPane(id))
+        controller.command(TmuxWire.selectWindow(target.window))
+        controller.command(TmuxWire.selectPane(id))
         snapshotGeneration = generation()
         controller.snapshot(id)
         if (snapshotGeneration == generation()) status.value = ConnectionStatus(Phase.Ready, "연결됨 · tmux")
@@ -220,24 +220,24 @@ class ClientModel(
     }
 
     override fun createSession(name: String) = action {
-        val command = TmuxCommand.newSession(name)
+        val command = TmuxWire.newSession(name)
         if (control != null) { control!!.command(command); control!!.refresh(); remote.value = control!!.state.value }
         else {
             transport?.executeTmux(command)
-            val rows = transport?.executeTmux(TmuxCommand.sessions) ?: return@action
-            remote.value = RemoteState(RemoteStateDecoder.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList()))
+            val rows = transport?.executeTmux(TmuxWire.sessions) ?: return@action
+            remote.value = RemoteState(TmuxRows.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList()))
         }
     }
     override fun manage(command: TmuxCommand) = action {
         // Dialog IME insets can schedule a resize before its confirmation arrives.
         // The operations mutex serializes both; do not discard the user's command.
         if (status.value.phase !in setOf(Phase.Ready, Phase.Restoring)) return@action
-        control?.command(command); control?.refresh()
+        control?.command(TmuxWire.of(command)); control?.refresh()
     }
     override fun refresh() = action {
         if (control != null) control!!.refresh()
-        else transport?.executeTmux(TmuxCommand.sessions)?.let { rows ->
-            remote.value = RemoteState(RemoteStateDecoder.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList()))
+        else transport?.executeTmux(TmuxWire.sessions)?.let { rows ->
+            remote.value = RemoteState(TmuxRows.sessions(rows.decodeToString().lineSequence().filter { it.isNotEmpty() }.map { it.encodeToByteArray() }.toList()))
         }
     }
 
@@ -261,7 +261,7 @@ class ClientModel(
             delay(150)
             action {
                     shell?.resize(size)
-                    control?.command(TmuxCommand.clientSize(size))
+                    control?.command(TmuxWire.clientSize(size))
                     restoreInternal()
             }
         }

@@ -46,7 +46,7 @@ class IntegrationTest {
             val pane = model.pane.value!!
             val window = model.remote.value.panes.single { it.id == pane }.window
             model.input("printf 'LOGIN_%s\\n' PATH_OK\r".encodeToByteArray())
-            withTimeout(5000) { while (!admin.executeTmux(TmuxCommand.capture(pane)).decodeToString().contains("LOGIN_PATH_OK")) delay(50) }
+            withTimeout(5000) { while (!admin.executeTmux(TmuxWire.capture(pane)).decodeToString().contains("LOGIN_PATH_OK")) delay(50) }
             model.manage(TmuxCommand.split(pane, true))
             withTimeout(5000) { model.remote.first { it.panes.count { p -> p.window == window } == 2 } }
             model.disconnect()
@@ -54,10 +54,10 @@ class IntegrationTest {
             withTimeout(10000) { model.status.first { it.phase == Phase.Ready } }
             assertEquals(target, model.session.value)
             assertEquals(pane, model.pane.value)
-            assertTrue(admin.executeTmux(TmuxCommand.capture(pane)).decodeToString().contains("LOGIN_PATH_OK"))
+            assertTrue(admin.executeTmux(TmuxWire.capture(pane)).decodeToString().contains("LOGIN_PATH_OK"))
         } finally {
             model.close()
-            session?.let { runCatching { admin.executeTmux(TmuxCommand.killSession(it)) } }
+            session?.let { runCatching { admin.executeTmux(TmuxWire.killSession(it)) } }
             admin.close()
         }
     }
@@ -74,15 +74,15 @@ class IntegrationTest {
             MacroStep.Key(TerminalKey.Enter)))
         try {
             val name = "volume-${System.nanoTime()}"
-            admin.execute(TmuxCommand.newSession(name).shellWire)
-            val target = RemoteStateDecoder.sessions(admin.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+            admin.execute(TmuxWire.newSession(name).shellWire)
+            val target = TmuxRows.sessions(admin.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
             session = target
             val tmuxModel = ClientModel(host.copy(lastSession = target), store, local, { local.update(it) })
             model = tmuxModel
             tmuxModel.connect()
             withTimeout(10000) { tmuxModel.status.first { it.phase == Phase.Ready } }
             val original = tmuxModel.pane.value!!
-            admin.execute("tmux " + TmuxCommand.split(original, true).wire)
+            admin.execute("tmux " + TmuxWire.split(original, true).wire)
             val other = withTimeout(5000) { tmuxModel.remote.first { it.panes.size == 2 } }.panes.single { it.id != original }.id
             tmuxModel.selectPane(other)
             withTimeout(5000) { tmuxModel.pane.first { it == other }; tmuxModel.status.first { it.phase == Phase.Ready } }
@@ -127,7 +127,7 @@ class IntegrationTest {
             assertFalse(synchronized(output) { output.toByteArray().decodeToString().contains("MACRO_RUN_2") })
         } finally {
             model?.close()
-            session?.let { runCatching { admin.execute("tmux " + TmuxCommand.killSession(it).wire) } }
+            session?.let { runCatching { admin.execute("tmux " + TmuxWire.killSession(it).wire) } }
             admin.close()
         }
     }
@@ -149,19 +149,19 @@ class IntegrationTest {
             withTimeout(5000) { while (!output.contains("PLAIN_SSH_OK")) output += shell.read()!!.decodeToString() }
             shell.close()
             val name = "bootstrap-${System.nanoTime()};"
-            ssh.execute(TmuxCommand.newSession(name).shellWire)
-            val session = RemoteStateDecoder.sessions(ssh.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+            ssh.execute(TmuxWire.newSession(name).shellWire)
+            val session = TmuxRows.sessions(ssh.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
             client = ControlClient(ssh.openControl(session), scope, {})
             client.start()
             for (value in listOf("#(printf unintended)", "#{session_name}", "quote'| pipe ; dollar\$ value")) {
-                client.command(TmuxCommand.renameSession(session, value)); client.refresh()
+                client.command(TmuxWire.renameSession(session, value)); client.refresh()
                 assertEquals(value, client.state.value.sessions.single { it.id == session }.name)
             }
             assertFailsWith<RemoteCommandException> { client.snapshot("%9999999") }
             client.refresh()
             assertTrue(client.state.value.sessions.any { it.id == session })
             client.close(); client = null
-            ssh.execute("tmux " + TmuxCommand.killSession(session).wire)
+            ssh.execute("tmux " + TmuxWire.killSession(session).wire)
         } finally { client?.close(); ssh.close(); scope.cancel() }
     }
 
@@ -188,23 +188,23 @@ class IntegrationTest {
         var client: ControlClient? = null
         try {
             val name = "dgl-test-${System.nanoTime()}"
-            ssh.execute("tmux " + TmuxCommand.newSession(name).wire)
-            val sessionBytes = ssh.execute("tmux " + TmuxCommand.sessions.wire)
-            val sessions = RemoteStateDecoder.sessions(sessionBytes.decodeToString().trimEnd().lines().map { it.encodeToByteArray() })
+            ssh.execute("tmux " + TmuxWire.newSession(name).wire)
+            val sessionBytes = ssh.execute("tmux " + TmuxWire.sessions.wire)
+            val sessions = TmuxRows.sessions(sessionBytes.decodeToString().trimEnd().lines().map { it.encodeToByteArray() })
             val session = sessions.single { it.name == name }.id
             client = ControlClient(ssh.openControl(session), scope, { output.send(it) })
             client.start()
             val initial = client.state.value.panes.single { p -> client.state.value.windows.any { it.id == p.window && it.session == session } }.id
-            client.command(TmuxCommand.clientSize(Size(100, 30)))
+            client.command(TmuxWire.clientSize(Size(100, 30)))
             val snapshot = client.snapshot(initial)
             assertTrue(snapshot.isNotEmpty())
             client.input(initial, "printf 'DGL_UNICODE_한글_日本語\\n'\r".encodeToByteArray())
             val seen = java.io.ByteArrayOutputStream()
             withTimeout(5000) { while (!seen.toByteArray().decodeToString().contains("DGL_UNICODE_한글_日本語")) seen.write(output.receive().bytes) }
             val pidBefore = ssh.execute("tmux display-message -p -t '$initial' '#{pane_pid}'").decodeToString().trim()
-            ssh.execute("tmux " + TmuxCommand.split(initial, true).wire)
+            ssh.execute("tmux " + TmuxWire.split(initial, true).wire)
             withTimeout(5000) { while (client.state.value.panes.size < 2) delay(20) }
-            client.command(TmuxCommand.renameSession(session, "safe'; kill-server; #"))
+            client.command(TmuxWire.renameSession(session, "safe'; kill-server; #"))
             client.refresh()
             assertTrue(client.state.value.sessions.any { it.id == session && it.name == "safe'; kill-server; #" })
             client.close(); client = null; ssh.close()
@@ -217,7 +217,7 @@ class IntegrationTest {
                 assertTrue(reattached.snapshot(initial).decodeToString().contains("DGL_UNICODE_한글_日本語"))
                 reattached.close()
                 assertTrue(next.execute("tmux list-sessions").isNotEmpty())
-                next.execute("tmux " + TmuxCommand.killSession(session).wire)
+                next.execute("tmux " + TmuxWire.killSession(session).wire)
             } finally { next.close() }
         } finally { client?.close(); ssh.close(); scope.cancel() }
     }
@@ -228,8 +228,8 @@ class IntegrationTest {
         var first: ControlClient? = null; var second: ControlClient? = null
         try {
             val name = "dgl-stream-${System.nanoTime()}"
-            ssh.execute("tmux " + TmuxCommand.newSession(name).wire)
-            val session = RemoteStateDecoder.sessions(ssh.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+            ssh.execute("tmux " + TmuxWire.newSession(name).wire)
+            val session = TmuxRows.sessions(ssh.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
             val firstStream = ssh.openControl(session)
             val failure = CompletableDeferred<Exception>()
             val renderer = HeadlessTerminal()
@@ -246,7 +246,7 @@ class IntegrationTest {
             assertEquals((sequence.first()..199).toList(), sequence, "Snapshot/live transition must not duplicate or omit output rows")
             val attached = ssh.execute("tmux display-message -p -t '$session' '#{session_attached}'").decodeToString().trim().toInt()
             assertEquals(2, attached)
-            other.execute("tmux " + TmuxCommand.killSession(session).wire)
+            other.execute("tmux " + TmuxWire.killSession(session).wire)
             withTimeout(5000) { failure.await() }
         } finally { first?.close(); second?.close(); ssh.close(); other.close(); scope.cancel() }
     }

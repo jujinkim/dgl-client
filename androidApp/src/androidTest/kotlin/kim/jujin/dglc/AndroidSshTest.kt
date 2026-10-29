@@ -27,8 +27,8 @@ class AndroidSshTest {
                 if (kind != "key") ssh.close()
             }
             val name = "android-${System.nanoTime()}"
-            ssh.execute("tmux " + TmuxCommand.newSession(name).wire)
-            val session = RemoteStateDecoder.sessions(ssh.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+            ssh.execute("tmux " + TmuxWire.newSession(name).wire)
+            val session = TmuxRows.sessions(ssh.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
             client = ControlClient(ssh.openControl(session), scope, {})
             client.start()
             val windowIds = client.state.value.windows.filter { it.session == session }.map { it.id }
@@ -43,7 +43,7 @@ class AndroidSshTest {
             client.start()
             assertTrue(client.snapshot(pane).decodeToString().contains("ANDROID_한글_日本語"))
             client.close(); client = null
-            ssh.execute("tmux " + TmuxCommand.killSession(session).wire)
+            ssh.execute("tmux " + TmuxWire.killSession(session).wire)
         } catch (e: ClientFailure) { throw AssertionError("${e.kind}: ${e.diagnosticCode}") }
         finally { client?.close(); ssh.close(); scope.cancel() }
     }

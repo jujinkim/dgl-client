@@ -37,6 +37,7 @@ class RustApkTest(unittest.TestCase):
 
     def test_test_only_engine_and_dependencies_rejected_in_secondary_dex(self):
         for descriptor in (b"Lkim/jujin/dglc/ClientModel;", b"Lkim/jujin/dglc/ssh/SshjTransport;",
+                           b"Lkim/jujin/dglc/core/ControlParser;", b"Lkim/jujin/dglc/core/TmuxWire;",
                            b"Lkim/jujin/rovessh/ClientModel;", b"Lkim/jujin/rovessh/MainActivity;",
                            b"Lnet/schmizz/sshj/SSHClient;",
                            b"Lorg/bouncycastle/crypto/CipherParameters;"):

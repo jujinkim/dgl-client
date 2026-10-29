@@ -23,6 +23,7 @@ def verify_rust_payload(archive):
     dex = b"".join(archive.read(name) for name in names if re.fullmatch(r"classes\d*\.dex", name))
     # Reject both relocated reference classes and any previous Kotlin namespace.
     for retired in (b"Lkim/jujin/dglc/ClientModel;", b"Lkim/jujin/dglc/ssh/SshjTransport;",
+                    b"Lkim/jujin/dglc/core/ControlParser;", b"Lkim/jujin/dglc/core/TmuxWire;",
                     b"Lkim/jujin/rovessh/",
                     b"Lnet/schmizz/sshj/", b"Lorg/bouncycastle/"):
         if retired in dex:

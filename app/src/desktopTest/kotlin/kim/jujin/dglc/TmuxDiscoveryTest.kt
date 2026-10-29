@@ -27,7 +27,7 @@ class TmuxDiscoveryTest {
         assertEquals(listOf(TmuxProbeOutcome.NotFound, TmuxProbeOutcome.Found), login.attempts.map { it.outcome })
         assertEquals(listOf(TmuxDiscovery.direct, TmuxDiscovery.login), calls)
         assertEquals("'/opt/tmux tools/it'\\''s-tmux' -u new-session -d -s 'safe\\;'",
-            TmuxCommand.newSession("safe;").shellWithExecutable(path))
+            TmuxWire.newSession("safe;").shellWithExecutable(path))
         calls.clear()
         val fallback = TmuxDiscovery.find {
             calls += it

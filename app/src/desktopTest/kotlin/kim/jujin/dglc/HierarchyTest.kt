@@ -109,7 +109,7 @@ class HierarchyTest {
             assertFalse(label.contains(sid))
             assertEquals("연결됨", Phase.Ready.displayLabel())
         }
-        assertEquals("select-pane -t '%12' -T '작업 ##S '\\'' 제목'", TmuxCommand.renamePane("%12", "작업 #S ' 제목").wire)
+        assertEquals("select-pane -t '%12' -T '작업 ##S '\\'' 제목'", TmuxWire.renamePane("%12", "작업 #S ' 제목").wire)
         assertFailsWith<IllegalArgumentException> { TmuxCommand.renamePane("@12", "작업") }
         assertEquals("A B C D E F G", displayTreeText("A\u0000B\u007fC\u0085D\u2028E\u202eF\u2069G"))
     }

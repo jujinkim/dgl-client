@@ -69,30 +69,30 @@ class MigrationContractTest {
         }
     }
 
-    private fun command(c: JsonObject): TmuxCommand {
+    private fun command(c: JsonObject): TmuxWire {
         fun target() = c.text("target")
         fun name() = c.text("name")
         return when (c.text("op")) {
-            "newSession" -> TmuxCommand.newSession(name())
-            "renameSession" -> TmuxCommand.renameSession(target(), name())
-            "killSession" -> TmuxCommand.killSession(target())
-            "switchSession" -> TmuxCommand.switchSession(target())
-            "newWindow" -> TmuxCommand.newWindow(target(), name())
-            "renameWindow" -> TmuxCommand.renameWindow(target(), name())
-            "selectWindow" -> TmuxCommand.selectWindow(target())
-            "killWindow" -> TmuxCommand.killWindow(target())
-            "selectPane" -> TmuxCommand.selectPane(target())
-            "killPane" -> TmuxCommand.killPane(target())
-            "capture" -> TmuxCommand.capture(target())
-            "captureMain" -> TmuxCommand.captureMain(target())
-            "pending" -> TmuxCommand.pending(target())
-            "pause" -> TmuxCommand.pause(target())
-            "resume" -> TmuxCommand.resume(target())
-            "split" -> TmuxCommand.split(target(), c.getValue("horizontal").jsonPrimitive.boolean)
-            "resizePane" -> TmuxCommand.resizePane(target(), c.text("direction").single())
-            "clientSize" -> TmuxCommand.clientSize(Size(c.number("columns", 80), c.number("rows", 24)))
-            "send" -> TmuxCommand.send(target(), c.text("bytesHex").bytes())
-            "flowControl" -> TmuxCommand.flowControl
+            "newSession" -> TmuxWire.newSession(name())
+            "renameSession" -> TmuxWire.renameSession(target(), name())
+            "killSession" -> TmuxWire.killSession(target())
+            "switchSession" -> TmuxWire.switchSession(target())
+            "newWindow" -> TmuxWire.newWindow(target(), name())
+            "renameWindow" -> TmuxWire.renameWindow(target(), name())
+            "selectWindow" -> TmuxWire.selectWindow(target())
+            "killWindow" -> TmuxWire.killWindow(target())
+            "selectPane" -> TmuxWire.selectPane(target())
+            "killPane" -> TmuxWire.killPane(target())
+            "capture" -> TmuxWire.capture(target())
+            "captureMain" -> TmuxWire.captureMain(target())
+            "pending" -> TmuxWire.pending(target())
+            "pause" -> TmuxWire.pause(target())
+            "resume" -> TmuxWire.resume(target())
+            "split" -> TmuxWire.split(target(), c.getValue("horizontal").jsonPrimitive.boolean)
+            "resizePane" -> TmuxWire.resizePane(target(), c.text("direction").single())
+            "clientSize" -> TmuxWire.clientSize(Size(c.number("columns", 80), c.number("rows", 24)))
+            "send" -> TmuxWire.send(target(), c.text("bytesHex").bytes())
+            "flowControl" -> TmuxWire.flowControl
             else -> error("Unknown fixture operation")
         }
     }
@@ -161,14 +161,14 @@ class MigrationContractTest {
             val decode = {
                 val rows = case.getValue("rows").jsonArray.map { it.jsonPrimitive.content.encodeToByteArray() }
                 JsonArray(when (case.text("kind")) {
-                    "sessions" -> RemoteStateDecoder.sessions(rows).map { buildJsonObject {
+                    "sessions" -> TmuxRows.sessions(rows).map { buildJsonObject {
                         put("id", it.id); put("name", it.name); put("attached", it.attached)
                     } }
-                    "windows" -> RemoteStateDecoder.windows(rows).map { buildJsonObject {
+                    "windows" -> TmuxRows.windows(rows).map { buildJsonObject {
                         put("id", it.id); put("session", it.session); put("name", it.name)
                         put("active", it.active); put("layout", it.layout); put("index", it.index); put("width", it.width); put("height", it.height); put("zoomed", it.zoomed); put("visible_layout", it.visibleLayout)
                     } }
-                    "panes" -> RemoteStateDecoder.panes(rows).map { buildJsonObject {
+                    "panes" -> TmuxRows.panes(rows).map { buildJsonObject {
                         put("id", it.id); put("window", it.window); put("width", it.width); put("height", it.height)
                         put("active", it.active); put("mode", it.mode); put("command", it.command); put("title", it.title); put("left", it.left); put("top", it.top)
                     } }

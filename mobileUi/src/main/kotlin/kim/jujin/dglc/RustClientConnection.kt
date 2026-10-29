@@ -549,7 +549,7 @@ class RustClientConnection(
     override fun selectSession(id: String) = action(buildJsonObject { put("action", "selectSession"); put("id", id) })
     override fun selectPane(id: String) = action(buildJsonObject { put("action", "selectPane"); put("id", id) })
     override fun createSession(name: String) = manage(TmuxCommand.newSession(name))
-    override fun manage(command: TmuxCommand) { val op = command.nativeOperation ?: return; action(buildJsonObject { put("action", "manage"); put("operation", op) }) }
+    override fun manage(command: TmuxCommand) = action(buildJsonObject { put("action", "manage"); put("operation", command.operation) })
     @Synchronized override fun refresh() {
         if (refreshing.value) return
         val c = native ?: return

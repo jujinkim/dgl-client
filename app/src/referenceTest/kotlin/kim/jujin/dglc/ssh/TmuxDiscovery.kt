@@ -12,11 +12,11 @@ internal object TmuxDiscovery {
     private val probe = "dgl_tmux_path=\$(command -v tmux) || exit 127; " +
         "case \"\$dgl_tmux_path\" in /*) ;; *) exit 127 ;; esac; " +
         "[ -f \"\$dgl_tmux_path\" ] && [ -x \"\$dgl_tmux_path\" ] || exit 126; $printPath"
-    internal val direct = "/bin/sh -c " + TmuxCommand.quote(probe)
+    internal val direct = "/bin/sh -c " + TmuxWire.quote(probe)
     // The login shell loads the user's exported PATH. The inner sh ignores aliases
     // and functions, so the result is an executable path we can safely quote later.
-    internal val login = "/bin/sh -c " + TmuxCommand.quote(
-        "exec \"\${SHELL:-/bin/sh}\" -lc " + TmuxCommand.quote("exec $direct"))
+    internal val login = "/bin/sh -c " + TmuxWire.quote(
+        "exec \"\${SHELL:-/bin/sh}\" -lc " + TmuxWire.quote("exec $direct"))
     internal val commonPaths = listOf(
         "/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux", "/bin/tmux",
         "/opt/local/bin/tmux", "/home/linuxbrew/.linuxbrew/bin/tmux",
@@ -27,9 +27,9 @@ internal object TmuxDiscovery {
 
     internal fun commonCommand(paths: List<String>): String {
         val candidates = paths.joinToString(" ") {
-            if (it.startsWith("~/")) "\"\$HOME/${it.removePrefix("~/")}\"" else TmuxCommand.quote(it)
+            if (it.startsWith("~/")) "\"\$HOME/${it.removePrefix("~/")}\"" else TmuxWire.quote(it)
         }
-        return "/bin/sh -c " + TmuxCommand.quote(
+        return "/bin/sh -c " + TmuxWire.quote(
             "for dgl_tmux_path in $candidates; do " +
                 "if [ -f \"\$dgl_tmux_path\" ] && [ -x \"\$dgl_tmux_path\" ]; then $printPath; exit 0; fi; " +
                 "done; exit 127")

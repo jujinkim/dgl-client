@@ -80,8 +80,8 @@ class ControlClient(
             }
         }
         withTimeout(15_000) { startup.await() }
-        command(TmuxCommand.flowControl)
-        command(TmuxCommand.metadataSubscription)
+        command(TmuxWire.flowControl)
+        command(TmuxWire.metadataSubscription)
         refresh()
         scope.launch {
             for (ignored in changes) {
@@ -92,7 +92,7 @@ class ControlClient(
         }
     }
 
-    private suspend fun batch(commands: List<TmuxCommand>, complete: suspend (List<ControlEvent.Response>) -> Unit = {}): List<ControlEvent.Response> = mutex.withLock {
+    private suspend fun batch(commands: List<TmuxWire>, complete: suspend (List<ControlEvent.Response>) -> Unit = {}): List<ControlEvent.Response> = mutex.withLock {
         check(!closed)
         val request = Request(commands.size, complete)
         requests.send(request)
@@ -107,13 +107,13 @@ class ControlClient(
         }
     }
 
-    override suspend fun command(command: TmuxCommand) = batch(listOf(command)).single().lines
+    override suspend fun command(command: TmuxWire) = batch(listOf(command)).single().lines
     override suspend fun refresh() {
-        val replies = batch(listOf(TmuxCommand.sessions, TmuxCommand.windows, TmuxCommand.panes))
+        val replies = batch(listOf(TmuxWire.sessions, TmuxWire.windows, TmuxWire.panes))
         mutableState.value = RemoteState(
-            RemoteStateDecoder.sessions(replies[0].lines),
-            RemoteStateDecoder.windows(replies[1].lines),
-            RemoteStateDecoder.panes(replies[2].lines).distinctBy { it.id },
+            TmuxRows.sessions(replies[0].lines),
+            TmuxRows.windows(replies[1].lines),
+            TmuxRows.panes(replies[2].lines).distinctBy { it.id },
         )
     }
 
@@ -121,7 +121,7 @@ class ControlClient(
         var snapshot = byteArrayOf()
         // tmux executes this synchronous command list without yielding its event loop.
         // Pausing in a separate SSH round trip would lose bytes before continue.
-        batch(listOf(TmuxCommand.pause(pane), TmuxCommand.capture(pane), TmuxCommand.modes(pane), TmuxCommand.pending(pane), TmuxCommand.captureMain(pane), TmuxCommand.resume(pane))) { replies ->
+        batch(listOf(TmuxWire.pause(pane), TmuxWire.capture(pane), TmuxWire.modes(pane), TmuxWire.pending(pane), TmuxWire.captureMain(pane), TmuxWire.resume(pane))) { replies ->
             val modes = replies[2].lines.single().decodeToString()
             val fields = modes.split('|')
             if (fields.size != 17) throw ProtocolException("Invalid screen metadata")
@@ -137,7 +137,7 @@ class ControlClient(
 
     override suspend fun input(pane: String, data: ByteArray) {
         require(data.size <= 65536)
-        for (chunk in data.asList().chunked(256)) command(TmuxCommand.send(pane, chunk.toByteArray()))
+        for (chunk in data.asList().chunked(256)) command(TmuxWire.send(pane, chunk.toByteArray()))
     }
 
     override fun close() {

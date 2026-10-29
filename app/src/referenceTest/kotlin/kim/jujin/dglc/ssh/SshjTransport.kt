@@ -104,9 +104,9 @@ class SshjTransport : SshTransport {
         }
     }
 
-    override suspend fun tmuxVersion() = execute(TmuxCommand.quote(tmuxExecutable()) + " -V").decodeToString()
+    override suspend fun tmuxVersion() = execute(TmuxWire.quote(tmuxExecutable()) + " -V").decodeToString()
 
-    override suspend fun executeTmux(command: TmuxCommand) = execute(command.shellWithExecutable(tmuxExecutable()))
+    override suspend fun executeTmux(command: TmuxWire) = execute(command.shellWithExecutable(tmuxExecutable()))
 
     override suspend fun openControl(sessionId: String): SshTransport.Stream = withContext(Dispatchers.IO) {
         require(sessionId.matches(Regex("\\$[0-9]+")))
@@ -116,7 +116,7 @@ class SshjTransport : SshTransport {
         channels += session
         try {
             // No PTY. Never -d: attaching must not detach other clients.
-            val command = session.exec(TmuxCommand.quote(executable) + " -u -C attach-session -t " + TmuxCommand.quote(sessionId))
+            val command = session.exec(TmuxWire.quote(executable) + " -u -C attach-session -t " + TmuxWire.quote(sessionId))
             SshStream(owner, session, command.inputStream, command.outputStream, command.errorStream, null)
         } catch (e: Exception) { channels -= session; session.close(); throw e }
     }

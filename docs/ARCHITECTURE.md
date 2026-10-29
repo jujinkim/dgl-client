@@ -48,7 +48,8 @@ Android는 `noBackupFilesDir/rust-candidate-v1`, 데스크톱은
 ## 참조 코드와 생성 파일
 
 `app/src/referenceTest`는 JVM 테스트·Android 테스트 APK에서만 컴파일합니다.
-SSHJ/Bouncy Castle 연결 엔진은 제품 APK에 포함하지 않습니다. JediTerm은 JVM 렌더링 회귀 검사에만 사용합니다.
+SSHJ/Bouncy Castle 연결 엔진과 이 엔진의 tmux 명령 문자열(`TmuxWire`)·control mode 파서는 제품 APK에 포함하지 않습니다.
+제품의 `TmuxCommand`는 Rust 코어에 넘길 조작 요청만 만듭니다. JediTerm은 JVM 렌더링 회귀 검사에만 사용합니다.
 Rust APK 수집기는 네 ABI와 필수 Rust 클래스를 확인하고 이전 엔진이 제품 DEX에 있으면 실패합니다.
 
 `coreBindings/src/main/kotlin/uniffi`, `coreBindings/src/main/jniLibs`와 빌드 출력은 생성물입니다.

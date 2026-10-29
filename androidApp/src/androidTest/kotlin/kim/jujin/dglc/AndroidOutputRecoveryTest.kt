@@ -61,8 +61,8 @@ class AndroidOutputRecoveryTest {
         val admin = SshjTransport()
         admin.connect(host, credential, fixture.getString("fingerprint"))
         val name = "presentation-${System.nanoTime()}"
-        admin.execute("tmux " + TmuxCommand.newSession(name).wire)
-        val session = RemoteStateDecoder.sessions(admin.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+        admin.execute("tmux " + TmuxWire.newSession(name).wire)
+        val session = TmuxRows.sessions(admin.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
         val firstWindow = admin.execute("tmux display-message -p -t '$session' '#{window_id}'").decodeToString().trim()
         admin.execute("tmux split-window -h -t '$firstWindow'")
         val firstPanes = admin.execute("tmux list-panes -t '$firstWindow' -F '#{pane_id}'").decodeToString().trim().lines().sorted()
@@ -162,7 +162,7 @@ class AndroidOutputRecoveryTest {
             client.close()
             instrumentation.runOnMainSync { renderer.close() }
             scenario.close()
-            admin.execute("tmux " + TmuxCommand.killSession(session).wire)
+            admin.execute("tmux " + TmuxWire.killSession(session).wire)
             admin.close()
         }
     }
@@ -176,8 +176,8 @@ class AndroidOutputRecoveryTest {
         val admin = SshjTransport()
         admin.connect(host, credential, fixture.getString("fingerprint"))
         val name = "output-${System.nanoTime()}"
-        admin.execute("tmux " + TmuxCommand.newSession(name).wire)
-        val session = RemoteStateDecoder.sessions(admin.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+        admin.execute("tmux " + TmuxWire.newSession(name).wire)
+        val session = TmuxRows.sessions(admin.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
         admin.execute("tmux split-window -h -t '$session'")
         host = host.copy(lastSession = session)
         val secrets = ConcurrentHashMap<String, Credential>().apply { put(host.credentialRef, credential) }
@@ -273,7 +273,7 @@ class AndroidOutputRecoveryTest {
             assertEquals(remotePids, pids())
         } finally {
             client.close()
-            runCatching { admin.execute("tmux " + TmuxCommand.killSession(session).wire) }
+            runCatching { admin.execute("tmux " + TmuxWire.killSession(session).wire) }
             admin.close()
         }
     }

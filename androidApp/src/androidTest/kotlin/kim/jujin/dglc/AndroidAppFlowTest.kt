@@ -36,8 +36,8 @@ class AndroidAppFlowTest {
         val admin = SshjTransport()
         admin.connect(profile, credential, fixture.getString("fingerprint"))
         val name = "android-ui-${System.nanoTime()}"
-        admin.execute("tmux " + TmuxCommand.newSession(name).wire)
-        val session = RemoteStateDecoder.sessions(admin.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+        admin.execute("tmux " + TmuxWire.newSession(name).wire)
+        val session = TmuxRows.sessions(admin.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
         profile = profile.copy(lastSession = session)
         var stage = "launch"
         try {
@@ -177,7 +177,7 @@ class AndroidAppFlowTest {
                 withTimeout(10000) { connection.pane.first { it == splitPane.id } }
                 withTimeout(10000) { connection.status.first { it.phase == Phase.Ready } }
                 assertNotNull(connection.sendInput(targetBeforeKeyboard, "must-not-send".encodeToByteArray()).error)
-                admin.execute("tmux " + TmuxCommand.renamePane(splitPane.id, "UI 분할 패널").wire)
+                admin.execute("tmux " + TmuxWire.renamePane(splitPane.id, "UI 분할 패널").wire)
                 withTimeout(10000) { connection.remote.first { it.panes.any { p -> p.id == splitPane.id && p.title == "UI 분할 패널" } } }
                 stage = "GUI tree expansion"
                 // Expansion must not change the selected target; selecting a row is separate.
@@ -262,7 +262,7 @@ class AndroidAppFlowTest {
                 stage = "terminal screenshots"
                 // New windows now become the shared current window. Seed its own screen;
                 // the old test implicitly photographed the previously selected pane's text.
-                admin.execute("tmux " + TmuxCommand.send(connection.pane.value!!,
+                admin.execute("tmux " + TmuxWire.send(connection.pane.value!!,
                     "printf 'WINDOW_CAPTURE_1\\nWINDOW_CAPTURE_2\\nWINDOW_CAPTURE_3\\nWINDOW_CAPTURE_4\\n'\r".encodeToByteArray()).wire)
                 run {
                     for (theme in listOf("light", "dark")) {
@@ -327,7 +327,7 @@ class AndroidAppFlowTest {
         finally {
             if (::connection.isInitialized) connection.close()
             if (::app.isInitialized) { app.credentials.delete(profile.id); app.update(previous) }
-            runCatching { admin.execute("tmux " + TmuxCommand.killSession(session).wire) }
+            runCatching { admin.execute("tmux " + TmuxWire.killSession(session).wire) }
             admin.close()
         }
     }

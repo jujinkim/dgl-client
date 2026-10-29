@@ -23,8 +23,8 @@ class PerformanceTest {
         try {
             transport.connect(host, Credential(privateKey = File(System.getenv("DGL_TEST_KEY_FILE")).readText()), System.getenv("DGL_TEST_FINGERPRINT"))
             val name = "performance-${System.nanoTime()}"
-            transport.execute("tmux " + TmuxCommand.newSession(name).wire)
-            val session = RemoteStateDecoder.sessions(transport.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+            transport.execute("tmux " + TmuxWire.newSession(name).wire)
+            val session = TmuxRows.sessions(transport.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
             client = ControlClient(transport.openControl(session), scope, { received.addAndGet(it.bytes.size.toLong()); output.send(it.bytes) })
             client.start()
             val windows = client.state.value.windows.filter { it.session == session }.map { it.id }
@@ -65,7 +65,7 @@ class PerformanceTest {
             for (name in listOf("performance.json", "performance-$version.json")) File("../artifacts/$name").apply { parentFile.mkdirs(); writeText(report) }
             assertTrue(received.get() - before > 100000)
             client.close(); client = null
-            transport.execute("tmux " + TmuxCommand.killSession(session).wire)
+            transport.execute("tmux " + TmuxWire.killSession(session).wire)
         } finally { client?.close(); transport.close(); scope.cancel() }
     }
 }

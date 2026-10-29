@@ -47,8 +47,8 @@ class RecoveryTest {
         val admin = SshjTransport()
         admin.connect(host, credential, fingerprint)
         val name = "recovery-${System.nanoTime()}"
-        admin.execute("tmux " + TmuxCommand.newSession(name).wire)
-        val target = RemoteStateDecoder.sessions(admin.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+        admin.execute("tmux " + TmuxWire.newSession(name).wire)
+        val target = TmuxRows.sessions(admin.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
         val profile = host.copy(lastSession = target)
         val store = MemoryCredentialStore().apply { write(host.id, credential) }
         val local = MutableStateFlow(LocalState(listOf(profile), mapOf(host.endpoint to fingerprint)))
@@ -104,14 +104,14 @@ class RecoveryTest {
                 override fun close() {}
             })
             val outputPane = model.pane.value!!
-            admin.execute("tmux send-keys -t '$outputPane' " + TmuxCommand.quote("while :; do printf '%01024d\\n' 0; done") + " Enter")
+            admin.execute("tmux send-keys -t '$outputPane' " + TmuxWire.quote("while :; do printf '%01024d\\n' 0; done") + " Enter")
             withTimeout(5000) { stalled.await() }
             delay(1000)
             val closeStarted = System.nanoTime()
             model.disconnect()
             assertTrue((System.nanoTime() - closeStarted) / 1e9 < 2, "Disconnect must finish within two seconds with a stalled consumer")
             clients(0)
-            admin.execute("tmux " + TmuxCommand.killSession(target).wire)
+            admin.execute("tmux " + TmuxWire.killSession(target).wire)
             model.connect()
             withTimeout(15000) { model.status.first { it.phase == Phase.MissingSession } }
             assertFalse(model.status.value.acceptsInput)

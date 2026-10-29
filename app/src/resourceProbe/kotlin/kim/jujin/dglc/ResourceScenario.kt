@@ -128,7 +128,7 @@ class ResourceScenario(private val config: JsonObject, private val stateFile: Fi
         try {
             command("tmux new-session -d -s resource-bootstrap")
             command("tmux set-option -g history-limit 10000")
-            session = command("tmux new-session -d -P -F '#{session_id}' -s resource-probe " + TmuxCommand.quote(str("workloadCommand")))
+            session = command("tmux new-session -d -P -F '#{session_id}' -s resource-probe " + TmuxWire.quote(str("workloadCommand")))
             profile = profile.copy(lastSession = session)
             store.write(profile.id, credential)
             local.value = LocalState(listOf(profile), mapOf(profile.endpoint to str("fingerprint")), Preferences(scrollback = 10000))

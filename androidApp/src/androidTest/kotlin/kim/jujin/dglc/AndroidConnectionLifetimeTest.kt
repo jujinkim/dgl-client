@@ -39,8 +39,8 @@ class AndroidConnectionLifetimeTest {
         val admin = SshjTransport()
         admin.connect(host, credential, fixture.getString("fingerprint"))
         val name = "lifetime-${System.nanoTime()}"
-        admin.execute("tmux " + TmuxCommand.newSession(name).wire)
-        val session = RemoteStateDecoder.sessions(admin.execute("tmux " + TmuxCommand.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
+        admin.execute("tmux " + TmuxWire.newSession(name).wire)
+        val session = TmuxRows.sessions(admin.execute("tmux " + TmuxWire.sessions.wire).decodeToString().trimEnd().lines().map { it.encodeToByteArray() }).single { it.name == name }.id
         host = host.copy(lastSession = session)
         var stage = "connect"
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -246,7 +246,7 @@ class AndroidConnectionLifetimeTest {
             instrumentation.runOnMainSync { app.modify { it.copy(preferences = it.preferences.copy(keepConnectionsInBackground = false)) } }
             shell("input keyevent KEYCODE_HOME")
             withTimeout(10_000) { client.status.first { it.phase == Phase.Disconnected } }
-            admin.execute("tmux " + TmuxCommand.killSession(session).wire)
+            admin.execute("tmux " + TmuxWire.killSession(session).wire)
             shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n kim.jujin.dglc/.MainActivity")
             withTimeout(10_000) { client.status.first { it.phase == Phase.MissingSession } }
             instrumentation.runOnMainSync { client.onResume(); client.onResume() }
@@ -271,7 +271,7 @@ class AndroidConnectionLifetimeTest {
         finally {
             if (::app.isInitialized) { app.credentials.delete(host.id); app.update(previous) }
             if (::client.isInitialized) client.close()
-            runCatching { admin.execute("tmux " + TmuxCommand.killSession(session).wire) }
+            runCatching { admin.execute("tmux " + TmuxWire.killSession(session).wire) }
             admin.close()
         }
     }
