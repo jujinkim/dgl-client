@@ -5,6 +5,11 @@
 [`environments-v1.json`](../fixtures/migration/environments-v1.json)이 기준이다.
 기존 수집 범위는 Mac과 API36 AVD에 한정된다. 기본 검증에 계측을 자동 추가하지 않으며 다른 환경 통과를 추정하지 않는다.
 
+Android 계측 하네스(`ResourceScenario`·`ResourceInstrumentation`·`MigrationPresentationProbe`)는
+제품 WebView 터미널을 **SSHJ 참조 엔진**으로 구동한다. 제품 Rust 연결은 이 경로에 없으므로
+결과의 CPU·RSS·스레드·FD 값은 Rust 엔진 성능 근거가 아니다. WebView 렌더러의 역압력·스크롤백 상한·
+표시 trace 연결 같은 렌더러 쪽 관찰에만 사용한다.
+
 | 항목 | 정의·표본 | 판정 |
 |---|---|---|
 | cold 기동 | release 프로세스 실행 요청→첫 창이 보이고 입력 처리 가능. 재부팅 후 첫 실행 30회, 각 부팅 ID를 원시 증거에 연결 | p95 ≤1,000ms |
@@ -13,7 +18,7 @@
 | 프레임 | 60Hz에서 scroll/분할 resize/탭 전환 중 연속 presentation timestamp 차이 3,600프레임. 빠진 프레임을 제외하지 않음 | p95 ≤16.7ms |
 | 유휴 | 실제 SSH 연결 1개·터미널 1개, 출력 중지·30초 안정화 후 60초 이상. 1초 간격, 최소 61표본 | 한 코어 기준 평균 CPU ≤1%, 시간 가중 평균 전체 RSS ≤150MiB |
 | 크기 | 최종 release 다운로드 패키지의 실제 bytes, 설치 트리 logical bytes. hardlink는 inode당 한 번, symlink 자체 크기만 | 다운로드 ≤50MiB, 설치 ≤150MiB |
-| Android | 같은 API36 AVD·WebView·software GPU·빌드 종류·시나리오에서 로컬 입력/프레임 p95 및 앱+WebView 유휴 RSS 비교 | 각각 기존 대비 ≤1.10배 |
+| Android | 같은 API36 AVD·WebView·software GPU·빌드 종류·시나리오에서 로컬 입력/프레임 p95 및 앱+WebView 유휴 RSS 비교 | 각각 기존 대비 ≤1.10배. 기준 앱 제거로 판정 불가 |
 
 p95는 정렬 후 `ceil(0.95*n)-1` 위치다. CPU는 누적 process CPU seconds의 증가량을
 wall seconds로 나눈 뒤 100을 곱하며 코어 수로 나누지 않는다. RSS는 표본 사이 사다리꼴
@@ -23,43 +28,25 @@ sandbox 프로세스를 포함한다. 호스트의 에뮬레이터 프로세스 
 
 실제 측정의 OS·장비·GPU·RAM·전원·배율·refresh rate·빌드·소스 커밋·binary hash·표본 수와
 도구 오버헤드를 기록한다. 현재 Mac의 시스템 버전은 26.6.2이며 macOS 14 증거가 아니다.
-기존 앱이 실행 불가이면 비교 불가로 남기고 후보에는 절대 기준을 적용한다.
-Android 상대 판정에는 유효한 같은 환경 기준선이 반드시 필요하다.
+Android 상대 판정의 기준이던 이전 Kotlin 앱은 제거되어 같은 환경 기준선을 다시 만들 수 없다.
+`evaluate`는 Android trace의 지표를 계산하되 결과를 `incomplete`로 남긴다.
 
 ## 도구와 현재 한계
 
 `scripts/migration_performance.py`는 원시 timestamp 검증/집계, Mac process-tree CPU/RSS
 수집, 패키지·설치 크기 수집을 제공한다. 보고서에서 `collected`는 개별 계측 성공일 뿐
 전체 인수 통과가 아니다. 누락·NaN·음수·재사용된 표본·역행 시계·프로세스 교체·짧은 구간·
-틀린 계약·틀린 Android 기준선은 `incomplete`/비정상 종료로 처리한다.
+틀린 계약·Android trace는 `incomplete`/비정상 종료로 처리한다.
 
 ```sh
 python3 scripts/migration_performance.py idle --pid <앱-PID> --output artifacts/migration-r1/mac-idle.json
 python3 scripts/migration_performance.py package --download <release-package> --installed <installed-root> --output artifacts/migration-r1/package.json
 python3 scripts/migration_performance.py evaluate <presentation-trace.json> --output artifacts/migration-r1/performance.json
-python3 scripts/migration_performance.py evaluate <android-candidate.json> --baseline <android-legacy.json> --output artifacts/migration-r1/android-comparison.json
 ```
 
 `idle`은 30초 안정화 후 최소 60초를 수집하며 앱의 모든 자식 프로세스를 합산한다.
 이 도구만으로 SSH/터미널 개수나 무출력을 증명하지 못하므로 앱 시나리오 기록과 결합한다.
 명령행·프로세스 환경·터미널 원문은 수집하지 않는다. 수집 중 다른 부하를 실행하지 않는다.
-
-Android는 기존 `ResourceScenario`에 **별도 `migration-idle` 경로**를 추가했다.
-`scripts/migration_android_baseline.py`는 자신이 시작한 Dgl_API36/임시 OpenSSH/tmux만
-사용한다. 실제 xterm/SSH 연결 후 원격 출력을 중지하고 30초 안정화, 65초 표본 수집,
-정상 종료·control client 회수를 검사한다. `/proc/<pid>/stat`의 CPU ticks/RSS pages와
-start-time identity를 사용하며 WebView 서비스가 앱에 연결됐는지 확인한다. 매 실행의
-ticks/page size/앱/renderer PID를 식별한다. 결과의 `missingMetrics`를 지우지 않는다.
-기존 smoke/soak 분기와 판정은 바꾸지 않았고 이 경로는 장시간 인수를 대신하지 않는다.
-
-```sh
-JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
-ANDROID_HOME="$HOME/Library/Android/sdk" python3 scripts/migration_android_baseline.py
-```
-
-종료 시 임시 자격 증명·reverse 포트·전용 AVD를 정리하고 기본 instrumentation runner로
-APK를 다시 빌드한다. 원시 보고서는 git 제외 `artifacts/migration-r1/` 아래다. 테스트 전용
-SSH 키는 fixture 안에만 존재하고 보고서에 포함하지 않는다.
 
 Android는 아래의 **테스트 전용 표시 계측 훅**을 추가했다. Mac 기동/input-ready·표시 훅,
 Android의 정확한 첫 입력 표시·전체 시나리오·정식 표본 수는 아직 미완료다.

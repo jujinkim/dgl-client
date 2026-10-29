@@ -34,6 +34,7 @@
 ## 별도 요청 시 진행
 
 - 정확한 첫 표시 프레임 계측·성능 인수·장시간 자원 검사: [성능 계약](docs/PERFORMANCE.md).
+  현재 Android 계측은 SSHJ 참조 엔진으로 WebView를 구동하므로 Rust 엔진 수치가 필요하면 하네스를 Rust 연결로 옮긴다.
   API36 첫 표시 진단의 `proven=0`, `unresolved=17`, `invalid_trace`는 미해결 상태다.
 - 실제 CLI 전체 로그인·승인 흐름, 장시간 재접속, macOS/Windows OS 알림 실기.
   AGY·Grok Build는 실험 지원이며 실제 로그인·유료 호출 인수는 남아 있다.

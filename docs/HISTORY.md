@@ -420,6 +420,14 @@ control mode 파서, tmux 명령 문자열(`TmuxWire`), 목록 행 해석, `SshT
 Android만 호출하던 `App`의 JVM 데스크톱 화면 분기, mobileUi의 Compose 설정, androidApp의 미사용 lifecycle 의존성을 제거했습니다.
 JVM 검사 99개 통과(SSH 참조 검사 8개는 예상 skip), Android debug APK·계측 테스트 컴파일을 확인했고 계측 실행은 하지 않았습니다.
 
+## 2026-10-29: 계측 도구 범위 정리
+
+배포하지 않는 JVM/JediTerm 경로를 재던 `verify_resources.py`의 데스크톱 worker, `DesktopResourceProbe`,
+`:app:prepareResourceProbe`를 제거했습니다. 자원 부하는 Android API34–36만 수집하며 `ResourceScenario`는 androidTest로 옮겼습니다.
+Android 계측이 SSHJ 참조 엔진으로 WebView를 구동한다는 전제를 성능 문서에 밝혔습니다. 이전 Android 앱과의 상대 비교는
+기준 앱을 다시 만들 수 없으므로 `migration_android_baseline.py`·`migration-idle`·`evaluate --baseline`을 제거하고 Android trace를 `incomplete`로 남깁니다.
+스크립트 단위 테스트와 JVM 검사, Android 계측 APK 컴파일을 확인했고 에뮬레이터 계측은 실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

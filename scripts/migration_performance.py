@@ -19,7 +19,7 @@ from evidence import ROOT, context, sha256, write_report
 
 CONTRACT = ROOT / 'fixtures/migration/performance-v1.json'
 RULES = json.loads(CONTRACT.read_text())
-MATCH = ('device', 'os', 'cpu', 'gpu', 'ramBytes', 'displayHz', 'displayScale', 'powerMode',
+ENVIRONMENT_FIELDS = ('device', 'os', 'cpu', 'gpu', 'ramBytes', 'displayHz', 'displayScale', 'powerMode',
          'scenario', 'buildMode', 'memoryMetric', 'webviewVersion', 'renderer')
 
 
@@ -109,7 +109,7 @@ def summarize(trace):
     if trace['scope'] not in RULES['scope']:
         raise ValueError('Outside current validation scope')
     env = trace['environment']
-    if any(k not in env for k in MATCH) or any(env[k] in (None, '') for k in MATCH if k != 'webviewVersion'):
+    if any(k not in env for k in ENVIRONMENT_FIELDS) or any(env[k] in (None, '') for k in ENVIRONMENT_FIELDS if k != 'webviewVersion'):
         raise ValueError('Missing environment metadata')
     if env['displayHz'] != RULES['displayHz']:
         raise ValueError('Display is not 60Hz')
@@ -140,27 +140,18 @@ def summarize(trace):
     return metrics
 
 
-def evaluate(trace, baseline=None):
+def evaluate(trace):
     result = {'schema': 1, 'complete': False, 'status': 'incomplete', 'errors': [], 'metrics': {}}
     try:
         result['metrics'] = metrics = summarize(trace)
-        if trace['scope'].startswith('macos'):
-            limits = RULES['desktop']
-            for name, value in metrics.items():
-                limit = limits['startupP95Ms'] if name.endswith('StartupP95Ms') else limits[name]
-                if value > limit:
-                    result['errors'].append('over_budget:' + name)
-        else:
-            if baseline is None:
-                raise ValueError('Android requires measured legacy baseline')
-            if baseline['scope'] != trace['scope'] or any(trace['environment'][k] != baseline['environment'][k] for k in MATCH):
-                raise ValueError('Android baseline environment/scenario differs')
-            reference = summarize(baseline)
-            for name, rule in (('localInputP95Ms', 'maximumLatencyRatio'), ('frameP95Ms', 'maximumLatencyRatio'), ('idleRssBytes', 'maximumMemoryRatio')):
-                if reference[name] <= 0:
-                    raise ValueError('Invalid zero baseline')
-                if metrics[name] > reference[name] * RULES['android'][rule]:
-                    result['errors'].append('regression:' + name)
+        if not trace['scope'].startswith('macos'):
+            # The contract compares Android with the retired Kotlin app, which can no longer be built.
+            raise ValueError('Android comparison baseline is unavailable')
+        limits = RULES['desktop']
+        for name, value in metrics.items():
+            limit = limits['startupP95Ms'] if name.endswith('StartupP95Ms') else limits[name]
+            if value > limit:
+                result['errors'].append('over_budget:' + name)
         result.update(complete=True, status='failed' if result['errors'] else 'passed')
     except (KeyError, TypeError, ValueError) as error:
         result['errors'].append(str(error))
@@ -243,7 +234,6 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     evaluate_cmd = commands.add_parser('evaluate')
     evaluate_cmd.add_argument('trace', type=Path)
-    evaluate_cmd.add_argument('--baseline', type=Path)
     package = commands.add_parser('package')
     package.add_argument('--download', required=True)
     package.add_argument('--installed', required=True)
@@ -253,8 +243,8 @@ def main():
         command.add_argument('--output', required=True)
     args = parser.parse_args()
     destination = Path(args.output).resolve()
-    if args.command == 'evaluate' and destination in {p.resolve() for p in (args.trace, args.baseline) if p}:
-        parser.error('Output must not overwrite trace or baseline input')
+    if args.command == 'evaluate' and destination == args.trace.resolve():
+        parser.error('Output must not overwrite trace input')
     if args.command == 'package' and (destination == Path(args.download).resolve() or
                                     Path(args.installed).resolve() in destination.parents):
         parser.error('Output must be outside the measured package/installation')
@@ -266,10 +256,8 @@ def main():
     if args.command == 'package':
         report = dict(schema=1, context=context(), complete=True, status='collected', **package_sizes(args.download, args.installed))
     else:
-        report = evaluate(json.loads(args.trace.read_text()), json.loads(args.baseline.read_text()) if args.baseline else None)
+        report = evaluate(json.loads(args.trace.read_text()))
         report.update(context=context(), traceSha256=sha256(args.trace), contractSha256=sha256(CONTRACT))
-        if args.baseline:
-            report['baselineSha256'] = sha256(args.baseline)
     write_report(args.output, report)
     print(report['status'])
     return 0 if report['status'] in ('collected', 'passed') else 1

@@ -1,4 +1,3 @@
-import copy
 import json
 import os
 from pathlib import Path
@@ -10,7 +9,6 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from migration_performance import (CONTRACT, RULES, cpu_seconds, durations, evaluate,
                                    idle_metrics, main, package_sizes, p95, sha256)
-from migration_android_baseline import proc_stat
 
 
 def trace(android=False):
@@ -79,30 +77,15 @@ class MigrationPerformanceTests(unittest.TestCase):
             t = trace(); mutate(t)
             self.assertEqual(evaluate(t)['status'], 'incomplete')
 
-    def test_android_requires_same_measured_baseline(self):
+    def test_android_keeps_metrics_but_has_no_comparison_baseline(self):
+        result = evaluate(trace(True))
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertIn('Android comparison baseline is unavailable', result['errors'])
+        self.assertIn('idleRssBytes', result['metrics'])
         t = trace(True)
-        self.assertEqual(evaluate(t)['status'], 'incomplete')
-        baseline = copy.deepcopy(t)
-        self.assertEqual(evaluate(t, baseline)['status'], 'passed')
-        for key in ('device', 'renderer', 'buildMode', 'webviewVersion', 'displayScale', 'memoryMetric'):
-            wrong = copy.deepcopy(baseline); wrong['environment'][key] = 'different'
-            self.assertEqual(evaluate(t, wrong)['status'], 'incomplete')
-
-    def test_android_10_percent_and_webview_memory(self):
-        baseline = trace(True); t = copy.deepcopy(baseline)
-        for sample in t['localInput']:
-            sample['presentedNs'] = sample['inputNs'] + 22_000_000
-        self.assertEqual(evaluate(t, baseline)['status'], 'passed')
-        for sample in t['localInput']:
-            sample['presentedNs'] += 1
-        self.assertIn('regression:localInputP95Ms', evaluate(t, baseline)['errors'])
-        t = copy.deepcopy(baseline)
-        for row in t['idle']['samples']:
-            row['processes'][1]['rssBytes'] += 10 * 1024**2
-        self.assertIn('regression:idleRssBytes', evaluate(t, baseline)['errors'])
         for row in t['idle']['samples']:
             row['processes'].pop()
-        self.assertEqual(evaluate(t, baseline)['status'], 'incomplete')
+        self.assertEqual(evaluate(t)['errors'], ['WebView process omitted'])
 
     def test_debug_wrong_contract_ssh_callbacks_and_synthetic_are_not_display_evidence(self):
         for field, value in [('contractSha256', 'a' * 64), ('synthetic', True), ('inputEnd', 'ssh-callback'),
@@ -128,15 +111,6 @@ class MigrationPerformanceTests(unittest.TestCase):
         self.assertEqual(cpu_seconds('00:01.25'), 1.25)
         self.assertEqual(cpu_seconds('01:02:03'), 3723)
         self.assertEqual(cpu_seconds('1-01:02:03'), 90123)
-
-    def test_android_proc_cpu_rss_and_start_identity(self):
-        # comm may contain spaces and closing parentheses; fields start after the last one.
-        fields = ['S'] + ['0'] * 21
-        fields[11], fields[12], fields[19], fields[21] = '123', '77', '999', '10'
-        sample = proc_stat('42 (webview (test)) ' + ' '.join(fields), 4096, 100, 'webview')
-        self.assertEqual(sample, dict(pid=42, identity='999', role='webview', cpuSeconds=2, rssBytes=40960))
-        with self.assertRaises(ValueError):
-            proc_stat('42 (truncated) S 0', 4096, 100, 'webview')
 
     def test_cli_preserves_inputs_and_invalidates_stale_success(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -64,7 +64,6 @@ kotlin {
             }
         }
         val desktopTest by getting {
-            kotlin.srcDir("src/resourceProbe/kotlin")
             kotlin.srcDir("src/referenceTest/kotlin")
             resources.srcDir(rootProject.file("fixtures"))
             dependencies {
@@ -88,17 +87,6 @@ tasks.withType<Test>().configureEach {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
     maxHeapSize = "1g"
-}
-
-// Test-only classpath for the optional resource probe; not a product distribution.
-val desktopTests = kotlin.targets.getByName("desktop").compilations.getByName("test")
-// A main class, never a JUnit test; the normal exact test inventory is unchanged.
-tasks.register<Sync>("prepareResourceProbe") {
-    dependsOn("desktopTestClasses")
-    from(desktopTests.output.allOutputs)
-    from(desktopTests.runtimeDependencyFiles)
-    into(layout.buildDirectory.dir("resource-probe"))
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 dependencyLocking {

@@ -20,6 +20,10 @@ interface ResourcePlatform {
     suspend fun presentation() { error("presentation_probe_unavailable") }
 }
 
+/**
+ * Drives the product WebView terminal through the SSHJ reference engine, not the Rust engine.
+ * Its CPU/RSS figures therefore describe this harness, not the shipped connection.
+ */
 class ResourceScenario(private val config: JsonObject, private val stateFile: File, private val platform: ResourcePlatform) {
     private fun str(key: String) = config.getValue(key).jsonPrimitive.content
     private val soak = str("profile") == "soak"
@@ -142,15 +146,6 @@ class ResourceScenario(private val config: JsonObject, private val stateFile: Fi
                 platform.presentation()
                 progress(); check(outputBytes == pausedBytes) { "presentation_output_changed" }
                 close(); finished = true
-                return@coroutineScope
-            }
-            if (str("profile") == "migration-idle") {
-                // Separate connected-idle baseline; never claim the soak workload ran.
-                command(str("pauseCommand")); phase("stabilize"); linger(30)
-                progress(); val idleBytes = outputBytes
-                phase("idle"); linger(65); progress()
-                check(outputBytes == idleBytes) { "idle_output_changed" }
-                close(); phase("observe"); linger(5); finished = true
                 return@coroutineScope
             }
             phase("warmup"); linger(warmup)

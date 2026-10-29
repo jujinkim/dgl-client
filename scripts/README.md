@@ -77,11 +77,10 @@ IME·Activity 재생성·짧은 백그라운드 복귀·알림 인텐트·task �
 | 도구 | 역할 |
 |---|---|
 | `generate_locales.py` | 한국어·영어 공통 UI 목록 검증과 Kotlin 생성; `--check`로 누락·자리표시자·생성 파일 일치 검사 |
-| `migration_performance.py` | CPU/RSS·패키지 크기 수집, 성능 계약 판정 |
-| `migration_android_baseline.py` | Android 비교 기준선 수집 |
+| `migration_performance.py` | Mac CPU/RSS·패키지 크기 수집, 성능 계약 판정. Android 상대 비교는 기준 앱 제거로 판정하지 않음 |
 | `migration_android_presentation.py` | API36 Perfetto 표시 trace 수집·상한/첫 표시 분석 |
 | `migration_first_presentation.py` | 첫 표시 증명·누락 근거 오프라인 판정 |
-| `verify_resources.py` | 격리 자원 부하 실행·보고서 수집 |
+| `verify_resources.py` | Android API34–36 격리 자원 부하 실행·보고서 수집. SSHJ 참조 엔진으로 WebView 터미널을 구동 |
 | `resource_workload.py` / `resource_results.py` | 부하 시나리오·표본 판정 공통 코드 |
 
 [성능 계약](../docs/PERFORMANCE.md)에 측정 정의·표본·한계가 있습니다.

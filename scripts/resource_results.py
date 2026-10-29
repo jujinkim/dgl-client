@@ -11,15 +11,6 @@ CRITERIA = {'memoryGrowthBytes': 32 * MIB, 'memoryGrowthFraction': .10,
             'sampleSeconds': 2, 'androidDetailSeconds': 10}
 
 
-def parse_macos_threads(output, pid):
-    # macOS ps -M prints the user only on the first thread's row and ignores
-    # an empty custom header. Count PID rows, never the header as a thread.
-    count = sum(str(pid) in line.split()[:2] for line in output.splitlines())
-    if count == 0:
-        raise ValueError('Missing OS thread count')
-    return count
-
-
 def parse_meminfo(output):
     """Android meminfo App Summary; missing is None, never zero."""
     def number(pattern):
@@ -40,7 +31,7 @@ def renderer_pids(output, package):
     return sorted(result)
 
 
-def evaluate(samples, final, profile, platform, completed):
+def evaluate(samples, final, profile, completed):
     spec = PROFILES[profile]
     errors = []
     def require(condition, reason):
@@ -64,7 +55,7 @@ def evaluate(samples, final, profile, platform, completed):
     for a, b in zip(samples, samples[1:]):
         require(0 < b['elapsed'] - a['elapsed'] <= 6, 'sample_gap')
     require(all(s.get('scrollback', 10001) <= 10000 for s in samples), 'scrollback_limit')
-    require(all(s.get('queuedBytes', 999999) <= (262144 if platform == 'desktop' else 22000) for s in samples), 'output_buffer_limit')
+    require(all(s.get('queuedBytes', 999999) <= 22000 for s in samples), 'output_buffer_limit')
     trends = {}
     for phase in ('output', 'recovery', 'recreate'):
         rows = [s for s in samples if s['phase'] == phase]
@@ -76,8 +67,6 @@ def evaluate(samples, final, profile, platform, completed):
             require(rendering[-1]['renderSequence'] > rendering[0]['renderSequence'], phase + '_renderer_stalled')
         trend = {}
         for metric in ('rssBytes', 'pssBytes', 'rendererRssBytes', 'rendererPssBytes', 'heapBytes'):
-            if platform == 'desktop' and metric not in ('rssBytes', 'heapBytes'):
-                continue
             values = [s for s in rows if s.get(metric) is not None and
                       (metric in ('rssBytes', 'heapBytes') or s.get('memoryPhase', phase) == phase)]
             def metric_time(sample):
@@ -122,17 +111,16 @@ def evaluate(samples, final, profile, platform, completed):
                 if metric in ('liveTerminals', 'sshSockets'):
                     # One admin SSH socket lives through both idle observations.
                     require(statistics.median(b) <= (1 if metric == 'sshSockets' else 0), 'retained_' + metric)
-    if platform == 'android':
-        details = [s for s in samples if s.get('memoryDetail') and s.get('modelPhase') in ('Ready', 'Restoring') and
-                   s.get('memoryPhase', s['phase']) == s['phase']]
-        require(bool(details), 'missing_renderer_detail')
-        require(all(s.get('anrCount') == 0 and s.get('crashCount') == 0 for s in details), 'android_anr_crash_or_missing')
-        require(all(s.get('rendererPids') and s.get('pssBytes') is not None and s.get('rendererPssBytes') is not None for s in details), 'missing_android_memory')
-        for phase in ('output', 'recovery'):
-            identities = {tuple(s.get('rendererPids', [])) for s in details if s['phase'] == phase}
-            require(len(identities) == 1, phase + '_renderer_pid_changed')
+    details = [s for s in samples if s.get('memoryDetail') and s.get('modelPhase') in ('Ready', 'Restoring') and
+               s.get('memoryPhase', s['phase']) == s['phase']]
+    require(bool(details), 'missing_renderer_detail')
+    require(all(s.get('anrCount') == 0 and s.get('crashCount') == 0 for s in details), 'android_anr_crash_or_missing')
+    require(all(s.get('rendererPids') and s.get('pssBytes') is not None and s.get('rendererPssBytes') is not None for s in details), 'missing_android_memory')
+    for phase in ('output', 'recovery'):
+        identities = {tuple(s.get('rendererPids', [])) for s in details if s['phase'] == phase}
+        require(len(identities) == 1, phase + '_renderer_pid_changed')
     maxima = {key: max((s[key] for s in samples if isinstance(s.get(key), (int, float))), default=None)
-              for key in required + ('javaThreads', 'pssBytes', 'rendererRssBytes', 'rendererPssBytes', 'osPeakRssBytes')}
+              for key in required + ('pssBytes', 'rendererRssBytes', 'rendererPssBytes', 'osPeakRssBytes')}
     return dict(status='failed' if errors else ('passed' if profile == 'soak' else 'smoke_passed'),
                 memoryAcceptanceEvaluated=profile == 'soak',
                 qualifiesAsSoak=profile == 'soak' and not errors, errors=errors, criteria=CRITERIA,

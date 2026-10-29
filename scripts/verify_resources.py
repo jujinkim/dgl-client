@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Explicit P3-03 resource matrix. Default: five sequential, real 30-minute workloads.
+"""Explicit Android resource matrix. Default: three sequential, real 30-minute workloads.
+
+The probe drives the product WebView terminal through the SSHJ reference engine,
+so its figures are not measurements of the Rust connection.
 
 No raw terminal content, keys, or historical application objects are retained.
 Interruptions produce failed evidence and unwind only resources owned by this run.
@@ -21,10 +24,10 @@ import sys
 import time
 
 from evidence import ROOT, context, write_report
-from resource_results import evaluate, parse_meminfo, parse_macos_threads, renderer_pids, PROFILES
+from resource_results import evaluate, parse_meminfo, renderer_pids, PROFILES
 
 PACKAGE = 'kim.jujin.dglc'
-ENVIRONMENTS = ['desktop-3.3a', 'desktop-3.7c', 'android-34', 'android-35', 'android-36']
+ENVIRONMENTS = ['android-34', 'android-35', 'android-36']
 
 
 def run(args, **kwargs):
@@ -125,22 +128,13 @@ def android_memory(adb, state):
 
 def sample_process(state, adb, port, detail):
     pid = int(state['appPid'])
-    if adb:
-        # Detect process replacement; never silently switch the measured host.
-        actual = run(adb + ['shell', 'pidof', PACKAGE])
-        if actual != str(pid):
-            raise RuntimeError('Application PID changed')
-        state['sshSockets'] = android_sockets(adb, pid, port)
-        if detail:
-            state.update(android_memory(adb, state))
-    else:
-        state['rssBytes'] = int(run(['ps', '-o', 'rss=', '-p', str(pid)])) * 1024
-        state['javaThreads'] = state['threads']
-        state['threads'] = parse_macos_threads(run(['ps', '-M', '-p', str(pid)]), pid)
-        result = subprocess.run(['lsof', '-nP', '-a', '-p', str(pid), '-iTCP', '-sTCP:ESTABLISHED', '-Fn'], capture_output=True, text=True, timeout=10)
-        if result.returncode not in (0, 1):
-            raise RuntimeError('lsof failed')
-        state['sshSockets'] = sum(line.startswith('n') and line.endswith(':' + str(port)) for line in result.stdout.splitlines())
+    # Detect process replacement; never silently switch the measured host.
+    actual = run(adb + ['shell', 'pidof', PACKAGE])
+    if actual != str(pid):
+        raise RuntimeError('Application PID changed')
+    state['sshSockets'] = android_sockets(adb, pid, port)
+    if detail:
+        state.update(android_memory(adb, state))
     return state
 
 
@@ -192,7 +186,7 @@ def collect(process, read_state, adb, port, profile, output):
                                 detail['memoryPhase'] = 'transition'
                             state.update(detail)
                             detail_future = None
-                        if adb and detail_future is None and time.monotonic() >= next_detail:
+                        if detail_future is None and time.monotonic() >= next_detail:
                             detail_origin = dict(final)
                             detail_future = details.submit(sample_android_memory, read_state, adb, detail_origin)
                             next_detail = max(next_detail + 10, time.monotonic())
@@ -225,9 +219,6 @@ def worker(args):
                   progressCommand=shlex.join(['cat', str(fixture / 'progress.json')]),
                   pauseCommand=shlex.join(['touch', str(fixture / 'paused')]),
                   resumeCommand=shlex.join(['rm', '-f', str(fixture / 'paused')]))
-    config_path = fixture / 'resource-config.json'
-    config_path.write_text(json.dumps(config)); config_path.chmod(0o600)
-    kind = args.worker.split('-')[0]
     report = dict(schema=1, context=context(), environment=args.worker, profile=args.profile,
                   complete=False, status='failed', started=datetime.now(timezone.utc).isoformat(),
                   measurementSeconds=PROFILES[args.profile]['phase'] * 3)
@@ -235,65 +226,47 @@ def worker(args):
     report['tmux'] = os.environ['DGL_TEST_TMUX_VERSION']
     write_report(output / 'summary.json', report)
     process = None
-    adb = None
     samples, final, completed = [], {}, False
     try:
-        expected_tmux = args.worker.split('-')[1] if kind == 'desktop' else '3.7c'
-        if report['tmux'] != expected_tmux:
+        if report['tmux'] != '3.7c':
             raise RuntimeError('Wrong tmux version')
         if args.profile == 'soak' and report['sourceDirty']:
             raise RuntimeError('Source changed before measurement')
-        with (emulator(args.worker.split('-')[1], output) if kind == 'android' else null_context()) as device:
-            adb = device
+        with emulator(args.worker.split('-')[1], output) as adb:
             try:
-                if adb:
-                    run(adb + ['install', '-r', ROOT / 'androidApp/build/outputs/apk/debug/androidApp-debug.apk'], timeout=120)
-                    run(adb + ['install', '-r', ROOT / 'androidApp/build/outputs/apk/androidTest/debug/androidApp-debug-androidTest.apk'], timeout=120)
-                    run(adb + ['reverse', f'tcp:{port}', f'tcp:{port}'])
-                    run(adb + ['shell', 'run-as', PACKAGE, 'sh', '-c', '"mkdir -p cache; rm -f cache/resource-state.json; cat > cache/resource-config.json"'], input=json.dumps(config))
-                    cmd = [str(x) for x in adb] + ['shell', 'am', 'instrument', '-w', PACKAGE + '.test/kim.jujin.dglc.ResourceInstrumentation']
-                    def read_state():
-                        result = subprocess.run([str(x) for x in adb] + ['shell', '-T', 'run-as', PACKAGE, 'cat', 'cache/resource-state.json'], capture_output=True, text=True, timeout=10)
-                        return result.stdout if result.returncode == 0 else ''
-                    report['system'] = {key: run(adb + ['shell', 'getprop', prop]) for key, prop in
-                                        [('api', 'ro.build.version.sdk'), ('image', 'ro.build.fingerprint'), ('abi', 'ro.product.cpu.abi')]}
-                    if report['system']['api'] != args.worker.split('-')[1]:
-                        raise RuntimeError('Wrong Android API')
-                    webview = run(adb + ['shell', 'dumpsys', 'webviewupdate'])
-                    report['system']['webview'] = next((line.strip() for line in webview.splitlines() if 'Current WebView package' in line), None)
-                else:
-                    state_path = fixture / 'resource-state.json'
-                    cmd = ['/usr/bin/time', '-l', '-o', str(output / 'os-usage.txt'), str(Path(os.environ['JAVA_HOME']) / 'bin/java'),
-                           '-Djava.awt.headless=true', '-Xmx1g', '-cp', str(ROOT / 'app/build/resource-probe') + '/*:' + str(ROOT / 'app/build/resource-probe'),
-                           'kim.jujin.dglc.DesktopResourceProbe', str(config_path), str(state_path)]
-                    def read_state():
-                        return state_path.read_text() if state_path.exists() else ''
-                    java = subprocess.run([str(Path(os.environ['JAVA_HOME']) / 'bin/java'), '-version'], capture_output=True, text=True, check=True, timeout=10)
-                    report['system'] = {'java': java.stderr.strip()}
+                run(adb + ['install', '-r', ROOT / 'androidApp/build/outputs/apk/debug/androidApp-debug.apk'], timeout=120)
+                run(adb + ['install', '-r', ROOT / 'androidApp/build/outputs/apk/androidTest/debug/androidApp-debug-androidTest.apk'], timeout=120)
+                run(adb + ['reverse', f'tcp:{port}', f'tcp:{port}'])
+                run(adb + ['shell', 'run-as', PACKAGE, 'sh', '-c', '"mkdir -p cache; rm -f cache/resource-state.json; cat > cache/resource-config.json"'], input=json.dumps(config))
+                cmd = [str(x) for x in adb] + ['shell', 'am', 'instrument', '-w', PACKAGE + '.test/kim.jujin.dglc.ResourceInstrumentation']
+                def read_state():
+                    result = subprocess.run([str(x) for x in adb] + ['shell', '-T', 'run-as', PACKAGE, 'cat', 'cache/resource-state.json'], capture_output=True, text=True, timeout=10)
+                    return result.stdout if result.returncode == 0 else ''
+                report['system'] = {key: run(adb + ['shell', 'getprop', prop]) for key, prop in
+                                    [('api', 'ro.build.version.sdk'), ('image', 'ro.build.fingerprint'), ('abi', 'ro.product.cpu.abi')]}
+                if report['system']['api'] != args.worker.split('-')[1]:
+                    raise RuntimeError('Wrong Android API')
+                webview = run(adb + ['shell', 'dumpsys', 'webviewupdate'])
+                report['system']['webview'] = next((line.strip() for line in webview.splitlines() if 'Current WebView package' in line), None)
                 with (output / 'probe.log').open('w') as log:
                     process = subprocess.Popen(cmd, stdout=log, stderr=log, start_new_session=True)
                     samples, final, completed = collect(process, read_state, adb, port, args.profile, output)
-                if adb:
-                    completed = completed and 'resource_result=passed' in (output / 'probe.log').read_text()
-                else:
-                    match = re.search(r'(\d+)\s+maximum resident set size', (output / 'os-usage.txt').read_text())
-                    report['osPeakRssBytes'] = int(match[1]) if match else None
+                completed = completed and 'resource_result=passed' in (output / 'probe.log').read_text()
             finally:
                 stop(process, group=True)
-                if adb:
+                try:
+                    diagnostic = run(adb + ['logcat', '-d', '-s', 'ResourceProbe:E'])
+                    (output / 'probe-diagnostic.log').write_text(diagnostic)
+                except (subprocess.SubprocessError, OSError):
+                    report['diagnosticUnavailable'] = True
+                # This app/port is on the dedicated emulator started above.
+                for command in [['shell', 'am', 'force-stop', PACKAGE],
+                                ['shell', 'run-as', PACKAGE, 'rm', '-f', 'cache/resource-config.json', 'cache/resource-state.json', 'cache/resource-state.json.tmp'],
+                                ['reverse', '--remove', f'tcp:{port}']]:
                     try:
-                        diagnostic = run(adb + ['logcat', '-d', '-s', 'ResourceProbe:E'])
-                        (output / 'probe-diagnostic.log').write_text(diagnostic)
+                        run(adb + command)
                     except (subprocess.SubprocessError, OSError):
-                        report['diagnosticUnavailable'] = True
-                    # This app/port is on the dedicated emulator started above.
-                    for command in [['shell', 'am', 'force-stop', PACKAGE],
-                                    ['shell', 'run-as', PACKAGE, 'rm', '-f', 'cache/resource-config.json', 'cache/resource-state.json', 'cache/resource-state.json.tmp'],
-                                    ['reverse', '--remove', f'tcp:{port}']]:
-                        try:
-                            run(adb + command)
-                        except (subprocess.SubprocessError, OSError):
-                            report['cleanupFailed'] = True
+                        report['cleanupFailed'] = True
     except BaseException as error:
         report['errorType'] = type(error).__name__
         # Keep partial samples available for a failed/interrupted verdict.
@@ -304,7 +277,7 @@ def worker(args):
             final = samples[-1]
         raise
     finally:
-        verdict = evaluate(samples, final, args.profile, kind, completed)
+        verdict = evaluate(samples, final, args.profile, completed)
         report.update(verdict, complete=completed, finished=datetime.now(timezone.utc).isoformat(), final=final, sampleCount=len(samples))
         if args.profile == 'soak' and (run(['git', 'rev-parse', 'HEAD']) != report['context']['commit'] or run(['git', 'status', '--porcelain'])):
             report.update(status='failed', qualifiesAsSoak=False)
@@ -312,19 +285,12 @@ def worker(args):
         if report.get('cleanupFailed'):
             report.update(status='failed', qualifiesAsSoak=False)
         write_report(output / 'summary.json', report)
-        config_path.unlink(missing_ok=True)
         print(args.worker + ': ' + report['status'] + ' ' + ', '.join(report['errors']), flush=True)
     return 0 if report['status'] in ('passed', 'smoke_passed') else 1
 
 
-@contextmanager
-def null_context():
-    yield None
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--platform', choices=['all', 'desktop', 'android'], default='all')
     parser.add_argument('--profile', choices=['smoke', 'soak'], default='soak')
     parser.add_argument('--environments', nargs='+', choices=ENVIRONMENTS)
     parser.add_argument('--worker', choices=ENVIRONMENTS, help=argparse.SUPPRESS)
@@ -335,28 +301,25 @@ def main():
     if args.worker:
         return worker(args)
     if platform.system() != 'Darwin':
-        raise SystemExit('This resource matrix targets macOS JVM and dedicated local Android AVDs')
+        raise SystemExit('This resource matrix targets dedicated local Android AVDs on macOS')
     if args.profile == 'soak' and run(['git', 'status', '--porcelain']):
         raise SystemExit('Commit the verified code before soak measurement')
-    environments = args.environments or [e for e in ENVIRONMENTS if args.platform == 'all' or e.startswith(args.platform)]
+    environments = args.environments or ENVIRONMENTS
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     output = ROOT / 'artifacts' / ('resources-' + args.profile + '-' + stamp)
     output.mkdir(parents=True)
     report = dict(schema=1, context=context(), profile=args.profile, complete=False, status='failed', results=[], environments=environments)
     write_report(output / 'matrix.json', report)
     print('Resource evidence: ' + str(output), flush=True)
-    tasks = []
-    if any(e.startswith('desktop') for e in environments): tasks += [':app:prepareResourceProbe']
-    if any(e.startswith('android') for e in environments): tasks += [':androidApp:assembleDebug', ':androidApp:assembleDebugAndroidTest']
     with (output / 'build.log').open('w') as log:
-        subprocess.run(['./gradlew', '-PdglResourceProbe=true'] + tasks, cwd=ROOT, check=True, stdout=log, stderr=log, timeout=600)
+        subprocess.run(['./gradlew', '-PdglResourceProbe=true', ':androidApp:assembleDebug', ':androidApp:assembleDebugAndroidTest'],
+                       cwd=ROOT, check=True, stdout=log, stderr=log, timeout=600)
     process = None
     try:
         for environment in environments:
             folder = output / environment
             folder.mkdir()
-            version = environment.split('-')[1] if environment.startswith('desktop') else '3.7c'
-            command = [sys.executable, 'scripts/integration.py', '--tmux', f'.tools/tmux-{version}/tmux-{version}/tmux',
+            command = [sys.executable, 'scripts/integration.py', '--tmux', '.tools/tmux-3.7c/tmux-3.7c/tmux',
                        '--command', sys.executable, 'scripts/verify_resources.py', '--worker', environment,
                        '--profile', args.profile, '--output', str(folder)]
             print('Starting ' + environment, flush=True)

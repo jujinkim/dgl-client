@@ -21,7 +21,6 @@ android {
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }
-    sourceSets.getByName("androidTest").kotlin.srcDir("../app/src/resourceProbe/kotlin")
     sourceSets.getByName("androidTest").kotlin.srcDir("../app/src/referenceTest/kotlin")
     packaging {
         resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/INDEX.LIST", "META-INF/DEPENDENCIES")

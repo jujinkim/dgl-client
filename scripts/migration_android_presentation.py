@@ -28,7 +28,7 @@ SOURCES = [
     'scripts/migration_first_presentation.py',
     'scripts/verify_resources.py', 'scripts/integration.py', 'scripts/resource_workload.py',
     'scripts/evidence.py', 'scripts/migration_performance.py',
-    'app/src/resourceProbe/kotlin/kim/jujin/dglc/ResourceScenario.kt',
+    'androidApp/src/androidTest/kotlin/kim/jujin/dglc/ResourceScenario.kt',
     'androidApp/src/androidTest/kotlin/kim/jujin/dglc/MigrationPresentationProbe.kt',
     'androidApp/src/androidTest/kotlin/kim/jujin/dglc/ResourceInstrumentation.kt',
 ]
