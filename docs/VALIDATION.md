@@ -45,6 +45,4 @@ CI 성공은 서명·공개 릴리스·실기 인수 완료를 뜻하지 않습�
 - 사용자 정의 tmux prefix·키 바인딩과 상태줄·팝업·copy-mode 화면 재현은 GUI 범위 밖입니다([TMUX_WINDOW_SYNC.md](TMUX_WINDOW_SYNC.md)).
 - 실제 에이전트 훅의 서비스별 수신 범위는 [AGENT_STATUS.md](AGENT_STATUS.md)에 있습니다. 전체 로그인·승인·장시간 인수와 AGY·Grok 실제 수신은 남아 있습니다.
 - `AgentNotificationTest#channelPermissionAndClickIntentRetainOnlyEventId`는 시작 시 알림 권한이 허용돼 있으면 실패합니다([TASKS.md](../TASKS.md)의 검사 보완).
-- 전체 `cargo fmt --all -- --check`는 `crates/dgl-core/src/command.rs`·`crates/dgl-core/tests/password_shell.rs`의
-  형식 차이로 통과하지 않습니다. 기본 검사·CI에는 포함되지 않습니다.
 - 공개 배포용 서명·공증과 현재 의존성 전체 감사는 미완료입니다. [SECURITY.md](SECURITY.md)를 따릅니다.

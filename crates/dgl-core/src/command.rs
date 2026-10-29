@@ -127,36 +127,114 @@ pub struct Command {
 impl Command {
     pub fn new(op: &Operation) -> Result<Self> {
         use Operation::*;
-        let wire=match op{
-            NewSession{name:n}=>format!("new-session -d -s {}",name(n)?),
-            RenameSession{target:t,name:n}=>format!("rename-session -t {} {}",target(t,'$')?,name(n)?),
-            KillSession{target:t}=>format!("kill-session -t {}",target(t,'$')?),
-            SwitchSession{target:t}=>format!("switch-client -t {}",target(t,'$')?),
-            NewWindow{target:t,name:n}=>format!("new-window -t {} -n {}",target(t,'$')?,name(n)?),
-            RenameWindow{target:t,name:n}=>format!("rename-window -t {} {}",target(t,'@')?,name(n)?),
-            SelectWindow{target:t}=>format!("select-window -t {}",target(t,'@')?),
-            KillWindow{target:t}=>format!("kill-window -t {}",target(t,'@')?),
-            SelectPane{target:t}=>format!("select-pane -t {}",target(t,'%')?),
-            RenamePane{target:t,name:n}=>format!("select-pane -t {} -T {}",target(t,'%')?,name(n)?),
-            KillPane{target:t}=>format!("kill-pane -t {}",target(t,'%')?),
-            Split{target:t,horizontal}=>format!("split-window -{} -t {}",if *horizontal{'h'}else{'v'},target(t,'%')?),
-            FocusPane{target:t,direction}=>{if !"LRUD".contains(*direction){return Err(Error::InvalidArgument)}format!("select-pane -t {} -{}",target(t,'%')?,direction)},
-            ResizePane{target:t,direction}=>{if !"LRUD".contains(*direction){return Err(Error::InvalidArgument)}format!("resize-pane -t {} -{} 3",target(t,'%')?,direction)},
-            ResizePaneTo{target:t,columns,rows}=>{if *columns == 0 || *rows == 0 {return Err(Error::InvalidArgument)}format!("resize-pane -t {} -x {columns} -y {rows}",target(t,'%')?)},
-            ClientSize{columns,rows}=>{Size::new(*columns,*rows)?;format!("refresh-client -C {columns},{rows}")},
-            Send{target:t,bytes}=>{if bytes.is_empty()||bytes.len()>256{return Err(Error::InvalidArgument)}format!("send-keys -H -t {} {}",target(t,'%')?,bytes.iter().map(|b|format!("{b:02x}")).collect::<Vec<_>>().join(" "))},
-            Capture{target:t}=>format!("capture-pane -p -e -C -N -t {}",target(t,'%')?),
-            CaptureMain{target:t}=>format!("capture-pane -p -a -q -e -C -N -t {}",target(t,'%')?),
-            Pending{target:t}=>format!("capture-pane -p -P -C -t {}",target(t,'%')?),
-            Pause{target:t}|Resume{target:t}=>{target(t,'%')?;format!("refresh-client -A {}",quote(&format!("{}:{}",t,if matches!(op,Pause{..}){"pause"}else{"continue"}))?)},
-            Modes{target:t}=>format!("display-message -p -t {} '#{{cursor_x}}|#{{cursor_y}}|#{{alternate_on}}|#{{cursor_flag}}|#{{keypad_cursor_flag}}|#{{keypad_flag}}|#{{mouse_any_flag}}|#{{mouse_button_flag}}|#{{mouse_standard_flag}}|#{{mouse_utf8_flag}}|#{{mouse_sgr_flag}}|#{{bracketed_paste}}|#{{scroll_region_upper}}|#{{scroll_region_lower}}|#{{insert_flag}}|#{{pane_width}}|#{{pane_height}}'",target(t,'%')?),
-            PaneTitle{target:t}=>format!("display-message -p -t {} '#{{q;s/[[#:cntrl#:]]/ /:pane_title}}'",target(t,'%')?),
-            Sessions=>format!("list-sessions -F '{SESSIONS_FORMAT}'"),
-            Windows=>format!("list-windows -a -F '{WINDOWS_FORMAT}'"),
-            Panes=>format!("list-panes -a -F '{PANES_FORMAT}'"),
-            MetadataSubscription=>format!("refresh-client -B 'dgl-metadata::{METADATA_FORMAT}'"),
-            MetadataPoll=>format!("display-message -p '{METADATA_FORMAT}'"),
-            FlowControl=>"refresh-client -f 'pause-after=2'".into(),
+        let wire = match op {
+            NewSession { name: n } => format!("new-session -d -s {}", name(n)?),
+            RenameSession { target: t, name: n } => {
+                format!("rename-session -t {} {}", target(t, '$')?, name(n)?)
+            }
+            KillSession { target: t } => format!("kill-session -t {}", target(t, '$')?),
+            SwitchSession { target: t } => format!("switch-client -t {}", target(t, '$')?),
+            NewWindow { target: t, name: n } => {
+                format!("new-window -t {} -n {}", target(t, '$')?, name(n)?)
+            }
+            RenameWindow { target: t, name: n } => {
+                format!("rename-window -t {} {}", target(t, '@')?, name(n)?)
+            }
+            SelectWindow { target: t } => format!("select-window -t {}", target(t, '@')?),
+            KillWindow { target: t } => format!("kill-window -t {}", target(t, '@')?),
+            SelectPane { target: t } => format!("select-pane -t {}", target(t, '%')?),
+            RenamePane { target: t, name: n } => {
+                format!("select-pane -t {} -T {}", target(t, '%')?, name(n)?)
+            }
+            KillPane { target: t } => format!("kill-pane -t {}", target(t, '%')?),
+            Split {
+                target: t,
+                horizontal,
+            } => format!(
+                "split-window -{} -t {}",
+                if *horizontal { 'h' } else { 'v' },
+                target(t, '%')?
+            ),
+            FocusPane {
+                target: t,
+                direction,
+            } => {
+                if !"LRUD".contains(*direction) {
+                    return Err(Error::InvalidArgument);
+                }
+                format!("select-pane -t {} -{}", target(t, '%')?, direction)
+            }
+            ResizePane {
+                target: t,
+                direction,
+            } => {
+                if !"LRUD".contains(*direction) {
+                    return Err(Error::InvalidArgument);
+                }
+                format!("resize-pane -t {} -{} 3", target(t, '%')?, direction)
+            }
+            ResizePaneTo {
+                target: t,
+                columns,
+                rows,
+            } => {
+                if *columns == 0 || *rows == 0 {
+                    return Err(Error::InvalidArgument);
+                }
+                format!("resize-pane -t {} -x {columns} -y {rows}", target(t, '%')?)
+            }
+            ClientSize { columns, rows } => {
+                Size::new(*columns, *rows)?;
+                format!("refresh-client -C {columns},{rows}")
+            }
+            Send { target: t, bytes } => {
+                if bytes.is_empty() || bytes.len() > 256 {
+                    return Err(Error::InvalidArgument);
+                }
+                format!(
+                    "send-keys -H -t {} {}",
+                    target(t, '%')?,
+                    bytes
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            }
+            Capture { target: t } => format!("capture-pane -p -e -C -N -t {}", target(t, '%')?),
+            CaptureMain { target: t } => {
+                format!("capture-pane -p -a -q -e -C -N -t {}", target(t, '%')?)
+            }
+            Pending { target: t } => format!("capture-pane -p -P -C -t {}", target(t, '%')?),
+            Pause { target: t } | Resume { target: t } => {
+                target(t, '%')?;
+                format!(
+                    "refresh-client -A {}",
+                    quote(&format!(
+                        "{}:{}",
+                        t,
+                        if matches!(op, Pause { .. }) {
+                            "pause"
+                        } else {
+                            "continue"
+                        }
+                    ))?
+                )
+            }
+            Modes { target: t } => format!(
+                "display-message -p -t {} '#{{cursor_x}}|#{{cursor_y}}|#{{alternate_on}}|#{{cursor_flag}}|#{{keypad_cursor_flag}}|#{{keypad_flag}}|#{{mouse_any_flag}}|#{{mouse_button_flag}}|#{{mouse_standard_flag}}|#{{mouse_utf8_flag}}|#{{mouse_sgr_flag}}|#{{bracketed_paste}}|#{{scroll_region_upper}}|#{{scroll_region_lower}}|#{{insert_flag}}|#{{pane_width}}|#{{pane_height}}'",
+                target(t, '%')?
+            ),
+            PaneTitle { target: t } => format!(
+                "display-message -p -t {} '#{{q;s/[[#:cntrl#:]]/ /:pane_title}}'",
+                target(t, '%')?
+            ),
+            Sessions => format!("list-sessions -F '{SESSIONS_FORMAT}'"),
+            Windows => format!("list-windows -a -F '{WINDOWS_FORMAT}'"),
+            Panes => format!("list-panes -a -F '{PANES_FORMAT}'"),
+            MetadataSubscription => format!("refresh-client -B 'dgl-metadata::{METADATA_FORMAT}'"),
+            MetadataPoll => format!("display-message -p '{METADATA_FORMAT}'"),
+            FlowControl => "refresh-client -f 'pause-after=2'".into(),
         };
         let shell_wire = if let NewSession { name: n } = op {
             let n = n.replace('#', "##");

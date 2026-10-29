@@ -121,7 +121,9 @@ async fn password_failure_and_plain_shell_diagnostics() {
     let sizes = Arc::new(Mutex::new(Vec::new()));
     let server_sizes = sizes.clone();
     let task = tokio::spawn(async move {
-        let mut server = Fixture { sizes: server_sizes };
+        let mut server = Fixture {
+            sizes: server_sizes,
+        };
         let running = server.run_on_socket(config, &socket);
         let stop = running.handle();
         tokio::select! {r=running=>r.unwrap(),_=stop_rx=>stop.shutdown("test complete".into())}
@@ -178,26 +180,42 @@ async fn password_failure_and_plain_shell_diagnostics() {
     assert_eq!(&bytes[..], b"plain-shell\r");
     shell.close().await.unwrap();
     ssh.close().await;
-    use dgl_core::{connection::{Action, Connection, Phase}, flow::OutputKind};
+    use dgl_core::{
+        connection::{Action, Connection, Phase},
+        flow::OutputKind,
+    };
     let connection = Connection::start(host, credential, Some(fingerprint));
     tokio::time::timeout(Duration::from_secs(5), async {
         while connection.state().phase != Phase::Shell {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     let before = connection.target().unwrap();
     let subscription = connection.output().subscribe().unwrap();
     for _ in 0..2 {
-        let request = connection.action(Action::Resize { columns: 97, rows: 19 }).unwrap();
+        let request = connection
+            .action(Action::Resize {
+                columns: 97,
+                rows: 19,
+            })
+            .unwrap();
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
-                if let Some(result) = connection.completions().into_iter().find(|r| r.request_id == request) {
+                if let Some(result) = connection
+                    .completions()
+                    .into_iter()
+                    .find(|r| r.request_id == request)
+                {
                     assert_eq!(result.error, None);
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
     }
     let after = connection.target().unwrap();
     assert_eq!(before.generation.connection, after.generation.connection);
@@ -208,19 +226,31 @@ async fn password_failure_and_plain_shell_diagnostics() {
     let event = connection.output().poll(subscription).unwrap().unwrap();
     assert_eq!(event.kind, OutputKind::Resize);
     assert_eq!(event.size, Size::new(97, 19).unwrap());
-    connection.output().ack(subscription, event.sequence).unwrap();
+    connection
+        .output()
+        .ack(subscription, event.sequence)
+        .unwrap();
     let check = connection.action(Action::CheckConnection).unwrap();
     assert!(connection.state().checking);
-    assert_eq!(connection.input(after.clone(), b"blocked".to_vec()), Err(Error::NotReady));
+    assert_eq!(
+        connection.input(after.clone(), b"blocked".to_vec()),
+        Err(Error::NotReady)
+    );
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {
-            if let Some(result) = connection.completions().into_iter().find(|r| r.request_id == check) {
+            if let Some(result) = connection
+                .completions()
+                .into_iter()
+                .find(|r| r.request_id == check)
+            {
                 assert_eq!(result.error, None);
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     assert!(!connection.state().checking);
     assert_eq!(connection.state().phase, Phase::Shell);
     assert_eq!(connection.target().unwrap(), after);
@@ -230,12 +260,17 @@ async fn password_failure_and_plain_shell_diagnostics() {
             if let Some(event) = connection.output().poll(subscription).unwrap() {
                 assert_eq!(event.kind, OutputKind::Live);
                 assert_eq!(event.bytes, b"after-resize");
-                connection.output().ack(subscription, event.sequence).unwrap();
+                connection
+                    .output()
+                    .ack(subscription, event.sequence)
+                    .unwrap();
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     assert_eq!(*sizes.lock().unwrap(), vec![(97, 19)]);
     connection.close();
     connection.join().await;
