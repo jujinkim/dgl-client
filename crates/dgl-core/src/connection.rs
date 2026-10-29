@@ -1169,9 +1169,6 @@ impl Control {
         }
         Ok(())
     }
-    async fn snapshot(&mut self, resizing: bool) -> Result<()> {
-        self.sync_screens(resizing, true).await
-    }
     async fn snapshot_pane(&mut self, id: String, resizing: bool) -> Result<()> {
         // Every part of this capture belongs to the consumer present at its start.
         let subscription = self.shared.output.subscription();
@@ -1658,24 +1655,18 @@ async fn run(
         wait_for_retry(&shared, &mut retry_rx, &mut check_rx, delay).await;
     }
 }
-struct Checked {
-    request: Request,
-    generation: u64,
-}
-
 // This future is polled alongside the terminal actor: neither a tmux response nor
 // a full output queue can delay the independent exec probe or its deadline.
 async fn check_connections(
     ssh: &Ssh,
     shared: Arc<Shared>,
     rx: &mut mpsc::Receiver<Request>,
-    tx: mpsc::Sender<Checked>,
+    tx: mpsc::Sender<Request>,
 ) -> Result<()> {
     loop {
         let Some(request) = rx.recv().await else {
             return std::future::pending().await;
         };
-        let generation = shared.state.lock().unwrap().generation.connection;
         if shared.cancelled.lock().unwrap().contains(&request.id) {
             shared.update(|s| s.checking = false);
             shared.complete(request, Some(Error::Cancelled));
@@ -1688,12 +1679,7 @@ async fn check_connections(
             shared.complete(request, Some(Error::Network));
             return Err(Error::Network);
         }
-        tx.send(Checked {
-            request,
-            generation,
-        })
-        .await
-        .map_err(|_| Error::Closed)?;
+        tx.send(request).await.map_err(|_| Error::Closed)?;
     }
 }
 /// How long a helper that never answered (no Python, a failed start) is left to the
@@ -1979,441 +1965,478 @@ async fn send_input(c: &mut Control, shared: &Shared, batch: Vec<Request>) -> Un
     unsent
 }
 
-async fn missing_session(ssh: &Ssh, shared: &Shared, control: &mut Option<Control>) -> Result<()> {
-    if let Some(c) = control.take() {
-        let _ = c.stream.close().await;
-    }
-    let remote = list(ssh).await?;
-    shared.update(|s| {
-        s.remote = remote;
-        s.window = None;
-        s.render_targets.clear();
-        s.phase = Phase::MissingSession;
-        s.error = Some(Error::MissingSession);
-        s.pane = None;
-        s.generation.pane = s.generation.pane.saturating_add(1);
-    });
-    Ok(())
+/// What a connection drives: tmux, with a control client while a session is attached,
+/// or a login shell on a host without tmux.
+// One value per connection, so the variant sizes do not matter.
+#[allow(clippy::large_enum_variant)]
+enum Remote {
+    Tmux(Option<Control>),
+    Shell(Stream),
+}
+enum Incoming {
+    Checked(Request),
+    Request(Option<Request>),
+    Event(Result<Event>),
+    Shell(Option<russh::ChannelMsg>),
+    Refresh,
+    Title,
+    Metadata,
+    Visibility,
+}
+/// One SSH connection serving requests in order until it fails or the client goes away.
+struct Actor<'a> {
+    ssh: &'a Ssh,
+    shared: Arc<Shared>,
+    remote: Remote,
+    size: &'a mut Size,
+    remembered: &'a mut Option<String>,
+    /// Requests taken from `rx` while merging input, served before newer ones.
+    backlog: VecDeque<Request>,
 }
 async fn connected(
     ssh: &Ssh,
     shared: Arc<Shared>,
     rx: &mut mpsc::Receiver<Request>,
-    checks: &mut mpsc::Receiver<Checked>,
+    checks: &mut mpsc::Receiver<Request>,
     tmux: bool,
     size: &mut Size,
     remembered: &mut Option<String>,
 ) -> Result<()> {
-    let mut control = None;
-    let mut shell = None;
-    // Requests taken from `rx` while merging input, served before newer ones.
-    let mut backlog = VecDeque::new();
-    if tmux {
-        let remote = list(ssh).await?;
-        let session = shared.state.lock().unwrap().session.clone();
-        shared.update(|s| s.remote = remote.clone());
-        if let Some(id) = session {
-            if remote.sessions.iter().any(|s| s.id == id) {
-                control = Some(attach(ssh, shared.clone(), id, *size, None).await?);
-            } else {
-                shared.phase(Phase::MissingSession)
-            }
-        } else {
-            shared.phase(Phase::Selecting)
-        }
+    let remote = if tmux {
+        Remote::Tmux(None)
     } else {
-        shell = Some(ssh.shell(*size).await?);
-        shared.update(|s| {
-            s.phase = Phase::Shell;
-            s.retry = RetryState::default();
-            s.pane = Some("shell".into());
-            s.generation.pane += 1;
-        });
-        shared.emit(OutputKind::Resize, *size, &[]).await?;
-        shared.emit(OutputKind::ResetBegin, *size, b"\x1bc").await?;
-        shared.emit(OutputKind::ResetEnd, *size, &[]).await?;
-    }
+        Remote::Shell(ssh.shell(*size).await?)
+    };
+    let mut actor = Actor {
+        ssh,
+        shared,
+        remote,
+        size,
+        remembered,
+        backlog: VecDeque::new(),
+    };
+    actor.start().await?;
     // A successfully restored connection gets a fresh budget for the next outage.
-    shared.update(|s| s.retry = RetryState::default());
+    actor.shared.update(|s| s.retry = RetryState::default());
     loop {
-        // Commands also consume notifications while waiting for their response.
-        // Service those changes before waiting for another unsolicited event.
-        if control
-            .as_ref()
-            .is_some_and(|c| c.dirty || !c.paused.is_empty())
+        actor.serve_changes().await?;
+        match actor.next(rx, checks).await {
+            Incoming::Request(None) => return Ok(()),
+            Incoming::Request(Some(r)) => actor.request(r, rx).await?,
+            Incoming::Checked(check) => actor.checked(check).await?,
+            Incoming::Shell(message) => actor.shell_output(message).await?,
+            Incoming::Refresh | Incoming::Visibility => {}
+            incoming @ (Incoming::Title | Incoming::Metadata | Incoming::Event(_)) => {
+                let Remote::Tmux(Some(c)) = &mut actor.remote else {
+                    unreachable!("only an attached control client produces these")
+                };
+                let result = match incoming {
+                    Incoming::Title => c.refresh_title().await,
+                    Incoming::Metadata => c.poll_metadata().await,
+                    Incoming::Event(event) => match event {
+                        Ok(event) => c.unsolicited(event).await,
+                        Err(error) => Err(error),
+                    },
+                    _ => unreachable!(),
+                };
+                actor.recover(result).await?;
+            }
+        }
+    }
+}
+impl Actor<'_> {
+    async fn start(&mut self) -> Result<()> {
+        match &mut self.remote {
+            Remote::Tmux(control) => {
+                let remote = list(self.ssh).await?;
+                let session = self.shared.state.lock().unwrap().session.clone();
+                self.shared.update(|s| s.remote = remote.clone());
+                match session {
+                    Some(id) if remote.sessions.iter().any(|s| s.id == id) => {
+                        *control = Some(
+                            attach(self.ssh, self.shared.clone(), id, *self.size, None).await?,
+                        );
+                    }
+                    Some(_) => self.shared.phase(Phase::MissingSession),
+                    None => self.shared.phase(Phase::Selecting),
+                }
+            }
+            Remote::Shell(_) => {
+                self.shared.update(|s| {
+                    s.phase = Phase::Shell;
+                    s.retry = RetryState::default();
+                    s.pane = Some("shell".into());
+                    s.generation.pane += 1;
+                });
+                let size = *self.size;
+                self.shared.emit(OutputKind::Resize, size, &[]).await?;
+                self.shared
+                    .emit(OutputKind::ResetBegin, size, b"\x1bc")
+                    .await?;
+                self.shared.emit(OutputKind::ResetEnd, size, &[]).await?;
+            }
+        }
+        Ok(())
+    }
+    /// Commands also consume notifications while waiting for their response.
+    /// Serve those changes before waiting for another unsolicited event.
+    async fn serve_changes(&mut self) -> Result<()> {
+        let Remote::Tmux(Some(c)) = &mut self.remote else {
+            return Ok(());
+        };
+        if !c.dirty && c.paused.is_empty() {
+            return Ok(());
+        }
+        let result = async {
+            if c.dirty {
+                c.refresh_screen_if_needed(false).await?;
+            }
+            if !c.paused.is_empty() {
+                c.sync_screens(false, false).await?;
+            }
+            Ok(())
+        }
+        .await;
+        self.recover(result).await
+    }
+    async fn next(
+        &mut self,
+        rx: &mut mpsc::Receiver<Request>,
+        checks: &mut mpsc::Receiver<Request>,
+    ) -> Incoming {
+        if let Some(r) = self.backlog.pop_front() {
+            return Incoming::Request(Some(r));
+        }
+        match &mut self.remote {
+            Remote::Tmux(Some(c)) => {
+                c.titles.reconcile(self.shared.title_scope());
+                let title_deadline = c.titles.deadline();
+                let metadata_due = c.metadata.as_ref().map(|m| m.due);
+                let pending_refresh = c.dirty || !c.paused.is_empty();
+                // A slow link may receive another change during every refresh.
+                // Keep pending user requests eligible instead of starving input.
+                tokio::select! {
+                    Some(check) = checks.recv() => Incoming::Checked(check),
+                    r = rx.recv() => Incoming::Request(r),
+                    e = c.next() => Incoming::Event(e),
+                    _ = self.shared.title_changed.notified() => Incoming::Visibility,
+                    _ = async {
+                        match title_deadline {
+                            Some(at) => tokio::time::sleep_until(at).await,
+                            None => std::future::pending().await,
+                        }
+                    } => Incoming::Title,
+                    _ = async {
+                        match metadata_due {
+                            Some(at) => tokio::time::sleep_until(at).await,
+                            None => std::future::pending().await,
+                        }
+                    } => Incoming::Metadata,
+                    _ = std::future::ready(()), if pending_refresh => Incoming::Refresh,
+                }
+            }
+            Remote::Shell(sh) => tokio::select! {
+                Some(check) = checks.recv() => Incoming::Checked(check),
+                r = rx.recv() => Incoming::Request(r),
+                m = sh.wait() => Incoming::Shell(m),
+            },
+            Remote::Tmux(None) => tokio::select! {
+                Some(check) = checks.recv() => Incoming::Checked(check),
+                r = rx.recv() => Incoming::Request(r),
+            },
+        }
+    }
+    /// A vanished tmux session leaves the connection up but detached.
+    async fn recover(&mut self, result: Result<()>) -> Result<()> {
+        if result == Err(Error::MissingSession) {
+            self.missing_session().await
+        } else {
+            result
+        }
+    }
+    /// After a request was completed with `error`: a vanished session detaches, a lost or
+    /// confused transport ends the connection, and anything else was the request's own.
+    async fn after_request(&mut self, error: Option<Error>) -> Result<()> {
+        match error {
+            Some(Error::MissingSession) => self.missing_session().await,
+            Some(error @ (Error::Network | Error::Protocol)) => Err(error),
+            _ => Ok(()),
+        }
+    }
+    async fn missing_session(&mut self) -> Result<()> {
+        if let Remote::Tmux(control) = &mut self.remote
+            && let Some(c) = control.take()
         {
-            let result = async {
-                let c = control.as_mut().unwrap();
-                if c.dirty {
-                    c.refresh_screen_if_needed(false).await?;
+            let _ = c.stream.close().await;
+        }
+        let remote = list(self.ssh).await?;
+        self.shared.update(|s| {
+            s.remote = remote;
+            s.window = None;
+            s.render_targets.clear();
+            s.phase = Phase::MissingSession;
+            s.error = Some(Error::MissingSession);
+            s.pane = None;
+            s.generation.pane = s.generation.pane.saturating_add(1);
+        });
+        Ok(())
+    }
+    /// A check that reached the server; the connection's generation cannot have changed
+    /// since, as it only changes after this actor ends.
+    async fn checked(&mut self, check: Request) -> Result<()> {
+        let result = if self.shared.cancelled.lock().unwrap().contains(&check.id) {
+            Err(Error::Cancelled)
+        } else {
+            match &mut self.remote {
+                // A healthy resume keeps the existing renderer and stream.
+                // Only changed/paused panes need a fresh capture.
+                Remote::Tmux(Some(c)) => c.refresh_screen_if_needed(false).await,
+                Remote::Tmux(None) => list(self.ssh)
+                    .await
+                    .map(|remote| self.shared.update(|s| s.remote = remote)),
+                Remote::Shell(_) => Ok(()),
+            }
+        };
+        let error = result.err();
+        self.shared.complete(check, error);
+        self.after_request(error).await?;
+        self.shared.update(|s| s.checking = false);
+        Ok(())
+    }
+    async fn shell_output(&mut self, message: Option<russh::ChannelMsg>) -> Result<()> {
+        match message {
+            Some(russh::ChannelMsg::Data { data }) => {
+                self.shared.emit(OutputKind::Live, *self.size, &data).await
+            }
+            None | Some(russh::ChannelMsg::Close | russh::ChannelMsg::ExitStatus { .. }) => {
+                Err(Error::Network)
+            }
+            Some(_) => Ok(()),
+        }
+    }
+    async fn request(&mut self, r: Request, rx: &mut mpsc::Receiver<Request>) -> Result<()> {
+        if self.shared.cancelled.lock().unwrap().contains(&r.id) {
+            self.shared.complete(r, Some(Error::Cancelled));
+            return Ok(());
+        }
+        if let (RequestKind::Input { .. }, Remote::Tmux(Some(c))) = (&r.kind, &mut self.remote) {
+            let mut batch = vec![r];
+            while batch.len() < INPUT_PIPELINE {
+                match rx.try_recv() {
+                    Ok(next) if same_input(&batch[0], &next) => batch.push(next),
+                    Ok(next) => {
+                        self.backlog.push_back(next);
+                        break;
+                    }
+                    Err(_) => break,
                 }
-                if !c.paused.is_empty() {
-                    c.sync_screens(false, false).await?;
-                }
+            }
+            let unsent = send_input(c, &self.shared, batch).await;
+            for r in unsent.requests.into_iter().rev() {
+                self.backlog.push_front(r);
+            }
+            return self.after_request(unsent.error).await;
+        }
+        let result = match &r.kind {
+            RequestKind::Input { bytes, .. } => self.shell_input(&r, bytes).await,
+            RequestKind::Action(action) => self.action(action).await,
+        };
+        let error = result.err();
+        if error.is_some() {
+            self.shared.update(|s| s.resizing = false);
+        }
+        self.shared.complete(r, error);
+        self.after_request(error).await
+    }
+    /// tmux input goes through `send_input`; this is the shell's, or none at all.
+    async fn shell_input(&mut self, r: &Request, bytes: &[u8]) -> Result<()> {
+        admit_input(&self.shared, r)?;
+        let Remote::Shell(sh) = &self.remote else {
+            return Err(Error::NotReady);
+        };
+        sh.data(bytes).await.map_err(|_| Error::Network)
+    }
+    async fn action(&mut self, action: &Action) -> Result<()> {
+        match action {
+            Action::RetryNow | Action::StopRetrying | Action::CheckConnection => {
+                Err(Error::NotReady)
+            }
+            Action::SelectSession { id } => self.attach_session(id.clone(), None).await,
+            Action::SelectTarget {
+                session,
+                window,
+                pane,
+            } => {
+                self.select_target(session, window.as_deref(), pane.as_deref())
+                    .await
+            }
+            Action::SelectPane { id } => {
+                let Remote::Tmux(Some(c)) = &mut self.remote else {
+                    return Err(Error::NotReady);
+                };
+                c.select_pane(id.clone()).await?;
+                *self.remembered = Some(id.clone());
                 Ok(())
             }
-            .await;
-            if result == Err(Error::MissingSession) {
-                missing_session(ssh, &shared, &mut control).await?;
-            } else {
-                result?;
+            Action::Manage { operation } => self.manage(operation).await,
+            Action::AgentSetup { operation, token } => {
+                let mut args = vec![operation.as_str()];
+                if let Some(token) = token {
+                    args.extend(["--token", token]);
+                }
+                let result = crate::agent::setup(self.ssh, &args).await.unwrap_or_else(|_| serde_json::json!({"error": t("연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요.")}));
+                self.shared.update(|s| s.agent_setup = Some(result));
+                Ok(())
             }
+            Action::Refresh => match &mut self.remote {
+                Remote::Tmux(Some(c)) => c.refresh_screen_if_needed(false).await,
+                Remote::Tmux(None) => {
+                    let remote = list(self.ssh).await?;
+                    self.shared.update(|s| s.remote = remote);
+                    Ok(())
+                }
+                Remote::Shell(_) => Ok(()),
+            },
+            Action::Snapshot => match &mut self.remote {
+                Remote::Tmux(Some(c)) => c.sync_screens(false, true).await,
+                _ => Ok(()),
+            },
+            Action::Resize { columns, rows } => self.resize(*columns, *rows).await,
         }
-        enum Incoming {
-            Checked(Checked),
-            Request(Option<Request>),
-            Event(Result<Event>),
-            Shell(Option<russh::ChannelMsg>),
-            Refresh,
-            Title,
-            Metadata,
-            Visibility,
-        }
-        let incoming = if let Some(r) = backlog.pop_front() {
-            Incoming::Request(Some(r))
-        } else if let Some(c) = control.as_mut() {
-            c.titles.reconcile(shared.title_scope());
-            let title_deadline = c.titles.deadline();
-            let metadata_due = c.metadata.as_ref().map(|m| m.due);
-            let pending_refresh = c.dirty || !c.paused.is_empty();
-            // A slow link may receive another change during every refresh.
-            // Keep pending user requests eligible instead of starving input.
-            tokio::select! {
-                Some(check) = checks.recv()=>Incoming::Checked(check),
-                r=rx.recv()=>Incoming::Request(r),
-                e=c.next()=>Incoming::Event(e),
-                _=shared.title_changed.notified()=>Incoming::Visibility,
-                _=async {
-                    match title_deadline {
-                        Some(at) => tokio::time::sleep_until(at).await,
-                        None => std::future::pending().await,
-                    }
-                } => Incoming::Title,
-                _=async {
-                    match metadata_due {
-                        Some(at) => tokio::time::sleep_until(at).await,
-                        None => std::future::pending().await,
-                    }
-                } => Incoming::Metadata,
-                _=std::future::ready(()), if pending_refresh => Incoming::Refresh,
-            }
-        } else if let Some(sh) = shell.as_mut() {
-            tokio::select! {Some(check)=checks.recv()=>Incoming::Checked(check),r=rx.recv()=>Incoming::Request(r),m=sh.wait()=>Incoming::Shell(m)}
-        } else {
-            tokio::select! {Some(check)=checks.recv()=>Incoming::Checked(check),r=rx.recv()=>Incoming::Request(r)}
+    }
+    /// Replaces any control client with one attached to `session`.
+    async fn attach_session(&mut self, session: String, pane: Option<String>) -> Result<()> {
+        let Remote::Tmux(control) = &mut self.remote else {
+            return Err(Error::NotReady);
         };
-        match incoming {
-            Incoming::Checked(check) => {
-                let result = async {
-                    if shared.state.lock().unwrap().generation.connection != check.generation {
-                        return Err(Error::StaleGeneration);
-                    }
-                    if shared.cancelled.lock().unwrap().contains(&check.request.id) {
-                        return Err(Error::Cancelled);
-                    }
-                    if let Some(c) = control.as_mut() {
-                        // A healthy resume keeps the existing renderer and stream.
-                        // Only changed/paused panes need a fresh capture.
-                        c.refresh_screen_if_needed(false).await?;
-                    } else if tmux {
-                        let remote = list(ssh).await?;
-                        shared.update(|s| s.remote = remote);
-                    }
-                    Ok(())
+        if let Some(c) = control.take() {
+            let _ = c.stream.close().await;
+        }
+        *control = Some(attach(self.ssh, self.shared.clone(), session, *self.size, pane).await?);
+        Ok(())
+    }
+    async fn select_target(
+        &mut self,
+        session: &str,
+        window: Option<&str>,
+        pane: Option<&str>,
+    ) -> Result<()> {
+        let Remote::Tmux(control) = &mut self.remote else {
+            return Err(Error::NotReady);
+        };
+        let selected = if let Some(c) = control.as_mut() {
+            // The attached client already lists every session.
+            c.refresh().await?;
+            let state = self.shared.state.lock().unwrap().clone();
+            resolve_target(&state.remote, session, window, pane)
+                // The refresh may have moved the active pane.
+                .inspect_err(|_| c.dirty = true)?
+        } else {
+            resolve_target(&list(self.ssh).await?, session, window, pane)?
+        };
+        let current = self.shared.state.lock().unwrap().session.clone();
+        if let Some(c) = control
+            .as_mut()
+            .filter(|_| current.as_deref() == Some(session))
+        {
+            c.select_pane(selected.clone()).await?;
+        } else {
+            self.attach_session(session.to_owned(), Some(selected.clone()))
+                .await?;
+        }
+        *self.remembered = Some(selected);
+        Ok(())
+    }
+    async fn manage(&mut self, operation: &Operation) -> Result<()> {
+        let c = match &mut self.remote {
+            Remote::Tmux(Some(c)) => c,
+            // Without an attached session only session-independent operations run.
+            Remote::Tmux(None) => {
+                if !matches!(
+                    operation,
+                    Operation::NewSession { .. }
+                        | Operation::NewWindow { .. }
+                        | Operation::RenameSession { .. }
+                        | Operation::RenameWindow { .. }
+                        | Operation::RenamePane { .. }
+                        | Operation::KillSession { .. }
+                        | Operation::KillWindow { .. }
+                        | Operation::KillPane { .. }
+                ) {
+                    return Err(Error::NotReady);
                 }
-                .await;
-                let error = result.err();
-                shared.complete(check.request, error);
-                if error == Some(Error::MissingSession) {
-                    missing_session(ssh, &shared, &mut control).await?;
-                } else if matches!(error, Some(Error::Network | Error::Protocol)) {
-                    return Err(error.unwrap());
+                let (code, _) = self.ssh.execute_tmux(&Command::new(operation)?).await?;
+                if code != 0 {
+                    return Err(Error::InvalidArgument);
                 }
-                shared.update(|s| {
-                    if s.generation.connection == check.generation {
-                        s.checking = false;
-                    }
-                });
+                let remote = list(self.ssh).await?;
+                self.shared.update(|s| s.remote = remote);
+                return Ok(());
             }
-            Incoming::Refresh | Incoming::Visibility => {}
-            Incoming::Title | Incoming::Metadata => {
-                let c = control.as_mut().unwrap();
-                let result = if matches!(incoming, Incoming::Title) {
-                    c.refresh_title().await
-                } else {
-                    c.poll_metadata().await
-                };
-                if result == Err(Error::MissingSession) {
-                    missing_session(ssh, &shared, &mut control).await?;
-                } else {
-                    result?;
+            Remote::Shell(_) => return Err(Error::NotReady),
+        };
+        // Directional selection starts at this connection's displayed pane.
+        // Other connections keep their own PaneTarget, even in the same tmux window.
+        let selected_window = match operation {
+            Operation::FocusPane { target, .. } | Operation::Split { target, .. } => {
+                let state = self.shared.state.lock().unwrap().clone();
+                if state.pane.as_ref() != Some(target) {
+                    return Err(Error::StaleGeneration);
                 }
+                Some(
+                    state
+                        .remote
+                        .panes
+                        .iter()
+                        .find(|p| &p.id == target)
+                        .ok_or(Error::InvalidArgument)?
+                        .window
+                        .clone(),
+                )
             }
-            Incoming::Event(e) => {
-                let result = async {
-                    let c = control.as_mut().unwrap();
-                    c.unsolicited(e?).await?;
-                    Ok(())
-                }
-                .await;
-                if result == Err(Error::MissingSession) {
-                    missing_session(ssh, &shared, &mut control).await?;
-                } else {
-                    result?;
-                }
+            Operation::SelectWindow { target } => Some(target.clone()),
+            _ => None,
+        };
+        if let Operation::SelectPane { target } = operation {
+            return c.select_pane(target.clone()).await;
+        }
+        c.refresh_screen_after(std::slice::from_ref(operation), false)
+            .await?;
+        if let Some(window) = selected_window {
+            let remote = self.shared.state.lock().unwrap().remote.clone();
+            let pane = remote
+                .panes
+                .iter()
+                .find(|p| p.window == window && p.active)
+                .ok_or(Error::InvalidArgument)?
+                .id
+                .clone();
+            c.select_pane(pane.clone()).await?;
+            *self.remembered = Some(pane);
+        }
+        Ok(())
+    }
+    async fn resize(&mut self, columns: u16, rows: u16) -> Result<()> {
+        let next = Size::new(columns, rows)?;
+        if next == *self.size {
+            return Ok(());
+        }
+        // Retain the requested viewport even if transport fails below;
+        // the next attachment must start at the latest dimensions.
+        *self.size = next;
+        match &mut self.remote {
+            Remote::Shell(sh) => {
+                sh.window_change(columns.into(), rows.into(), 0, 0)
+                    .await
+                    .map_err(|_| Error::Network)?;
+                self.shared.update(|s| s.generation.size += 1);
+                self.shared.emit(OutputKind::Resize, next, &[]).await
             }
-            Incoming::Shell(Some(russh::ChannelMsg::Data { data })) => {
-                shared.emit(OutputKind::Live, *size, &data).await?
-            }
-            Incoming::Shell(None)
-            | Incoming::Shell(Some(
-                russh::ChannelMsg::Close | russh::ChannelMsg::ExitStatus { .. },
-            )) => return Err(Error::Network),
-            Incoming::Shell(_) => {}
-            Incoming::Request(None) => return Ok(()),
-            Incoming::Request(Some(r)) => {
-                if shared.cancelled.lock().unwrap().contains(&r.id) {
-                    shared.complete(r, Some(Error::Cancelled));
-                    continue;
-                }
-                if let Some(c) = control
-                    .as_mut()
-                    .filter(|_| matches!(r.kind, RequestKind::Input { .. }))
-                {
-                    let mut batch = vec![r];
-                    while batch.len() < INPUT_PIPELINE {
-                        match rx.try_recv() {
-                            Ok(next) if same_input(&batch[0], &next) => batch.push(next),
-                            Ok(next) => {
-                                backlog.push_back(next);
-                                break;
-                            }
-                            Err(_) => break,
-                        }
-                    }
-                    let unsent = send_input(c, &shared, batch).await;
-                    for r in unsent.requests.into_iter().rev() {
-                        backlog.push_front(r);
-                    }
-                    match unsent.error {
-                        Some(Error::MissingSession) => {
-                            missing_session(ssh, &shared, &mut control).await?
-                        }
-                        Some(error @ (Error::Network | Error::Protocol)) => return Err(error),
-                        _ => {}
-                    }
-                    continue;
-                }
-                let result = async {
-                    match &r.kind {
-                        RequestKind::Input { bytes, .. } => {
-                            // tmux input goes through `send_input` above.
-                            admit_input(&shared, &r)?;
-                            shell
-                                .as_ref()
-                                .ok_or(Error::NotReady)?
-                                .data(bytes.as_slice())
-                                .await
-                                .map_err(|_| Error::Network)?;
-                        }
-                        RequestKind::Action(a) => match a {
-                            Action::RetryNow | Action::StopRetrying | Action::CheckConnection => return Err(Error::NotReady),
-                            Action::SelectSession { id } => {
-                                if !tmux {
-                                    return Err(Error::NotReady);
-                                }
-                                if let Some(c) = control.take() {
-                                    let _ = c.stream.close().await;
-                                }
-                                control = Some(
-                                    attach(ssh, shared.clone(), id.clone(), *size, None).await?,
-                                );
-                            }
-                            Action::SelectTarget {
-                                session,
-                                window,
-                                pane,
-                            } => {
-                                if !tmux {
-                                    return Err(Error::NotReady);
-                                }
-                                let selected = if let Some(c) = control.as_mut() {
-                                    // The attached client already lists every session.
-                                    c.refresh().await?;
-                                    let state = shared.state.lock().unwrap().clone();
-                                    resolve_target(
-                                        &state.remote,
-                                        session,
-                                        window.as_deref(),
-                                        pane.as_deref(),
-                                    )
-                                    // The refresh may have moved the active pane.
-                                    .inspect_err(|_| c.dirty = true)?
-                                } else {
-                                    resolve_target(
-                                        &list(ssh).await?,
-                                        session,
-                                        window.as_deref(),
-                                        pane.as_deref(),
-                                    )?
-                                };
-                                let current = shared.state.lock().unwrap().session.clone();
-                                if let Some(c) = control
-                                    .as_mut()
-                                    .filter(|_| current.as_ref() == Some(session))
-                                {
-                                    c.select_pane(selected.clone()).await?;
-                                } else {
-                                    if let Some(c) = control.take() {
-                                        let _ = c.stream.close().await;
-                                    }
-                                    control = Some(
-                                        attach(
-                                            ssh,
-                                            shared.clone(),
-                                            session.clone(),
-                                            *size,
-                                            Some(selected.clone()),
-                                        )
-                                        .await?,
-                                    );
-                                }
-                                *remembered = Some(selected);
-                            }
-                            Action::SelectPane { id } => {
-                                control
-                                    .as_mut()
-                                    .ok_or(Error::NotReady)?
-                                    .select_pane(id.clone())
-                                    .await?;
-                                *remembered = Some(id.clone());
-                            }
-                            Action::Manage { operation } => {
-                                if let Some(c) = control.as_mut() {
-                                    // Directional selection starts at this connection's displayed pane.
-                                    // Other connections keep their own PaneTarget, even in the same tmux window.
-                                    let selected_window = match operation {
-                                        Operation::FocusPane { target, .. }
-                                        | Operation::Split { target, .. } => {
-                                            let state = shared.state.lock().unwrap().clone();
-                                            if state.pane.as_ref() != Some(target) {
-                                                return Err(Error::StaleGeneration);
-                                            }
-                                            Some(
-                                                state
-                                                    .remote
-                                                    .panes
-                                                    .iter()
-                                                    .find(|p| &p.id == target)
-                                                    .ok_or(Error::InvalidArgument)?
-                                                    .window
-                                                    .clone(),
-                                            )
-                                        }
-                                        Operation::SelectWindow { target } => Some(target.clone()),
-                                        _ => None,
-                                    };
-                                    if let Operation::SelectPane { target } = operation {
-                                        c.select_pane(target.clone()).await?;
-                                    } else {
-                                        c.refresh_screen_after(
-                                            std::slice::from_ref(operation),
-                                            false,
-                                        )
-                                        .await?;
-                                        if let Some(window) = selected_window {
-                                            let remote =
-                                                shared.state.lock().unwrap().remote.clone();
-                                            let pane = remote
-                                                .panes
-                                                .iter()
-                                                .find(|p| p.window == window && p.active)
-                                                .ok_or(Error::InvalidArgument)?
-                                                .id
-                                                .clone();
-                                            c.select_pane(pane.clone()).await?;
-                                            *remembered = Some(pane);
-                                        }
-                                    }
-                                } else if tmux {
-                                    if !matches!(
-                                        operation,
-                                        Operation::NewSession { .. }
-                                            | Operation::NewWindow { .. }
-                                            | Operation::RenameSession { .. }
-                                            | Operation::RenameWindow { .. }
-                                            | Operation::RenamePane { .. }
-                                            | Operation::KillSession { .. }
-                                            | Operation::KillWindow { .. }
-                                            | Operation::KillPane { .. }
-                                    ) {
-                                        return Err(Error::NotReady);
-                                    }
-                                    let (code, _) =
-                                        ssh.execute_tmux(&Command::new(operation)?).await?;
-                                    if code != 0 {
-                                        return Err(Error::InvalidArgument);
-                                    }
-                                    let remote = list(ssh).await?;
-                                    shared.update(|s| s.remote = remote);
-                                } else {
-                                    return Err(Error::NotReady);
-                                }
-                            }
-                            Action::AgentSetup { operation, token } => {
-                                let mut args = vec![operation.as_str()];
-                                if let Some(token) = token { args.extend(["--token", token]); }
-                                let result = crate::agent::setup(ssh, &args).await.unwrap_or_else(|_| serde_json::json!({"error": t("연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요.")}));
-                                shared.update(|s| s.agent_setup = Some(result));
-                            }
-                            Action::Refresh => {
-                                if let Some(c) = control.as_mut() {
-                                    c.refresh_screen_if_needed(false).await?;
-                                } else if tmux {
-                                    let remote = list(ssh).await?;
-                                    shared.update(|s| s.remote = remote);
-                                }
-                            }
-                            Action::Snapshot => {
-                                if let Some(c) = control.as_mut() {
-                                    c.snapshot(false).await?;
-                                }
-                            }
-                            Action::Resize { columns, rows } => {
-                                let next = Size::new(*columns, *rows)?;
-                                if next == *size {
-                                    return Ok(());
-                                }
-                                // Retain the requested viewport even if transport fails below;
-                                // the next attachment must start at the latest dimensions.
-                                *size = next;
-                                if let Some(sh) = &shell {
-                                    sh.window_change((*columns).into(), (*rows).into(), 0, 0)
-                                        .await
-                                        .map_err(|_| Error::Network)?;
-                                    shared.update(|s| s.generation.size += 1);
-                                    shared.emit(OutputKind::Resize, next, &[]).await?;
-                                }
-                                if let Some(c) = control.as_mut() {
-                                    c.refresh_screen_after(&[Operation::ClientSize { columns: *columns, rows: *rows }], true).await?;
-                                }
-                            }
-                        },
-                    }
-                    Ok(())
-                }
-                .await;
-                let error = result.err();
-                if error.is_some() {
-                    shared.update(|s| s.resizing = false);
-                }
-                shared.complete(r, error);
-                if error == Some(Error::MissingSession) {
-                    missing_session(ssh, &shared, &mut control).await?;
-                } else if matches!(error, Some(Error::Network | Error::Protocol)) {
-                    return Err(error.unwrap());
-                }
-            }
+            Remote::Tmux(Some(c)) => c
+                .refresh_screen_after(&[Operation::ClientSize { columns, rows }], true)
+                .await
+                .map(drop),
+            Remote::Tmux(None) => Ok(()),
         }
     }
 }
