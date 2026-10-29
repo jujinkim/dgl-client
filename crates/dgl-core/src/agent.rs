@@ -225,19 +225,114 @@ pub fn remote_command(tmux: &str, args: &[&str]) -> Result<String> {
         source_quote(&inner)
     ))
 }
-pub async fn execute(ssh: &Ssh, args: &[&str]) -> Result<serde_json::Value> {
+/// Runs a setup action (`inspect`, `install`, `remove`). A failing helper still prints
+/// its `{"error": code}` object, so the exit status adds nothing.
+pub async fn setup(ssh: &Ssh, args: &[&str]) -> Result<serde_json::Value> {
     let cmd = remote_command(ssh.tmux.as_deref().ok_or(Error::NotReady)?, args)?;
-    let (code, out) = ssh.execute(&cmd).await?;
+    let (_, out) = ssh.execute(&cmd).await?;
     let line = out
         .split(|b| *b == b'\n')
         .rev()
         .find(|l| l.starts_with(b"{"))
         .ok_or(Error::Protocol)?;
     let value = serde_json::from_slice(line).map_err(|_| Error::Protocol)?;
-    if code != 0 {
-        return Ok(value);
+    Ok(localize_setup(value))
+}
+fn limitations(agent: &str) -> &'static str {
+    match agent {
+        "Codex" => {
+            t("질문·일반 오류는 수집하지 않습니다. /hooks 신뢰 검토와 실제 수신은 별도입니다.")
+        }
+        "Agy" => t(
+            "승인은 ask_permission만 수집하며 일반 권한 팝업은 감지하지 않습니다. 새 실행의 SessionStart가 필요합니다.",
+        ),
+        "Grok" => t("idle_prompt와 task_complete는 응답 종료 알림으로 수집하지 않습니다."),
+        _ => "",
     }
-    Ok(value)
+}
+/// The helper reports codes; the wording and its translations stay in the app.
+fn localize_setup(mut value: serde_json::Value) -> serde_json::Value {
+    if value.get("error").is_some() {
+        value["error"] = t("연동 조회/설정 실패: Python·tmux·CLI 버전·설정 형식 또는 외부 변경을 확인한 뒤 다시 검사하세요.").into();
+    }
+    if let Some(configs) = value.get_mut("configs").and_then(|v| v.as_array_mut()) {
+        for c in configs.iter_mut().filter(|c| c.is_object()) {
+            let limitations = limitations(c["agent"].as_str().unwrap_or(""));
+            c["limitations"] = limitations.into();
+            if c["error"].as_str().is_some_and(|e| !e.is_empty()) {
+                c["error"] = t("설정 형식·경로 또는 CLI 버전 조회 실패 · 설치 제외").into();
+            }
+        }
+    }
+    value
+}
+
+/// The helper started once per connection; each poll is one request line and one reply.
+pub struct Observer {
+    stream: crate::ssh::Stream,
+    buffer: Vec<u8>,
+}
+impl Observer {
+    pub async fn start(ssh: &Ssh) -> Result<Self> {
+        let cmd = remote_command(ssh.tmux.as_deref().ok_or(Error::NotReady)?, &["serve"])?;
+        Ok(Self {
+            stream: ssh.process(&cmd).await?,
+            buffer: Vec::new(),
+        })
+    }
+    /// A helper that is missing or exits ends its stream: `NotReady`.
+    pub async fn poll(
+        &mut self,
+        session: &str,
+        after: u64,
+        epoch: &str,
+    ) -> Result<serde_json::Value> {
+        command::target(session, '$')?;
+        let request = serde_json::json!({"session": session, "after": after, "epoch": epoch});
+        self.stream
+            .data(format!("{request}\n").as_bytes())
+            .await
+            .map_err(|_| Error::NotReady)?;
+        loop {
+            while let Some(end) = self.buffer.iter().position(|b| *b == b'\n') {
+                let line: Vec<u8> = self.buffer.drain(..=end).collect();
+                // Replies start with RS; shell start-up output, even without its own
+                // line break, is skipped.
+                if let Some(at) = line.iter().position(|b| *b == 0x1e) {
+                    return serde_json::from_slice(&line[at + 1..]).map_err(|_| Error::Protocol);
+                }
+            }
+            self.read().await?;
+        }
+    }
+    /// Reads until the helper goes away. The SSH session holds one message per channel,
+    /// so a stream left unread between polls would stop every other channel.
+    pub async fn drain(&mut self) -> Error {
+        loop {
+            if let Err(error) = self.read().await {
+                return error;
+            }
+        }
+    }
+    async fn read(&mut self) -> Result<()> {
+        match self.stream.wait().await {
+            Some(russh::ChannelMsg::Data { data }) => {
+                if self.buffer.len() + data.len() > 4 * 1024 * 1024 {
+                    return Err(Error::Protocol);
+                }
+                self.buffer.extend_from_slice(&data);
+                Ok(())
+            }
+            Some(russh::ChannelMsg::Eof | russh::ChannelMsg::Close)
+            | Some(russh::ChannelMsg::ExitStatus { .. })
+            | None => Err(Error::NotReady),
+            Some(_) => Ok(()),
+        }
+    }
+    /// Bounded: the session may itself be waiting for this channel to be read.
+    pub async fn close(self) {
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(1), self.stream.close()).await;
+    }
 }
 
 /// Python is optional for basic process identification. No screen, spinner, CPU or
@@ -618,6 +713,27 @@ mod tests {
                 .ready(6000, &HashSet::new(), &HashSet::new(), &settings)
                 .is_empty()
         );
+    }
+    #[test]
+    fn setup_codes_become_app_copy() {
+        let value = localize_setup(serde_json::json!({
+            "token": "t",
+            "configs": [
+                {"agent": "Codex", "error": "config"},
+                {"agent": "Claude", "error": ""},
+            ],
+        }));
+        assert_eq!(value["configs"][0]["limitations"], limitations("Codex"));
+        assert!(!limitations("Codex").is_empty());
+        assert_ne!(value["configs"][0]["error"], "config");
+        assert_eq!(value["configs"][1]["limitations"], "");
+        assert_eq!(value["configs"][1]["error"], "");
+        assert!(value.get("error").is_none());
+        let failed = localize_setup(serde_json::json!({"error": "failed"}));
+        assert_ne!(failed["error"], "failed");
+        // Remote output: an odd entry is left alone rather than ending the connection.
+        let odd = localize_setup(serde_json::json!({"configs": [1, null, "x"]}));
+        assert_eq!(odd["configs"], serde_json::json!([1, null, "x"]));
     }
     #[test]
     fn tick_delivers_only_observed_runs_and_reads_visible_panes() {

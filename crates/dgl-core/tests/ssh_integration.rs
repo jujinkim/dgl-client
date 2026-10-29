@@ -208,6 +208,13 @@ async fn agent_hidden_pane_case(service: dgl_core::agent::Agent, executable: &st
             .all(|o| o.last.is_none() && o.supported.is_empty())
     );
     assert!(basic.events.is_empty());
+    // One helper process, started once, answers successive polls.
+    let mut observer = agent::Observer::start(&inspector).await.unwrap();
+    for _ in 0..2 {
+        let reply = observer.poll(ids[0], 0, "").await.unwrap();
+        assert!(reply.get("server").is_some(), "{reply}");
+    }
+    observer.close().await;
     // The first service creates the DB; later services use its existing epoch.
     let had_database = root
         .join("home/.local/share/dgl-agent/v1/events.sqlite")

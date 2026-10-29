@@ -1696,11 +1696,17 @@ async fn check_connections(
         .map_err(|_| Error::Closed)?;
     }
 }
+/// How long a helper that never answered (no Python, a failed start) is left to the
+/// basic fallback. One that had answered is restarted on the next poll.
+const OBSERVER_RETRY: Duration = Duration::from_secs(30);
 async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
     let mut cursor = 0u64;
     let mut epoch = String::new();
     let mut scope = (String::new(), String::new());
     let mut observation_floor = 0;
+    let mut observer: Option<crate::agent::Observer> = None;
+    let mut answered = false;
+    let mut retry_at: Option<tokio::time::Instant> = None;
     loop {
         let state = shared.state.lock().unwrap().clone();
         if tmux
@@ -1711,29 +1717,43 @@ async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
                 cursor = 0;
                 epoch.clear();
             }
-            let after = cursor.to_string();
-            let result = tokio::time::timeout(
-                Duration::from_secs(8),
-                crate::agent::execute(
-                    ssh,
-                    &[
-                        "poll",
-                        "--session",
-                        &session,
-                        "--after",
-                        &after,
-                        "--epoch",
-                        &epoch,
-                    ],
-                ),
-            )
-            .await;
-            let mut snapshot = result
+            if observer.is_none() && retry_at.is_none_or(|at| tokio::time::Instant::now() >= at) {
+                observer = tokio::time::timeout(
+                    Duration::from_secs(8),
+                    crate::agent::Observer::start(ssh),
+                )
+                .await
                 .ok()
-                .and_then(|r| r.ok())
-                .filter(|v| v.get("server").is_some())
-                .and_then(|v| serde_json::from_value::<crate::agent::Snapshot>(v).ok())
-                .filter(|s| s.validate().is_ok());
+                .and_then(|r| r.ok());
+                answered = false;
+                if observer.is_none() {
+                    retry_at = Some(tokio::time::Instant::now() + OBSERVER_RETRY);
+                }
+            }
+            let mut snapshot = None;
+            if let Some(o) = observer.as_mut() {
+                match tokio::time::timeout(Duration::from_secs(8), o.poll(&session, cursor, &epoch))
+                    .await
+                {
+                    // An `{"error"}` reply keeps the helper; only this poll falls back.
+                    Ok(Ok(v)) => {
+                        answered = true;
+                        snapshot = Some(v)
+                            .filter(|v| v.get("server").is_some())
+                            .and_then(|v| serde_json::from_value::<crate::agent::Snapshot>(v).ok())
+                            .filter(|s| s.validate().is_ok());
+                    }
+                    // Missing Python, an exited helper, or a reply out of step: the basic
+                    // fallback serves until the next start attempt.
+                    _ => {
+                        if let Some(o) = observer.take() {
+                            o.close().await;
+                        }
+                        retry_at =
+                            (!answered).then(|| tokio::time::Instant::now() + OBSERVER_RETRY);
+                    }
+                }
+            }
             if snapshot.is_none() {
                 snapshot = tokio::time::timeout(
                     Duration::from_secs(2),
@@ -1777,9 +1797,23 @@ async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
             shared.update(|s| s.agents.invalidate());
             cursor = 0;
             epoch.clear();
+            if let Some(o) = observer.take() {
+                o.close().await;
+            }
         }
         // One sequential poll per connection, independent of the terminal actor.
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        let wait = tokio::time::sleep(Duration::from_secs(2));
+        if let Some(o) = observer.as_mut() {
+            tokio::select! {
+                _ = wait => {}
+                _ = o.drain() => {
+                    observer.take().unwrap().close().await;
+                    retry_at = (!answered).then(|| tokio::time::Instant::now() + OBSERVER_RETRY);
+                }
+            }
+        } else {
+            wait.await;
+        }
     }
 }
 
@@ -2329,7 +2363,7 @@ async fn connected(
                             Action::AgentSetup { operation, token } => {
                                 let mut args = vec![operation.as_str()];
                                 if let Some(token) = token { args.extend(["--token", token]); }
-                                let result = crate::agent::execute(ssh, &args).await.unwrap_or_else(|_| serde_json::json!({"error": t("연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요.")}));
+                                let result = crate::agent::setup(ssh, &args).await.unwrap_or_else(|_| serde_json::json!({"error": t("연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요.")}));
                                 shared.update(|s| s.agent_setup = Some(result));
                             }
                             Action::Refresh => {

@@ -597,5 +597,10 @@ internal object EnglishCatalog {
         "버전 {0}" to "Version {0}",
         "앱 사이트" to "App website",
         "GitHub 저장소" to "GitHub repository",
+        "질문·일반 오류는 수집하지 않습니다. /hooks 신뢰 검토와 실제 수신은 별도입니다." to "Questions and general errors are not collected. Trusting the hooks in /hooks and actually receiving events are separate steps.",
+        "승인은 ask_permission만 수집하며 일반 권한 팝업은 감지하지 않습니다. 새 실행의 SessionStart가 필요합니다." to "Approvals are collected only from ask_permission; ordinary permission pop-ups are not detected. A new run's SessionStart is required.",
+        "idle_prompt와 task_complete는 응답 종료 알림으로 수집하지 않습니다." to "idle_prompt and task_complete are not collected as response-ended notices.",
+        "연동 조회/설정 실패: Python·tmux·CLI 버전·설정 형식 또는 외부 변경을 확인한 뒤 다시 검사하세요." to "Integration check or setup failed. Check Python, tmux, the CLI version, the configuration format, or outside changes, then check again.",
+        "설정 형식·경로 또는 CLI 버전 조회 실패 · 설치 제외" to "Could not read the configuration format, path, or CLI version · Not installed",
     )
 }

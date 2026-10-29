@@ -42,12 +42,6 @@ CAPABILITIES = {a: ['Activity', 'Approval', 'Response', 'Ended'] for a in EVENTS
 CAPABILITIES['Claude'] += ['Question', 'Error']
 CAPABILITIES['Agy'] += ['Question', 'Error']
 CAPABILITIES['Grok'] += ['Question', 'Error']
-LIMITATIONS = {
-    'Codex': '질문·일반 오류는 수집하지 않습니다. /hooks 신뢰 검토와 실제 수신은 별도입니다.',
-    'Claude': '',
-    'Agy': '승인은 ask_permission만 수집하며 일반 권한 팝업은 감지하지 않습니다. 새 실행의 SessionStart가 필요합니다.',
-    'Grok': 'idle_prompt와 task_complete는 응답 종료 알림으로 수집하지 않습니다.',
-}
 
 
 def digest(value):
@@ -497,7 +491,8 @@ def inspect(tmux):
             installed = any(owned(h) for h in adapter.handlers(data))
         except Exception:
             supported = False
-            error = '설정 형식·경로 또는 CLI 버전 조회 실패 · 설치 제외'
+            # A code: the app owns the wording and its translations.
+            error = 'config'
             # Keep the conflict token sensitive to malformed-file changes too.
             try:
                 raw = path.read_bytes() if path.is_file() and not path.is_symlink() else b''
@@ -505,13 +500,12 @@ def inspect(tmux):
                 raw = b''
         configs.append(dict(agent=agent, path=str(path), version=version, supported=supported,
                             installed=installed, experimental=adapter.experimental, error=error,
-                            capabilities=CAPABILITIES[agent], limitations=LIMITATIONS[agent],
+                            capabilities=CAPABILITIES[agent],
                             events=EVENTS[agent] if supported else []))
         token_parts.append(str(path) + ':' + digest(raw.hex()))
     helper_hash = digest(HELPER.read_bytes().hex()) if HELPER.exists() else ''
     token = digest('|'.join(token_parts) + helper_hash + str(configs))
     return dict(token=token, configs=configs, python=sys.version.split()[0], tmux=run([tmux, '-V']),
-                message='설치됨 / 활성화 확인 필요. Codex /hooks에서 검토·신뢰 후 새 실행의 실제 이벤트 수신으로 확인합니다. 기존 CLI는 다시 시작하지 않습니다.',
                 helper=str(HELPER), database=str(DB))
 
 
@@ -582,16 +576,29 @@ def configure(tmux, token, install, source):
         lock.unlink()
 
 
+def serve(tmux):
+    # One process per connection answers every poll, so the source and the login shell are
+    # sent once. Replies start with RS so shell start-up output is never taken for one.
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            return
+        try:
+            request = json.loads(line)
+            result = poll(tmux, request['session'], int(request['after']), request['epoch'])
+        except Exception:
+            result = {'error': 'failed'}
+        sys.stdout.write('\x1e' + json.dumps(result, ensure_ascii=False) + '\n')
+        sys.stdout.flush()
+
+
 def main(source=''):
     os.umask(0o077)
     p = argparse.ArgumentParser()
-    p.add_argument('action', choices=['poll', 'record', 'inspect', 'install', 'remove'])
+    p.add_argument('action', choices=['serve', 'record', 'inspect', 'install', 'remove'])
     p.add_argument('--tmux', required=True)
-    p.add_argument('--session')
     p.add_argument('--agent', choices=list(EVENTS))
     p.add_argument('--event')
-    p.add_argument('--after', type=int, default=0)
-    p.add_argument('--epoch', default='')
     p.add_argument('--token', default='')
     args = p.parse_args()
     try:
@@ -599,9 +606,10 @@ def main(source=''):
             event = record(args.agent, args.tmux, args.event)
             print(json.dumps(ADAPTERS[args.agent].neutral(event if isinstance(event, str) else args.event)))
             return
-        if args.action == 'poll':
-            result = poll(args.tmux, args.session, args.after, args.epoch)
-        elif args.action == 'inspect':
+        if args.action == 'serve':
+            serve(args.tmux)
+            return
+        if args.action == 'inspect':
             result = inspect(args.tmux)
         else:
             result = configure(args.tmux, args.token, args.action == 'install', source or Path(__file__).read_text())
@@ -611,7 +619,7 @@ def main(source=''):
             print(json.dumps(ADAPTERS[args.agent].neutral(args.event)) if args.agent in ADAPTERS else '{}')
         else:
             # Never echo configuration contents, payloads, commands or secret-bearing exceptions.
-            print(json.dumps({'error': '연동 조회/설정 실패: Python·tmux·CLI 버전·설정 형식 또는 외부 변경을 확인한 뒤 다시 검사하세요.'}))
+            print(json.dumps({'error': 'failed'}))
             sys.exit(1)
 
 

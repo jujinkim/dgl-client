@@ -304,6 +304,16 @@ impl Ssh {
         .map_err(|_| Error::Network)?;
         Ok(c)
     }
+    /// A command that keeps running on its own channel; its stdin and stdout are the stream.
+    pub async fn process(&self, command: &str) -> Result<Stream> {
+        let c = self
+            .handle
+            .channel_open_session()
+            .await
+            .map_err(|_| Error::Network)?;
+        c.exec(true, command).await.map_err(|_| Error::Network)?;
+        Ok(c)
+    }
     pub async fn shell(&self, size: Size) -> Result<Stream> {
         let c = self
             .handle

@@ -81,6 +81,31 @@ class AgentObserverTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             observer.load_config(link)
 
+    def test_serve_answers_each_poll_line_until_stdin_closes(self):
+        requests = [{'session': '$1', 'after': 3, 'epoch': 'e'}, {'session': '$2', 'after': 0, 'epoch': ''}]
+        stdin = io.StringIO(''.join(json.dumps(r) + '\n' for r in requests) + 'not json\n')
+        output = io.StringIO()
+        polled = []
+        def poll(tmux, session, after, epoch):
+            polled.append((tmux, session, after, epoch))
+            if session == '$2':
+                raise OSError('secret detail')
+            return {'server': 's', 'note': '한글'}
+        with patch.object(observer.sys, 'stdin', stdin), patch.object(observer, 'poll', poll), \
+                patch.object(observer.sys, 'argv', ['observer.py', 'serve', '--tmux', '/bin/tmux']), \
+                contextlib.redirect_stdout(output):
+            observer.main()
+        self.assertEqual(polled, [('/bin/tmux', '$1', 3, 'e'), ('/bin/tmux', '$2', 0, '')])
+        # Not splitlines(): it also breaks at RS.
+        lines = output.getvalue().split('\n')[:-1]
+        self.assertTrue(all(line.startswith('\x1e') for line in lines))
+        self.assertEqual([json.loads(line[1:]) for line in lines],
+                         [{'server': 's', 'note': '한글'}, {'error': 'failed'}, {'error': 'failed'}])
+
+    def test_helper_output_has_codes_not_ui_copy(self):
+        source = SOURCE.read_text(encoding='utf-8')
+        self.assertFalse(any('\uac00' <= c <= '\ud7a3' for c in source), 'UI copy belongs to the app catalog')
+
     def test_process_evidence_does_not_match_prompt_or_generic_node(self):
         start = 'Fri Oct 23 12:00:00 2026'
         rows = [f'1 0 {start} /bin/bash bash', f'2 1 {start} /usr/bin/node node arbitrary.js codex',
