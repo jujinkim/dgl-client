@@ -20,7 +20,7 @@ def license_files():
 
 def verify_apk(source, aapt, release=False):
     badging = subprocess.check_output([str(aapt), 'dump', 'badging', str(source)], text=True, encoding="utf-8")
-    for required in ["name='kim.jujin.dglc'", "minSdkVersion:'34'", "targetSdkVersion:'36'", "compileSdkVersion='36'"]:
+    for required in ["name='kim.jujin.dglc'", "minSdkVersion:'34'", "targetSdkVersion:'36'", "compileSdkVersion='37'"]:
         if required not in badging:
             raise ValueError('Unexpected APK identity or SDK: ' + required)
     manifest = subprocess.check_output([str(aapt), 'dump', 'xmltree', str(source), '--file', 'AndroidManifest.xml'], text=True, encoding="utf-8")
@@ -80,7 +80,7 @@ def main():
     manifest = [{'name': p.relative_to(ROOT).as_posix(), 'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]
     (destination / 'build-manifest.json').write_text(json.dumps({'schema': 1, 'complete': True, 'status': 'passed',
         'context': context(), 'platform': 'android', 'applicationId': 'kim.jujin.dglc', 'minSdk': 34,
-        'compileSdk': 36, 'targetSdk': 36, 'androidSigning': 'debug; release APK only verified unsigned',
+        'compileSdk': 37, 'targetSdk': 36, 'androidSigning': 'debug; release APK only verified unsigned',
         'engine': 'rust', 'apkChecks': checks, 'files': manifest}, indent=2) + '\n', encoding="utf-8")
     (destination / 'SHA256SUMS').write_text(''.join(item['sha256'] + '  ' + item['name'] + '\n' for item in manifest), encoding="utf-8")
     print('Validated: ' + ', '.join(item['name'] for item in manifest))

@@ -16,34 +16,6 @@
     },
     {
       "id": "GradleDependency",
-      "messageSha256": "9e96f3682e6e018ed80fbfcbc80b35e1f957286a87ac4b050e5e5cfb801eef18",
-      "locationSuffix": "androidApp/build.gradle.kts",
-      "reviewed": "2026-10-23",
-      "recheck": "2026-11-22",
-      "expires": "2026-12-22",
-      "reason": "SDK 36 and existing app/test dependency versions are explicitly retained for this migration; complete selected graph separately passes OSV.",
-      "evidence": [
-        "androidApp/build.gradle.kts",
-        "docs/SECURITY.md"
-      ],
-      "condition": "Only this exact lint diagnostic; dependency/source/API changes require review. No OSV runtime waiver."
-    },
-    {
-      "id": "GradleDependency",
-      "messageSha256": "5914d3424cf62ebcdda6e1904409c4bd194cb612a68e8176fb18e7a0eb0692d0",
-      "locationSuffix": "androidApp/build.gradle.kts",
-      "reviewed": "2026-10-23",
-      "recheck": "2026-11-22",
-      "expires": "2026-12-22",
-      "reason": "SDK 36 and existing app/test dependency versions are explicitly retained for this migration; complete selected graph separately passes OSV.",
-      "evidence": [
-        "androidApp/build.gradle.kts",
-        "docs/SECURITY.md"
-      ],
-      "condition": "Only this exact lint diagnostic; dependency/source/API changes require review. No OSV runtime waiver."
-    },
-    {
-      "id": "GradleDependency",
       "messageSha256": "ac642d18be0f6b224d8162e93571a35af521fc4aa287ff991c4b3540bc61b309",
       "locationSuffix": "androidApp/build.gradle.kts",
       "reviewed": "2026-10-23",

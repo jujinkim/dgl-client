@@ -23,7 +23,7 @@ val generateAppVersion by tasks.registering {
 kotlin {
     android {
         namespace = "kim.jujin.dglc.shared"
-        compileSdk = 36
+        compileSdk = 37
         minSdk = 34
         buildToolsVersion = "36.0.0"
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
@@ -50,7 +50,7 @@ kotlin {
         androidMain {
             dependsOn(jvmSharedMain)
             dependencies {
-                implementation("androidx.activity:activity-compose:1.10.1")
+                implementation("androidx.activity:activity-compose:1.13.0")
                 implementation("androidx.webkit:webkit:1.14.0")
             }
         }

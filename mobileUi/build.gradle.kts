@@ -1,7 +1,7 @@
 plugins { id("com.android.library"); kotlin("plugin.serialization") }
 android {
     namespace = "kim.jujin.dglc.mobile"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig { minSdk = 34 }
     buildFeatures { buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

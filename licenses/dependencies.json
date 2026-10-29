@@ -127,11 +127,11 @@
     {
       "ecosystem": "Maven",
       "name": "androidx.activity:activity-compose",
-      "version": "1.10.1",
+      "version": "1.13.0",
       "artifacts": [
         {
-          "name": "activity-compose-1.10.1.aar",
-          "sha256": "f89af1b26ccc834634387c857c2dd4f4654d37650890039c527c2fed07db6a61"
+          "name": "activity-compose-1.13.0.aar",
+          "sha256": "2b5da3033d4924e833868e140c3edfc0c03208710b6b9fb2c9d9a47560ba55fa"
         }
       ],
       "licenses": [
@@ -142,15 +142,15 @@
       ],
       "evidence": [
         {
-          "path": "licenses/evidence/e64db6b7126fb512394bc3cf4332a38828009daa8dd56ecbe6c0c7300b2127f5.txt",
-          "sha256": "e64db6b7126fb512394bc3cf4332a38828009daa8dd56ecbe6c0c7300b2127f5",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-compose/1.10.1/activity-compose-1.10.1.pom",
+          "path": "licenses/evidence/cb6a8ff89ffb7f107f214050e9fb32b0d0b0f665d8de7c9e4e2a4d5fea9951e9.txt",
+          "sha256": "cb6a8ff89ffb7f107f214050e9fb32b0d0b0f665d8de7c9e4e2a4d5fea9951e9",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-compose/1.13.0/activity-compose-1.13.0.pom",
           "kind": "pom"
         },
         {
           "path": "licenses/evidence/809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0.txt",
           "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-compose/1.10.1/activity-compose-1.10.1.aar!/META-INF/androidx/activity/activity-compose/LICENSE.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-compose/1.13.0/activity-compose-1.13.0.aar!/META-INF/androidx/activity/activity-compose/LICENSE.txt",
           "kind": "embedded-notice"
         }
       ],
@@ -164,11 +164,11 @@
     {
       "ecosystem": "Maven",
       "name": "androidx.activity:activity-ktx",
-      "version": "1.10.1",
+      "version": "1.13.0",
       "artifacts": [
         {
-          "name": "activity-ktx-1.10.1.aar",
-          "sha256": "f396f58dbd772c065b873696b74a3d4d087554b3766280e63b49b25dbb53ab16"
+          "name": "activity-ktx-1.13.0.aar",
+          "sha256": "b5541dc5f74e35389f1e9fdca8b5770c49d2c1360de16f398ce5c1e07a003244"
         }
       ],
       "licenses": [
@@ -179,15 +179,15 @@
       ],
       "evidence": [
         {
-          "path": "licenses/evidence/4213490e4ce2b5750e4445246dfe9de4f6655c2123c04a79a8248cc8893e2bf4.txt",
-          "sha256": "4213490e4ce2b5750e4445246dfe9de4f6655c2123c04a79a8248cc8893e2bf4",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-ktx/1.10.1/activity-ktx-1.10.1.pom",
+          "path": "licenses/evidence/79d63d7b13c43f92faf63ade9fc6a4ab45e8e42493dbaa138c7a736184a4c775.txt",
+          "sha256": "79d63d7b13c43f92faf63ade9fc6a4ab45e8e42493dbaa138c7a736184a4c775",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-ktx/1.13.0/activity-ktx-1.13.0.pom",
           "kind": "pom"
         },
         {
           "path": "licenses/evidence/809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0.txt",
           "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-ktx/1.10.1/activity-ktx-1.10.1.aar!/META-INF/androidx/activity/activity-ktx/LICENSE.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity-ktx/1.13.0/activity-ktx-1.13.0.aar!/META-INF/androidx/activity/activity-ktx/LICENSE.txt",
           "kind": "embedded-notice"
         }
       ],
@@ -201,11 +201,11 @@
     {
       "ecosystem": "Maven",
       "name": "androidx.activity:activity",
-      "version": "1.10.1",
+      "version": "1.13.0",
       "artifacts": [
         {
-          "name": "activity-1.10.1.aar",
-          "sha256": "b62b528c917de9be497eb6f88830197c20e9d21267c3916c613492e5ee837d4d"
+          "name": "activity-1.13.0.aar",
+          "sha256": "bd4f19a5f00effed0eecad0a310b1f2169b9fc66236a3ba743a222eb77747ee1"
         }
       ],
       "licenses": [
@@ -216,15 +216,15 @@
       ],
       "evidence": [
         {
-          "path": "licenses/evidence/0ae4de888974f5cef982660900ec32a33f10968750db7afa9438daec183f14e7.txt",
-          "sha256": "0ae4de888974f5cef982660900ec32a33f10968750db7afa9438daec183f14e7",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity/1.10.1/activity-1.10.1.pom",
+          "path": "licenses/evidence/a5c53e074754835d30621618616e783b5b71875c2e7988ab06082348152e314e.txt",
+          "sha256": "a5c53e074754835d30621618616e783b5b71875c2e7988ab06082348152e314e",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity/1.13.0/activity-1.13.0.pom",
           "kind": "pom"
         },
         {
           "path": "licenses/evidence/809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0.txt",
           "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity/1.10.1/activity-1.10.1.aar!/META-INF/androidx/activity/activity/LICENSE.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/activity/activity/1.13.0/activity-1.13.0.aar!/META-INF/androidx/activity/activity/LICENSE.txt",
           "kind": "embedded-notice"
         }
       ],
@@ -1501,11 +1501,11 @@
     {
       "ecosystem": "Maven",
       "name": "androidx.core:core-ktx",
-      "version": "1.15.0",
+      "version": "1.18.0",
       "artifacts": [
         {
-          "name": "core-ktx-1.15.0.aar",
-          "sha256": "c72c97ff4a32308bcaf3061eea5ddf33455ce413cee4aa1d5c82440c5759d4bc"
+          "name": "core-ktx-1.18.0.aar",
+          "sha256": "c7c511e3df838fcbcb61ace36944de6bb7c10eb597be546974f001119939c85d"
         }
       ],
       "licenses": [
@@ -1516,15 +1516,15 @@
       ],
       "evidence": [
         {
-          "path": "licenses/evidence/417c6aa0279ec78db02fe395d401a09bcaaa9d82d935148a3e2de90fdf38d94c.txt",
-          "sha256": "417c6aa0279ec78db02fe395d401a09bcaaa9d82d935148a3e2de90fdf38d94c",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/core/core-ktx/1.15.0/core-ktx-1.15.0.pom",
+          "path": "licenses/evidence/3a5e0009e06517627756b9203d9a8f055fda87b215a17b775bae568697854196.txt",
+          "sha256": "3a5e0009e06517627756b9203d9a8f055fda87b215a17b775bae568697854196",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/core/core-ktx/1.18.0/core-ktx-1.18.0.pom",
           "kind": "pom"
         },
         {
           "path": "licenses/evidence/809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0.txt",
           "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/core/core-ktx/1.15.0/core-ktx-1.15.0.aar!/META-INF/androidx/core/core-ktx/LICENSE.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/core/core-ktx/1.18.0/core-ktx-1.18.0.aar!/META-INF/androidx/core/core-ktx/LICENSE.txt",
           "kind": "embedded-notice"
         }
       ],
@@ -1575,11 +1575,11 @@
     {
       "ecosystem": "Maven",
       "name": "androidx.core:core",
-      "version": "1.15.0",
+      "version": "1.18.0",
       "artifacts": [
         {
-          "name": "core-1.15.0.aar",
-          "sha256": "432b85a1974076e14b487ece4a28c59a84f1b9efc3fc8be72cd7f05d32055e51"
+          "name": "core-1.18.0.aar",
+          "sha256": "311d83ac67d394076ec21d12ed2d10a44b59cb2929b7dce00e5a90a93842e37d"
         }
       ],
       "licenses": [
@@ -1590,15 +1590,15 @@
       ],
       "evidence": [
         {
-          "path": "licenses/evidence/e168ae56064b8e5a40bce415ef95ffd5a813abb5456d2775f0fef426ed49e35a.txt",
-          "sha256": "e168ae56064b8e5a40bce415ef95ffd5a813abb5456d2775f0fef426ed49e35a",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.15.0/core-1.15.0.pom",
+          "path": "licenses/evidence/57d644ebb37d309ad959d740157d8e8424e273b9c672842e4f4c758edc6d30e7.txt",
+          "sha256": "57d644ebb37d309ad959d740157d8e8424e273b9c672842e4f4c758edc6d30e7",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.18.0/core-1.18.0.pom",
           "kind": "pom"
         },
         {
           "path": "licenses/evidence/809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0.txt",
           "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
-          "source": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.15.0/core-1.15.0.aar!/META-INF/androidx/core/core/LICENSE.txt",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.18.0/core-1.18.0.aar!/META-INF/androidx/core/core/LICENSE.txt",
           "kind": "embedded-notice"
         }
       ],
@@ -2312,6 +2312,132 @@
           "path": "licenses/evidence/054db6f92d9230103b3aca8b0dabcc0d63de26e440ff98eb5b19a2555d3eb037.txt",
           "sha256": "054db6f92d9230103b3aca8b0dabcc0d63de26e440ff98eb5b19a2555d3eb037",
           "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel/2.9.4/lifecycle-viewmodel-2.9.4.pom",
+          "kind": "pom"
+        }
+      ],
+      "texts": [
+        {
+          "path": "licenses/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "ecosystem": "Maven",
+      "name": "androidx.navigationevent:navigationevent-android",
+      "version": "1.0.0",
+      "artifacts": [
+        {
+          "name": "navigationevent.aar",
+          "sha256": "cda4bb83d1c892a208732e99c2d59e4f247ab5c23a1d2524fc004db2e4e9a780"
+        }
+      ],
+      "licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "licenses/evidence/5cabbb40f3fba11166576a839acf4eb6db59ab5e5ebcb16361d41f8bec805b50.txt",
+          "sha256": "5cabbb40f3fba11166576a839acf4eb6db59ab5e5ebcb16361d41f8bec805b50",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/navigationevent/navigationevent-android/1.0.0/navigationevent-android-1.0.0.pom",
+          "kind": "pom"
+        },
+        {
+          "path": "licenses/evidence/809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0.txt",
+          "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/navigationevent/navigationevent-android/1.0.0/navigationevent-android-1.0.0.aar!/META-INF/androidx/navigationevent/navigationevent/LICENSE.txt",
+          "kind": "embedded-notice"
+        }
+      ],
+      "texts": [
+        {
+          "path": "licenses/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "ecosystem": "Maven",
+      "name": "androidx.navigationevent:navigationevent-compose-android",
+      "version": "1.0.0",
+      "artifacts": [
+        {
+          "name": "navigationevent-compose.aar",
+          "sha256": "5cee018dbe130b538d2c43cc6f383a109a98f19ba9c8d7a6dda8ca90a2034671"
+        }
+      ],
+      "licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "licenses/evidence/6a3b7e989b18ab25274dbd0531dcc4d66e4efb8de4985daff539d5131285bff8.txt",
+          "sha256": "6a3b7e989b18ab25274dbd0531dcc4d66e4efb8de4985daff539d5131285bff8",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/navigationevent/navigationevent-compose-android/1.0.0/navigationevent-compose-android-1.0.0.pom",
+          "kind": "pom"
+        },
+        {
+          "path": "licenses/evidence/809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0.txt",
+          "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/navigationevent/navigationevent-compose-android/1.0.0/navigationevent-compose-android-1.0.0.aar!/META-INF/androidx/navigationevent/navigationevent-compose/LICENSE.txt",
+          "kind": "embedded-notice"
+        }
+      ],
+      "texts": [
+        {
+          "path": "licenses/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "ecosystem": "Maven",
+      "name": "androidx.navigationevent:navigationevent-compose",
+      "version": "1.0.0",
+      "artifacts": [],
+      "licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "licenses/evidence/58899c64fefa0768066621c8994385182c52a0848a78c882705f5e7dabd98471.txt",
+          "sha256": "58899c64fefa0768066621c8994385182c52a0848a78c882705f5e7dabd98471",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/navigationevent/navigationevent-compose/1.0.0/navigationevent-compose-1.0.0.pom",
+          "kind": "pom"
+        }
+      ],
+      "texts": [
+        {
+          "path": "licenses/Apache-2.0.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "ecosystem": "Maven",
+      "name": "androidx.navigationevent:navigationevent",
+      "version": "1.0.0",
+      "artifacts": [],
+      "licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "licenses/evidence/de7fae42b4234f6fedc7762510bcb5db9860187be56f3bfec34b73db6e4a22a2.txt",
+          "sha256": "de7fae42b4234f6fedc7762510bcb5db9860187be56f3bfec34b73db6e4a22a2",
+          "source": "https://dl.google.com/dl/android/maven2/androidx/navigationevent/navigationevent/1.0.0/navigationevent-1.0.0.pom",
           "kind": "pom"
         }
       ],

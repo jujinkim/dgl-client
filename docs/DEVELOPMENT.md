@@ -9,7 +9,7 @@
 |---|---|
 | 공통 스크립트 | Python 3.9 이상 |
 | Rust | 1.98.1, `Cargo.lock` 사용 |
-| Android | JDK 17, SDK 36, Build Tools 36.0.0, NDK 29.0.14206865 |
+| Android | JDK 17, SDK 37 (compile)·36 (target), Build Tools 36.0.0, NDK 29.0.14206865 |
 | Gradle | Wrapper 9.7.0, AGP 9.3.3, Kotlin 2.4.21, Compose 1.9.3 |
 | 터미널 assets | Node.js/npm, CI Node.js 22.23.4, `web/package-lock.json` |
 | macOS | Xcode 26.6 + Metal Toolchain, ARM64 검증 경로 |
