@@ -175,6 +175,22 @@ Windows 빌드·실행과 실제 화면 확인은 하지 않았습니다.
 
 스크립트 단위 검사·JVM 검사와 Android Debug APK·계측 테스트 컴파일을 확인했고 에뮬레이터 계측은 실행하지 않았습니다.
 
+## 2026-10-29: 낮은 우선순위 구조 정리
+
+- 보안: 데스크톱 호스트 대화상자가 렌더마다 개인키 평문을 복제하지 않고 `Zeroizing` 사본 하나를 공유합니다.
+  설정의 호스트키 지문과 보호 저장 사본이 다르거나 없으면 두 플랫폼 모두 연결을 막고 신뢰 삭제 후 재확인을 안내합니다.
+- 데스크톱: 호스트 순서·배치 저장은 코어의 원자 저장을 쓰고, macOS FFI를 Windows와 같은 플랫폼 모듈로 분리했습니다.
+  모달 포커스 순서는 이름 있는 슬롯을 쓰고, 데스크톱 전용 `terminal_font`를 코어에서 옮겼습니다.
+- 코어: 쓰이지 않던 UniFFI `cancel`·`buffered_bytes`·`validate_settings`를 제거하고 `TerminalKey` 인코딩을 Debug 문자열 대신 명시적 대응표로 바꿨습니다.
+- Kotlin: 공개키 복사는 컴포지션 범위 함수, `AppModel`의 연결별 상태는 한 객체로 묶었고, Rust 어댑터가 자기 락을 쥔 채 `AppModel` 락·디스크 저장을 부르지 않습니다.
+- 도구: Rust 고지는 패키징 대상 target으로 걸러 Android·macOS에 Windows 전용 crate 고지가 들어가지 않습니다.
+  Android 계측 스크립트의 공통 adb·fixture 처리를 `android_device.py`로 모았고, `kotlin.incremental=false`와 오래된 lock 구성 항목을 지웠습니다.
+  APK의 `licenses/` 전체 동봉은 등록 정보로 Android 범위를 확실히 고를 수 없어 유지했습니다.
+
+JVM·Rust·웹·스크립트 단위 검사, 격리 SSH/tmux 3.7c 통합 검사, Android Debug APK·계측 컴파일·lint를 확인했습니다.
+`verify_lint.py`는 업스트림 새 버전(compileSdk 37·activity-compose 1.12.4) 안내 진단 2건으로 실패했으며 이번 변경과 무관합니다.
+Android 계측·Windows 빌드·GUI는 실행하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

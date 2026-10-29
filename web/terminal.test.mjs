@@ -3,142 +3,36 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-test('editor focus changes notify native keyboard ownership even while remote input is blocked', () => {
-  const messages = [], listeners = {};
-  class Terminal {
-    parser = { registerOscHandler() {} };
-    open() {} onData() {} onBinary() {}
-  }
-  const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
-  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, ResizeObserver: class { observe() {} },
-    document: { getElementById: () => ({ addEventListener: (name, callback) => { listeners[name] = callback; } }) },
-  });
-  messages.length = 0;
-  window.setInputEnabled(false);
-  listeners.focusin(); listeners.focusout();
-  assert.deepEqual(messages.map(({ type, focused }) => ({ type, focused })), [
-    { type: 'editor-focus', focused: true }, { type: 'editor-focus', focused: false },
-  ]);
-});
+const asset = name => readFileSync(new URL(`../app/src/androidMain/assets/terminal/${name}`, import.meta.url), 'utf8');
+const terminalSource = asset('terminal.js');
 
-test('client viewport uses container pixels and ignores zero layouts and pane grid changes', () => {
-  const messages = []; let observe, render;
-  const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
-  let terminal;
-  class Terminal {
-    cols = 80; rows = 24; options = {}; parser = { registerOscHandler() {} };
-    element = { querySelector: () => ({ getBoundingClientRect: () => ({ width: this.cols * 10, height: this.rows * 20 }) }) };
-    constructor() { terminal = this; }
-    open() {} onData() {} onBinary() {}
-    onRender(callback) { render = callback; }
-    resize(columns, rows) { this.cols = columns; this.rows = rows; }
-  }
-  const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
-  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder,
-    document: { getElementById: () => root },
-    ResizeObserver: class { constructor(callback) { observe = callback; } observe() { observe(); } },
-  });
-  assert.deepEqual(messages.splice(0), [{ type: 'resize', columns: 100, rows: 30 }, { type: 'ready' }]);
-  root.clientHeight = 0; observe();
-  assert.deepEqual(messages, [], 'hidden/recreated WebViews must not shrink tmux to two rows');
-  root.clientHeight = 600;
-  window.resizePane(40, 12); render();
-  assert.equal(terminal.rows, 12);
-  assert.deepEqual(messages, [], 'server grid changes cannot request a client resize');
-  root.clientHeight = 240; observe();
-  assert.deepEqual(messages, [{ type: 'resize', columns: 100, rows: 12 }]);
-  messages.length = 0;
-  root.clientWidth = 807; window.resizePane(80, 12); render(); render();
-  assert.equal(terminal.cols, 80, 'a render must not subtract the hidden 14px scrollbar and shrink 80 columns to 79');
-  assert.deepEqual(messages, [{ type: 'resize', columns: 80, rows: 12 }]);
-});
-
-test('terminal bridge forwards text and raw mouse input through distinct channels', () => {
-  const messages = [];
-  const listeners = {};
-  class Terminal {
-    parser = { registerOscHandler() {} };
-    open() {}
-    onData(callback) { listeners.data = callback; }
-    onBinary(callback) { listeners.binary = callback; }
-    onResize() {}
-  }
-  const context = {
-    Terminal, TextEncoder,
-    ResizeObserver: class { observe() {} },
-    document: { getElementById: () => ({ addEventListener() {} }) },
-    window: { dgl: { postMessage: message => messages.push(JSON.parse(message)) } },
-  };
-  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), context);
-  assert.deepEqual(messages.splice(0), [{ type: 'ready' }]);
-  for (const data of ['한글😀', '\x1b[1;6D', '\x1b[<35;1;1M', '\x1b[<64;1;1M']) {
-    listeners.data(data);
-    assert.deepEqual(messages.splice(0), [{ type: 'input', data, ...(/^\x1b\[</.test(data) ? { pointer: true } : {}), pane: 'shell', target: null }]);
-  }
-  const data = '\x1b[M \x85\xff';
-  listeners.binary(data);
-  assert.deepEqual(messages.splice(0), [{ type: 'input-binary', data, pointer: true, pane: 'shell', target: null }]);
-  assert.deepEqual([...messages], []);
-  listeners.binary('a'.repeat(65537));
-  listeners.data('한'.repeat(21846));
-  assert.deepEqual(messages, []);
-});
-
-test('composer captures the renderer paste once, blocks background input and enforces encoded size', () => {
-  const messages = [], listeners = {};
-  let bracketed = false, focused = 0;
-  class Terminal {
-    parser = { registerOscHandler() {} };
-    open() {} onResize() {}
-    focus() { focused++; }
-    onData(callback) { listeners.data = callback; }
-    onBinary(callback) { listeners.binary = callback; }
-    paste(text) {
-      // xterm's current paste mode, independently changed between requests.
-      const normalized = text.replace(/\r?\n/g, '\r');
-      listeners.data(bracketed ? '\x1b[200~' + normalized + '\x1b[201~' : normalized);
-    }
-  }
-  const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) } };
-  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, ResizeObserver: class { observe() {} },
-    document: { getElementById: () => ({ addEventListener() {} }) },
-  });
-  messages.length = 0;
-  window.setInputEnabled(false);
-  listeners.data('background'); listeners.binary('\x1b[M');
-  assert.equal(window.preparePaste('한글😀\n둘'), '한글😀\r둘');
-  bracketed = true;
-  assert.equal(window.preparePaste('한글😀\n둘'), '\x1b[200~한글😀\r둘\x1b[201~');
-  assert.deepEqual(messages.splice(0), [{ type: 'blocked-input' }]);
-  assert.throws(() => window.preparePaste(''));
-  assert.throws(() => window.preparePaste('한'.repeat(21846)));
-  assert.equal(window.preparePaste('a'.repeat(65524)).length, 65536);
-  assert.throws(() => window.preparePaste('a'.repeat(65525)));
-  bracketed = false;
-  assert.equal(window.preparePaste('a'.repeat(65536)).length, 65536);
-  assert.throws(() => window.preparePaste('a'.repeat(65537)));
-  assert.equal(window.preparePaste('line\n'), 'line\r');
-  window.setInputEnabled(true); listeners.data('after');
-  assert.deepEqual(messages, [{ type: 'input', data: 'after', pane: 'shell', target: null }]);
-  window.focusTerminal(); window.focusTerminal();
-  assert.equal(focused, 2);
-});
-
-function cachedRenderer() {
-  const messages = [], frames = [], timers = new Map(), animations = [], renders = new Set(), events = {};
-  let terminal, nextTimer = 0;
+// One small DOM model for every harness: selector lookup, deep cloning,
+// capture-ordered listeners and pointer capture. Layout comes from plain fields.
+function createDom() {
+  const animations = [];
   class Element {
-    children = []; classes = new Set(); textContent = '';
-    style = { setProperty(name, value) { this[name] = value; } }; width = 100; height = 100; left = 0; top = 0;
-    classList = { add: value => this.classes.add(value), remove: value => this.classes.delete(value) };
-    addEventListener() {}
+    children = []; classes = new Set(); listeners = {}; textContent = '';
+    style = { setProperty(name, value) { this[name] = value; } };
+    clientWidth = 0; clientHeight = 0; width = 100; height = 100; left = 0; top = 0;
+    classList = {
+      add: value => this.classes.add(value), remove: value => this.classes.delete(value),
+      toggle: (value, force = !this.classes.has(value)) => force ? this.classes.add(value) : this.classes.delete(value),
+    };
+    addEventListener(name, callback, options) {
+      (this.listeners[name] ||= []).push({ callback, capture: options === true || options?.capture === true });
+    }
+    dispatchEvent(event) {
+      event.preventDefault ||= () => { event.defaultPrevented = true; };
+      event.stopImmediatePropagation ||= () => { event.stopped = true; };
+      for (const { callback } of [...this.listeners[event.type] || []].sort((a, b) => b.capture - a.capture)) {
+        callback(event); if (event.stopped) break;
+      }
+      return !event.defaultPrevented;
+    }
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
     appendChild(child) { this.children.push(child); child.parent = this; }
-    remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }
     cloneNode(deep) {
       const copy = new Element(); copy.textContent = this.textContent; copy.width = this.width; copy.height = this.height;
       copy.id = this.id; copy.tagName = this.tagName;
@@ -161,39 +55,200 @@ function cachedRenderer() {
       const animation = { keyframes, options, cancelled: false, cancel() { this.cancelled = true; } };
       animations.push(animation); return animation;
     }
+    setPointerCapture(id) { this.captured = id; }
+    hasPointerCapture(id) { return this.captured === id; }
+    releasePointerCapture() { this.captured = null; }
   }
-  const root = new Element(), screen = new Element(), canvas = new Element(), body = new Element();
+  return { Element, animations };
+}
+
+// Animation frames run in batches, so a frame queued by a callback waits for the
+// next batch. Timers run only when a test expires their delay or flushes them.
+function createScheduler() {
+  const frames = new Map(), timers = new Map();
+  let now = 0, nextId = 0;
+  return {
+    requestAnimationFrame: callback => { frames.set(++nextId, callback); return nextId; },
+    cancelAnimationFrame: id => frames.delete(id),
+    setTimeout: (callback, delay) => { timers.set(++nextId, { callback, delay }); return nextId; },
+    clearTimeout: id => timers.delete(id),
+    get now() { return now; },
+    advance(ms) { now += ms; },
+    frame(ms = 16) {
+      now += ms;
+      const pending = [...frames.values()]; frames.clear();
+      pending.forEach(callback => callback(now));
+    },
+    pendingFrame() { return [...frames.values()].at(-1); },
+    expire(delay) { for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); } },
+    flushTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach(timer => timer.callback()); },
+  };
+}
+
+// A ResizeObserver that reports synchronously on observe and can be re-fired.
+function resizeObserver() {
+  const observed = new Set();
+  let report;
+  return { observed, fire: () => report(),
+    ResizeObserver: class {
+      constructor(callback) { report = callback; }
+      observe(element) { observed.add(element); report(); }
+      unobserve(element) { observed.delete(element); }
+    } };
+}
+
+// The xterm surface terminal.js uses. Registered callbacks land on the instance
+// so tests can drive them; subclasses add only the state their tests inspect.
+class FakeTerminal {
+  parser = { registerOscHandler() {} };
+  renders = new Set(); focuses = 0;
+  open(host) { this.host = host; }
+  dispose() {} refresh() {}
+  focus() { this.focuses++; }
+  onData(callback) { this.data = callback; }
+  onBinary(callback) { this.binary = callback; }
+  onKey(callback) { this.key = callback; }
+  onScroll(callback) { this.scroll = callback; }
+  attachCustomKeyEventHandler(callback) { this.customKey = callback; }
+  onRender(callback) { this.renders.add(callback); return { dispose: () => this.renders.delete(callback) }; }
+  render() { for (const callback of [...this.renders]) callback(); }
+  resize(columns, rows) { this.cols = columns; this.rows = rows; }
+  paste(text) { this.data(text); }
+}
+
+// A terminal whose rendered screen measures 10x20 CSS px per cell.
+class GridTerminal extends FakeTerminal {
+  cols = 80; rows = 24; options = {};
+  screen = { getBoundingClientRect: () => {
+    const width = this.measure(this.cols * 10), height = this.measure(this.rows * 20);
+    return { left: 0, top: 0, right: width, bottom: height, width, height };
+  } };
+  element = { querySelector: selector => selector === '.xterm-screen' ? this.screen : null };
+  measure(pixels) { return pixels; }
+}
+
+// Runs terminal.js against a recording native bridge. `elements` maps ids to
+// elements or to fields for a new one; browser globals a harness omits stay undefined.
+function loadTerminal({ Terminal = FakeTerminal, dom = createDom(), elements = {}, body = {}, document = {}, window = {}, ...globals } = {}) {
+  const messages = [], terminals = [];
+  const node = value => value instanceof dom.Element ? value : Object.assign(new dom.Element(), value);
+  const nodes = Object.fromEntries(Object.entries(elements).map(([id, value]) => [id, node(value)]));
+  const page = { body: node(body), hasFocus: () => false, createElement: () => new dom.Element(),
+    getElementById: id => nodes[id] ||= new dom.Element(), ...document };
+  window.dgl = { postMessage: value => messages.push(JSON.parse(value)) };
+  vm.runInNewContext(terminalSource, {
+    window, document: page, TextEncoder, ResizeObserver: class { observe() {} unobserve() {} }, ...globals,
+    Terminal: class extends Terminal { constructor(...args) { super(...args); terminals.push(this); } },
+  });
+  return { window, messages, terminals, terminal: terminals[0], body: page.body, element: id => page.getElementById(id) };
+}
+
+test('editor focus changes notify native keyboard ownership even while remote input is blocked', () => {
+  const r = loadTerminal(), host = r.element('shell');
+  r.messages.length = 0;
+  r.window.setInputEnabled(false);
+  host.dispatchEvent({ type: 'focusin' }); host.dispatchEvent({ type: 'focusout' });
+  assert.deepEqual(r.messages.map(({ type, focused }) => ({ type, focused })), [
+    { type: 'editor-focus', focused: true }, { type: 'editor-focus', focused: false },
+  ]);
+});
+
+test('client viewport uses container pixels and ignores zero layouts and pane grid changes', () => {
+  const observer = resizeObserver();
+  const { window, messages, terminal, element } = loadTerminal({ Terminal: GridTerminal,
+    elements: { terminal: { clientWidth: 1000, clientHeight: 600 } }, ResizeObserver: observer.ResizeObserver });
+  const root = element('terminal'), observe = observer.fire, render = () => terminal.render();
+  assert.deepEqual(messages.splice(0), [{ type: 'resize', columns: 100, rows: 30 }, { type: 'ready' }]);
+  const canvas = element('window'), shown = { ...canvas.style };
+  root.clientHeight = 0; observe();
+  assert.deepEqual(messages, [], 'hidden/recreated WebViews must not shrink tmux to two rows');
+  window.setLayout({ window: null, columns: 100, rows: 30, active: 'shell', inputTarget: null, panes: [] });
+  assert.deepEqual({ ...canvas.style }, shown, 'a zero layout must not resize the canvas');
+  messages.length = 0;
+  root.clientHeight = 600;
+  window.resizePane(40, 12); render();
+  assert.equal(terminal.rows, 12);
+  assert.deepEqual(messages, [], 'server grid changes cannot request a client resize');
+  root.clientHeight = 240; observe();
+  assert.deepEqual(messages, [{ type: 'resize', columns: 100, rows: 12 }]);
+  messages.length = 0;
+  root.clientWidth = 807; window.resizePane(80, 12); render(); render();
+  assert.equal(terminal.cols, 80, 'a render must not subtract the hidden 14px scrollbar and shrink 80 columns to 79');
+  assert.deepEqual(messages, [{ type: 'resize', columns: 80, rows: 12 }]);
+});
+
+test('terminal bridge forwards text and raw mouse input through distinct channels', () => {
+  const { messages, terminal } = loadTerminal();
+  assert.deepEqual(messages.splice(0), [{ type: 'ready' }]);
+  for (const data of ['한글😀', '\x1b[1;6D', '\x1b[<35;1;1M', '\x1b[<64;1;1M']) {
+    terminal.data(data);
+    assert.deepEqual(messages.splice(0), [{ type: 'input', data, ...(/^\x1b\[</.test(data) ? { pointer: true } : {}), pane: 'shell', target: null }]);
+  }
+  const data = '\x1b[M \x85\xff';
+  terminal.binary(data);
+  assert.deepEqual(messages.splice(0), [{ type: 'input-binary', data, pointer: true, pane: 'shell', target: null }]);
+  assert.deepEqual([...messages], []);
+  terminal.binary('a'.repeat(65537));
+  terminal.data('한'.repeat(21846));
+  assert.deepEqual(messages, []);
+});
+
+test('composer captures the renderer paste once, blocks background input and enforces encoded size', () => {
+  let bracketed = false;
+  class PasteTerminal extends FakeTerminal {
+    paste(text) {
+      // xterm's current paste mode, independently changed between requests.
+      const normalized = text.replace(/\r?\n/g, '\r');
+      this.data(bracketed ? '\x1b[200~' + normalized + '\x1b[201~' : normalized);
+    }
+  }
+  const { window, messages, terminal } = loadTerminal({ Terminal: PasteTerminal });
+  messages.length = 0;
+  window.setInputEnabled(false);
+  terminal.data('background'); terminal.binary('\x1b[M');
+  assert.equal(window.preparePaste('한글😀\n둘'), '한글😀\r둘');
+  bracketed = true;
+  assert.equal(window.preparePaste('한글😀\n둘'), '\x1b[200~한글😀\r둘\x1b[201~');
+  assert.deepEqual(messages.splice(0), [{ type: 'blocked-input' }]);
+  assert.throws(() => window.preparePaste(''));
+  assert.throws(() => window.preparePaste('한'.repeat(21846)));
+  assert.equal(window.preparePaste('a'.repeat(65524)).length, 65536);
+  assert.throws(() => window.preparePaste('a'.repeat(65525)));
+  bracketed = false;
+  assert.equal(window.preparePaste('a'.repeat(65536)).length, 65536);
+  assert.throws(() => window.preparePaste('a'.repeat(65537)));
+  assert.equal(window.preparePaste('line\n'), 'line\r');
+  window.setInputEnabled(true); terminal.data('after');
+  assert.deepEqual(messages, [{ type: 'input', data: 'after', pane: 'shell', target: null }]);
+  window.focusTerminal(); window.focusTerminal();
+  assert.equal(terminal.focuses, 2);
+});
+
+function cachedRenderer() {
+  const dom = createDom(), clock = createScheduler(), { Element } = dom;
+  const root = new Element(), screen = new Element(), canvas = new Element();
   const helpers = new Element(), textarea = new Element(), composition = new Element();
   helpers.className = 'xterm-helpers'; textarea.tagName = 'TEXTAREA'; composition.className = 'composition-view';
   helpers.appendChild(textarea); helpers.appendChild(composition); screen.appendChild(helpers);
   canvas.id = 'window'; canvas.appendChild(screen);
-  const viewport = { clientWidth: 0, clientHeight: 0, scrollLeft: 13, scrollTop: 29,
-    addEventListener(name, callback) { (events[name] ||= []).push(callback); } };
+  // The scrolled outer viewport also hosts the shell pane and receives its input events.
+  const viewport = Object.assign(new Element(), { scrollLeft: 13, scrollTop: 29 });
   screen.textContent = 'previous screen';
   root.querySelector = selector => selector === '.xterm-screen' ? screen : selector === '.xterm-helpers' ? helpers : null;
-  class Terminal {
-    element = root; cols = 10; rows = 5; parser = { registerOscHandler() {} };
+  class CachedTerminal extends FakeTerminal {
+    element = root; cols = 10; rows = 5;
     buffer = { active: { cursorX: 3, cursorY: 2, baseY: 10, viewportY: 10 } };
-    constructor() { terminal = this; }
-    open() {} onData(callback) { this.data = callback; } onBinary() {} onResize() {} refresh() {}
-    resize(columns, rows) { this.cols = columns; this.rows = rows; }
-    onRender(callback) { renders.add(callback); return { dispose() { renders.delete(callback); } }; }
   }
-  const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) }, matchMedia: () => ({ matches: false }) };
-  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder,
-    ResizeObserver: class { observe() {} },
-    document: { body, getElementById: id => id === 'window' ? canvas : viewport, createElement: () => new Element() },
-    requestAnimationFrame: callback => frames.push(callback),
-    setTimeout: (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; },
-    clearTimeout: id => timers.delete(id),
-  });
-  messages.length = 0;
-  return { window, root, screen, canvas, body, Element, messages, animations, helpers, textarea, composition, terminal, viewport,
-    event(name, value) { for (const callback of events[name] || []) callback(value); },
-    frame() { frames.splice(0).forEach(callback => callback()); },
-    render() { for (const callback of [...renders]) callback(); },
-    expire(delay) { for (const [id, timer] of [...timers]) if (timer.delay === delay) { timers.delete(id); timer.callback(); } },
+  // No cancelAnimationFrame: superseded paint callbacks still run and must be ignored.
+  const r = loadTerminal({ Terminal: CachedTerminal, dom, elements: { terminal: viewport, shell: viewport, window: canvas },
+    window: { matchMedia: () => ({ matches: false }) },
+    requestAnimationFrame: clock.requestAnimationFrame, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout });
+  r.messages.length = 0;
+  return { ...r, root, screen, canvas, Element, animations: dom.animations, helpers, textarea, composition, viewport,
+    event: (type, init) => viewport.dispatchEvent({ type, ...init }),
+    frame: () => clock.frame(),
+    render: () => r.terminals.forEach(terminal => terminal.render()),
+    expire: delay => clock.expire(delay),
   };
 }
 
@@ -383,37 +438,19 @@ test('cancellation and a stalled renderer release the cache and pending ack', ()
 });
 
 function imeRenderer({ delayedFont = false, nativeViewport = false, keyboardMode = 'pan' } = {}) {
-  const messages = [], frames = [], terminals = [], observed = new Set();
-  const root = { clientWidth: 1000, clientHeight: 600, addEventListener() {} };
-  const host = () => ({ style: {}, addEventListener() {}, appendChild() {}, setAttribute() {}, remove() {}, classList: { toggle() {} } });
-  const canvas = { style: {}, appendChild() {} };
-  let observe, render, terminal;
-  class Terminal {
-    cols = 100; rows = 30; options = {}; parser = { registerOscHandler() {} };
-    measuredFont = 14;
+  const clock = createScheduler(), observer = resizeObserver();
+  class ImeTerminal extends GridTerminal {
+    cols = 100; rows = 30; measuredFont = 14;
     buffer = { active: { viewportY: 10, baseY: 10 } };
-    screen = { getBoundingClientRect: () => ({ width: this.cols * 10 * (delayedFont ? this.measuredFont : this.options.fontSize || 14) / 14,
-      height: this.rows * 20 * (delayedFont ? this.measuredFont : this.options.fontSize || 14) / 14 }) };
-    element = { querySelector: selector => selector === '.xterm-screen' ? this.screen : null };
-    constructor() { terminal ||= this; terminals.push(this); }
-    open() {} dispose() {}
-    onData(callback) { this.data = callback; } onBinary(callback) { this.binary = callback; }
-    onRender(callback) { this.render = callback; render = callback; }
-    onScroll(callback) { this.scroll = callback; }
-    resize(columns, rows) { this.cols = columns; this.rows = rows; }
+    measure(pixels) { return pixels * (delayedFont ? this.measuredFont : this.options.fontSize || 14) / 14; }
   }
-  const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
-  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder,
-    document: { body: Object.assign(host(), { dataset: { nativeViewport: String(nativeViewport) } }), getElementById: id => id === 'terminal' ? root : id === 'window' ? canvas : host(), createElement: host, hasFocus: () => false },
-    ResizeObserver: class { constructor(callback) { observe = callback; } observe(element) { observed.add(element); observe(); } unobserve(element) { observed.delete(element); } },
-    requestAnimationFrame: callback => frames.push(callback),
-    clearTimeout() {},
-  });
-  window.configure(14, 5000, keyboardMode);
-  messages.length = 0;
-  return { window, root, canvas, messages, terminal, terminals, observed, observe: () => observe(), render: (t = terminals.at(-1)) => t.render(),
-    frame() { frames.splice(0).forEach(callback => callback()); } };
+  const r = loadTerminal({ Terminal: ImeTerminal, elements: { terminal: { clientWidth: 1000, clientHeight: 600 } },
+    body: { dataset: { nativeViewport: String(nativeViewport) } }, ResizeObserver: observer.ResizeObserver,
+    requestAnimationFrame: clock.requestAnimationFrame, clearTimeout: clock.clearTimeout });
+  r.window.configure(14, 5000, keyboardMode);
+  r.messages.length = 0;
+  return { ...r, root: r.element('terminal'), canvas: r.element('window'), observed: observer.observed, observe: observer.fire,
+    render: (t = r.terminals.at(-1)) => t.render(), frame: () => clock.frame() };
 }
 
 function normalBuffer(lines = [], cursorY = Math.max(0, lines.length - 1)) {
@@ -792,35 +829,23 @@ test('a replacement snapshot releases its predecessor acknowledgement and reduce
   assert.equal(r.root.children.length, 1);
   r.window.cancelSnapshot();
   assert.equal(r.root.children.length, 0);
-  const css = readFileSync(new URL('../app/src/androidMain/assets/terminal/style.css', import.meta.url), 'utf8');
+  const css = asset('style.css');
   assert.ok(css.includes('opacity 90ms'));
   assert.ok(css.includes('opacity 80ms'));
 });
 
 function keyboardRenderer() {
-  const messages = [], listeners = {}, events = {}, timers = [];
-  let terminal;
-  class Terminal {
-    modes = { applicationCursorKeysMode: false }; parser = { registerOscHandler() {} };
-    constructor() { terminal = this; }
-    open() {} onResize() {}
-    onKey(callback) { listeners.key = callback; }
-    attachCustomKeyEventHandler(callback) { listeners.custom = callback; }
-    onData(callback) { listeners.data = callback; }
-    onBinary(callback) { listeners.binary = callback; }
-    paste(text) { listeners.data(text); }
-  }
-  const host = { style: {}, addEventListener: (name, callback) => { events[name] = callback; } };
-  const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) } };
-  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, ResizeObserver: class { observe() {} },
-    document: { getElementById: () => host, hasFocus: () => false }, setTimeout: callback => timers.push(callback),
-  });
-  messages.length = 0;
-  return { window, terminal, messages, listeners, events, timers,
+  const clock = createScheduler();
+  class KeyboardTerminal extends FakeTerminal { modes = { applicationCursorKeysMode: false }; }
+  const r = loadTerminal({ Terminal: KeyboardTerminal, setTimeout: clock.setTimeout });
+  r.messages.length = 0;
+  const shell = r.element('shell');
+  return { ...r,
+    emit: (type, init) => shell.dispatchEvent({ type, ...init }),
+    flushTimers: () => clock.flushTimers(),
     key(key, data, modifiers = {}) {
       const domEvent = { type: 'keydown', key, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...modifiers };
-      listeners.custom(domEvent); listeners.key({ domEvent }); listeners.data(data);
+      r.terminal.customKey(domEvent); r.terminal.key({ domEvent }); r.terminal.data(data);
     },
   };
 }
@@ -828,65 +853,32 @@ function keyboardRenderer() {
 // Model pointer delivery and wheel mode routing; actual xterm encoding and DOM
 // geometry are additionally covered by AndroidPlatformTest with the bundled JS.
 function touchRenderer() {
-  const messages = [], terminals = [], timers = [], frames = new Map();
-  let now = 0, nextFrame = 0;
-  class Element {
-    style = {}; children = []; events = {}; classList = { toggle() {}, add() {}, remove() {} };
-    clientWidth = 807; clientHeight = 480;
-    addEventListener(name, callback, options) {
-      (this.events[name] ||= []).push({ callback, capture: options === true || options?.capture === true });
-    }
-    dispatchEvent(event) {
-      event.preventDefault ||= () => { event.defaultPrevented = true; };
-      event.stopImmediatePropagation ||= () => { event.stopped = true; };
-      for (const { callback } of [...this.events[event.type] || []].sort((a, b) => b.capture - a.capture)) {
-        callback(event); if (event.stopped) break;
-      }
-      return !event.defaultPrevented;
-    }
-    appendChild(child) { this.children.push(child); }
-    remove() {} setAttribute() {} removeAttribute() {}
-    cloneNode() { return new Element(); } querySelectorAll() { return []; }
-    getBoundingClientRect() { return { width: 807, height: 480 }; }
-    setPointerCapture(id) { this.captured = id; }
-    hasPointerCapture(id) { return this.captured === id; }
-    releasePointerCapture() { this.captured = null; }
-  }
-  class Terminal {
-    cols = 80; rows = 24; options = {}; parser = { registerOscHandler() {} };
+  const dom = createDom(), clock = createScheduler(), { Element } = dom;
+  class TouchTerminal extends GridTerminal {
     modes = { mouseTrackingMode: 'none' }; buffer = { active: { type: 'normal', viewportY: 50, baseY: 50 } };
-    wheels = []; scrolls = []; focuses = 0;
-    screen = { getBoundingClientRect: () => ({ left: 0, top: 0, right: this.cols * 10, bottom: this.rows * 20,
-      width: this.cols * 10, height: this.rows * 20 }), cloneNode: () => new Element() };
-    element = new Element();
+    wheels = []; scrolls = [];
+    element = Object.assign(new Element(), {
+      querySelector: selector => selector === '.xterm-screen' ? this.screen : null, contains: () => true,
+    });
     constructor() {
-      terminals.push(this);
-      this.element.querySelector = selector => selector === '.xterm-screen' ? this.screen : null;
-      this.element.contains = () => true;
+      super();
+      this.screen.cloneNode = () => new Element();
       this.element.addEventListener('wheel', event => {
         this.wheels.push(event);
         (this.binaryMode ? this.binary : this.data)(event.deltaY < 0 ? 'wheel-up' : 'wheel-down');
       });
     }
-    open(host) { this.host = host; } dispose() {}
-    onData(callback) { this.data = callback; } onBinary(callback) { this.binary = callback; }
-    onKey(callback) { this.key = callback; } onRender(callback) { this.render = callback; }
-    resize(cols, rows) { this.cols = cols; this.rows = rows; }
-    focus() { this.focuses++; } scrollLines(lines) { this.scrolls.push(lines); this.buffer.active.viewportY += lines; }
+    scrollLines(lines) { this.scrolls.push(lines); this.buffer.active.viewportY += lines; }
   }
-  const root = new Element(), canvas = new Element(), shell = new Element(), body = new Element();
-  const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
-  vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, WheelEvent: class {
+  const { window, terminals, messages, body, element } = loadTerminal({ Terminal: TouchTerminal, dom,
+    elements: { terminal: { clientWidth: 807, clientHeight: 480 }, window: { width: 807, height: 480 } },
+    document: { hasFocus: () => true },
+    WheelEvent: class {
       static DOM_DELTA_LINE = 1;
       constructor(type, options) { this.type = type; Object.assign(this, options); }
     },
-    document: { getElementById: id => ({ terminal: root, window: canvas, shell })[id], createElement: () => new Element(),
-      hasFocus: () => true, body },
-    ResizeObserver: class { observe() {} unobserve() {} },
-    setTimeout: callback => timers.push(callback), clearTimeout() {},
-    requestAnimationFrame: callback => { frames.set(++nextFrame, callback); return nextFrame; },
-    cancelAnimationFrame: id => frames.delete(id),
+    requestAnimationFrame: clock.requestAnimationFrame, cancelAnimationFrame: clock.cancelAnimationFrame,
+    setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
   });
   const layout = (target = 'one', active = 'shell', split = false) => window.setLayout({ window: split ? '@1' : null,
     columns: 81, rows: 24, active, inputTarget: target, panes: split ? [
@@ -896,17 +888,13 @@ function touchRenderer() {
   window.configure(12, 5000, 'pan');
   layout(); messages.length = 0;
   const pointer = (type, x, y, term = terminals[0], extra = {}) => {
-    const event = { type, pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: x, clientY: y, timeStamp: now, ...extra };
+    const event = { type, pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: x, clientY: y, timeStamp: clock.now, ...extra };
     term.host.dispatchEvent(event); return event;
   };
-  return { window, terminals, messages, timers, layout, pointer, canvas, root, body,
-    advance(ms) { now += ms; },
-    frame(ms = 16) {
-      now += ms;
-      const pending = [...frames.values()]; frames.clear();
-      pending.forEach(callback => callback(now));
-    },
-    pendingFrame() { return [...frames.values()].at(-1); },
+  return { window, terminals, messages, layout, pointer, canvas: element('window'), root: element('terminal'), body,
+    advance: ms => clock.advance(ms),
+    frame: ms => clock.frame(ms),
+    pendingFrame: () => clock.pendingFrame(),
     drag(from, to, term = terminals[0]) {
       pointer('pointerdown', 100, from, term); pointer('pointermove', 100, to, term); pointer('pointerup', 100, to, term);
     },
@@ -1153,16 +1141,16 @@ test('semantic keys use the shared encoder channel once and preserve cursor mode
 
 test('IME commits once while paste mouse and protocol responses bypass semantic input', () => {
   const r = keyboardRenderer();
-  r.events.compositionstart();
-  r.events.input({ inputType: 'insertCompositionText', data: 'ㅎ' });
-  r.events.input({ inputType: 'insertCompositionText', data: '한' });
+  r.emit('compositionstart');
+  r.emit('input', { inputType: 'insertCompositionText', data: 'ㅎ' });
+  r.emit('input', { inputType: 'insertCompositionText', data: '한' });
   assert.deepEqual(r.messages, [], 'intermediate composition events do not submit anything');
-  r.listeners.data('\x1b[0n'); // a terminal protocol response during composition
-  r.events.compositionend();
-  r.listeners.data('한😀'); // finalized delta from xterm, not compositionend.data
-  r.events.paste(); r.listeners.data('pasted text');
-  r.timers.splice(0).forEach(callback => callback());
-  r.listeners.data('\x1b[<0;1;1M'); r.listeners.binary('\x1b[M \x85\xff');
+  r.terminal.data('\x1b[0n'); // a terminal protocol response during composition
+  r.emit('compositionend');
+  r.terminal.data('한😀'); // finalized delta from xterm, not compositionend.data
+  r.emit('paste'); r.terminal.data('pasted text');
+  r.flushTimers();
+  r.terminal.data('\x1b[<0;1;1M'); r.terminal.binary('\x1b[M \x85\xff');
   assert.equal(r.window.preparePaste('composer'), 'composer');
   assert.deepEqual(r.messages, [
     { type: 'input', data: '\x1b[0n', pane: 'shell', target: null },
@@ -1177,22 +1165,22 @@ test('IME commits once while paste mouse and protocol responses bypass semantic 
 test('delayed IME commit retains the original target across pane or reconnect changes', () => {
   const r = keyboardRenderer();
   r.window.setLayout({ window: null, active: 'shell', inputTarget: 'generation-one', panes: [] });
-  r.events.compositionstart();
-  r.events.input({ inputType: 'insertCompositionText', data: '한' });
+  r.emit('compositionstart');
+  r.emit('input', { inputType: 'insertCompositionText', data: '한' });
   r.window.setLayout({ window: null, active: 'shell', inputTarget: 'generation-two', panes: [] });
-  r.events.compositionend(); r.listeners.data('한');
+  r.emit('compositionend'); r.terminal.data('한');
   assert.equal(r.messages.length, 1);
   assert.equal(r.messages[0].target, 'generation-one', 'native validation must reject an old commit instead of retargeting it');
   r.key('c', 'c');
   assert.equal(r.messages[1].target, 'generation-two');
-  r.events.input({ inputType: 'insertText', data: 'null' }); r.listeners.data('null');
+  r.emit('input', { inputType: 'insertText', data: 'null' }); r.terminal.data('null');
   assert.equal(r.messages[2].text, 'null');
   assert.equal(r.messages[2].target, 'generation-two');
   // An empty/canceled composition must not keep an old destination for later input.
-  r.events.compositionstart(); r.events.compositionend();
-  r.timers.splice(0).forEach(callback => callback());
+  r.emit('compositionstart'); r.emit('compositionend');
+  r.flushTimers();
   r.window.setLayout({ window: null, active: 'shell', inputTarget: 'generation-three', panes: [] });
-  r.events.input({ inputType: 'insertText', data: 'next' }); r.listeners.data('next');
+  r.emit('input', { inputType: 'insertText', data: 'next' }); r.terminal.data('next');
   assert.equal(r.messages[3].target, 'generation-three');
 });
 
@@ -1201,10 +1189,10 @@ test('size synchronization preserves keyboard input while discarding coordinate 
   const r = keyboardRenderer();
   r.window.setPointerEnabled(false);
   r.key('ArrowLeft', '\x1b[D');
-  r.events.compositionstart(); r.events.compositionend(); r.listeners.data('한글');
-  r.events.paste(); r.listeners.data('english paste');
-  r.timers.splice(0).forEach(callback => callback());
-  r.listeners.data('\x1b[<0;3;4M'); r.listeners.binary('\x1b[M !!');
+  r.emit('compositionstart'); r.emit('compositionend'); r.terminal.data('한글');
+  r.emit('paste'); r.terminal.data('english paste');
+  r.flushTimers();
+  r.terminal.data('\x1b[<0;3;4M'); r.terminal.binary('\x1b[M !!');
   assert.equal(r.messages.length, 3);
   assert.equal(r.messages[0].key, 'left');
   assert.equal(r.messages[1].text, '한글');
@@ -1281,7 +1269,7 @@ test('IME scrollbar scales thumb drag and discards cancellation target changes a
   r.pointer('pointerdown', 100, 100); r.pointer('pointermove', 180, 105);
   assert.equal(r.canvas.style.transform, 'translateY(0px)', 'horizontal gestures remain browser panning');
   assert.deepEqual(r.messages, []);
-  const css = readFileSync(new URL('../app/src/androidMain/assets/terminal/style.css', import.meta.url), 'utf8');
+  const css = asset('style.css');
   assert.match(css, /\.panel-scrollbar \{[^}]*width: 24px/);
   assert.match(css, /\.panel-scrollbar-thumb \{[^}]*width: 3px/);
 });
