@@ -412,6 +412,14 @@ Windows에서 `Ctrl+Shift+F10`–`F12`가 10–12번째 연결로 바뀌던 문�
 한 곳으로 모으고, `Desktop`의 포인터·에이전트 알림 상태를 하위 구조체로 묶었습니다. 데스크톱 단위 검사 87개가 통과했고,
 Windows 빌드·실행과 실제 화면 확인은 하지 않았습니다.
 
+## 2026-10-29: 이전 엔진 잔재 정리
+
+control mode 파서, tmux 명령 문자열(`TmuxWire`), 목록 행 해석, `SshTransport`/`TmuxController`를 제품 공통 코드에서
+`app/src/referenceTest`로 옮겼습니다. 제품의 `TmuxCommand`는 Rust 코어에 보낼 조작 요청만 만들고, Rust APK 검사는 옮긴 클래스를 거부합니다.
+쓰이지 않던 JVM Windows 자격 증명 저장소·JNA platform·`WindowsSecurityTest`·검증기 `windows` 모드와,
+Android만 호출하던 `App`의 JVM 데스크톱 화면 분기, mobileUi의 Compose 설정, androidApp의 미사용 lifecycle 의존성을 제거했습니다.
+JVM 검사 99개 통과(SSH 참조 검사 8개는 예상 skip), Android debug APK·계측 테스트 컴파일을 확인했고 계측 실행은 하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

@@ -42,8 +42,8 @@ npm test --prefix web
 이동 모드의 동일 논리 크기 셀 측정 생략·재개방 콘텐츠 하단 정렬과 원격 열 수 유지·세로 드래그 방향·행 단위 누적,
 비활성 pane 선택·대상 세대·취소·핀치·IME 분리와 합성 클릭 차단도 확인합니다.
 
-검증기의 `linux` 모드는 macOS에서도 사용하는 비 Windows·비 SSH JVM 검사 모드입니다.
-외부 SSH/Windows 환경이 필요한 JVM 검사는 예상 skip, Rust 통합/Keychain 검사는 기본 ignore입니다.
+검증기의 `linux` 모드는 macOS에서도 사용하는 비 SSH JVM 검사 모드입니다.
+외부 SSH 환경이 필요한 JVM 참조 엔진 검사는 예상 skip, Rust 통합/Keychain 검사는 기본 ignore입니다.
 이 결과를 실기 검사로 보고하지 않습니다.
 
 macOS 데스크톱까지 확인할 때:
