@@ -160,17 +160,9 @@ impl Layout {
             .filter(|l| l.valid(0, &mut HashSet::new()))
             .unwrap_or_default()
     }
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        use std::io::Write;
-        std::fs::create_dir_all(
-            path.parent()
-                .ok_or_else(|| std::io::Error::other("layout directory"))?,
-        )?;
-        let temp = path.with_extension("json.tmp");
-        let mut file = std::fs::File::create(&temp)?;
-        file.write_all(&serde_json::to_vec_pretty(self)?)?;
-        file.sync_all()?;
-        std::fs::rename(temp, path)
+    pub fn save(&self, path: &Path) -> dgl_core::Result<()> {
+        let bytes = serde_json::to_vec_pretty(self).map_err(|_| dgl_core::Error::Storage)?;
+        dgl_core::sync::save_private(path, &bytes)
     }
 }
 #[derive(Default, Debug)]

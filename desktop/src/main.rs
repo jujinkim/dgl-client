@@ -91,7 +91,7 @@ enum Dialog {
     Host {
         original: Option<HostProfile>,
         fields: Vec<Entity<TextInput>>,
-        private_key: String,
+        private_key: host_dialog::PrivateKey,
         key_auth: bool,
         favorite: bool,
         feedback: host_dialog::Feedback,
@@ -425,25 +425,31 @@ impl Desktop {
             cx.notify();
             return None;
         }
-        let result = (|| {
+        let endpoint = host.endpoint();
+        let result = (|| -> Result<_, storage::TrustError> {
             let credential = storage::read(&host.credential_ref)?;
-            let trusted = if let Some(expected) = self.local.trust.get(&host.endpoint()) {
-                let saved = storage::read(&storage::trust_ref(&host.endpoint()))?;
-                if &saved.password != expected {
-                    return Err(dgl_core::Error::Storage);
-                }
-                Some(expected.clone())
-            } else {
-                None
+            let trusted = match self.local.trust.get(&endpoint) {
+                Some(expected) => Some(storage::verified_trust(
+                    expected,
+                    storage::read_optional(&storage::trust_ref(&endpoint)),
+                )?),
+                None => None,
             };
             Ok((credential, trusted))
         })();
         result
             .inspect_err(|e| {
-                self.snackbar.show_snackbar_with_duration(
-                    tr!("보호 저장소를 열지 못했습니다: {0}", e),
-                    SnackbarDuration::Long,
-                );
+                let message = match e {
+                    storage::TrustError::Mismatch => t(
+                        "신뢰한 호스트키 기록이 보호 저장소와 일치하지 않아 연결을 차단했습니다. 설정 > 보안·저장에서 이 서버의 신뢰를 삭제한 뒤 지문을 다시 확인하세요.",
+                    )
+                    .to_string(),
+                    storage::TrustError::Storage(e) => {
+                        tr!("보호 저장소를 열지 못했습니다: {0}", e)
+                    }
+                };
+                self.snackbar
+                    .show_snackbar_with_duration(message, SnackbarDuration::Long);
             })
             .ok()
     }
@@ -770,17 +776,7 @@ impl Render for Desktop {
             let (kind, inputs) = match &dialog {
                 Dialog::Host {
                     fields, key_auth, ..
-                } => (
-                    "host",
-                    if *key_auth {
-                        vec![0, 1, 2, 3, 6, 5]
-                    } else {
-                        vec![0, 1, 2, 3, 4]
-                    }
-                    .into_iter()
-                    .map(|i| fields[i].clone())
-                    .collect::<Vec<_>>(),
-                ),
+                } => ("host", host_dialog::focus_inputs(fields, *key_auth)),
                 Dialog::Prompt { input, .. } => ("prompt", vec![input.clone()]),
                 Dialog::Delete { .. } => ("delete", vec![]),
                 Dialog::Settings => ("settings", vec![]),

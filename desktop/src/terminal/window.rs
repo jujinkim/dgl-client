@@ -1,7 +1,7 @@
 //! One subscription and viewport per SSH connection; one persistent emulator per pane.
+use super::font_size::TerminalFontSize;
 use super::*;
 use crate::native_tooltips::NativeTooltip;
-use dgl_core::terminal_font::TerminalFontSize;
 use dgl_core::{command::Operation, flow::OutputEvent, flow::PaneTarget, model::RemotePane};
 use dgl_core::{flow::OutputKind, model::Size};
 use std::collections::BTreeMap;

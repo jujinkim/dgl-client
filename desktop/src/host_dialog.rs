@@ -1,9 +1,16 @@
 use super::*;
 use crate::key_file::ImportTarget;
+use zeroize::Zeroizing;
 
+// Slots of `Dialog::Host::fields`, in the order `edit` creates them.
+const ALIAS: usize = 0;
+const HOSTNAME: usize = 1;
+const PORT: usize = 2;
+const USERNAME: usize = 3;
 const PASSWORD: usize = 4;
 const PASSPHRASE: usize = 5;
 const KEY_PATH: usize = 6;
+const CONNECTION_FIELDS: [usize; 4] = [ALIAS, HOSTNAME, PORT, USERNAME];
 const MISSING_KEY: &str = "개인키 파일을 먼저 가져오세요";
 const INVALID_KEY: &str = "개인키 형식 또는 키 암호를 확인하세요";
 
@@ -11,6 +18,45 @@ enum ErrorArea {
     Connection,
     Authentication,
     Storage,
+}
+
+/// Imported or generated key text. Clones of the dialog share one allocation
+/// instead of copying it, and the last owner (the closed dialog) zeroizes it.
+#[derive(Clone, Default)]
+pub struct PrivateKey(Rc<Zeroizing<String>>);
+impl PrivateKey {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+impl From<String> for PrivateKey {
+    fn from(key: String) -> Self {
+        Self(Rc::new(Zeroizing::new(key)))
+    }
+}
+impl From<&str> for PrivateKey {
+    fn from(key: &str) -> Self {
+        key.to_owned().into()
+    }
+}
+impl PartialEq<str> for PrivateKey {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+/// Modal Tab order of the visible inputs; dialog buttons follow in render order.
+pub(super) fn focus_inputs(fields: &[Entity<TextInput>], key_auth: bool) -> Vec<Entity<TextInput>> {
+    let auth: &[usize] = if key_auth {
+        &[KEY_PATH, PASSPHRASE]
+    } else {
+        &[PASSWORD]
+    };
+    CONNECTION_FIELDS
+        .iter()
+        .chain(auth)
+        .map(|&i| fields[i].clone())
+        .collect()
 }
 
 #[derive(Clone, Default)]
@@ -126,7 +172,7 @@ impl Desktop {
         self.dialog = Some(Dialog::Host {
             original,
             fields,
-            private_key: String::new(),
+            private_key: PrivateKey::default(),
             key_auth,
             favorite,
             feedback: Feedback::default(),
@@ -150,18 +196,23 @@ impl Desktop {
             key_auth,
             favorite,
             feedback,
-        }) = self.dialog.clone()
+        }) = &mut self.dialog
         else {
             return;
         };
         if feedback.selecting {
             return;
         }
-        if let Some(Dialog::Host { feedback, .. }) = &mut self.dialog {
-            feedback.connection_error = None;
-            feedback.auth_error = None;
-            feedback.storage_error = None;
-        }
+        feedback.connection_error = None;
+        feedback.auth_error = None;
+        feedback.storage_error = None;
+        let (original, fields, private_key, key_auth, favorite) = (
+            original.clone(),
+            fields.clone(),
+            private_key.clone(),
+            *key_auth,
+            *favorite,
+        );
         let values: Vec<_> = fields
             .iter()
             .map(|f| f.read(cx).content.to_string())
@@ -177,10 +228,10 @@ impl Desktop {
         });
         let host = HostProfile {
             id: id.clone(),
-            alias: values[0].trim().into(),
-            hostname: values[1].trim().into(),
-            port: values[2].trim().parse().unwrap_or(0),
-            username: values[3].trim().into(),
+            alias: values[ALIAS].trim().into(),
+            hostname: values[HOSTNAME].trim().into(),
+            port: values[PORT].trim().parse().unwrap_or(0),
+            username: values[USERNAME].trim().into(),
             auth: if key_auth {
                 AuthKind::PrivateKey
             } else {
@@ -201,7 +252,7 @@ impl Desktop {
             let credential = credential(
                 saved,
                 key_auth,
-                &private_key,
+                private_key.as_str(),
                 &values[PASSWORD],
                 &values[PASSPHRASE],
             )
@@ -315,7 +366,7 @@ impl Desktop {
         };
         match key_file::read(&path) {
             Ok(key) => {
-                *private_key = key;
+                *private_key = key.into();
                 fields[KEY_PATH].update(cx, |input, cx| {
                     input.set_content(&path.to_string_lossy(), cx)
                 });
@@ -351,7 +402,7 @@ impl Desktop {
             let credential = credential(
                 saved,
                 true,
-                private_key,
+                private_key.as_str(),
                 "",
                 &fields[PASSPHRASE].read(cx).content,
             )?;
@@ -424,12 +475,14 @@ impl Desktop {
             unreachable!()
         };
         let mut connection = self.host_section("host-connection", t("연결 정보"));
-        for (i, label) in [t("별칭"), t("호스트 / IP"), t("포트"), t("사용자 이름")]
-            .iter()
-            .enumerate()
-        {
+        for (i, label) in CONNECTION_FIELDS.into_iter().zip([
+            t("별칭"),
+            t("호스트 / IP"),
+            t("포트"),
+            t("사용자 이름"),
+        ]) {
             connection = connection
-                .child(div().text_sm().child(*label))
+                .child(div().text_sm().child(label))
                 .child(self.host_input(i, &fields[i], cx));
         }
         connection = connection.child(self.button(
@@ -531,8 +584,8 @@ impl Desktop {
                 .child(div().flex().flex_wrap().gap_2()
                     .child(self.button("generate", t("Ed25519 생성"), cx, |s, _, cx| {
                         match ssh::generate_key() {
-                            Ok(key) => if let Some(Dialog::Host { private_key, fields, feedback, .. }) = &mut s.dialog {
-                                *private_key = key.private_key.clone();
+                            Ok(mut key) => if let Some(Dialog::Host { private_key, fields, feedback, .. }) = &mut s.dialog {
+                                *private_key = std::mem::take(&mut key.private_key).into();
                                 fields[KEY_PATH].update(cx, |input, cx| input.set_content("", cx));
                                 fields[PASSPHRASE].update(cx, |input, cx| input.set_content("", cx));
                                 feedback.key_status = Some(t("Ed25519 개인키를 생성했습니다.").into());

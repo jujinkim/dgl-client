@@ -9,8 +9,14 @@ use std::{
     rc::{Rc, Weak},
 };
 
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+use self::macos::Tooltips;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "windows")]
+use self::windows::Tooltips;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Region {
@@ -31,23 +37,7 @@ struct Manager {
     regions: Vec<Candidate>,
     current: Option<Region>,
     suspended: bool,
-    #[cfg(target_os = "macos")]
-    native: *mut std::ffi::c_void,
-    #[cfg(target_os = "windows")]
-    native: Option<windows::Tooltips>,
-}
-#[cfg(target_os = "macos")]
-unsafe extern "C" {
-    fn dgl_tooltip_create(view: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
-    fn dgl_tooltip_set(
-        manager: *mut std::ffi::c_void,
-        x: f64,
-        y: f64,
-        w: f64,
-        h: f64,
-        text: *const std::ffi::c_char,
-    );
-    fn dgl_tooltip_destroy(manager: *mut std::ffi::c_void);
+    native: Option<Tooltips>,
 }
 impl Manager {
     fn new(window: &Window) -> Self {
@@ -64,16 +54,11 @@ impl Manager {
             regions: vec![],
             current: None,
             suspended: false,
-            #[cfg(target_os = "macos")]
             native: match raw {
-                Some(RawWindowHandle::AppKit(h)) => unsafe {
-                    dgl_tooltip_create(h.ns_view.as_ptr())
-                },
-                _ => std::ptr::null_mut(),
-            },
-            #[cfg(target_os = "windows")]
-            native: match raw {
-                Some(RawWindowHandle::Win32(h)) => windows::Tooltips::new(h.hwnd.get()),
+                #[cfg(target_os = "macos")]
+                Some(RawWindowHandle::AppKit(h)) => Tooltips::new(h.ns_view.as_ptr()),
+                #[cfg(target_os = "windows")]
+                Some(RawWindowHandle::Win32(h)) => Tooltips::new(h.hwnd.get()),
                 _ => None,
             },
         }
@@ -100,38 +85,10 @@ impl Manager {
         if self.current == next {
             return;
         }
-        #[cfg(target_os = "macos")]
-        if !self.native.is_null() {
-            let text = next
-                .as_ref()
-                .map(|r| std::ffi::CString::new(r.text.replace('\0', "")).unwrap());
-            let bounds = next.as_ref().map_or(Bounds::default(), |r| r.bounds);
-            unsafe {
-                dgl_tooltip_set(
-                    self.native,
-                    f32::from(bounds.left()) as f64,
-                    f32::from(bounds.top()) as f64,
-                    f32::from(bounds.size.width) as f64,
-                    f32::from(bounds.size.height) as f64,
-                    text.as_ref().map_or(std::ptr::null(), |s| s.as_ptr()),
-                );
-            }
-        }
-        #[cfg(target_os = "windows")]
         if let Some(native) = &mut self.native {
             native.set(next.as_ref());
         }
         self.current = next;
-    }
-}
-#[cfg(target_os = "macos")]
-impl Drop for Manager {
-    fn drop(&mut self) {
-        if !self.native.is_null() {
-            unsafe {
-                dgl_tooltip_destroy(self.native);
-            }
-        }
     }
 }
 

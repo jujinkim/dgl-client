@@ -87,17 +87,9 @@ impl HostOrder {
         true
     }
 
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        use std::io::Write;
-        std::fs::create_dir_all(
-            path.parent()
-                .ok_or_else(|| std::io::Error::other("host order directory"))?,
-        )?;
-        let temp = path.with_extension("json.tmp");
-        let mut file = std::fs::File::create(&temp)?;
-        file.write_all(&serde_json::to_vec_pretty(self)?)?;
-        file.sync_all()?;
-        std::fs::rename(temp, path)
+    pub fn save(&self, path: &Path) -> dgl_core::Result<()> {
+        let bytes = serde_json::to_vec_pretty(self).map_err(|_| dgl_core::Error::Storage)?;
+        dgl_core::sync::save_private(path, &bytes)
     }
 }
 
@@ -136,6 +128,18 @@ mod tests {
         assert!(order.reconcile(&hosts(&["c", "a", "e", "d"])));
         assert_eq!(order.ids(), ["d", "a", "c", "e"]);
         assert!(!order.connection_started("e"));
+        // The atomic private write leaves no temporary file behind.
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["host-order.json"]);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
     }
     #[test]
     fn invalid_files_fall_back_and_removed_prefix_ids_do_not_promote_unstarted_hosts() {

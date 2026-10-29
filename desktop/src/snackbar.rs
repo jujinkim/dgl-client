@@ -7,8 +7,12 @@ pub enum SnackbarDuration {
     #[default]
     Normal,
     Long,
+    // Indefinite and Millis are the documented duration API shared with Kotlin
+    // (docs/DEVELOPMENT.md); no production message needs them yet.
+    #[cfg_attr(not(test), expect(dead_code, reason = "documented API, test-only use"))]
     Indefinite,
     /// Zero expires immediately; indefinite display always uses the explicit preset.
+    #[cfg_attr(not(test), expect(dead_code, reason = "documented API, test-only use"))]
     Millis(u64),
 }
 

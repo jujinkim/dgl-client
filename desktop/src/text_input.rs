@@ -29,7 +29,6 @@ actions!(
         Paste,
         Cut,
         Copy,
-        Quit,
         Newline,
         Up,
         Down,

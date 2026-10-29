@@ -13,6 +13,7 @@ use dgl_core::input::{Modifiers as KeyModifiers, TerminalShortcut};
 use dgl_core::tr;
 use gpui::{prelude::*, *};
 use std::{collections::HashSet, ops::Range, sync::Arc};
+mod font_size;
 mod input;
 #[cfg(test)]
 mod input_tests;

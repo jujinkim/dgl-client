@@ -275,27 +275,63 @@ impl TerminalShortcut {
 impl TerminalKey {
     /// Decode the semantic key, never modify a byte sequence that may be mouse/paste data.
     pub fn encode(self, modifiers: Modifiers, app_cursor: bool) -> Option<Vec<u8>> {
-        let name = format!("{self:?}");
-        let (key, own) = if let Some(letter) = name.strip_prefix("Ctrl") {
-            (
-                letter.to_lowercase(),
-                Modifiers {
-                    control: true,
-                    ..Default::default()
-                },
-            )
-        } else if let Some(key) = name.strip_prefix("Shift") {
-            (
-                key.to_lowercase(),
-                Modifiers {
-                    shift: true,
-                    ..Default::default()
-                },
-            )
-        } else {
-            (name.to_lowercase(), Modifiers::default())
+        let (key, own) = self.semantic();
+        encode_key(key, None, modifiers.union(own), app_cursor)
+    }
+    /// The `encode_key` name and the modifiers the shortcut itself implies.
+    fn semantic(self) -> (&'static str, Modifiers) {
+        let none = Modifiers::default();
+        let ctrl = Modifiers {
+            control: true,
+            ..Default::default()
         };
-        encode_key(&key, None, modifiers.union(own), app_cursor)
+        let shift = Modifiers {
+            shift: true,
+            ..Default::default()
+        };
+        match self {
+            Self::Escape => ("escape", none),
+            Self::Tab => ("tab", none),
+            Self::ShiftTab => ("tab", shift),
+            Self::ShiftLeft => ("left", shift),
+            Self::CtrlA => ("a", ctrl),
+            Self::CtrlB => ("b", ctrl),
+            Self::CtrlC => ("c", ctrl),
+            Self::CtrlD => ("d", ctrl),
+            Self::CtrlE => ("e", ctrl),
+            Self::CtrlF => ("f", ctrl),
+            Self::CtrlG => ("g", ctrl),
+            Self::CtrlH => ("h", ctrl),
+            Self::CtrlI => ("i", ctrl),
+            Self::CtrlJ => ("j", ctrl),
+            Self::CtrlK => ("k", ctrl),
+            Self::CtrlL => ("l", ctrl),
+            Self::CtrlM => ("m", ctrl),
+            Self::CtrlN => ("n", ctrl),
+            Self::CtrlO => ("o", ctrl),
+            Self::CtrlP => ("p", ctrl),
+            Self::CtrlQ => ("q", ctrl),
+            Self::CtrlR => ("r", ctrl),
+            Self::CtrlS => ("s", ctrl),
+            Self::CtrlT => ("t", ctrl),
+            Self::CtrlU => ("u", ctrl),
+            Self::CtrlV => ("v", ctrl),
+            Self::CtrlW => ("w", ctrl),
+            Self::CtrlX => ("x", ctrl),
+            Self::CtrlY => ("y", ctrl),
+            Self::CtrlZ => ("z", ctrl),
+            Self::Up => ("up", none),
+            Self::Down => ("down", none),
+            Self::Left => ("left", none),
+            Self::Right => ("right", none),
+            Self::Home => ("home", none),
+            Self::End => ("end", none),
+            Self::Enter => ("enter", none),
+            Self::Backspace => ("backspace", none),
+            Self::Delete => ("delete", none),
+            Self::PageUp => ("pageup", none),
+            Self::PageDown => ("pagedown", none),
+        }
     }
 }
 /// xterm legacy key encoding shared by GPUI and Android. Text is an unencoded

@@ -243,6 +243,7 @@ internal object EnglishCatalog {
         "신뢰 키 삭제" to "Remove trusted key",
         "신뢰하고 연결" to "Trust and connect",
         "신뢰한 서버" to "Trusted servers",
+        "신뢰한 호스트키 기록이 보호 저장소와 일치하지 않아 연결을 차단했습니다. 설정 > 보안·저장에서 이 서버의 신뢰를 삭제한 뒤 지문을 다시 확인하세요." to "The trusted host key record does not match secure storage, so the connection was blocked. Remove this server's trust in Settings > Security & storage, then verify its fingerprint again.",
         "실행 가능한 파일을 찾지 못함" to "No executable found",
         "실행 종료 코드: {0}" to "Exit code: {0}",
         "실행 파일 발견" to "Executable found",

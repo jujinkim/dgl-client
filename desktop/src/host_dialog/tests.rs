@@ -1,4 +1,6 @@
-use super::{Feedback, INVALID_KEY, KEY_PATH, MISSING_KEY, PASSPHRASE, PASSWORD, credential};
+use super::{
+    Feedback, INVALID_KEY, KEY_PATH, MISSING_KEY, PASSPHRASE, PASSWORD, credential, focus_inputs,
+};
 use crate::ui_tests::{redraw, setup};
 use crate::{AuthKind, Credential, Desktop, Dialog, LocalState, TextInput, ssh};
 use gpui::{Entity, Focusable, Modifiers, TestAppContext, VisualTestContext, px, size};
@@ -158,7 +160,7 @@ fn connection_and_storage_errors_are_distinct_and_recoverable(cx: &mut TestAppCo
     let key = ssh::generate_key().unwrap();
     view.update(cx, |s, cx| {
         if let Some(Dialog::Host { private_key, .. }) = &mut s.dialog {
-            *private_key = key.private_key.clone();
+            *private_key = key.private_key.clone().into();
         }
         s.save_host_with(
             cx,
@@ -249,7 +251,7 @@ fn edit_save_keeps_existing_key_and_ignores_stale_picker(cx: &mut TestAppContext
     let key = ssh::generate_key().unwrap();
     view.update(cx, |s, cx| {
         if let Some(Dialog::Host { private_key, .. }) = &mut s.dialog {
-            *private_key = key.private_key.clone();
+            *private_key = key.private_key.clone().into();
         }
         s.save_host_with(cx, |_| Ok(None), |_, _| Ok(()));
         let mut original = s.local.hosts[0].clone();
@@ -355,4 +357,45 @@ fn auth_switch_preserves_drafts_and_small_themed_form_scrolls_to_focus(cx: &mut 
         let input = cx.debug_bounds("host-input-5").unwrap();
         assert!(input.top() >= body.top() && input.bottom() <= body.bottom());
     }
+}
+
+#[gpui::test]
+fn render_shares_the_private_key_and_closing_releases_it(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx);
+    let fields = valid_form(&view, cx);
+    let ids =
+        |inputs: Vec<Entity<TextInput>>| inputs.iter().map(|i| i.entity_id()).collect::<Vec<_>>();
+    let expected = |slots: &[usize]| {
+        slots
+            .iter()
+            .map(|&i| fields[i].entity_id())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        ids(focus_inputs(&fields, true)),
+        expected(&[0, 1, 2, 3, KEY_PATH, PASSPHRASE])
+    );
+    assert_eq!(
+        ids(focus_inputs(&fields, false)),
+        expected(&[0, 1, 2, 3, PASSWORD])
+    );
+    let key = ssh::generate_key().unwrap();
+    view.update(cx, |s, cx| {
+        if let Some(Dialog::Host { private_key, .. }) = &mut s.dialog {
+            *private_key = key.private_key.clone().into();
+        }
+        cx.notify();
+    });
+    redraw(cx);
+    redraw(cx);
+    let released = view.read_with(cx, |s, _| match &s.dialog {
+        Some(Dialog::Host { private_key, .. }) => {
+            assert_eq!(std::rc::Rc::strong_count(&private_key.0), 1);
+            std::rc::Rc::downgrade(&private_key.0)
+        }
+        _ => panic!("host dialog"),
+    });
+    view.update(cx, |s, cx| s.dismiss_dialog(cx));
+    redraw(cx);
+    assert!(released.upgrade().is_none());
 }
