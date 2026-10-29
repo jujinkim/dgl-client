@@ -61,6 +61,8 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
                 implementation("org.jetbrains.jediterm:jediterm-ui:3.59")
                 implementation("org.jetbrains.jediterm:jediterm-core:3.59")
+                // JediTerm asks for slf4j-api 2.0.9; keep the version listed in verification-metadata.xml.
+                implementation("org.slf4j:slf4j-api:2.0.17")
             }
         }
         val desktopTest by getting {
