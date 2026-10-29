@@ -1127,6 +1127,16 @@ test('pane boundary drags follow the shared input, recovery, pinch and IME gates
     active.onpointerup?.({ clientX: 450, clientY: 100 });
     assert.deepEqual(resized(during), [], `${block}: a drag blocked before release must not resize`);
   }
+  for (const [block, unblock] of [[r => r.window.setInputEnabled(false), r => r.window.setInputEnabled(true)],
+    [r => r.window.setConnectionRecovery(true), r => r.window.setConnectionRecovery(false)],
+    [r => r.window.setPointerEnabled(false), r => r.window.setPointerEnabled(true)],
+    [r => r.window.setImeAnimation(true, 1), r => r.window.setImeAnimation(false, 2)]]) {
+    const r = ready(), held = start(r); block(r); unblock(r);
+    held.onpointerup?.({ clientX: 450, clientY: 100 });
+    assert.deepEqual(resized(r), [], `${block}: a briefly blocked drag must stay discarded`);
+    start(r).onpointerup({ clientX: 450, clientY: 100 });
+    assert.equal(resized(r).length, 1, `${block}: the next drag works again`);
+  }
 });
 
 test('semantic keys use the shared encoder channel once and preserve cursor mode and physical modifiers', () => {

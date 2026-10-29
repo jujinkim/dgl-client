@@ -6,7 +6,7 @@
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 12, scrollback = 5000, enabled = true, smooth = false;
   let fontGesture = false, pointerEnabled = true, imeAnimating = false, imeVersion = 0;
-  window.setPointerEnabled = enabled => { pointerEnabled = enabled === true; if (!pointerEnabled) cancelTouchScroll(); };
+  window.setPointerEnabled = enabled => { pointerEnabled = enabled === true; if (!pointerEnabled) { cancelTouchScroll(); cancelBoundaryDrag(); } };
   let touchSelection = null;
   let geometryObserver = null;
   const nativeViewport = document.body?.dataset?.nativeViewport === 'true';
@@ -42,7 +42,7 @@
       recoveryScreen?.remove(); recoveryScreen = null;
       return;
     }
-    cancelTouchScroll();
+    cancelTouchScroll(); cancelBoundaryDrag();
     if (recoveryScreen) return;
     const previous = stripInputHelpers(canvas.cloneNode(true));
     previous.removeAttribute('id');
@@ -497,7 +497,7 @@
   window.focusTerminal = () => focused().focusTerminal();
   window.preparePaste = (...args) => focused().preparePaste(...args);
   window.sendShortcut = (...args) => focused().sendShortcut(...args);
-  window.setInputEnabled = value => { enabled = value === true; if (!enabled) cancelTouchScroll(); };
+  window.setInputEnabled = value => { enabled = value === true; if (!enabled) { cancelTouchScroll(); cancelBoundaryDrag(); } };
   window.setSmoothTransitions = value => { smooth = value === true; for (const p of panes.values()) p.setSmoothTransitions(smooth); };
   function ensure(id) {
     if (!panes.has(id)) {
@@ -510,6 +510,12 @@
   window.outputPane = (id, target) => { ensure(id); output = id; };
   let lastViewport = '';
   let cell = { width: 8.54, height: 19.6 }, boundaries = [], draggingBoundary = false;
+  // A held boundary is discarded when an input gate closes, like unsent touch movement.
+  function cancelBoundaryDrag() {
+    for (const b of boundaries) { b.onpointerup = null; b.onpointercancel = null; }
+    if (!draggingBoundary) return;
+    draggingBoundary = false; arrange();
+  }
   function readPaneContent(term) {
     const buffer = term.buffer?.active;
     if (!buffer) return null;
@@ -583,8 +589,7 @@
       cancelTouchScroll();
       // Native touch cancellation also cancels pointer capture. Clear a pending
       // boundary commit now, before any delayed WebView pointer event arrives.
-      for (const b of boundaries) { b.onpointerup = null; b.onpointercancel = null; }
-      draggingBoundary = false;
+      cancelBoundaryDrag();
     }
     resize();
   };
@@ -659,6 +664,7 @@
     if (!Number.isSafeInteger(version) || version < imeVersion) return;
     imeVersion = version; imeAnimating = animating === true;
     cancelTouchScroll();
+    if (imeAnimating) cancelBoundaryDrag();
     if (!imeAnimating) requestAnimationFrame(() => { if (version === imeVersion && !imeAnimating) resize(); });
   };
   window.refreshViewport = () => resize();
@@ -732,8 +738,7 @@
           b.onpointerup = end => {
             const cells = ((horizontal ? end.clientX : end.clientY) - start) / (horizontal ? cell.width : cell.height);
             const delta = Math.sign(cells) * Math.round(Math.abs(cells));
-            // Input may have been blocked while the boundary was held.
-            if (delta !== 0 && !gestureBlocked()) send({ type: 'resize-pane', pane: id, target, columns: Math.max(1, Math.min(65535, spec.width + (horizontal ? delta : 0))), rows: Math.max(1, Math.min(65535, spec.height + (horizontal ? 0 : delta))) });
+            if (delta !== 0) send({ type: 'resize-pane', pane: id, target, columns: Math.max(1, Math.min(65535, spec.width + (horizontal ? delta : 0))), rows: Math.max(1, Math.min(65535, spec.height + (horizontal ? 0 : delta))) });
             b.onpointerup = null; draggingBoundary = false; arrange();
           };
         });
