@@ -58,7 +58,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)))
 }
 
-@Composable fun App(model: AppModel, androidInput: Boolean = false) {
+@Composable fun App(model: AppModel) {
     val local by model.local.collectAsState()
     val connections by model.connections.collectAsState()
     val selected by model.selected.collectAsState()
@@ -67,8 +67,8 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     val navigationClient = selected ?: lastExplorerClient?.takeIf { it in connections }
     val inputBlocks by model.inputBlocks.collectAsState()
     val appInputOwner = remember { Any() }
-    LaunchedEffect(connections, selected) { if (androidInput) model.reconcileWorkspace() }
-    SideEffect { model.workspaceEnabled = androidInput }
+    LaunchedEffect(connections, selected) { model.reconcileWorkspace() }
+    SideEffect { model.workspaceEnabled = true }
     val dark = when (local.preferences.theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
     var edit by remember { mutableStateOf<HostProfile?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -132,16 +132,15 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(0.dp))) {
         CompositionLocalProvider(LocalAppModel provides model, LocalAccentFill provides (rgb(raw) to rgb(onAccentColor(raw))),
             LocalTextSelectionColors provides TextSelectionColors(rgb(readable), rgb(selection))) {
-        CliMenuOverlayHost(enabled = androidInput) {
+        CliMenuOverlayHost {
         Surface(Modifier.fillMaxSize()) {
           val safeInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
-          val imeInsets = if (androidInput) WindowInsets.ime else WindowInsets(0)
+          val imeInsets = WindowInsets.ime
           val imeOcclusion = imeInsets.exclude(safeInsets).only(WindowInsetsSides.Bottom)
           CompositionLocalProvider(LocalTerminalOcclusion provides imeOcclusion) {
           BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(safeInsets)) {
-            val workspaceMode = androidInput && maxWidth >= 840.dp
-            val wideLayout = workspaceMode || (!androidInput && maxWidth >= 840.dp)
-            val mobileLayout = androidInput && !workspaceMode
+            val workspaceMode = maxWidth >= 840.dp
+            val mobileLayout = !workspaceMode
             LaunchedEffect(workspaceMode) { if (workspaceMode) { explorer = false; notifications = false } }
             if (!workspaceMode) {
                 val visible = if (!explorer && inputBlocks.isEmpty()) setOfNotNull(selected) else emptySet()
@@ -174,25 +173,11 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                 if (notifications) MobileAgentNotifications(model, availableBounds, anchor, restoreNotificationFocus) { notifications = false }
                             }
                         })
-                } else if (!workspaceMode) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("DaGaLi", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.width(8.dp))
-                    Text("SSH · tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                    selected?.let { HostConnectionMenu(it, model) }
-                    TextButton({ explorer = !explorer }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(if (explorer) t("터미널") else t("호스트")) }
-                    TextButton({ notifications = true }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
-                    TextButton({ settings = SettingsPage.Main }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.widthIn(min = 48.dp)) { Text(t("설정")) }
-                }
-                if (!androidInput && connections.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
-                    connections.forEach { connection ->
-                        FilterChip(selected == connection, { model.selectConnection(connection); explorer = false }, label = { Text(connection.host.alias) })
-                        TextButton({ model.removeConnection(connection) }, modifier = Modifier.semantics { contentDescription = tr("{0} 닫기", connection.host.alias) }) { UiGlyph(UiIcons.close) }
-                    }
                 }
                 val maintenanceError by model.backgroundConnectionError.collectAsState()
                 maintenanceError?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 Box(Modifier.weight(1f)) {
-                    val wide = wideLayout
+                    val wide = workspaceMode
                     Row(Modifier.fillMaxSize()) {
                         if (wide || selected == null || explorer) {
                             Column(if (wide) Modifier.width(272.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
@@ -243,7 +228,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                     openShortcutSettings = { settings = SettingsPage.Shortcuts })
                                 else if (selected != null) key(selected) {
                                     val client = selected!!
-                                    ConnectionScreen(client, local.preferences, mobileLayout, model, { agentDetails = client to it },
+                                    ConnectionScreen(client, local.preferences, model, { agentDetails = client to it },
                                         mobileTabs = { MobileConnectionTabs(connections, selected, mobileTabState,
                                             { model.selectConnection(it); explorer = false }, model::removeConnection) },
                                         openNavigation = tmuxNavigationClient === client, onNavigationOpened = { tmuxNavigationClient = null },
@@ -281,7 +266,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         if (notifications && !mobileLayout) AgentNotifications(model) { notifications = false }
         agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { TextButton({ model.agentNavigationError.value = null }) { Text(t("닫기")) } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
-        settings?.let { SettingsDialog(model, mobileLayout, androidInput, it) { settings = null } }
+        settings?.let { SettingsDialog(model, mobileLayout, it) { settings = null } }
         deletion?.let { host -> ConfirmDialog(t("호스트 삭제"), tr("{0}의 로컬 설정과 저장된 자격 증명을 삭제합니다.", host.alias), {
             try {
                 model.credentials.delete(host.credentialRef)
@@ -299,9 +284,11 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun ConnectionScreen(client: ClientConnection, preferences: Preferences, mobileLayout: Boolean, model: AppModel, showAgents: (String) -> Unit, workspace: Boolean = false, sharedFocus: TerminalFocus? = null,
+@Composable internal fun ConnectionScreen(client: ClientConnection, preferences: Preferences, model: AppModel, showAgents: (String) -> Unit, workspace: Boolean = false, sharedFocus: TerminalFocus? = null,
     mobileTabs: @Composable () -> Unit = {},
     openNavigation: Boolean = false, onNavigationOpened: () -> Unit = {}, openShortcutSettings: () -> Unit = {}, inputAllowed: () -> Boolean) {
+    // A workspace group on a wide screen, otherwise the narrow Android layout.
+    val mobileLayout = !workspace
     val status by client.status.collectAsState()
     val remote by client.remote.collectAsState()
     val refreshing by client.refreshing.collectAsState()
@@ -312,7 +299,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     val notice by client.notice.collectAsState()
     val tmuxProblem by client.tmuxProblem.collectAsState()
     var tmuxDetails by remember(tmuxProblem) { mutableStateOf(false) }
-    var navigation by remember { mutableStateOf(!mobileLayout && !workspace) }
+    var navigation by remember { mutableStateOf(false) }
     LaunchedEffect(openNavigation) { if (openNavigation) { navigation = true; onNavigationOpened() } }
     val navigationSheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     LaunchedEffect(navigation, mobileLayout) {
@@ -351,22 +338,12 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     DisposableEffect(client) { onDispose { if (model.visibleConnection === client) model.visibleConnection = null } }
     if (!workspace) PlatformInputRegistration(client, preferences, terminalInputAllowed)
     val currentPane = remote.panes.firstOrNull { it.id == pane }
-    val currentSession = remote.sessions.firstOrNull { it.id == session }
     val canBrowse = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
-    val sessionLabel = when (status.phase) {
-        Phase.Shell -> t("없음 · 일반 SSH")
-        Phase.Disconnected, Phase.Failed -> t("연결 안 됨")
-        Phase.Connecting, Phase.Authenticating, Phase.TrustRequired -> t("확인 중")
-        Phase.Reconnecting -> t("복구 중")
-        Phase.MissingSession -> t("이전 세션 없음")
-        else -> currentSession?.let { displayTreeText(it.name) } ?: t("선택 안 함")
-    }
     val statusDetail = if (status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) || status.canStopRetrying) displayTreeText(status.message) else ""
-    val statusLabel = listOf(displayTreeText(client.host.alias), (if (status.phase == Phase.Restoring && !status.showsConnectionProgress) t("연결됨") else status.phase.displayLabel()), remote.targetLabel(session, pane), statusDetail).filter { it.isNotEmpty() }.joinToString(" · ")
     val agentNotices by model.agentNotifications.collectAsState()
     val hierarchy = remote.hierarchyRows(preferences.showAllHierarchy)
     val navigationContent: @Composable (Modifier) -> Unit = { modifier ->
-        Column(modifier.heightIn(max = if (mobileLayout) 480.dp else 280.dp).verticalScroll(rememberScrollState())) {
+        Column(modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(t("세션"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                 TextButton({ namePrompt = t("세션 만들기") to client::createSession }, enabled = canBrowse, modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
@@ -384,19 +361,11 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         }
     }
     Column(Modifier.fillMaxSize()) {
-        if (!workspace && mobileLayout) {
+        if (mobileLayout) {
             if (status.phase != Phase.Ready && !(status.phase == Phase.Restoring && !status.showsConnectionProgress)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(listOf(status.phase.displayLabel(), statusDetail).filter { it.isNotEmpty() }.distinct().joinToString(" · "),
                         Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
-                    if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
-                }
-            }
-        } else if (!workspace) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Text(statusLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f, fill = false),
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
                     if (status.phase == Phase.Shell && tmuxProblem != null) TmuxInfoButton { tmuxDetails = true }
                 }
             }
@@ -413,16 +382,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         Box(Modifier.fillMaxWidth().height(4.dp)) {
             if (status.showsConnectionProgress) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        if (!mobileLayout && !workspace) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("현재 세션: {0}", sessionLabel), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            TextButton({ navigation = !navigation }) { Text(if (navigation) t("tmux 접기") else t("tmux 관리")) }
-        }
-        if (navigation && !mobileLayout) navigationContent(Modifier)
         if (currentPane?.mode?.isNotBlank() == true) Text(tr("tmux {0} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", currentPane.mode), Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
-        if (!mobileLayout && !workspace) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
-            deletion = tr("패널 {0}", remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: t("제목 미확인")) to { client.manage(TmuxCommand.killPane(target)) }
-        }
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
             CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
                 PlatformTerminal(client, preferences, Modifier.fillMaxSize())
@@ -439,7 +399,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             }
             TimedSnackbar(client.inputNotice, Modifier.align(Alignment.BottomCenter))
         }
-        if (!workspace && mobileLayout) mobileTabs()
+        if (mobileLayout) mobileTabs()
         if (!workspace) TerminalShortcutBar(client, preferences.terminalShortcuts, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open,
             mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, keyboardAlwaysVisible = preferences.androidKeyboardAlwaysVisible,
             inputGate = model, openShortcutSettings = openShortcutSettings)
@@ -645,7 +605,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 
 private enum class SettingsPage { Main, Shortcuts, About }
 
-@Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, androidInput: Boolean, initialPage: SettingsPage, dismiss: () -> Unit) {
+@Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, initialPage: SettingsPage, dismiss: () -> Unit) {
     val local by model.local.collectAsState()
     var forget by remember { mutableStateOf<String?>(null) }
     var page by remember { mutableStateOf(initialPage) }
@@ -694,39 +654,35 @@ private enum class SettingsPage { Main, Shortcuts, About }
                 TextButton({ entryFocus = shortcutFocus; page = SettingsPage.Shortcuts }, modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(shortcutFocus)) {
                     Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
                 }
-                if (androidInput) {
-                    SettingsSwitch(t("키보드 항상 보이기"), local.preferences.androidKeyboardAlwaysVisible) { enabled ->
-                        model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = enabled)) }
-                    }
-                    Text(t("터미널에서 키보드를 유지하고 크기를 키보드 위 영역에 맞춥니다. 끄면 이전 크기 설정으로 돌아갑니다."), style = MaterialTheme.typography.bodySmall)
-                    Text(t("키보드가 열릴 때"), style = MaterialTheme.typography.titleSmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("auto" to t("자동"), "pan" to t("위로 이동"), "resize" to t("리사이즈")).forEach { (value, label) ->
-                            FilterChip(local.preferences.effectiveAndroidKeyboardMode == value,
-                                { model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardMode = value)) } },
-                                enabled = !local.preferences.androidKeyboardAlwaysVisible, label = { Text(label) })
-                        }
-                    }
-                    Text(t(when (local.preferences.effectiveAndroidKeyboardMode) {
-                        "pan" -> "터미널 크기를 유지하고, 가려지는 내용만 위로 이동합니다."
-                        "resize" -> "키보드 위 영역에 맞춰 터미널 행 수를 변경합니다. 실행 중인 앱이 다시 배치될 수 있습니다."
-                        else -> "짧은 출력은 리사이즈하고, 긴 출력과 전체 화면 앱은 위로 이동합니다."
-                    }), style = MaterialTheme.typography.bodySmall)
-                    SettingsSwitch(t("하단 단축키 두 줄로 표시"), local.preferences.mobileShortcutBarTwoRows) { enabled ->
-                        model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = enabled)) }
-                    }
-                    Text(t("너비 840dp 미만의 좁은 화면에 적용합니다."), style = MaterialTheme.typography.bodySmall)
+                SettingsSwitch(t("키보드 항상 보이기"), local.preferences.androidKeyboardAlwaysVisible) { enabled ->
+                    model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = enabled)) }
                 }
-                if (androidInput) PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
+                Text(t("터미널에서 키보드를 유지하고 크기를 키보드 위 영역에 맞춥니다. 끄면 이전 크기 설정으로 돌아갑니다."), style = MaterialTheme.typography.bodySmall)
+                Text(t("키보드가 열릴 때"), style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("auto" to t("자동"), "pan" to t("위로 이동"), "resize" to t("리사이즈")).forEach { (value, label) ->
+                        FilterChip(local.preferences.effectiveAndroidKeyboardMode == value,
+                            { model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardMode = value)) } },
+                            enabled = !local.preferences.androidKeyboardAlwaysVisible, label = { Text(label) })
+                    }
+                }
+                Text(t(when (local.preferences.effectiveAndroidKeyboardMode) {
+                    "pan" -> "터미널 크기를 유지하고, 가려지는 내용만 위로 이동합니다."
+                    "resize" -> "키보드 위 영역에 맞춰 터미널 행 수를 변경합니다. 실행 중인 앱이 다시 배치될 수 있습니다."
+                    else -> "짧은 출력은 리사이즈하고, 긴 출력과 전체 화면 앱은 위로 이동합니다."
+                }), style = MaterialTheme.typography.bodySmall)
+                SettingsSwitch(t("하단 단축키 두 줄로 표시"), local.preferences.mobileShortcutBarTwoRows) { enabled ->
+                    model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = enabled)) }
+                }
+                Text(t("너비 840dp 미만의 좁은 화면에 적용합니다."), style = MaterialTheme.typography.bodySmall)
+                PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
             }
             SettingsCard(t("작업 공간"), t("계층 표시와 화면 전환을 선택합니다.")) {
                 SettingsSwitch(t("단일 창도 표시"), local.preferences.showAllHierarchy) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) } }
-                if (androidInput) {
-                    SettingsSwitch(t("부드러운 터미널 화면 전환"), local.preferences.smoothTerminalTransitions) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) } }
-                    Text(t("재접속 시 크기·페이드·블러 효과 적용"), style = MaterialTheme.typography.bodySmall)
-                }
+                SettingsSwitch(t("부드러운 터미널 화면 전환"), local.preferences.smoothTerminalTransitions) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) } }
+                Text(t("재접속 시 크기·페이드·블러 효과 적용"), style = MaterialTheme.typography.bodySmall)
             }
-            if (androidInput) SettingsCard(t("연결"), t("백그라운드 연결과 배터리 사용을 관리합니다.")) { PlatformConnectionSettings(model) }
+            SettingsCard(t("연결"), t("백그라운드 연결과 배터리 사용을 관리합니다.")) { PlatformConnectionSettings(model) }
             SettingsCard(t("알림"), t("에이전트 알림과 OS 알림을 선택합니다.")) { AgentNotificationSettingsUi(model) }
             SettingsCard(t("동기화"), t("기기 간 공통 설정과 호스트를 공유합니다.")) { CloudSyncSettings(model) }
             SettingsCard(t("보안·저장"), t("신뢰한 서버와 이 기기의 저장 위치를 확인합니다.")) {

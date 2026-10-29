@@ -92,7 +92,7 @@ Android 터미널 assets는 `web/bundle.mjs`로 갱신하며 CI에서 소스와 
 호스트/세션 예약은 연결 시작 전에 이루어지며 알림·탐색기·모바일 시트가 같은 탭 경로를 사용합니다.
 `ClientConnection.generation`은 지연된 대상 선택에 쓰는 읽기 전용 어댑터 세대입니다. Rust wire·UniFFI 형식은 유지합니다.
 
-`App(androidInput = true)`는 창의 사용 가능한 너비 840dp를 기준으로 화면을 선택합니다. Android 입력 기능은
+`App`은 창의 사용 가능한 너비 840dp를 기준으로 화면을 선택합니다. Android 입력 기능은
 화면 배치와 별개이며 입력 도구·볼륨키는 활성 탭에만 등록합니다. 좁은 창의 하단 가로 탭은 전체 연결 목록을 사용하고 스크롤 상태는 선택 연결의 구성 수명 바깥에 둡니다. 알림은 버튼 기준 팝업이며 IME를 제외한 화면 공간으로 제한합니다. 여러 표면의 모달 입력 차단은 모델의 소유자 집합으로 공유합니다.
 `AndroidTerminalResources`는 Activity 안에서 연결별 WebView를 보관합니다. 숨긴 표면은 unbind하고 입력·크기 요청을 막으며,
 탭 닫기와 Activity 해제 때 WebView를 정리합니다. 프로세스 소유 Rust 엔진과 연결 수명은 그대로 유지합니다.

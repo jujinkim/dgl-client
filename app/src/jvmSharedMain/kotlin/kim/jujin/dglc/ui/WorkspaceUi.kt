@@ -226,7 +226,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                                 val terminalFocus = focus(client)
                                 terminalFocus.activate = { if (!model.inputBlocked()) model.selectConnection(client) }
                                 CompositionLocalProvider(LocalTerminalOcclusion provides groupOcclusion) {
-                                    ConnectionScreen(client, preferences, false, model, { showAgents(client, it) }, workspace = true, sharedFocus = terminalFocus) {
+                                    ConnectionScreen(client, preferences, model, { showAgents(client, it) }, workspace = true, sharedFocus = terminalFocus) {
                                         model.selected.value === client
                                     }
                                 }

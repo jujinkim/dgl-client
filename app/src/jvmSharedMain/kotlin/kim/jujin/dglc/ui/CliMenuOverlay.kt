@@ -20,8 +20,7 @@ internal class CliMenuOverlay {
 internal val LocalCliMenuOverlay = staticCompositionLocalOf<CliMenuOverlay?> { null }
 
 /** Android keeps the menu in the editor's Activity window, without moving input focus. */
-@Composable internal fun CliMenuOverlayHost(enabled: Boolean, content: @Composable () -> Unit) {
-    if (!enabled) { content(); return }
+@Composable internal fun CliMenuOverlayHost(content: @Composable () -> Unit) {
     val overlay = remember { CliMenuOverlay() }
     CompositionLocalProvider(LocalCliMenuOverlay provides overlay) {
         Box(Modifier.fillMaxSize()) {
