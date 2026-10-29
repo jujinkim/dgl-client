@@ -76,6 +76,9 @@ class RustClientConnection(
     override val generation: Long get() = adapterGeneration
     private var lastSession = host.lastSession
     private var lastPane = host.lastPane
+    // applyState runs under the adapter lock; the recent target is saved after it is released.
+    private var recentPending = false
+    private val recentSaveLock = Any()
     private val resizes = TerminalResizeQueue()
     private val recovery = TerminalRecovery()
     private val presentation = TerminalPresentation()
@@ -109,7 +112,9 @@ class RustClientConnection(
         stateJob = scope.launch {
             try {
                 val credential = credentials.read(host.credentialRef) ?: error("Storage")
-                val trusted = local.value.trust[host.endpoint]?.takeIf { credentials.read(trustRef())?.password == it }
+                // A settings fingerprint counts only while its protected copy matches. A mismatch
+                // is not downgraded to a first-connection prompt; the user removes the trust first.
+                val trusted = local.value.trust[host.endpoint]?.also { if (credentials.read(trustRef())?.password != it) throw TrustRecordMismatch() }
                 val secret = buildJsonObject { put("password", credential.password); put("privateKey", credential.privateKey); put("passphrase", credential.passphrase) }.toString()
                 val connection = NativeConnection(json.encodeToString(HostProfile.serializer(), host.copy(lastSession = lastSession, lastPane = lastPane)), secret, trusted)
                 synchronized(this@RustClientConnection) {
@@ -159,6 +164,7 @@ class RustClientConnection(
                     delay(16)
                 }
             } catch (e: CancellationException) { throw e }
+            catch (_: TrustRecordMismatch) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("신뢰한 호스트키 기록이 보호 저장소와 일치하지 않아 연결을 차단했습니다. 설정 > 보안·저장에서 이 서버의 신뢰를 삭제한 뒤 지문을 다시 확인하세요.")) } } }
             catch (_: Exception) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("보호 저장소 또는 네이티브 연결을 열지 못했습니다.")); native?.stop() } } }
         }
     }
@@ -256,7 +262,20 @@ class RustClientConnection(
         status.value = nextStatus
         if (phase == Phase.Ready && (lastSession != session.value || lastPane != pane.value)) {
             lastSession = session.value; lastPane = pane.value
-            try { updateLocal { old -> old.copy(hosts = old.hosts.map { if (it.id == host.id) it.copy(lastConnected = System.currentTimeMillis(), lastSession = lastSession, lastPane = lastPane) else it }) } }
+            if (!recentPending) { recentPending = true; scope.launch(NonCancellable) { saveRecent() } }
+        }
+    }
+    // updateLocal takes the app model lock and writes settings to disk. The app model calls
+    // connect() and title updates under its own lock, so this never runs under the adapter lock.
+    private fun saveRecent() {
+        // The save lock keeps writes ordered; each one publishes the latest target.
+        synchronized(recentSaveLock) {
+            val (recentSession, recentPane) = synchronized(this) {
+                if (!recentPending) return
+                recentPending = false
+                lastSession to lastPane
+            }
+            try { updateLocal { old -> old.copy(hosts = old.hosts.map { if (it.id == host.id) it.copy(lastConnected = System.currentTimeMillis(), lastSession = recentSession, lastPane = recentPane) else it }) } }
             catch (_: Exception) { notice.value = t("최근 연결 정보를 저장하지 못했습니다.") }
         }
     }
@@ -655,6 +674,7 @@ class RustClientConnection(
     @Synchronized override fun disconnect() { backgroundResume.cancel(); agents.value = AgentSnapshot(); ++epoch; ++adapterGeneration; detach(); status.value = ConnectionStatus() }
     @Synchronized override fun close() { if (closed) return; closed = true; disconnect(); surface = null; val pending = cleanup.toList(); scope.launch { pending.forEach { it.join() }; scope.cancel() } }
 
+    private class TrustRecordMismatch : Exception()
     private fun message(code: String) = when (code) {
         "HostKeyChanged" -> t("저장된 호스트키가 변경되어 인증 전에 연결을 차단했습니다.")
         "Authentication" -> t("인증 실패: 비밀번호·개인키·키 암호를 확인하세요.")

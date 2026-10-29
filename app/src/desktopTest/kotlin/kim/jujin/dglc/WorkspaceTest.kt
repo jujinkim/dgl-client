@@ -212,6 +212,34 @@ class WorkspaceTest {
         val model = AppModel(LocalRepository(directory), credentials, "test", keys, inbox) { host, _, _, _ -> Connection(host).also { created += it } }
         try { test(model, created) } finally { model.close(); directory.deleteRecursively() }
     }
+    @Test fun connectionResourcesAreSharedPerConnectionAndReleasedTogether() = runBlocking {
+        withModel { model, created ->
+            repeat(2) { model.open(HostProfile("host$it", "alias", "example.test", username = "test")) }
+            val (first, second) = created
+            // Concurrent first lookups must agree on one connection-owned draft.
+            val composers = (1..8).map { async(Dispatchers.Default) { model.composer(first) } }.awaitAll()
+            assertTrue(composers.all { it === composers.first() })
+            val composer = composers.first()
+            val titles = model.connectionTitles(first)
+            val shortcuts = model.shortcutInput(first)
+            val font = model.terminalFont(first)
+            composer.edit(androidx.compose.ui.text.input.TextFieldValue("draft"))
+            model.reconcileWorkspace()
+            assertSame(composer, model.composer(first)); assertSame(titles, model.connectionTitles(first))
+            assertSame(shortcuts, model.shortcutInput(first)); assertSame(font, model.terminalFont(first))
+            val kept = model.composer(second)
+            model.removeConnection(first)
+            assertEquals("", composer.value.value.text, "removal closes the removed connection's draft")
+            assertNotSame(composer, model.composer(first)); assertNotSame(titles, model.connectionTitles(first))
+            assertNotSame(shortcuts, model.shortcutInput(first)); assertNotSame(font, model.terminalFont(first))
+            assertSame(kept, model.composer(second))
+            // Titles of a connection that is no longer open are dropped; its other state is not.
+            val stale = model.composer(first); val staleTitles = model.connectionTitles(first)
+            model.reconcileWorkspace()
+            assertSame(stale, model.composer(first))
+            assertNotSame(staleTitles, model.connectionTitles(first))
+        }
+    }
     @Test fun titleUpdatesFollowForegroundAndVisibleGroupsWithoutSurfaceSubscriptions() = runBlocking {
         withModel { model, created ->
             repeat(3) { model.open(HostProfile("host$it", "alias", "example.test", username = "test")) }

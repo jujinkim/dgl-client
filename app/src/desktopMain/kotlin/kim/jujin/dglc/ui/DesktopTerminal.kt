@@ -94,7 +94,8 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
     }) { Text("개인키 파일 가져오기") }
 }
 
-actual fun copyPublicKey(value: String) { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(value), null) }
+@Composable actual fun rememberPublicKeyCopier(): (String) -> Unit =
+    remember { { value: String -> Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(value), null) } }
 @Composable actual fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean) {}
 @Composable actual fun PlatformConnectionSettings(model: kim.jujin.dglc.AppModel) {}
 @Composable actual fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit) {}

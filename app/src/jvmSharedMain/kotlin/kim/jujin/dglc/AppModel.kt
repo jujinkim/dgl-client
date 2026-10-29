@@ -41,12 +41,20 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     val inputBlocks = MutableStateFlow<Set<Any>>(emptySet())
     private val tabClients = linkedMapOf<String, ClientConnection>()
     private val reservations = mutableMapOf<Pair<String, String>, ClientConnection>()
-    private val sessionJobs = java.util.IdentityHashMap<ClientConnection, Job>()
-    private val shortcutInputs = java.util.IdentityHashMap<ClientConnection, ShortcutInput>()
-    private val sessionTitles = java.util.IdentityHashMap<ClientConnection, SessionTitleCache>()
-    @Synchronized fun connectionTitles(client: ClientConnection) = sessionTitles.getOrPut(client) { SessionTitleCache() }
-    @Synchronized fun shortcutInput(client: ClientConnection) = shortcutInputs.getOrPut(client) { ShortcutInput(client) }
-    @Synchronized fun clearShortcutModifiers() { shortcutInputs.values.forEach { it.clear() } }
+    /** UI state owned by one connection, created lazily and guarded by this model's lock. */
+    private class ConnectionResources {
+        var sessionJob: Job? = null
+        var shortcutInput: ShortcutInput? = null
+        var titles: SessionTitleCache? = null
+        var composer: TextComposer? = null
+        var font: TerminalFontSize? = null
+        val empty get() = sessionJob == null && shortcutInput == null && titles == null && composer == null && font == null
+    }
+    private val resources = java.util.IdentityHashMap<ClientConnection, ConnectionResources>()
+    private fun resources(client: ClientConnection) = resources.getOrPut(client) { ConnectionResources() }
+    @Synchronized fun connectionTitles(client: ClientConnection) = resources(client).run { titles ?: SessionTitleCache().also { titles = it } }
+    @Synchronized fun shortcutInput(client: ClientConnection) = resources(client).run { shortcutInput ?: ShortcutInput(client).also { shortcutInput = it } }
+    @Synchronized fun clearShortcutModifiers() { resources.values.forEach { it.shortcutInput?.clear() } }
     @Synchronized fun blockInput(owner: Any, blocked: Boolean) {
         if (blocked) clearShortcutModifiers()
         inputBlocks.value = if (blocked) inputBlocks.value + owner else inputBlocks.value - owner
@@ -55,7 +63,10 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     @Synchronized fun tabClient(id: String?) = tabClients[id]
     @Synchronized fun tabId(client: ClientConnection) = tabClients.entries.firstOrNull { it.value === client }?.key
     @Synchronized fun reconcileWorkspace() {
-        sessionTitles.keys.removeAll { client -> connections.value.none { it === client } }
+        resources.entries.removeAll { (client, owned) ->
+            if (connections.value.none { it === client }) owned.titles = null
+            owned.empty
+        }
         tabClients.filterValues { it !in connections.value }.keys.toList().forEach { id ->
             workspace.value = workspace.value.close(id); tabClients.remove(id)
         }
@@ -81,11 +92,10 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         selected.value = client
         tabId(client)?.let { workspace.value = workspace.value.select(it) }
     }
-    private val composers = java.util.IdentityHashMap<ClientConnection, TextComposer>()
-    fun composer(connection: ClientConnection): TextComposer = composers.getOrPut(connection) { TextComposer(connection, agentScope) }
-    private val terminalFonts = java.util.IdentityHashMap<ClientConnection, TerminalFontSize>()
+    @Synchronized fun composer(connection: ClientConnection): TextComposer =
+        resources(connection).run { composer ?: TextComposer(connection, agentScope).also { composer = it } }
     @Synchronized fun terminalFont(connection: ClientConnection): TerminalFontSize =
-        terminalFonts.getOrPut(connection) { TerminalFontSize(local.value.preferences.fontSize) }
+        resources(connection).run { font ?: TerminalFontSize(local.value.preferences.fontSize).also { font = it } }
     var cloudSync: CloudSyncController? = null
     var chooseSyncFile: (Boolean) -> Unit = {}
     var languageChanged: (String) -> Unit = {}
@@ -166,7 +176,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         workspace.value = workspace.value.add(id)
         clearShortcutModifiers()
         selected.value = connection
-        sessionJobs[connection] = agentScope.launch {
+        resources(connection).sessionJob = agentScope.launch {
             connection.session.collect { session -> synchronized(this@AppModel) {
                 if (session != null && connection in connections.value) {
                     reservations.entries.removeAll { it.value === connection }
@@ -223,16 +233,15 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     }
     fun removeConnection(connection: ClientConnection) {
         val composer = synchronized(this) {
-            sessionJobs.remove(connection)?.cancel()
+            val owned = resources.remove(connection)
+            owned?.sessionJob?.cancel()
             reservations.entries.removeAll { it.value === connection }
             val id = tabId(connection)
             if (id != null) { workspace.value = workspace.value.close(id); tabClients.remove(id) }
             connections.value -= connection
             if (selected.value == connection) selected.value = tabClient(workspace.value.activeTab)
-            shortcutInputs.remove(connection)?.clear()
-            terminalFonts.remove(connection)
-            sessionTitles.remove(connection)
-            composers.remove(connection)
+            owned?.shortcutInput?.clear()
+            owned?.composer
         }
         // Native state polling can call modify(); never close a native owner under this lock.
         composer?.close()
@@ -242,9 +251,9 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     fun close() {
         val (drafts, clients) = synchronized(this) {
             agentScope.cancel()
-            val owned = composers.values.toList() to connections.value
-            composers.clear(); terminalFonts.clear(); shortcutInputs.clear(); connections.value = emptyList(); selected.value = null; visibleConnection = null; visibleConnections = emptySet()
-            tabClients.clear(); reservations.clear(); sessionJobs.clear(); sessionTitles.clear(); inputBlocks.value = emptySet()
+            val owned = resources.values.mapNotNull { it.composer } to connections.value
+            resources.clear(); connections.value = emptyList(); selected.value = null; visibleConnection = null; visibleConnections = emptySet()
+            tabClients.clear(); reservations.clear(); inputBlocks.value = emptySet()
             chooseSyncFile = {}; sendAgentNotification = {}; foreground = false
             owned
         }

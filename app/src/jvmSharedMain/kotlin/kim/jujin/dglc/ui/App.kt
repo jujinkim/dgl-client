@@ -48,7 +48,8 @@ import kotlinx.coroutines.flow.first
 @Composable expect fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean)
 @Composable expect fun PlatformConnectionSettings(model: AppModel)
 @Composable expect fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit)
-expect fun copyPublicKey(value: String)
+/** Clipboard writer scoped to the calling composition, not to a process-wide context. */
+@Composable expect fun rememberPublicKeyCopier(): (String) -> Unit
 internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
 // Height removed by IME only; system bars/cutouts already belong to the logical viewport.
 internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { WindowInsets(0) }
@@ -539,6 +540,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     var favorite by remember { mutableStateOf(original?.favorite ?: false) }
     var generatedPublic by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    val copyPublicKey = rememberPublicKeyCopier()
     EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text(if (original == null) t("SSH 호스트 추가") else t("호스트 편집")) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(0.dp)) {
             OutlinedTextField(alias, { alias = it }, label = { Text(t("별칭")) }, singleLine = true)

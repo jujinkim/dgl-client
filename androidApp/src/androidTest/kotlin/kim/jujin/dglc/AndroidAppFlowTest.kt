@@ -47,7 +47,8 @@ class AndroidAppFlowTest {
                     app = (activity.application as DglApplication).connections().app
                     previous = app.local.value
                     app.credentials.write(profile.id, credential)
-                    app.update(previous.copy(hosts = previous.hosts + profile, trust = previous.trust + (profile.endpoint to fixture.getString("fingerprint"))))
+                    // No trust seed: a settings fingerprint without its protected copy is rejected, not re-prompted.
+                    app.update(previous.copy(hosts = previous.hosts + profile, trust = previous.trust - profile.endpoint))
                     app.update(app.local.value.copy(preferences = app.local.value.preferences.copy(language = "ko", volumeKeysEnabled = true, smoothTerminalTransitions = false, mobilePaneToolbarVisible = true, showAllHierarchy = true,
                         volumeUp = VolumeBinding(VolumeAction.Macro, listOf(
                             MacroStep.Text("dgl_volume_count=\$((\${dgl_volume_count:-0}+1)); tmux set-option -p -t \"\$TMUX_PANE\" @dgl-volume-count \"\$dgl_volume_count\""),

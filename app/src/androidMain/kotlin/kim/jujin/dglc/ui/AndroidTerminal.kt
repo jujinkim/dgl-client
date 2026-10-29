@@ -678,10 +678,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
 }
 
-private var clipboardContext: WeakReference<Context>? = null
 @Composable actual fun ImportKeyButton(onKey: (String) -> Unit, onError: (String) -> Unit) {
     val context = LocalContext.current
-    SideEffect { clipboardContext = WeakReference(context.applicationContext) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) try {
             context.contentResolver.openInputStream(uri)?.use {
@@ -693,7 +691,9 @@ private var clipboardContext: WeakReference<Context>? = null
     }
     TextButton({ launcher.launch(arrayOf("*/*")) }) { Text(t("개인키 파일 가져오기")) }
 }
-actual fun copyPublicKey(value: String) {
-    val context = clipboardContext?.get() ?: return
-    context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("SSH public key", value))
+@Composable actual fun rememberPublicKeyCopier(): (String) -> Unit {
+    val context = LocalContext.current.applicationContext
+    return remember(context) { { value: String ->
+        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("SSH public key", value))
+    } }
 }
