@@ -169,9 +169,6 @@ impl NativeConnection {
     pub fn completions_json(&self) -> String {
         serde_json::to_string(&self.inner.completions()).unwrap()
     }
-    pub fn cancel(&self, request: u64) -> Result<(), CoreError> {
-        Ok(self.inner.cancel(request)?)
-    }
     pub fn stop(&self) {
         self.inner.close()
     }
@@ -180,16 +177,7 @@ impl NativeConnection {
         self.inner.close();
         self.inner.join().await;
     }
-    pub fn buffered_bytes(&self) -> u64 {
-        self.inner.output().metrics().0 as u64
-    }
 }
-#[uniffi::export]
-pub fn validate_settings(json: String) -> Result<String, CoreError> {
-    let state = dgl_core::model::LocalState::decode(json.as_bytes())?;
-    serde_json::to_string(&state).map_err(|_| invalid())
-}
-
 #[uniffi::export]
 pub fn new_sync_document() -> Result<String, CoreError> {
     Ok(dgl_core::sync::Document::default().encode()?)

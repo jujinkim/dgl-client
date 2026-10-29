@@ -2,6 +2,7 @@ use dgl_core::{
     Error,
     command::Operation,
     connection::{Action, Connection, Phase},
+    flow::OutputEvent,
     model::{AuthKind, Credential, HostProfile},
     ssh,
 };
@@ -67,6 +68,23 @@ async fn completion(c: &Connection, id: u64) {
     })
     .await
     .unwrap();
+}
+/// Subscribes and acknowledges every output event, recording them until the task is aborted.
+fn drain(c: &Arc<Connection>) -> (Arc<Mutex<Vec<OutputEvent>>>, tokio::task::JoinHandle<()>) {
+    let subscription = c.output().subscribe().unwrap();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let recorded = events.clone();
+    let output = c.output();
+    let task = tokio::spawn(async move {
+        loop {
+            while let Ok(Some(e)) = output.poll(subscription) {
+                output.ack(subscription, e.sequence).unwrap();
+                recorded.lock().unwrap().push(e);
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    });
+    (events, task)
 }
 
 #[tokio::test]
@@ -746,19 +764,7 @@ async fn workspace_focus_tree_and_independent_connections() {
         .unwrap()
         .id
         .clone();
-    let sub = c.output().subscribe().unwrap();
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let recorded = events.clone();
-    let output = c.output();
-    let drain = tokio::spawn(async move {
-        loop {
-            while let Ok(Some(e)) = output.poll(sub) {
-                output.ack(sub, e.sequence).unwrap();
-                recorded.lock().unwrap().push(e);
-            }
-            tokio::time::sleep(Duration::from_millis(2)).await;
-        }
-    });
+    let (events, drain) = drain(&c);
     completion(
         &c,
         c.action(Action::SelectTarget {

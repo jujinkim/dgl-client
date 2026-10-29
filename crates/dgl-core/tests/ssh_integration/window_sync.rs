@@ -1,9 +1,5 @@
 use super::*;
-use dgl_core::{
-    connection::State,
-    flow::{OutputEvent, OutputKind},
-    model::Size,
-};
+use dgl_core::{connection::State, flow::OutputKind, model::Size};
 
 async fn until(c: &Connection, predicate: impl Fn(&State) -> bool) {
     tokio::time::timeout(Duration::from_secs(10), async {
@@ -27,22 +23,6 @@ async fn tmux(ssh: &ssh::Ssh, args: &str) -> String {
     let (code, bytes) = ssh.execute(&command).await.unwrap();
     assert_eq!(code, 0, "{}", String::from_utf8_lossy(&bytes));
     String::from_utf8(bytes).unwrap().trim().to_owned()
-}
-fn drain(c: &Arc<Connection>) -> (Arc<Mutex<Vec<OutputEvent>>>, tokio::task::JoinHandle<()>) {
-    let subscription = c.output().subscribe().unwrap();
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let recorded = events.clone();
-    let output = c.output();
-    let task = tokio::spawn(async move {
-        loop {
-            while let Ok(Some(e)) = output.poll(subscription) {
-                output.ack(subscription, e.sequence).unwrap();
-                recorded.lock().unwrap().push(e);
-            }
-            tokio::time::sleep(Duration::from_millis(2)).await;
-        }
-    });
-    (events, task)
 }
 #[tokio::test]
 #[ignore = "requires scripts/integration.py; real SSH PTY handoff and window-wide control output"]
