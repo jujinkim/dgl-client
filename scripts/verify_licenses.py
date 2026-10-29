@@ -37,9 +37,8 @@ def verify(packages, registry, root=ROOT):
         for text in record['texts']:
             check_file(text, root)
         checked += 1
-    required = {'Skiko', 'Skia', 'JNA native dispatch and libffi', 'Skia pack archive notices', 'Skia/brotli',
-                'Skia/d3d12allocator', 'Skia/dng_sdk', 'Skia/expat', 'Skia/freetype', 'Skia/harfbuzz', 'Skia/icu',
-                'Skia/libjpeg-turbo', 'Skia/libpng', 'Skia/libwebp', 'Skia/piex', 'Skia/zlib', 'Skia/wuffs', 'Skia/vulkanmemoryallocator'}
+    # The APK ships JNA's libjnidispatch.so with libffi linked in.
+    required = {'JNA native dispatch and libffi'}
     native = registry.get('native', [])
     if not required <= {n['name'] for n in native}:
         raise ValueError('Missing native component notices')

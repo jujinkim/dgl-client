@@ -190,6 +190,7 @@ Windows 빌드·실행과 실제 화면 확인은 하지 않았습니다.
 JVM·Rust·웹·스크립트 단위 검사, 격리 SSH/tmux 3.7c 통합 검사, Android Debug APK·계측 컴파일·lint를 확인했습니다.
 이어서 업스트림 새 버전 안내로 실패하던 `verify_lint.py`를 위해 compileSdk 37·activity-compose 1.13.0으로 올렸습니다(targetSdk 36 유지).
 같은 때 OSV에 새로 올라온 `libz-sys` 빌드 스크립트 환경 변수 노출 권고(RUSTSEC-2026-0418)는 1.1.31로 해결했습니다.
+라이선스 등록 정보에서 배포하지 않는 이전 JVM 데스크톱 패키지 59개와 Skiko/Skia 네이티브 고지를 뺐고, 근거 파일은 보존했습니다.
 Android 계측·Windows 빌드·GUI는 실행하지 않았습니다.
 
 ## 과거 파일 찾기

@@ -31,7 +31,7 @@ rendering test rebuild recipe remain available.
 
 The tested replacement build recipe is `licenses/jediterm-rebuild/README.md`. It builds both published 3.59 source JARs using JDK 17, Kotlin 2.4.21 and Gradle 9.7.0, preserving upstream Kotlin module names. It is not a byte-identical upstream build. The library JARs are replaceable; the original app does not shade or modify them.
 
-Skiko 0.9.22.2 uses Skia revision `a00c390e98`, package `m132-a00c390e98-1`. Versioned Skiko LICENSE/NOTICE, Skia LICENSE/DEPS, archive notices and linked native component notices are included. Portions of this software are copyright the FreeType Project (https://www.freetype.org). JNA 5.18.1 native dispatch and its embedded libffi license are also included. Native notices may conservatively cover additional components present in the upstream Skia archive.
+The Android APK ships JNA 5.18.1 native dispatch (`libjnidispatch.so`); its license and the embedded libffi license are included.
 
 No repository-wide license for new project code is inferred on the owner's behalf.
 

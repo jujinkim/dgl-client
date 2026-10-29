@@ -21,6 +21,8 @@ POM/parent-POM license declarations, embedded NOTICE/LICENSE files and pinned na
 source revisions. Evidence bytes are stored unmodified under `evidence/`, addressed
 by SHA-256. Apache-2.0 is selected for dual-licensed JNA. License text hashes are
 checked independently from dependency artifacts. No unknown declaration is accepted.
+The registries list only Gradle/npm packages the Android APK ships; evidence for
+removed components (the retired JVM desktop, Skiko/Skia) stays in `evidence/` unmodified.
 
 Run `python3 scripts/verify_licenses.py` after `./gradlew writeDependencyInventory`.
 `refresh_licenses.py` is an explicit maintenance command, never a CI auto-approval
