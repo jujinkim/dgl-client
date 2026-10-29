@@ -83,7 +83,6 @@ TESTS = {
                         'simultaneousClientsSnapshotDuringOutputAndSessionDeletion'],
     'RecoveryTest': ['repeatedDisconnectBlocksInputPreservesPidAndDoesNotReplaceMissingSession'],
     'PerformanceTest': ['loopbackInputLatencyAndSustainedOutput'],
-    'WindowsSecurityTest': ['currentUserDpapiRoundTripTamperAndPathValidation'],
 }
 EXPECTED = {'kim.jujin.dglc.' + cls + '.' + name for cls, names in TESTS.items() for name in names}
 
@@ -101,8 +100,6 @@ def verify(directory, mode):
     if set(cases) != EXPECTED:
         raise ValueError('Missing or unexpected JVM tests: ' + str(sorted(set(cases) ^ EXPECTED)))
     allowed = set()
-    if mode != 'windows':
-        allowed |= {n for n in EXPECTED if '.WindowsSecurityTest.' in n}
     if mode != 'ssh':
         allowed |= {n for n in EXPECTED if any('.' + cls + '.' in n for cls in
                     ('IntegrationTest', 'RecoveryTest', 'PerformanceTest'))}
@@ -115,7 +112,7 @@ def verify(directory, mode):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', choices=['linux', 'windows', 'ssh'], required=True)
+    parser.add_argument('--mode', choices=['linux', 'ssh'], required=True)
     parser.add_argument('--output', type=str, required=True)
     args = parser.parse_args()
     report = {'schema': 1, 'complete': False, 'status': 'failed', 'context': context(), 'mode': args.mode}

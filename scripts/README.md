@@ -31,7 +31,7 @@
 |---|---|
 | `generate_ui_icons.py` | 공통 SVG에서 Compose 벡터·Rust 포함 목록 생성. `--check`로 SVG 형식·생성물 일치 검사; [UI 아이콘 안내](../assets/ui-icons/README.md) |
 | `check_prompt.py` / `verify_wrapper.py` | 원문 요구사항·Gradle bootstrap 무결성 |
-| `verify_test_results.py` | JVM의 모든 지정 테스트 결과·예상 skip 검사 (`linux`, JVM 참조 SSH용 `ssh`, `windows`) |
+| `verify_test_results.py` | JVM의 모든 지정 테스트 결과·예상 skip 검사 (`linux`, JVM 참조 SSH용 `ssh`) |
 | `verify_android_results.py` | 계측의 지정 테스트 이름·완료·실패/skip 검사; 실행 도구에서 import |
 | `verify_lint.py` | lint 진단·검토 조건·만료 확인 |
 | `scan_secrets.py` | Gitleaks로 작업 파일·전체 staged snapshot·Git refs 검사 |

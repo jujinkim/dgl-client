@@ -61,7 +61,6 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
                 implementation("org.jetbrains.jediterm:jediterm-ui:3.59")
                 implementation("org.jetbrains.jediterm:jediterm-core:3.59")
-                implementation("net.java.dev.jna:jna-platform:5.18.1")
             }
         }
         val desktopTest by getting {

@@ -70,14 +70,15 @@ class ReportTests(unittest.TestCase):
             ET.ElementTree(suite).write(path)
             ssh_tests = sum(any('.' + cls + '.' in name for cls in
                                 ('IntegrationTest', 'RecoveryTest', 'PerformanceTest')) for name in EXPECTED)
-            self.assertEqual(len(EXPECTED) - ssh_tests, verify_jvm(root, 'windows')['passed'])
-            dpapi = next(c for c in suite if 'WindowsSecurityTest' in c.attrib['classname'])
-            ET.SubElement(dpapi, 'skipped')
+            self.assertEqual(len(EXPECTED) - ssh_tests, verify_jvm(root, 'linux')['passed'])
+            with self.assertRaises(ValueError): verify_jvm(root, 'ssh')
+            protocol = next(c for c in suite if c.attrib['classname'].endswith('.ProtocolTest'))
+            ET.SubElement(protocol, 'skipped')
             ET.ElementTree(suite).write(path)
-            with self.assertRaises(ValueError): verify_jvm(root, 'windows')
-            suite.remove(dpapi)
+            with self.assertRaises(ValueError): verify_jvm(root, 'linux')
+            suite.remove(protocol)
             ET.ElementTree(suite).write(path)
-            with self.assertRaises(ValueError): verify_jvm(root, 'windows')
+            with self.assertRaises(ValueError): verify_jvm(root, 'linux')
 
     def test_android_missing_and_skipped_cases_rejected(self):
         output = ''
