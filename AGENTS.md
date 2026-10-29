@@ -13,7 +13,7 @@
 - 공통 코어는 `crates/dgl-core`, 바인딩은 `crates/dgl-uniffi`/`coreBindings`, Android는 `mobileUi`/`app`/`androidApp`, 데스크톱은 `desktop`이다.
 - Kotlin/Java 제품·참조·검사 패키지와 디렉터리 루트는 `kim.jujin.dglc`로 통일한다. 기존 보호 저장 식별자는 패키지 이름과 별개이며 자격 증명 호환성을 유지한다.
 - Android·데스크톱 제품은 Rust 단일 엔진이다. `app/src/referenceTest`와 JVM 렌더러는 회귀·fixture용이며 제품 실행 경로로 되살리지 않는다.
-- `web/`는 Android 터미널 assets 소스다. 랜딩 웹사이트 소스로 해석하지 않는다.
+- `web/`는 Android 터미널 assets에 xterm.js를 복사하는 도구와 브리지 단위 검사다. 브리지 소스는 `app/src/androidMain/assets/terminal`에서 직접 편집한다. 랜딩 웹사이트 소스로 해석하지 않는다.
 - tmux가 원격 상태의 기준이다. 연결 종료는 원격 작업 삭제가 아니며 복구 중 입력 차단·실패 입력 무재전송·대상 세대 검사를 유지한다.
 - `scripts/README.md`와 `docs/DEVELOPMENT.md`의 실제 진입점을 유지한다. 삭제·이동 시 코드·CI·문서 참조를 함께 정리한다.
 - Android Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나만 사용한다. 검사·배포 시 APK 복사본이나 대시보드 중복 항목을 만들지 않는다.

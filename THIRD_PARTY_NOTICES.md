@@ -8,7 +8,7 @@ This project uses unmodified third-party libraries. Version and checksum records
 | SSHJ (reference tests only) | 0.40.0 | Apache-2.0; https://github.com/hierynomus/sshj |
 | Bouncy Castle (tests/build tools only) | 1.86 | Bouncy Castle licence (MIT-style); https://www.bouncycastle.org/licence.html |
 | JediTerm (JVM reference tests only) | 3.59 | Artifact POM declares LGPL-3.0; https://github.com/JetBrains/jediterm |
-| xterm.js / addon-fit | 6.0.0 / 0.11.0 | MIT; bundled LICENSE-xterm and LICENSE-fit in Android assets; https://github.com/xtermjs/xterm.js |
+| xterm.js | 6.0.0 | MIT; bundled LICENSE-xterm in Android assets; https://github.com/xtermjs/xterm.js |
 | JNA | 5.18.1 | LGPL-2.1-or-later or Apache-2.0; https://github.com/java-native-access/jna |
 | SLF4J (reference tests only) | 2.0.17 | MIT; https://www.slf4j.org/license.html |
 | Apache MINA SSHD | 2.20.0 (tests only) | Apache-2.0; https://github.com/apache/mina-sshd |

@@ -428,6 +428,13 @@ Android 계측이 SSHJ 참조 엔진으로 WebView를 구동한다는 전제를 
 기준 앱을 다시 만들 수 없으므로 `migration_android_baseline.py`·`migration-idle`·`evaluate --baseline`을 제거하고 Android trace를 `incomplete`로 남깁니다.
 스크립트 단위 테스트와 JVM 검사, Android 계측 APK 컴파일을 확인했고 에뮬레이터 계측은 실행하지 않았습니다.
 
+## 2026-10-29: 터미널 assets·입력 차단 정리
+
+`terminal.js`의 키보드·포인터 보고·터치 스크롤·IME 패널·pane 경계 드래그가 창 단위 입력 상태와 공통 차단 조건을 읽습니다.
+경계 드래그는 입력 차단·연결 복구 중에도 `resize-pane`을 보낼 수 있었으며, 이제 차단 중에는 시작하지 않고 잡고 있던 드래그는 차단 시점에 취소합니다.
+쓰이지 않던 `@xterm/addon-fit`과 그 asset·허용 목록·고지를 제거했고, `web/`의 역할을 xterm 복사 도구와 브리지 검사로 문서화했습니다.
+이전 엔진 잔재 정리(`8106e72`)의 lock 재기록으로 내려간 JVM 데스크톱 런타임의 slf4j-api는 `desktopMain`에 2.0.17을 선언해 검증된 버전으로 고정했습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

@@ -14,7 +14,7 @@ iOS/iPadOS 앱·Swift/Xcode 타깃은 이 저장소에 없으며 연결 수명·
 | `app` | 공통 Kotlin 모델·Compose 화면·Android 터미널 컴포넌트, JVM 참조 테스트 |
 | `androidApp` | Android 진입점·Manifest·계측 검사 |
 | `desktop` | GPUI 창·탭 그룹·입력·터미널·OS 보호 저장·알림 |
-| `web` | Android 터미널 번들·브리지·단위 검사. 랜딩 웹사이트 소스가 아님 |
+| `web` | Android 터미널 assets용 xterm.js 복사 도구와 브리지 단위 검사. 랜딩 웹사이트 소스가 아님 |
 | `fixtures` | Rust/Kotlin 공통 계약·표시·에이전트 훅 fixture |
 | `scripts` | 빌드·수집·검증·선택적 계측 도구 |
 
@@ -83,7 +83,9 @@ Android 복귀 시 네트워크 소진은 새 주기를 시작하지만 사용�
 Android 서비스 등록 기준은 [specialUse 문서](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use),
 IME 콜백은 [키보드 동기화 문서](https://developer.android.com/develop/ui/views/layout/sw-keyboard)를 따릅니다.
 
-Android 터미널 assets는 `web/bundle.mjs`로 갱신하며 CI에서 소스와 번들 차이를 검사합니다.
+Android 터미널 브리지(`terminal.js`·`style.css`·`index.html`)는 `app/src/androidMain/assets/terminal`에서 직접 편집하고
+`web/terminal.test.mjs`가 그 `terminal.js`를 검사합니다. xterm.js 파일과 고지는 `web/bundle.mjs`가 npm 패키지에서 복사하며,
+CI는 복사 결과가 커밋된 assets와 같은지 검사합니다.
 기술 선택의 과거 경위는 [HISTORY.md](HISTORY.md)에 요약합니다.
 
 ## Android 작업 공간과 렌더러 소유권

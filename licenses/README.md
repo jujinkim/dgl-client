@@ -12,7 +12,7 @@ Retrieved on 2026-10-23; these texts are redistributed unmodified. The versioned
 
 The JediTerm source JARs for **3.59** must be supplied to the reference rebuild recipe and checked against the source artifact hashes in `gradle/verification-metadata.xml`. The licence text from upstream's current tree does not assert that the current upstream dual-licence declaration applies retroactively to 3.59; the notices conservatively retain the 3.59 POM's LGPL declaration.
 
-xterm.js and addon-fit notices are copied directly from the npm integrity-verified packages into Android assets by `web/bundle.mjs`. New project code is not assigned a licence by these third-party notices.
+The xterm.js notice is copied directly from the npm integrity-verified package into Android assets by `web/bundle.mjs`. New project code is not assigned a licence by these third-party notices.
 
 ## Selected runtime inventory
 

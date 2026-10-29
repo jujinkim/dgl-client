@@ -7,11 +7,11 @@ test('editor focus changes notify native keyboard ownership even while remote in
   const messages = [], listeners = {};
   class Terminal {
     parser = { registerOscHandler() {} };
-    loadAddon() {} open() {} onData() {} onBinary() {}
+    open() {} onData() {} onBinary() {}
   }
   const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} }, ResizeObserver: class { observe() {} },
+    window, Terminal, TextEncoder, ResizeObserver: class { observe() {} },
     document: { getElementById: () => ({ addEventListener: (name, callback) => { listeners[name] = callback; } }) },
   });
   messages.length = 0;
@@ -30,15 +30,13 @@ test('client viewport uses container pixels and ignores zero layouts and pane gr
     cols = 80; rows = 24; options = {}; parser = { registerOscHandler() {} };
     element = { querySelector: () => ({ getBoundingClientRect: () => ({ width: this.cols * 10, height: this.rows * 20 }) }) };
     constructor() { terminal = this; }
-    loadAddon(addon) { addon.term = this; } open() {} onData() {} onBinary() {}
+    open() {} onData() {} onBinary() {}
     onRender(callback) { render = callback; }
     resize(columns, rows) { this.cols = columns; this.rows = rows; }
   }
   const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {
-      fit() { this.term.resize(Math.floor((root.clientWidth - 14) / 10), Math.floor(root.clientHeight / 20)); }
-    } },
+    window, Terminal, TextEncoder,
     document: { getElementById: () => root },
     ResizeObserver: class { constructor(callback) { observe = callback; } observe() { observe(); } },
   });
@@ -62,7 +60,6 @@ test('terminal bridge forwards text and raw mouse input through distinct channel
   const listeners = {};
   class Terminal {
     parser = { registerOscHandler() {} };
-    loadAddon() {}
     open() {}
     onData(callback) { listeners.data = callback; }
     onBinary(callback) { listeners.binary = callback; }
@@ -70,7 +67,6 @@ test('terminal bridge forwards text and raw mouse input through distinct channel
   }
   const context = {
     Terminal, TextEncoder,
-    FitAddon: { FitAddon: class {} },
     ResizeObserver: class { observe() {} },
     document: { getElementById: () => ({ addEventListener() {} }) },
     window: { dgl: { postMessage: message => messages.push(JSON.parse(message)) } },
@@ -95,7 +91,7 @@ test('composer captures the renderer paste once, blocks background input and enf
   let bracketed = false, focused = 0;
   class Terminal {
     parser = { registerOscHandler() {} };
-    loadAddon() {} open() {} onResize() {}
+    open() {} onResize() {}
     focus() { focused++; }
     onData(callback) { listeners.data = callback; }
     onBinary(callback) { listeners.binary = callback; }
@@ -107,7 +103,7 @@ test('composer captures the renderer paste once, blocks background input and enf
   }
   const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} }, ResizeObserver: class { observe() {} },
+    window, Terminal, TextEncoder, ResizeObserver: class { observe() {} },
     document: { getElementById: () => ({ addEventListener() {} }) },
   });
   messages.length = 0;
@@ -179,14 +175,14 @@ function cachedRenderer() {
     element = root; cols = 10; rows = 5; parser = { registerOscHandler() {} };
     buffer = { active: { cursorX: 3, cursorY: 2, baseY: 10, viewportY: 10 } };
     constructor() { terminal = this; }
-    loadAddon() {} open() {} onData(callback) { this.data = callback; } onBinary() {} onResize() {} refresh() {}
+    open() {} onData(callback) { this.data = callback; } onBinary() {} onResize() {} refresh() {}
     resize(columns, rows) { this.cols = columns; this.rows = rows; }
     onRender(callback) { renders.add(callback); return { dispose() { renders.delete(callback); } }; }
   }
   const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) }, matchMedia: () => ({ matches: false }) };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
     window, Terminal, TextEncoder,
-    FitAddon: { FitAddon: class {} }, ResizeObserver: class { observe() {} },
+    ResizeObserver: class { observe() {} },
     document: { body, getElementById: id => id === 'window' ? canvas : viewport, createElement: () => new Element() },
     requestAnimationFrame: callback => frames.push(callback),
     setTimeout: (callback, delay) => { timers.set(++nextTimer, { callback, delay }); return nextTimer; },
@@ -400,7 +396,7 @@ function imeRenderer({ delayedFont = false, nativeViewport = false, keyboardMode
       height: this.rows * 20 * (delayedFont ? this.measuredFont : this.options.fontSize || 14) / 14 }) };
     element = { querySelector: selector => selector === '.xterm-screen' ? this.screen : null };
     constructor() { terminal ||= this; terminals.push(this); }
-    loadAddon() {} open() {} dispose() {}
+    open() {} dispose() {}
     onData(callback) { this.data = callback; } onBinary(callback) { this.binary = callback; }
     onRender(callback) { this.render = callback; render = callback; }
     onScroll(callback) { this.scroll = callback; }
@@ -408,7 +404,7 @@ function imeRenderer({ delayedFont = false, nativeViewport = false, keyboardMode
   }
   const window = { dgl: { postMessage: value => messages.push(JSON.parse(value)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} },
+    window, Terminal, TextEncoder,
     document: { body: Object.assign(host(), { dataset: { nativeViewport: String(nativeViewport) } }), getElementById: id => id === 'terminal' ? root : id === 'window' ? canvas : host(), createElement: host, hasFocus: () => false },
     ResizeObserver: class { constructor(callback) { observe = callback; } observe(element) { observed.add(element); observe(); } unobserve(element) { observed.delete(element); } },
     requestAnimationFrame: callback => frames.push(callback),
@@ -807,7 +803,7 @@ function keyboardRenderer() {
   class Terminal {
     modes = { applicationCursorKeysMode: false }; parser = { registerOscHandler() {} };
     constructor() { terminal = this; }
-    loadAddon() {} open() {} onResize() {}
+    open() {} onResize() {}
     onKey(callback) { listeners.key = callback; }
     attachCustomKeyEventHandler(callback) { listeners.custom = callback; }
     onData(callback) { listeners.data = callback; }
@@ -817,7 +813,7 @@ function keyboardRenderer() {
   const host = { style: {}, addEventListener: (name, callback) => { events[name] = callback; } };
   const window = { dgl: { postMessage: message => messages.push(JSON.parse(message)) } };
   vm.runInNewContext(readFileSync(new URL('../app/src/androidMain/assets/terminal/terminal.js', import.meta.url), 'utf8'), {
-    window, Terminal, TextEncoder, FitAddon: { FitAddon: class {} }, ResizeObserver: class { observe() {} },
+    window, Terminal, TextEncoder, ResizeObserver: class { observe() {} },
     document: { getElementById: () => host, hasFocus: () => false }, setTimeout: callback => timers.push(callback),
   });
   messages.length = 0;
@@ -872,7 +868,7 @@ function touchRenderer() {
         (this.binaryMode ? this.binary : this.data)(event.deltaY < 0 ? 'wheel-up' : 'wheel-down');
       });
     }
-    open(host) { this.host = host; } loadAddon() {} dispose() {}
+    open(host) { this.host = host; } dispose() {}
     onData(callback) { this.data = callback; } onBinary(callback) { this.binary = callback; }
     onKey(callback) { this.key = callback; } onRender(callback) { this.render = callback; }
     resize(cols, rows) { this.cols = cols; this.rows = rows; }
