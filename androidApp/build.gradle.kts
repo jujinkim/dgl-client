@@ -34,7 +34,6 @@ dependencies {
     implementation(project(":app"))
     implementation(project(":mobileUi"))
     implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.jetbrains.compose.runtime:runtime:1.9.3")
     androidTestImplementation("com.hierynomus:sshj:0.40.0")
