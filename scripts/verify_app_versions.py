@@ -53,11 +53,13 @@ def main():
         assert json.loads((output / "build.json").read_text())["version"] == version, "Windows build metadata"
         with zipfile.ZipFile(output / "dgl-rust-windows-x64.zip") as archive:
             assert json.loads(archive.read("dgl-rust-windows-x64/build.json"))["version"] == version, "Windows ZIP metadata"
-        with zipfile.ZipFile(output / "dgl-rust-windows-x64.msix") as package:
-            identity = ElementTree.fromstring(package.read("AppxManifest.xml")).find(
-                "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}Identity")
-            assert identity.get("Version") == f"{version}.0", "Windows MSIX version"
-        checked.append("Windows")
+        msix = output / "dgl-rust-windows-x64.msix"
+        if msix.is_file():  # Optional; ZIP-only builds remove any earlier MSIX.
+            with zipfile.ZipFile(msix) as package:
+                identity = ElementTree.fromstring(package.read("AppxManifest.xml")).find(
+                    "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}Identity")
+                assert identity.get("Version") == f"{version}.0", "Windows MSIX version"
+        checked.append("Windows ZIP/MSIX" if msix.is_file() else "Windows ZIP")
     print(f"App/package versions match Cargo.toml: {version} ({', '.join(checked)})")
 
 

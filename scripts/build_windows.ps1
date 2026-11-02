@@ -1,7 +1,8 @@
 param(
     [switch]$CheckOnly,
     [switch]$Test,
-    [switch]$Run
+    [switch]$Run,
+    [switch]$Msix
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -32,7 +33,8 @@ if ($vsPath -and -not (Get-Command cmake.exe -ErrorAction SilentlyContinue)) {
     $cmakeBin = Join-Path $vsPath 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin'
     if (Test-Path $cmakeBin) { $env:PATH = "$cmakeBin;$env:PATH" }
 }
-foreach ($tool in @('git.exe', 'rustup.exe', 'cargo.exe', 'cl.exe', 'rc.exe', 'makeappx.exe', 'cmake.exe')) {
+# makeappx.exe is needed only for the optional Store MSIX; the portable ZIP must not depend on it.
+foreach ($tool in @('git.exe', 'rustup.exe', 'cargo.exe', 'cl.exe', 'rc.exe', 'cmake.exe') + @(if ($Msix) { 'makeappx.exe' })) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { $problems.Add("Missing $tool. See docs/WINDOWS.md.") }
     else { Write-Host "[OK] $tool" }
 }
@@ -78,7 +80,7 @@ Push-Location $projectRoot
 try {
     Invoke-Checked -Executable rustup -Arguments @('toolchain', 'install', $toolchain, '--profile', 'minimal', '--target', 'x86_64-pc-windows-msvc')
     $env:RUSTUP_TOOLCHAIN = $toolchain
-    Invoke-Checked -Executable $python.Source -Arguments @('scripts/package_rust_windows.py')
+    Invoke-Checked -Executable $python.Source -Arguments (@('scripts/package_rust_windows.py') + @(if ($Msix) { '--msix' }))
     if ($Test) {
         Invoke-Checked -Executable cargo -Arguments @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '-p', 'dgl-core', '-p', 'dgl-uniffi', '-p', 'dgl-desktop')
     }

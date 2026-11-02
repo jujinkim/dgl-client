@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build unsigned Windows x64 release packages: a portable ZIP and a Microsoft Store MSIX.
+"""Build the unsigned Windows x64 portable ZIP, plus an optional Microsoft Store MSIX (--msix).
 
 Does not run, install, or sign the app. The Store signs the MSIX when it is submitted.
 """
+import argparse
 import hashlib
 import json
 import os
@@ -61,9 +62,10 @@ def pack_msix(content, destination):
     subprocess.run(["makeappx", "pack", "/o", "/d", str(content), "/p", str(destination)], check=True)
 
 
-def package(binary, output, version):
+def package(binary, output, version, msix=False):
+    """Publish the ZIP (and MSIX when requested) atomically; a ZIP-only run drops any stale MSIX."""
     verify_executable(binary)
-    manifest, identity = msix_manifest(version)
+    manifest, identity = msix_manifest(version) if msix else (None, None)
     output.mkdir(parents=True, exist_ok=True)
     # Build in a fresh directory so old DLLs/files cannot leak into a new ZIP.
     with tempfile.TemporaryDirectory(prefix="dgl-windows-", dir=output) as temp:
@@ -94,9 +96,10 @@ def package(binary, output, version):
             "version": version, "profile": "release", "arch": TARGET,
             "signing": "unsigned", "runtimeValidation": "not-performed",
             "crt": "static", "binarySha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-            "msixVersion": identity.get("Version"), "msixIdentity": identity.get("Name"),
-            "msixPublisher": identity.get("Publisher"),
         }
+        if msix:
+            build.update(msixVersion=identity.get("Version"), msixIdentity=identity.get("Name"),
+                         msixPublisher=identity.get("Publisher"))
         (stage / "build.json").write_text(json.dumps(build, indent=2) + "\n", encoding="utf-8")
         files = sorted(p for p in stage.rglob("*") if p.is_file())
         (stage / "SHA256SUMS").write_text("".join(
@@ -108,19 +111,23 @@ def package(binary, output, version):
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as zipped:
             for file in sorted(p for p in stage.rglob("*") if p.is_file()):
                 zipped.write(file, f"{NAME}/{file.relative_to(stage).as_posix()}")
-        content = Path(temp) / "msix"
-        # shutil.copy drops the pre-1980 registry timestamps, which MSIX's ZIP container rejects.
-        shutil.copytree(stage, content, copy_function=shutil.copy, ignore=lambda directory, names: [
-            n for n in names if n in ZIP_ONLY and Path(directory) == stage])
-        shutil.copytree(MSIX / "Assets", content / "Assets", copy_function=shutil.copy)
-        (content / "AppxManifest.xml").write_text(manifest, encoding="utf-8")
-        msix = Path(temp) / f"{NAME}.msix"
-        pack_msix(content, msix)
-        # Publish only after every file and both packages have been generated.
+        packed = Path(temp) / f"{NAME}.msix"
+        if msix:
+            content = Path(temp) / "msix"
+            # shutil.copy drops the pre-1980 registry timestamps, which MSIX's ZIP container rejects.
+            shutil.copytree(stage, content, copy_function=shutil.copy, ignore=lambda directory, names: [
+                n for n in names if n in ZIP_ONLY and Path(directory) == stage])
+            shutil.copytree(MSIX / "Assets", content / "Assets", copy_function=shutil.copy)
+            (content / "AppxManifest.xml").write_text(manifest, encoding="utf-8")
+            pack_msix(content, packed)
+        # Publish only after every file and requested package have been generated.
         archive.replace(output / archive.name)
-        msix.replace(output / msix.name)
+        if msix:
+            packed.replace(output / packed.name)
+        else:
+            (output / packed.name).unlink(missing_ok=True)
         shutil.copy2(stage / "build.json", output / "build.json")
-    packages = [output / f"{NAME}.zip", output / f"{NAME}.msix"]
+    packages = [output / f"{NAME}.zip"] + ([output / f"{NAME}.msix"] if msix else [])
     (output / "SHA256SUMS").write_text("".join(
         f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in packages
     ), encoding="utf-8")
@@ -128,6 +135,9 @@ def package(binary, output, version):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--msix", action="store_true", help="Also build the unsigned Store MSIX (needs makeappx)")
+    args = parser.parse_args()
     if platform.system() != "Windows":
         raise SystemExit("Run scripts/build_windows.ps1 on native Windows; GPUI release shaders require fxc.exe.")
     # Restrict static CRT flags to this executable build. UniFFI's cdylib tests
@@ -143,7 +153,7 @@ def main():
         ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"], cwd=ROOT))
     version = next(p["version"] for p in metadata["packages"] if p["name"] == "dgl-desktop")
     binary = Path(metadata["target_directory"]) / TARGET / "release/dgl-desktop.exe"
-    for path in package(binary, ROOT / "artifacts/rust-candidate/windows", version):
+    for path in package(binary, ROOT / "artifacts/rust-candidate/windows", version, msix=args.msix):
         print(path)
 
 

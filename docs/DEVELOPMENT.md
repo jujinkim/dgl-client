@@ -123,7 +123,7 @@ python3 scripts/verify_app_versions.py --android --mac
 
 플랫폼을 생략하면 생성 Kotlin·Cargo 메타데이터·원본 Debug APK 버전을 비교합니다. `--android`·`--mac`·
 `--windows`를 조합해 필요한 플랫폼만 검사할 수 있습니다. macOS는 실제 `.app`과 메타데이터,
-Windows는 ZIP 내부·외부 메타데이터와 MSIX 매니페스트 버전을 비교하며 Android 도구가 필요하지 않습니다. 실제 네이티브 실행 검증은 별도입니다.
+Windows는 ZIP 내부·외부 메타데이터와 MSIX가 있으면 그 매니페스트 버전을 비교하며 Android 도구가 필요하지 않습니다. 실제 네이티브 실행 검증은 별도입니다.
 README의 현재 버전과 Git 제외된 `.dashboard-props.json`의 프로젝트·파일별 버전/빌드 번호도 대조·갱신합니다.
 
 ## 데스크톱 패키징
@@ -137,8 +137,9 @@ python3 scripts/package_rust_mac.py --release
 출력은 `artifacts/rust-candidate/mac/DaGaLi.app`과 `build.json`입니다.
 스크립트는 Xcode 경로를 설정하고 로컬 ad-hoc 서명·검증을 수행합니다. Developer ID·공증은 하지 않습니다.
 저장된 `desktop/resources/dgl.icns`를 번들 Resources에 넣고 `CFBundleIconFile`로 연결한 뒤 서명합니다.
-Windows는 `scripts/run_windows.cmd` 또는 `scripts/build_windows.ps1`로 빌드·ZIP·Store 제출용 MSIX를 생성합니다.
-기본은 빌드만, `-CheckOnly`는 필수 도구 점검만, `-Test`는 단위 검사, `-Run`은 빌드 후 앱 실행입니다.
+Windows는 `scripts/run_windows.cmd` 또는 `scripts/build_windows.ps1`로 빌드·포터블 ZIP을 생성합니다.
+기본은 빌드·ZIP만, `-CheckOnly`는 필수 도구 점검만, `-Test`는 단위 검사, `-Run`은 빌드 후 앱 실행,
+`-Msix`는 후속 Store 제출용 MSIX 추가 생성입니다.
 
 ### 앱 아이콘 갱신
 

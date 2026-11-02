@@ -2,10 +2,11 @@
 
 Windows **빌드 환경은 유지하며 실제 Windows 실행·실기 검증은 사용자가 별도로 수행**한다.
 현재 대상은 네이티브 Windows 10/11 x64, Rust GPUI 앱이다. 이전 JVM/MSI/EXE 설치물은 사용하지 않는다.
-배포 형태는 설치 없이 실행하는 **미서명 ZIP**과 Microsoft Store 제출용 **MSIX** 두 가지다.
-Store는 제출된 MSIX에 무료로 서명하므로 별도 코드 서명 인증서를 두지 않는다.
-아래 스크립트와 수동 CI는 빌드와 두 패키지 생성을 담당한다. Windows 네이티브 빌드·DPAPI 실행·GUI 인수와
-MSIX 설치·Store 제출은 미검증이며 [남은 작업](../TASKS.md)에서 관리한다.
+배포는 설치 없이 실행하는 **미서명 ZIP(포터블)을 우선**한다. 먼저 사용자가 직접 쓰기 위한 형태다.
+Microsoft Store 제출용 **MSIX**는 후속이며 `-Msix`로 선택할 때만 만든다. Store는 제출된 MSIX에
+무료로 서명하므로 별도 코드 서명 인증서를 두지 않는다. 아래 스크립트와 수동 CI는 빌드와 패키지 생성을
+담당한다. Windows 네이티브 빌드·DPAPI 실행·GUI 인수와 MSIX 설치·Store 제출은 미검증이며
+[남은 작업](../TASKS.md)에서 관리한다.
 
 하단 `…`의 CLI 실행 메뉴(Claude Code·Codex·AGY·Grok Build)도 공통 GPUI 구현에 포함된다.
 아이콘은 실행 파일에 내장되며 ZIP에는 `simple-icons-LICENSE.md`가 함께 포함된다.
@@ -26,7 +27,8 @@ Pillow나 이미지 생성·변환 도구가 필요하지 않다. 네이티브 �
 2. Visual Studio 2022 Build Tools에서 **Desktop development with C++**를 설치한다.
    Visual Studio Installer에서 [`desktop/windows.vsconfig`](../desktop/windows.vsconfig)를
    가져오면 x64 MSVC, CMake, Windows 11 SDK 10.0.26100 및 Spectre 라이브러리를 선택할 수 있다.
-   Windows SDK의 `rc.exe`, **`fxc.exe`**, MSIX용 `makeappx.exe`가 필요하다(모두 SDK의 같은 `bin` 폴더).
+   Windows SDK의 `rc.exe`와 **`fxc.exe`**가 필요하다. `-Msix`를 쓸 때만 같은 SDK `bin` 폴더의
+   `makeappx.exe`도 확인하며, ZIP 빌드는 `makeappx.exe`가 없어도 진행한다.
 3. 저장소를 `C:\src\dgl`처럼 짧은 경로에 clone하고 `main`을 사용한다.
    Windows 데스크톱만 빌드할 때 JDK, Android SDK/NDK, Node.js는 필요하지 않다.
 
@@ -84,7 +86,9 @@ PATH 반영이나 재부팅이 필요하면 터미널 또는 Windows를 재시�
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 ```
 
-기본 동작은 Release 빌드와 ZIP·MSIX 생성이다. 앱 실행·설치·테스트를 자동 수행하지 않는다.
+기본 동작은 Release 빌드와 ZIP 생성이다. 앱 실행·설치·테스트를 자동 수행하지 않는다.
+Store 제출용 MSIX도 만들려면 `-Msix`를 더한다. `-Msix` 없이 빌드하면 이전에 만든 MSIX는 지워
+버전이 다른 패키지가 남지 않게 한다.
 GPUI 0.2.2는 Release 빌드에서 `fxc.exe`로 HLSL 셰이더를 컴파일해 포함한다.
 Debug 실행은 Cargo registry의 셰이더 소스를 참조하므로 전달용 패키지는 Release만 제공한다.
 MSVC CRT 정적 링크 플래그는 이 실행 파일 빌드에만 적용한다.
@@ -93,9 +97,9 @@ MSVC CRT 정적 링크 플래그는 이 실행 파일 빌드에만 적용한다.
 |---|---|
 | 실행 파일 | `target/x86_64-pc-windows-msvc/release/dgl-desktop.exe` |
 | 전달용 ZIP | `artifacts/rust-candidate/windows/dgl-rust-windows-x64.zip` |
-| Store 제출용 MSIX | `artifacts/rust-candidate/windows/dgl-rust-windows-x64.msix` |
+| Store 제출용 MSIX(`-Msix`일 때만) | `artifacts/rust-candidate/windows/dgl-rust-windows-x64.msix` |
 | 빌드 정보 | `artifacts/rust-candidate/windows/build.json` |
-| ZIP·MSIX SHA-256 | `artifacts/rust-candidate/windows/SHA256SUMS` |
+| 패키지 SHA-256 | `artifacts/rust-candidate/windows/SHA256SUMS` |
 
 버전은 루트 `Cargo.toml`의 workspace 값에서 상속합니다. 타이틀바·설정 마지막의 `About app`과
 ZIP의 `build.json`에 같은 버전을 사용합니다. 패키지 버전 비교 절차는 [개발 안내](DEVELOPMENT.md#앱-버전-관리)를 따릅니다.
@@ -109,7 +113,7 @@ ZIP에는 실행 파일, GPUI 고지, Rust 의존성 라이선스 원문·목록
 ZIP을 모두 풀고 `dgl-rust-windows-x64\dgl-desktop.exe`를 실행한다.
 GPU 경로는 GPUI 0.2.2의 Direct3D 11이다. 설치·실행 성공 여부는 Windows에서 확인한다.
 
-MSIX에는 같은 실행 파일과 고지 파일, `AppxManifest.xml`, 로고(`Assets`)가 들어가며 ZIP 전용
+`-Msix`로 만든 MSIX에는 같은 실행 파일과 고지 파일, `AppxManifest.xml`, 로고(`Assets`)가 들어가며 ZIP 전용
 `README.txt`·`build.json`·`SHA256SUMS`는 넣지 않는다. 매니페스트 원본은
 `desktop/resources/windows/msix/AppxManifest.xml`이고 버전은 Cargo 버전 `x.y.z`를 `x.y.z.0`으로 채운다
 (Store가 마지막 자리를 예약). 로고는 [앱 아이콘 생성기](../assets/app-icon/README.md)가 만든
@@ -121,16 +125,22 @@ MSIX에는 같은 실행 파일과 고지 파일, `AppxManifest.xml`, 로고(`As
 변경이 원격 `main`에 반영된 후 GitHub Actions에서
 **Build Windows Rust candidate → Run workflow**를 실행한다.
 `windows-2022` runner가 같은 PowerShell 스크립트로 빌드하고
-`windows-rust-candidate` artifact에 ZIP·MSIX·빌드 정보·해시를 올린다.
+`windows-rust-candidate` artifact에 ZIP·빌드 정보·해시를 올린다. 실행 화면의 `msix` 입력을 켜면
+`-Msix`로 빌드해 MSIX도 함께 올린다(기본은 꺼짐).
 수동 실행 전용이며 일반 push/PR의 기존 Linux 기본 검증은 그대로다.
 이 workflow는 앱 실행·DPAPI 테스트·GUI 검증을 하지 않는다.
 
 ## 4. Microsoft Store MSIX
 
+ZIP 우선 배포 이후의 후속 단계다.
+
 Store 제출 전에 Partner Center에서 앱 이름을 예약하고 **Product identity**의 값으로
 `AppxManifest.xml`의 `Identity`의 `Name`·`Publisher`와 `PublisherDisplayName`을 바꾼다.
 저장소의 기본값(`kim.jujin.dglc`, `CN=kim.jujin.dglc`)은 로컬 확인용이며 Store 업로드에서 거부된다.
-이 값들은 Store 패키지에 공개되는 식별자이며 비밀정보가 아니다. 바꾼 뒤 다시 빌드한다.
+이 값들은 Store 패키지에 공개되는 식별자이며 비밀정보가 아니다. 바꾼 뒤 `-Msix`로 다시 빌드한다.
+
+**Identity 교체 상태: 미완료.** 사용자가 완료했다고 명시적으로 알리기 전까지 미완료로 기록한다.
+저장소 값·빌드 결과·Partner Center 화면 추정으로 완료 처리하지 않는다.
 
 Partner Center 제출에는 MSIX를 서명하지 않은 채 올린다. Store가 인증 후 서명해 배포하고
 설치·업데이트·제거도 Store가 담당한다. 웹·GitHub에서 MSIX를 직접 배포하려면 유료 코드 서명 인증서가

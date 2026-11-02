@@ -11,8 +11,8 @@
 
 - [ ] macOS 실제 GUI에서 호스트 등록→지문 확인→인증→tmux 선택→단절/재접속→종료 확인.
   실제 키보드·IME·clipboard·TUI·탭/resize와 Keychain 저장 후 재실행 포함.
-- [ ] Windows MSVC x64 네이티브 빌드·ZIP 실행·개인키 선택·DPAPI·알림·GUI 확인.
-  사용자 담당이며 [Windows 체크리스트](docs/WINDOWS.md)를 따른다.
+- [ ] (우선) Windows MSVC x64 네이티브 빌드·포터블 ZIP 실행·개인키 선택·DPAPI·알림·GUI 확인.
+  사용자가 먼저 직접 사용하는 배포 형태다. 사용자 담당이며 [Windows 체크리스트](docs/WINDOWS.md)를 따른다.
 - [ ] Android 물리 기기에서 실제 한국어/일본어 키보드, 선택·스크롤, Wi-Fi↔셀룰러 전환과 태블릿·폴더블 창 크기/마우스 조작 확인.
   삼성 키보드를 열자마자 한글을 입력할 때 조합 글자의 커서 부착·최종 문자열을 영문/숫자와 비교하고, 폰트 초기화 FAB가 키보드·포커스를 유지하는지 확인.
   홈 이동·화면 잠금·기기별 절전 정책과 최근 앱 카드 swipe 후 연결/서비스 종료도 실기에서 확인.
@@ -29,8 +29,10 @@
 - [ ] 의존성 예외 20건을 2026-12-15까지 재검토(만료 2027-01-27). gpui 0.2.2·russh(rsa)·AGP(guava)가
   수정판을 고정해 남은 항목이며, 상위 갱신 시 업그레이드하고 예외를 제거한다.
 - [ ] Android 정식 서명, macOS Developer ID·공증 방식 결정과 산출물 검사.
-- [ ] Windows Store 제출: Partner Center 앱 이름 예약 후 `AppxManifest.xml` Identity 교체, 개인정보처리방침 URL 준비,
-  개발자 모드 MSIX 등록으로 실행·DPAPI·알림 확인 후 제출. ZIP은 미서명으로 유지한다([Windows 안내](docs/WINDOWS.md#4-microsoft-store-msix)).
+- [ ] Windows Store 제출(포터블 ZIP 이후 후속): Partner Center 앱 이름 예약 후 `AppxManifest.xml` Identity 교체,
+  개인정보처리방침 URL 준비, `-Msix` 빌드와 개발자 모드 등록으로 실행·DPAPI·알림 확인 후 제출.
+  ZIP은 미서명으로 유지한다([Windows 안내](docs/WINDOWS.md#4-microsoft-store-msix)).
+  **Identity 교체 상태: 미완료.** 사용자가 완료했다고 명시적으로 알리기 전까지 완료로 바꾸지 않는다.
 - [ ] GitHub Secret scanning·Push protection 상태 확인. 미확인 상태를 활성으로 기재하지 않는다.
 
 ## 별도 요청 시 진행

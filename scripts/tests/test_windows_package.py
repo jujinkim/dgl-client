@@ -51,6 +51,11 @@ class WindowsPackageTest(unittest.TestCase):
             windows.verify_executable(binary)
 
     def test_archive_inventory_and_hashes_match_and_exclude_stale_files(self):
+        for msix in (False, True):
+            with self.subTest(msix=msix):
+                self.check_packages(msix)
+
+    def check_packages(self, msix):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             binary = root / "app.exe"
@@ -58,6 +63,7 @@ class WindowsPackageTest(unittest.TestCase):
             output = root / "output"
             output.mkdir()
             (output / "old-secret.txt").write_text("must not be packaged")
+            (output / f"{windows.NAME}.msix").write_bytes(b"stale MSIX from an earlier build")
 
             def notices(package, destination, target=None):
                 self.assertEqual(target, windows.TARGET)
@@ -68,9 +74,12 @@ class WindowsPackageTest(unittest.TestCase):
                 license_file.write_bytes(b"dependency license\n")
                 os.utime(license_file, (315532800 - 86400, 315532800 - 86400))
 
+            makeappx = fake_makeappx if msix else AssertionError("ZIP-only builds must not run makeappx")
             with patch.object(windows, "collect", side_effect=notices), \
-                    patch.object(windows, "pack_msix", side_effect=fake_makeappx):
-                archive, msix = windows.package(binary, output, workspace_version())
+                    patch.object(windows, "pack_msix", side_effect=makeappx):
+                packages = windows.package(binary, output, workspace_version(), msix=msix)
+            archive = output / f"{windows.NAME}.zip"
+            self.assertEqual(packages, [archive, output / f"{windows.NAME}.msix"] if msix else [archive])
             with zipfile.ZipFile(archive) as zipped:
                 prefix = windows.NAME + "/"
                 self.assertTrue(all(n.startswith(prefix) for n in zipped.namelist()))
@@ -81,7 +90,7 @@ class WindowsPackageTest(unittest.TestCase):
                 self.assertEqual(manifest["signing"], "unsigned")
                 self.assertEqual(manifest["runtimeValidation"], "not-performed")
                 self.assertEqual(manifest["binarySha256"], hashlib.sha256(binary.read_bytes()).hexdigest())
-                self.assertEqual(manifest["msixVersion"], workspace_version() + ".0")
+                self.assertEqual(manifest.get("msixVersion"), workspace_version() + ".0" if msix else None)
                 self.assertIn(prefix + "third-party-rust/DEPENDENCIES.json", zipped.namelist())
                 self.assertEqual(zipped.read(prefix + "third-party-rust/LICENSE"), b"dependency license\n")
                 self.assertEqual(zipped.getinfo(prefix + "third-party-rust/LICENSE").date_time[:3], (1980, 1, 1))
@@ -90,18 +99,21 @@ class WindowsPackageTest(unittest.TestCase):
                 for line in sums:
                     digest, name = line.split("  ", 1)
                     self.assertEqual(digest, hashlib.sha256(zipped.read(prefix + name)).hexdigest())
-            with zipfile.ZipFile(msix) as package:
-                names = set(package.namelist())
-                self.assertEqual(package.read("dgl-desktop.exe"), binary.read_bytes())
-                self.assertIn("third-party-rust/LICENSE", names)
-                self.assertTrue({"Assets/Square44x44Logo.png", "Assets/Square150x150Logo.png",
-                                 "Assets/StoreLogo.png"} <= names)
-                self.assertFalse(names & windows.ZIP_ONLY)
-                self.assertFalse(any("old-secret" in n for n in names))
-                identity = ElementTree.fromstring(package.read("AppxManifest.xml")).find(windows.APPX + "Identity")
-                self.assertEqual(identity.get("Version"), workspace_version() + ".0")
+            if msix:
+                with zipfile.ZipFile(packages[1]) as package:
+                    names = set(package.namelist())
+                    self.assertEqual(package.read("dgl-desktop.exe"), binary.read_bytes())
+                    self.assertIn("third-party-rust/LICENSE", names)
+                    self.assertTrue({"Assets/Square44x44Logo.png", "Assets/Square150x150Logo.png",
+                                     "Assets/StoreLogo.png"} <= names)
+                    self.assertFalse(names & windows.ZIP_ONLY)
+                    self.assertFalse(any("old-secret" in n for n in names))
+                    identity = ElementTree.fromstring(package.read("AppxManifest.xml")).find(windows.APPX + "Identity")
+                    self.assertEqual(identity.get("Version"), workspace_version() + ".0")
+            else:
+                self.assertFalse((output / f"{windows.NAME}.msix").exists(), "stale MSIX must not outlive a ZIP-only build")
             sums = dict(reversed(line.split("  ", 1)) for line in (output / "SHA256SUMS").read_text().splitlines())
-            self.assertEqual(sums, {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (archive, msix)})
+            self.assertEqual(sums, {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in packages})
 
     def test_failed_notice_collection_preserves_previous_archive(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -131,7 +143,7 @@ class WindowsPackageTest(unittest.TestCase):
             with patch.object(windows, "collect", side_effect=notices), \
                     patch.object(windows, "pack_msix", side_effect=OSError("makeappx failed")):
                 with self.assertRaises(OSError):
-                    windows.package(binary, root, "0.1.0")
+                    windows.package(binary, root, "0.1.0", msix=True)
             for name, data in previous.items():
                 self.assertEqual((root / name).read_bytes(), data)
 
