@@ -16,9 +16,9 @@
 | `run_windows.cmd` / `windows_menu.ps1` | Windows 빌드·실행·검사 메뉴 |
 | `windows_tools.ps1` | Windows 필수 도구 전체 점검·선택적 설치/업데이트 |
 | `build_windows.ps1` | Windows MSVC 환경 구성·빌드. `-CheckOnly`, `-Test`, `-Run` 지원 |
-| `package_rust_windows.py` | x64 PE 검사·고지·해시를 포함한 미서명 ZIP 생성 |
+| `package_rust_windows.py` | x64 PE 검사·고지·해시를 포함한 미서명 ZIP과 Store 제출용 MSIX(`makeappx`) 생성 |
 | `collect_rust_notices.py` | 배포 대상(Android 네 ABI·macOS host·Windows MSVC)으로 걸러낸 Cargo registry 고지·manifest·의존성 목록 수집, 패키저와 `:coreBindings`에서 사용 |
-| `generate_app_icons.py` | 공통 도형에서 투명 원본·Android 전경/단색/알림 벡터·모바일 Compose 벡터·macOS ICNS·Windows ICO·미리보기 생성. `--check`로 저장 파일 비교; [아이콘 안내](../assets/app-icon/README.md) |
+| `generate_app_icons.py` | 공통 도형에서 투명 원본·Android 전경/단색/알림 벡터·모바일 Compose 벡터·macOS ICNS·Windows ICO·MSIX 로고·미리보기 생성. `--check`로 저장 파일 비교; [아이콘 안내](../assets/app-icon/README.md) |
 
 `collect_artifacts.py`와 `collect_rust_android.py`는 각각 전체 배포 정책 검사와 Debug 서명·Rust payload 검사를 담당합니다.
 `collect_artifacts.py`는 APK의 `assets/third-party/`가 참조·테스트 전용 라이브러리(JediTerm·SSHJ·Bouncy Castle·SLF4J) 원문과 JediTerm 재빌드 자료를 뺀 `licenses/` 선택과 정확히 같은지 확인합니다.

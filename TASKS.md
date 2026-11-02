@@ -28,7 +28,9 @@
 - [ ] 현재 Rust/Gradle/npm 의존성의 라이선스 검토 및 실제 전달물 고지 확인.
 - [ ] 의존성 예외 20건을 2026-12-15까지 재검토(만료 2027-01-27). gpui 0.2.2·russh(rsa)·AGP(guava)가
   수정판을 고정해 남은 항목이며, 상위 갱신 시 업그레이드하고 예외를 제거한다.
-- [ ] Android 정식 서명, macOS Developer ID·공증, Windows 서명·배포 방식 결정과 산출물 검사.
+- [ ] Android 정식 서명, macOS Developer ID·공증 방식 결정과 산출물 검사.
+- [ ] Windows Store 제출: Partner Center 앱 이름 예약 후 `AppxManifest.xml` Identity 교체, 개인정보처리방침 URL 준비,
+  개발자 모드 MSIX 등록으로 실행·DPAPI·알림 확인 후 제출. ZIP은 미서명으로 유지한다([Windows 안내](docs/WINDOWS.md#4-microsoft-store-msix)).
 - [ ] GitHub Secret scanning·Push protection 상태 확인. 미확인 상태를 활성으로 기재하지 않는다.
 
 ## 별도 요청 시 진행

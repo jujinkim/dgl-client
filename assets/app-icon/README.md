@@ -66,6 +66,9 @@ Python 3.9 이상을 사용합니다. Windows에서는 가상환경 실행 파�
   `desktop/build.rs`는 Windows target에서만 `app.rc`를 컴파일하고 실행 파일의 ID `1`에 연결합니다.
   GPUI 0.2.2의 기존 `LoadImageW`·창 클래스 아이콘 경로를 사용합니다.
   Windows SDK `rc.exe`는 기존 필수 도구이며 별도 변환기는 일반 빌드에 필요하지 않습니다.
+- Windows MSIX: `desktop/resources/windows/msix/Assets/`의 `Square44x44Logo`(44px)·`Square150x150Logo`(150px)·
+  `StoreLogo`(50px)는 ICO와 같은 `icon.png`를 배율 100 크기로 줄인 PNG입니다. `AppxManifest.xml`이 참조하며
+  재생성·`--check`에 포함합니다.
 
 Android 레이어 규격은 [공식 adaptive icon 안내](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive),
 Windows 리소스 선언은 [Microsoft ICON resource](https://learn.microsoft.com/en-us/windows/win32/menurc/icon-resource)를 따릅니다.

@@ -1,4 +1,5 @@
-//! Native WinRT toast, registered to dgl's own user Start Menu shortcut (ZIP installs).
+//! Native WinRT toast. ZIP runs register dgl's own user Start Menu shortcut and COM
+//! activator; Store MSIX runs use the package identity and its manifest-declared activator.
 use super::*;
 use ::windows::{
     Data::Xml::Dom::XmlDocument,
@@ -20,9 +21,13 @@ thread_local! { static TOASTS: std::cell::RefCell<VecDeque<ToastNotification>> =
 const ID: &str = "kim.jujin.dglc";
 const ACTIVATOR: GUID = GUID::from_u128(0x5fd514f1_b83f_4f6d_a85b_156ad0e79e33);
 const ACTIVATOR_TEXT: &str = "{5FD514F1-B83F-4F6D-A85B-156AD0E79E33}";
+// Must match ToastActivatorCLSID in desktop/resources/windows/msix/AppxManifest.xml.
+// Distinct from the ZIP activator so both editions can coexist for one user.
+const PACKAGE_ACTIVATOR: GUID = GUID::from_u128(0xab49d564_b1df_43af_899f_f4a25950066b);
 use ::windows::{
     Win32::{
-        Foundation::{CLASS_E_NOAGGREGATION, E_POINTER},
+        Foundation::{CLASS_E_NOAGGREGATION, E_POINTER, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS},
+        Storage::Packaging::Appx::GetCurrentApplicationUserModelId,
         System::{
             Com::{
                 CLSCTX_LOCAL_SERVER, CoRegisterClassObject, IClassFactory, IClassFactory_Impl,
@@ -37,8 +42,29 @@ use ::windows::{
             NOTIFICATION_USER_INPUT_DATA,
         },
     },
-    core::{BOOL, IUnknown, PCWSTR, Ref, implement},
+    core::{BOOL, IUnknown, PCWSTR, PWSTR, Ref, implement},
 };
+/// The MSIX package AUMID (`PackageFamilyName!App`), or `None` for ZIP runs.
+fn package_id() -> Option<&'static str> {
+    static PACKAGE: OnceLock<Option<String>> = OnceLock::new();
+    PACKAGE
+        .get_or_init(|| unsafe {
+            let mut length = 0;
+            // Unpackaged processes get APPMODEL_ERROR_NO_APPLICATION instead.
+            if GetCurrentApplicationUserModelId(&mut length, None) != ERROR_INSUFFICIENT_BUFFER {
+                return None;
+            }
+            let mut buffer = vec![0u16; length as usize];
+            if GetCurrentApplicationUserModelId(&mut length, Some(PWSTR(buffer.as_mut_ptr())))
+                != ERROR_SUCCESS
+            {
+                return None;
+            }
+            buffer.truncate(buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len()));
+            String::from_utf16(&buffer).ok()
+        })
+        .as_deref()
+}
 #[implement(INotificationActivationCallback)]
 struct Activator;
 impl INotificationActivationCallback_Impl for Activator_Impl {
@@ -49,7 +75,7 @@ impl INotificationActivationCallback_Impl for Activator_Impl {
         _: *const NOTIFICATION_USER_INPUT_DATA,
         _: u32,
     ) -> ::windows::core::Result<()> {
-        if unsafe { app.to_string()? } == ID {
+        if unsafe { app.to_string()? }.eq_ignore_ascii_case(package_id().unwrap_or(ID)) {
             let id = unsafe { args.to_string()? };
             if id.len() <= 1024 {
                 clicked(id);
@@ -103,12 +129,18 @@ fn registry_string(path: &str, name: &str, value: &str) -> Option<()> {
 pub fn initialize() -> bool {
     static REGISTERED: OnceLock<bool> = OnceLock::new();
     *REGISTERED.get_or_init(|| unsafe {
-        if SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(ID)).is_err() {
+        // A packaged process already carries its package AUMID.
+        let packaged = package_id().is_some();
+        if !packaged && SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(ID)).is_err() {
             return false;
         }
         let factory: IClassFactory = Factory.into();
         CoRegisterClassObject(
-            &ACTIVATOR,
+            if packaged {
+                &PACKAGE_ACTIVATOR
+            } else {
+                &ACTIVATOR
+            },
             &factory,
             CLSCTX_LOCAL_SERVER,
             REGCLS_MULTIPLEUSE,
@@ -162,7 +194,9 @@ fn register() -> Option<()> {
     Some(())
 }
 pub fn authorize() -> bool {
-    initialize() && register().is_some()
+    // MSIX declares its Start entry and activator in the manifest. Writing the ZIP
+    // registration there would only reach the package's virtualized registry/AppData.
+    initialize() && (package_id().is_some() || register().is_some())
 }
 fn xml(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -186,7 +220,11 @@ pub fn show(notice: &Notice) -> bool {
         );
         doc.LoadXml(&HSTRING::from(format!("<toast launch=\"{}\"><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual></toast>", xml(&notice.id()), xml(&title), xml(notice.event.kind.label()))))?;
         let toast = ToastNotification::CreateToastNotification(&doc)?;
-        ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(ID))?.Show(&toast)?;
+        match package_id() {
+            Some(_) => ToastNotificationManager::CreateToastNotifier()?,
+            None => ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(ID))?,
+        }
+        .Show(&toast)?;
         TOASTS.with(|toasts| {
             let mut t = toasts.borrow_mut();
             t.push_back(toast);

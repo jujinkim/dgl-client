@@ -15,6 +15,7 @@ BACKGROUND = "#11151B"
 IVORY = "#F3EBDD"
 LIME = "#C7F43B"
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+MSIX_LOGOS = (("Square44x44Logo", 44), ("Square150x150Logo", 150), ("StoreLogo", 50))
 # 64px is the 32pt @2x entry; use the standard macOS point/Retina slots.
 ICNS_TYPES = ((b"icp4", 16), (b"icp5", 32),
               (b"ic07", 128), (b"ic08", 256), (b"ic09", 512), (b"ic10", 1024),
@@ -148,6 +149,10 @@ def generate():
     ico = BytesIO()
     icon.save(ico, format="ICO", sizes=[(size, size) for size in ICO_SIZES])
     outputs[Path("desktop/resources/windows/dgl.ico")] = ico.getvalue()
+    # MSIX logos keep the exe icon's dark tile at their unqualified scale-100 sizes,
+    # so the package needs no resources.pri.
+    for name, size in MSIX_LOGOS:
+        outputs[Path(f"desktop/resources/windows/msix/Assets/{name}.png")] = png(resize(icon, size))
 
     # Fit both the color and monochrome artwork inside the same 64dp safe circle.
     # Measure substantial coverage, preserving antialiasing in the actual output.

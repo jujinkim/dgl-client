@@ -94,7 +94,7 @@ Rust `Inbox::tick` 하나가 데스크톱과 Android의 모든 연결을 같은 
 앱이 전면이고 대상 패널이 보이면 OS 요청을 생략한다. 데스크톱과 Android 분할 그룹에서 실제 보이는 모든 연결의 패널도 포함한다. 좁은 창·최소 공간 부족 시 숨겨진 그룹은 제외한다.
 
 - macOS: UserNotifications, 번들 ID `kim.jujin.dglc`. 패키지 `.app`에서 사용한다.
-- Windows: 자체 AUMID·사용자 Start Menu 바로가기·COM 알림 활성화. ZIP 배포를 유지한다. [등록·실기 절차](WINDOWS.md#6-에이전트-알림).
+- Windows: ZIP판은 자체 AUMID·사용자 Start Menu 바로가기·COM 알림 활성화, Store MSIX판은 패키지 ID와 매니페스트 선언 활성화. [등록·실기 절차](WINDOWS.md#7-에이전트-알림).
 - Android: `agent-observations-v1` 알림 채널과 `POST_NOTIFICATIONS`. 알림 클릭 Intent에는 사건 ID만 전달한다. 포그라운드 서비스·푸시는 추가하지 않는다.
 
 OS 권한 거부·집중 모드·프로세스 종료 때문에 표시가 보장되지는 않는다. 앱 내 사건은 유지된다.
@@ -112,7 +112,7 @@ Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다
 | 실제 Claude Code 2.1.310 | 같은 격리 방식으로 SessionStart, UserPromptSubmit, 도구 전후, AskUserQuestion, PermissionRequest, PostToolUseFailure, Stop, SubagentStart/Stop, SessionEnd 수신 확인 |
 | Android API 36 | 네 ABI Debug APK, JVM 회귀, lint, 알림 계측 2개 통과(`channelPermissionAndClickIntentRetainOnlyEventId`는 시작 시 알림 권한이 이미 허용돼 있으면 실패, [TASKS.md](../TASKS.md)): 네 서비스의 네이티브 Inbox·중복·읽음/관측 분리, 권한 거부/허용·채널, AGY/Grok OS 알림 제목 갱신, 실제 PendingIntent 클릭의 종료 대상 처리 |
 | macOS | GPUI 빌드·ad-hoc 패키징·단위 UI 검사 통과. OS 배너 표시·클릭 실기는 미검증 |
-| Windows | ZIP 패키저 단위 검사(`scripts/tests/test_windows_package.py`) 통과. 토스트 어댑터는 Mac에서 Windows GNU 대상 타입 검사를 한 번 했을 뿐 반복 실행 진입점이 없다. Windows MSVC 전체 빌드·실행·COM/토스트·DPAPI 실기는 사용자 담당이며 미검증 |
+| Windows | ZIP·MSIX 패키저 단위 검사(`scripts/tests/test_windows_package.py`) 통과. 토스트 어댑터는 Mac에서 dgl-core 대체 타입을 둔 임시 crate로 Windows GNU 대상 타입 검사를 했을 뿐 반복 실행 진입점이 없다. Windows MSVC 전체 빌드·실행·COM/토스트·DPAPI 실기는 사용자 담당이며 미검증 |
 
 AGY·Grok 검사는 `fixtures/agent-hooks/contracts.json`의 합성 입력과 격리 SSH/tmux 생산자를 사용한다. AGY·Grok의 인증된 실제 훅 수신은 미검증이다. 확인한 로컬 `--version`은 AGY 1.4.7·Codex 0.164.0이며 로그인·모델 호출은 하지 않았다.
 Codex 0.164.0은 설치 버전 처리·공식 형식 fixture 회귀 범위이며, 실제 훅 수신 기록은 0.163.0에만 있다.

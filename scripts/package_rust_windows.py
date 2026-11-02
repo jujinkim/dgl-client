@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Build an unsigned Windows x64 release ZIP. Does not run or install the app."""
+"""Build unsigned Windows x64 release packages: a portable ZIP and a Microsoft Store MSIX.
+
+Does not run, install, or sign the app. The Store signs the MSIX when it is submitted.
+"""
 import hashlib
 import json
 import os
 from pathlib import Path
 import platform
 import shutil
+from string import Template
 import struct
 import subprocess
 import tempfile
+from xml.etree import ElementTree
 import zipfile
 
 from collect_rust_notices import collect
@@ -16,6 +21,10 @@ from collect_rust_notices import collect
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = "x86_64-pc-windows-msvc"
 NAME = "dgl-rust-windows-x64"
+MSIX = ROOT / "desktop/resources/windows/msix"
+APPX = "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
+# ZIP-only guidance and hashes; the MSIX has its own block map and Store signature.
+ZIP_ONLY = {"README.txt", "build.json", "SHA256SUMS"}
 
 
 def verify_executable(path):
@@ -33,8 +42,28 @@ def verify_executable(path):
             raise ValueError("Expected PE32+ optional header")
 
 
+def msix_version(version):
+    """Map Cargo's x.y.z to MSIX x.y.z.0; the Store reserves the revision field."""
+    parts = version.split(".")
+    if len(parts) != 3 or not all(part.isdigit() and int(part) <= 65535 for part in parts):
+        raise ValueError(f"MSIX needs a numeric x.y.z version with fields up to 65535: {version}")
+    return f"{version}.0"
+
+
+def msix_manifest(version):
+    """Fill the checked-in manifest and reject malformed XML before makeappx runs."""
+    text = Template((MSIX / "AppxManifest.xml").read_text(encoding="utf-8")).substitute(
+        version=msix_version(version))
+    return text, ElementTree.fromstring(text.encode("utf-8")).find(APPX + "Identity")
+
+
+def pack_msix(content, destination):
+    subprocess.run(["makeappx", "pack", "/o", "/d", str(content), "/p", str(destination)], check=True)
+
+
 def package(binary, output, version):
     verify_executable(binary)
+    manifest, identity = msix_manifest(version)
     output.mkdir(parents=True, exist_ok=True)
     # Build in a fresh directory so old DLLs/files cannot leak into a new ZIP.
     with tempfile.TemporaryDirectory(prefix="dgl-windows-", dir=output) as temp:
@@ -57,7 +86,7 @@ def package(binary, output, version):
             "Optional OS notifications register a per-user Start Menu shortcut and COM activator.\n"
             "App notification ID: kim.jujin.dglc. No administrator privileges required.\n"
             "After moving this folder, launch the app directly to refresh notification registration.\n"
-            "Native Windows toast display/click validation is pending; see docs/WINDOWS.md section 6.\n"
+            "Native Windows toast display/click validation is pending; see docs/WINDOWS.md section 7.\n"
             "See docs/WINDOWS.md in the source repository for build/test steps.\n",
             encoding="utf-8",
         )
@@ -65,6 +94,8 @@ def package(binary, output, version):
             "version": version, "profile": "release", "arch": TARGET,
             "signing": "unsigned", "runtimeValidation": "not-performed",
             "crt": "static", "binarySha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+            "msixVersion": identity.get("Version"), "msixIdentity": identity.get("Name"),
+            "msixPublisher": identity.get("Publisher"),
         }
         (stage / "build.json").write_text(json.dumps(build, indent=2) + "\n", encoding="utf-8")
         files = sorted(p for p in stage.rglob("*") if p.is_file())
@@ -77,14 +108,23 @@ def package(binary, output, version):
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as zipped:
             for file in sorted(p for p in stage.rglob("*") if p.is_file()):
                 zipped.write(file, f"{NAME}/{file.relative_to(stage).as_posix()}")
-        # Publish only after every file and the archive have been generated.
+        content = Path(temp) / "msix"
+        # shutil.copy drops the pre-1980 registry timestamps, which MSIX's ZIP container rejects.
+        shutil.copytree(stage, content, copy_function=shutil.copy, ignore=lambda directory, names: [
+            n for n in names if n in ZIP_ONLY and Path(directory) == stage])
+        shutil.copytree(MSIX / "Assets", content / "Assets", copy_function=shutil.copy)
+        (content / "AppxManifest.xml").write_text(manifest, encoding="utf-8")
+        msix = Path(temp) / f"{NAME}.msix"
+        pack_msix(content, msix)
+        # Publish only after every file and both packages have been generated.
         archive.replace(output / archive.name)
+        msix.replace(output / msix.name)
         shutil.copy2(stage / "build.json", output / "build.json")
-    archive = output / f"{NAME}.zip"
-    (output / "SHA256SUMS").write_text(
-        f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n", encoding="utf-8"
-    )
-    return archive
+    packages = [output / f"{NAME}.zip", output / f"{NAME}.msix"]
+    (output / "SHA256SUMS").write_text("".join(
+        f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in packages
+    ), encoding="utf-8")
+    return packages
 
 
 def main():
@@ -103,7 +143,8 @@ def main():
         ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"], cwd=ROOT))
     version = next(p["version"] for p in metadata["packages"] if p["name"] == "dgl-desktop")
     binary = Path(metadata["target_directory"]) / TARGET / "release/dgl-desktop.exe"
-    print(package(binary, ROOT / "artifacts/rust-candidate/windows", version))
+    for path in package(binary, ROOT / "artifacts/rust-candidate/windows", version):
+        print(path)
 
 
 if __name__ == "__main__":

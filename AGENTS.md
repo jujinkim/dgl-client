@@ -31,7 +31,7 @@
 - Windows 실기 검증을 이번 작업에서 제외하더라도 Windows 빌드·패키징 환경은 유지한다. 검증 범위 제외를 플랫폼 구현·빌드 지원 제외로 해석하지 않는다.
 - Rust 데스크톱을 수정할 때 macOS 전용 의존성·경로·API를 공통 코드에 무조건 적용하지 않고 Windows MSVC x64 빌드 경로를 함께 고려한다.
 - Windows 빌드 진입점은 `scripts/build_windows.ps1`, 패키징은 `scripts/package_rust_windows.py`, 수동 CI는 `.github/workflows/windows-build.yml`이다. 절차·필수 도구·출력 경로가 바뀌면 `docs/WINDOWS.md`와 README도 함께 갱신한다.
-- 기본 Windows 스크립트와 수동 CI는 빌드·ZIP 생성만 수행한다. 테스트는 `-Test`로 별도 선택하며, Windows 실기 검증은 사용자 담당으로 둔다. 실제 수행하지 않은 Windows 네이티브 빌드·DPAPI·GUI 검증을 통과로 기록하지 않는다.
+- 기본 Windows 스크립트와 수동 CI는 빌드·ZIP·MSIX 생성만 수행한다. 테스트는 `-Test`로 별도 선택하며, Windows 실기 검증은 사용자 담당으로 둔다. 실제 수행하지 않은 Windows 네이티브 빌드·DPAPI·GUI 검증을 통과로 기록하지 않는다.
 
 ## 대시보드 등록 유지
 

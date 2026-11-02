@@ -32,7 +32,7 @@ if ($vsPath -and -not (Get-Command cmake.exe -ErrorAction SilentlyContinue)) {
     $cmakeBin = Join-Path $vsPath 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin'
     if (Test-Path $cmakeBin) { $env:PATH = "$cmakeBin;$env:PATH" }
 }
-foreach ($tool in @('git.exe', 'rustup.exe', 'cargo.exe', 'cl.exe', 'rc.exe', 'cmake.exe')) {
+foreach ($tool in @('git.exe', 'rustup.exe', 'cargo.exe', 'cl.exe', 'rc.exe', 'makeappx.exe', 'cmake.exe')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { $problems.Add("Missing $tool. See docs/WINDOWS.md.") }
     else { Write-Host "[OK] $tool" }
 }

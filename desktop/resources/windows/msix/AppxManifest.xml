@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Microsoft Store MSIX manifest, filled in by scripts/package_rust_windows.py.
+     Before Store submission, replace Identity Name/Publisher and PublisherDisplayName with
+     the values from Partner Center > Product identity. Version is x.y.z.0 from Cargo.toml.
+     ToastActivatorCLSID must match PACKAGE_ACTIVATOR in desktop/src/notifications/windows.rs. -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  IgnorableNamespaces="uap rescap com desktop">
+  <Identity Name="kim.jujin.dglc" Publisher="CN=kim.jujin.dglc" Version="${version}" ProcessorArchitecture="x64"/>
+  <Properties>
+    <DisplayName>DaGaLi</DisplayName>
+    <PublisherDisplayName>DaGaLi</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0"/>
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-US"/>
+    <Resource Language="ko-KR"/>
+  </Resources>
+  <Applications>
+    <Application Id="DaGaLi" Executable="dgl-desktop.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="DaGaLi"
+        Description="Let DGL handle SSH reconnection and tmux reattachment, so you can pick up where you left off."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"/>
+      <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="dgl-desktop.exe" Arguments="--agent-toast" DisplayName="DaGaLi notification activator">
+              <com:Class Id="AB49D564-B1DF-43AF-899F-F4A25950066B" DisplayName="DaGaLi notification activator"/>
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="AB49D564-B1DF-43AF-899F-F4A25950066B"/>
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust"/>
+  </Capabilities>
+</Package>
