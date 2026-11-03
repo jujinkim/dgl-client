@@ -9,6 +9,7 @@ import kotlin.test.*
 class CliLauncherTest {
     private class RecordingConnection : ClientConnection {
         val writes = mutableListOf<ByteArray>()
+        override val agents = MutableStateFlow(AgentSnapshot())
         var inputTarget = InputTarget(1, "\$1", "connection:1:pane:1")
         override fun captureInputTarget() = inputTarget
         override val host = HostProfile("launcher", "launcher", "example.test", username = "test")
@@ -133,6 +134,33 @@ class CliLauncherTest {
                 assertTrue(first.writes.isEmpty())
                 assertTrue(second.writes.isEmpty())
             }
+        }
+    }
+
+    @Test fun runningCliInTheInputPaneBlocksLaunchUntilItLeaves() {
+        val now = System.currentTimeMillis()
+        val claude = AgentObservation("\$1", "@1", "%1", "run", "parent", "Claude")
+        for (command in CliCommand.entries) {
+            val client = RecordingConnection()
+            client.agents.value = AgentSnapshot(valid = true, observed_at = now, observations = listOf(claude))
+            assertEquals("Claude", client.agents.value.agentInPane("%1", now))
+            assertFalse(CliLaunchRequest(client).send(command, client, true))
+            assertTrue(client.writes.isEmpty())
+            // An event gap leaves the process observation, so the launch stays blocked.
+            client.agents.value = client.agents.value.copy(gap = true)
+            assertFalse(CliLaunchRequest(client).send(command, client, true))
+            assertTrue(client.writes.isEmpty())
+            // Another pane's CLI, a stale poll, or an exited CLI does not block the input pane.
+            for (snapshot in listOf(
+                AgentSnapshot(valid = true, observed_at = now, observations = listOf(claude.copy(pane = "%2"))),
+                AgentSnapshot(valid = true, observed_at = now - 10_000, observations = listOf(claude)),
+                AgentSnapshot(valid = false, observed_at = now, observations = listOf(claude)),
+                AgentSnapshot(valid = true, observed_at = now),
+            )) {
+                client.agents.value = snapshot
+                assertTrue(CliLaunchRequest(client).send(command, client, true))
+            }
+            assertEquals(4, client.writes.size)
         }
     }
 

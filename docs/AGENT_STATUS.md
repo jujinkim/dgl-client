@@ -16,6 +16,9 @@ CLI 설치·로그인은 원격 환경에서 준비하며 DGL은 기존 프로�
 | Grok Build | `grok` | `grok --always-approve` |
 
 입력 불가 상태에서는 실행하지 않습니다. 메뉴를 연 뒤 연결·탭·pane이 바뀌면 닫으며 실패한 입력을 재전송하지 않습니다.
+입력 대상 pane 아래에서 네 CLI 중 하나의 프로세스가 최근 10초 안의 관측으로 확인되면 실행 항목을 비활성화하고 메뉴 위에 실행 중인 CLI를 안내합니다.
+명령이 그 CLI의 프롬프트로 제출되는 것을 막기 위한 것이며, 표시할 때와 누를 때 모두 확인합니다. 같은 세션의 다른 pane에서 실행 중인 CLI는 막지 않습니다.
+관측이 오래됐거나 없는 경우(일반 SSH 셸 포함)는 상태를 알 수 없으므로 막지 않습니다. 관측은 약 2초 간격이라 CLI를 직접 시작한 직후에는 감지되지 않을 수 있습니다.
 서비스명은 일반 실행, 바로 뒤의 번개 아이콘은 Bypass 실행입니다. Bypass는 각 CLI의 권한 확인을 건너뛰는 옵션입니다.
 메뉴는 가장 긴 행에 맞는 폭으로 표시하고 외곽 테두리만 유지합니다.
 실행 메뉴에는 AGY·Grok Build 배지를 표시하지 않습니다. 두 CLI의 에이전트 관측은 실험 지원이며 실제 CLI 훅 수신은 미검증입니다.
@@ -106,7 +109,7 @@ Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다
 |---|---|
 | Python 도우미 12개 검사 | 기존 5개 회귀, 연결당 도우미의 줄 단위 응답·오류 코드, 화면 문구 미포함과 공식 형식 24개 fixture, 중립 출력·실패 출력, AGY/Grok 설정·사용자 훅 보존, 반복 설치/해제, CLI별 오류 격리, 버전·호환 훅 오인·대화/자식 분리·중복·본문 미저장 통과 |
 | Rust·UniFFI | 관측 3개 검사: 기존 2개 및 네 서비스 wire ID·질문/승인/응답/오류의 공통 알림 경로. 전체 Rust 코어·UniFFI 회귀 통과 |
-| GPUI·Kotlin 실행/이동 | 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단·닫힘·포커스 복귀·종료 알림 대상 이동 거부를 회귀 검사한다 |
+| GPUI·Kotlin 실행/이동 | 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단·입력 pane의 CLI 실행 중 차단(코어·Kotlin 단위 검사)·닫힘·포커스 복귀·종료 알림 대상 이동 거부를 회귀 검사한다 |
 | 격리 SSH/tmux 3.3a·3.7c | 네 합성 CLI 각각 숨겨진 창, 출력 미구독 수집, 최초 DB 동기화, 새 사건, 패널 이동, 재연결 재알림 방지, 같은 패널의 프로세스 재시작·종료 확인. 생산자는 C로 만든 합성 CLI이며 실제 CLI 검사는 아래와 별개 |
 | 실제 Codex 0.163.0 | 임시 HOME·독립 tmux에서 정상 신뢰 UI로 훅을 검토하고 SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SubagentStart/Stop 수신 확인 |
 | 실제 Claude Code 2.1.310 | 같은 격리 방식으로 SessionStart, UserPromptSubmit, 도구 전후, AskUserQuestion, PermissionRequest, PostToolUseFailure, Stop, SubagentStart/Stop, SessionEnd 수신 확인 |

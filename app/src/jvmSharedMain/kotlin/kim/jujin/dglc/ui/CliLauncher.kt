@@ -1,5 +1,6 @@
 package kim.jujin.dglc.ui
 
+import kim.jujin.dglc.core.agentName
 import kim.jujin.dglc.core.t
 import kim.jujin.dglc.core.tr
 import androidx.compose.foundation.background
@@ -58,6 +59,10 @@ internal enum class CliCommand(val wire: String) {
 private val ConnectionStatus.cliLaunchPhase: Phase
     get() = if (phase == Phase.Restoring && resizing && acceptsInput) Phase.Ready else phase
 
+/** A CLI already running in the input pane would take the command as prompt text. */
+internal fun ClientConnection.runningCli(now: Long = System.currentTimeMillis()): String? =
+    pane.value?.let { agents.value.agentInPane(it, now) }
+
 /** One selection can send once, only to the connection/pane on which it opened. */
 internal class CliLaunchRequest(private val client: ClientConnection) {
     private val phase = client.status.value.cliLaunchPhase
@@ -71,7 +76,7 @@ internal class CliLaunchRequest(private val client: ClientConnection) {
         consumed = true
         if (!allowed || current !== client || !client.status.value.acceptsInput ||
             client.status.value.cliLaunchPhase != phase || client.session.value != session || client.pane.value != pane ||
-            client.captureInputTarget() != target) return false
+            client.captureInputTarget() != target || client.runningCli() != null) return false
         client.input(command.wire.encodeToByteArray())
         return true
     }
@@ -106,6 +111,9 @@ private object AboveLauncher : PopupPositionProvider {
     val status by client.status.collectAsState()
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
+    val agentSnapshot by client.agents.collectAsState()
+    // Not a request key: a CLI found while the menu is open disables rows instead of dismissing it.
+    val runningCli = pane?.let { agentSnapshot.agentInPane(it, System.currentTimeMillis()) }
     val menuOwner = remember { Any() }
     val blocks = inputGate?.inputBlocks?.collectAsState()?.value
     val menuAllowed = { allowed() && (blocks == null || inputGate?.inputBlocked(menuOwner) != true) }
@@ -204,13 +212,23 @@ private object AboveLauncher : PopupPositionProvider {
                                         opened.send(command, client, menuAllowed())
                                     }
                                 }
-                                LauncherRow("Claude Code", LauncherIcons.claude, available && status.acceptsInput,
+                                if (runningCli != null) {
+                                    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                        Text(tr("이 패널에서 {0} 실행 중", agentName(runningCli)), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                        Text(t("다른 패널에서 실행하세요"), style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                    }
+                                    HorizontalDivider()
+                                }
+                                val launchable = available && status.acceptsInput && runningCli == null
+                                LauncherRow("Claude Code", LauncherIcons.claude, launchable,
                                     { launch(CliCommand.Claude) }, { launch(CliCommand.ClaudeBypass) })
-                                LauncherRow("Codex", LauncherIcons.openai, available && status.acceptsInput,
+                                LauncherRow("Codex", LauncherIcons.openai, launchable,
                                     { launch(CliCommand.Codex) }, { launch(CliCommand.CodexBypass) })
-                                LauncherRow("AGY", LauncherIcons.agy, available && status.acceptsInput,
+                                LauncherRow("AGY", LauncherIcons.agy, launchable,
                                     { launch(CliCommand.Agy) }, { launch(CliCommand.AgyBypass) }, experimental = true)
-                                LauncherRow("Grok Build", LauncherIcons.grok, available && status.acceptsInput,
+                                LauncherRow("Grok Build", LauncherIcons.grok, launchable,
                                     { launch(CliCommand.Grok) }, { launch(CliCommand.GrokBypass) }, experimental = true)
                                 HorizontalDivider()
                                 Row(Modifier.fillMaxWidth().height(48.dp).focusProperties { canFocus = overlay == null }.clickable(role = Role.Button) {

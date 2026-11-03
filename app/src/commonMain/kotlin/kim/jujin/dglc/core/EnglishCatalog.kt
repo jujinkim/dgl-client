@@ -318,6 +318,8 @@ internal object EnglishCatalog {
         "이 연결은 텍스트 전송을 지원하지 않습니다." to "This connection does not support sending text.",
         "이 키는 원래 음량 조절 기능을 사용합니다." to "This key uses its normal volume control function.",
         "이 호스트에서 실행할 수 있는 tmux를 찾지 못했습니다." to "No runnable tmux executable was found on this host.",
+        "이 패널에서 {0} 실행 중" to "{0} is running in this pane",
+        "다른 패널에서 실행하세요" to "Launch it from another pane",
         "이동" to "Navigate",
         "이름" to "Name",
         "이름 없는 세션" to "Unnamed session",

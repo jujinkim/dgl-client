@@ -126,6 +126,18 @@ impl Snapshot {
     pub fn current(&self, now: u64) -> bool {
         self.valid && now.saturating_sub(self.observed_at) < 10_000 && !self.gap
     }
+    /// A CLI process found under `pane` in a fresh poll. The CLI launcher must not type
+    /// its command into one. An event gap leaves process observations intact, so only
+    /// staleness counts; unknown state returns `None` and does not block.
+    pub fn agent_in_pane(&self, pane: &str, now: u64) -> Option<Agent> {
+        if !self.valid || now.saturating_sub(self.observed_at) >= 10_000 {
+            return None;
+        }
+        self.observations
+            .iter()
+            .find(|o| o.pane == pane)
+            .map(|o| o.agent)
+    }
     /// Select by event data, independently of translated display text.
     pub fn display_kind(&self, pane: Option<&str>, now: u64) -> Option<Kind> {
         if !self.current(now) {
@@ -675,6 +687,32 @@ mod tests {
         assert!(snapshot.label(None, 100).contains("작업 사건"));
         snapshot.invalidate();
         assert!(snapshot.events.is_empty());
+    }
+    #[test]
+    fn launcher_sees_only_a_fresh_cli_process_in_the_target_pane() {
+        let mut snapshot = Snapshot {
+            valid: true,
+            observed_at: 100,
+            observations: vec![Observation {
+                session: "$1".into(),
+                window: "@1".into(),
+                pane: "%1".into(),
+                run: "run".into(),
+                actor: "parent".into(),
+                agent: Agent::Claude,
+                // A process without any received hook still counts.
+                last: None,
+                supported: vec![],
+            }],
+            ..Default::default()
+        };
+        assert_eq!(snapshot.agent_in_pane("%1", 100), Some(Agent::Claude));
+        assert_eq!(snapshot.agent_in_pane("%2", 100), None);
+        snapshot.gap = true;
+        assert_eq!(snapshot.agent_in_pane("%1", 100), Some(Agent::Claude));
+        assert_eq!(snapshot.agent_in_pane("%1", 10_100), None);
+        snapshot.invalidate();
+        assert_eq!(snapshot.agent_in_pane("%1", 100), None);
     }
     #[test]
     fn coalesces_cross_tab_events_filters_dead_runs_and_bounds_history() {

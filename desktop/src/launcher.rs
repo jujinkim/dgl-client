@@ -1,4 +1,5 @@
 use super::*;
+use dgl_core::agent::Agent;
 use dgl_core::connection::State;
 use std::borrow::Cow;
 
@@ -157,11 +158,19 @@ impl Desktop {
         }
         cx.notify();
     }
+    /// A CLI already running in the input pane would take the command as prompt text.
+    /// Checked when painting and again when clicking, without dismissing the menu.
+    fn launch_blocker(&self) -> Option<Agent> {
+        let state = self.active_tab()?.connection.state();
+        state
+            .agents
+            .agent_in_pane(state.pane.as_deref()?, dgl_core::agent::now_ms())
+    }
     fn launch(&mut self, command: LaunchCommand, window: &mut Window, cx: &mut Context<Self>) {
         let current = self.launch_context();
         if let Some(bytes) = self.launcher.take_command(
             &current,
-            self.dialog.is_none() && self.snackbar.is_none(),
+            self.dialog.is_none() && self.snackbar.is_none() && self.launch_blocker().is_none(),
             command,
         ) && let Some(tab) = self.active_tab()
         {
@@ -192,7 +201,8 @@ impl Desktop {
     pub fn render_launcher(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         self.launcher.opened.as_ref()?;
         let p = self.palette;
-        let enabled = self.launch_context().accepts_input();
+        let blocker = self.launch_blocker();
+        let enabled = self.launch_context().accepts_input() && blocker.is_none();
         let mut menu = div()
             .id("cli-launcher-menu")
             .debug_selector(|| "cli-launcher-menu".into())
@@ -207,6 +217,27 @@ impl Desktop {
             .border_color(rgb(p.line))
             .shadow_md()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+        if let Some(agent) = blocker {
+            let mut notice = div()
+                .id("launcher-agent-running")
+                .debug_selector(|| "launcher-agent-running".into())
+                .flex()
+                .flex_col()
+                .px_3()
+                .py_2()
+                .border_b_1()
+                .border_color(rgb(p.line))
+                .text_size(px(13.))
+                .text_color(rgb(p.fg))
+                .child(tr!("이 패널에서 {0} 실행 중", agent.label()))
+                .child(
+                    div()
+                        .text_color(rgb(p.muted))
+                        .child(t("다른 패널에서 실행하세요")),
+                );
+            notice.style().align_self = Some(gpui::AlignSelf::Stretch);
+            menu = menu.child(notice);
+        }
         for (service, icon, normal, bypass) in [
             (
                 "Claude Code",

@@ -60,6 +60,7 @@ TESTS = {
                                     'resizeAcceptsKeysButBlocksPointersWithoutConnectionProgress',
                                     'returningToTheSubmittedSizeNeedsNoRequest'],
     'CliLauncherTest': ['modifiersToggleUnionConsumeAndRejectUnsupportedWithoutReplay', 'targetChangesRecoveryAndModalClearsCannotLeakModifiers', 'exactCommandsOnceForActiveShellAndPane', 'targetChangesAndUnavailableInputNeverSendOrReplay',
+                        'runningCliInTheInputPaneBlocksLaunchUntilItLeaves',
                         'viewportRestorationRetainsRequestsButRecoveryAndChangedTargetsRejectThem'],
     'MigrationContractTest': ['controlStreamFixturesAtEveryBoundary', 'escapeFixtures',
                               'commandFixtures', 'inputFixtures', 'settingsFixtures', 'stateFixtures'],

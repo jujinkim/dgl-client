@@ -10,6 +10,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class AgentSnapshot(val server: String = "", val epoch: String = "", val cursor: Long = 0, val gap: Boolean = false,
     val observations: List<AgentObservation> = emptyList(), val events: List<AgentEvent> = emptyList(), val valid: Boolean = false, val observed_at: Long = 0) {
     fun current(now: Long) = valid && !gap && now - observed_at < 10_000
+    /** Mirrors Rust `Snapshot::agent_in_pane`: a CLI process in a fresh poll; unknown state is null. */
+    fun agentInPane(pane: String, now: Long): String? =
+        if (!valid || now - observed_at >= 10_000) null else observations.firstOrNull { it.pane == pane }?.agent
 }
 @Serializable data class AgentNotice(val endpoint: String, val event: AgentEvent, val read: Boolean = false) {
     val id get() = "$endpoint:${event.id}"
