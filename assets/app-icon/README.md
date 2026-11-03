@@ -18,7 +18,7 @@ dagali의 머리는 위에서 내려다본, 모서리가 둥근 **ㄱ자 엔터 
 | [source.png](source.png) | 공통 도형에서 Pillow로 생성한 투명 1024×1024 RGBA 원본 |
 | [prompt.txt](prompt.txt) | 확정한 디자인 명세. 이미지 생성 서비스는 사용하지 않음 |
 | [master.png](master.png) | 플랫폼 변환용 투명 1024×1024 PNG, 현재 원본과 동일 |
-| [icon.png](icon.png) | 짙은 배경을 합성한 1024×1024 PNG, Windows·로컬 대시보드용 |
+| [icon.png](icon.png) | 여백 없이 macOS와 같은 비율(196/896)로 모서리를 둥글린 짙은 타일의 1024×1024 PNG, Windows·로컬 대시보드용 |
 | [macos.png](macos.png) | 투명 여백과 둥근 짙은 타일을 적용한 macOS용 1024×1024 PNG |
 | [monochrome.json](monochrome.json) | 컬러·단색이 공유하는 M/L/C/Z 도형. `contours`는 ㄱ자 키캡과 두 pane, `details`는 프롬프트 눈·블록 눈·커서 입 |
 | [preview-sizes.png](preview-sizes.png) | 128·48·32·16px 실제 크기와 작은 크기의 최근접 확대 |
@@ -67,7 +67,7 @@ Python 3.9 이상을 사용합니다. Windows에서는 가상환경 실행 파�
   GPUI 0.2.2의 기존 `LoadImageW`·창 클래스 아이콘 경로를 사용합니다.
   Windows SDK `rc.exe`는 기존 필수 도구이며 별도 변환기는 일반 빌드에 필요하지 않습니다.
 - Windows MSIX: `desktop/resources/windows/msix/Assets/`의 `Square44x44Logo`(44px)·`Square150x150Logo`(150px)·
-  `StoreLogo`(50px)는 ICO와 같은 `icon.png`를 배율 100 크기로 줄인 PNG입니다. `AppxManifest.xml`이 참조하며
+  `StoreLogo`(50px)는 ICO와 같은 둥근 타일 `icon.png`를 배율 100 크기로 줄인 PNG입니다. `AppxManifest.xml`이 참조하며
   재생성·`--check`에 포함합니다.
 
 Android 레이어 규격은 [공식 adaptive icon 안내](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive),

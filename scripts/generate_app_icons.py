@@ -15,6 +15,8 @@ BACKGROUND = "#11151B"
 IVORY = "#F3EBDD"
 LIME = "#C7F43B"
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+# Rounded-tile corner radius as a fraction of the tile edge, shared with the macOS tile (196/896).
+TILE_RADIUS = 196 / 896
 MSIX_LOGOS = (("Square44x44Logo", 44), ("Square150x150Logo", 150), ("StoreLogo", 50))
 # 64px is the 32pt @2x entry; use the standard macOS point/Retina slots.
 ICNS_TYPES = ((b"icp4", 16), (b"icp5", 32),
@@ -52,6 +54,16 @@ def paint_contour(draw, contour, scale, fill, center=0, factor=1):
             raise ValueError(f"Unsupported artwork command: {command}")
     draw.polygon([tuple(round(((axis-center)*factor+center)*scale) for axis in point)
                   for point in points], fill=fill)
+
+
+def rounded_tile(size):
+    """Charcoal tile with antialiased rounded corners and transparent outside."""
+    mask = Image.new("L", (size * 4, size * 4))
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, size * 4 - 1, size * 4 - 1),
+                                           radius=round(size * 4 * TILE_RADIUS), fill=255)
+    tile = Image.new("RGBA", (size, size), BACKGROUND)
+    tile.putalpha(resize(mask, size))
+    return tile
 
 
 def artwork(geometry, size):
@@ -134,7 +146,8 @@ def generate():
     geometry = json.loads((ROOT / ART / "monochrome.json").read_text())
     source = artwork(geometry, 1024)
     master = source.copy()
-    icon = Image.new("RGBA", master.size, BACKGROUND)
+    # Windows, MSIX and the dashboard use a full-bleed tile with the macOS corner ratio.
+    icon = rounded_tile(master.width)
     icon.alpha_composite(master)
     macos = Image.new("RGBA", (1024, 1024))
     tile = Image.new("RGBA", (896, 896), BACKGROUND)
@@ -149,7 +162,7 @@ def generate():
     ico = BytesIO()
     icon.save(ico, format="ICO", sizes=[(size, size) for size in ICO_SIZES])
     outputs[Path("desktop/resources/windows/dgl.ico")] = ico.getvalue()
-    # MSIX logos keep the exe icon's dark tile at their unqualified scale-100 sizes,
+    # MSIX logos keep the exe icon's rounded dark tile at their unqualified scale-100 sizes,
     # so the package needs no resources.pri.
     for name, size in MSIX_LOGOS:
         outputs[Path(f"desktop/resources/windows/msix/Assets/{name}.png")] = png(resize(icon, size))
