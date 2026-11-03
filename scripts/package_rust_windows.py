@@ -140,8 +140,8 @@ def main():
     args = parser.parse_args()
     if platform.system() != "Windows":
         raise SystemExit("Run scripts/build_windows.ps1 on native Windows; GPUI release shaders require fxc.exe.")
-    # Restrict static CRT flags to this executable build. UniFFI's cdylib tests
-    # retain their default CRT configuration, as do the Mac/Android targets.
+    # Restrict static CRT flags to this executable build. `-Test` builds keep
+    # their default CRT configuration, as do the Mac/Android targets.
     env = dict(os.environ)
     flags = env.get("CARGO_ENCODED_RUSTFLAGS")
     if flags is None:
