@@ -42,6 +42,15 @@ interface ClientConnection {
     fun pointerInput(pane: String, target: String?, bytes: ByteArray) { if (status.value.acceptsPointer) paneInput(pane, target, bytes) }
     fun focusPane(pane: String, target: String?) { selectPane(pane) }
     fun resizePane(pane: String, target: String?, size: Size) {}
+    /**
+     * Makes the current tmux window follow this screen's size. [force] is a focus gain;
+     * otherwise this is user input, which claims only after another client took the size.
+     * Never reports an error; automatic terminal replies must not call it. A focus claim
+     * refused while connecting, reconnecting or restoring runs [deferred] once, outside the
+     * adapter lock, when the connection is next Ready (a newer focus claim replaces it), so
+     * the owner can re-check focus and claim again.
+     */
+    fun claimSize(force: Boolean, deferred: (() -> Unit)? = null) {}
     /** Product adapters use the Rust encoder. Null means the legacy protocol cannot encode this input. */
     fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? = null
     fun input(bytes: ByteArray)

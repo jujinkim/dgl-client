@@ -182,11 +182,11 @@ test('terminal bridge forwards text and raw mouse input through distinct channel
   assert.deepEqual(messages.splice(0), [{ type: 'ready' }]);
   for (const data of ['한글😀', '\x1b[1;6D', '\x1b[<35;1;1M', '\x1b[<64;1;1M']) {
     terminal.data(data);
-    assert.deepEqual(messages.splice(0), [{ type: 'input', data, ...(/^\x1b\[</.test(data) ? { pointer: true } : {}), pane: 'shell', target: null }]);
+    assert.deepEqual(messages.splice(0), [{ type: 'input', data, ...(/^\x1b\[</.test(data) ? { pointer: true, user: true } : {}), pane: 'shell', target: null }]);
   }
   const data = '\x1b[M \x85\xff';
   terminal.binary(data);
-  assert.deepEqual(messages.splice(0), [{ type: 'input-binary', data, pointer: true, pane: 'shell', target: null }]);
+  assert.deepEqual(messages.splice(0), [{ type: 'input-binary', data, pointer: true, user: true, pane: 'shell', target: null }]);
   assert.deepEqual([...messages], []);
   terminal.binary('a'.repeat(65537));
   terminal.data('한'.repeat(21846));
@@ -1321,9 +1321,9 @@ test('semantic keys use the shared encoder channel once and preserve cursor mode
   r.key('c', 'c');
   r.window.sendShortcut('left', false, true, false);
   assert.deepEqual(r.messages, [
-    { type: 'keyboard', key: 'left', text: null, control: true, shift: false, alt: true, applicationCursor: true, pane: 'shell', target: null },
-    { type: 'keyboard', key: 'c', text: 'c', control: false, shift: false, alt: false, applicationCursor: true, pane: 'shell', target: null },
-    { type: 'keyboard', key: 'left', text: null, control: false, shift: true, alt: false, applicationCursor: true, pane: 'shell', target: null },
+    { type: 'keyboard', user: true, key: 'left', text: null, control: true, shift: false, alt: true, applicationCursor: true, pane: 'shell', target: null },
+    { type: 'keyboard', user: true, key: 'c', text: 'c', control: false, shift: false, alt: false, applicationCursor: true, pane: 'shell', target: null },
+    { type: 'keyboard', user: true, key: 'left', text: null, control: false, shift: true, alt: false, applicationCursor: true, pane: 'shell', target: null },
   ]);
   r.messages.length = 0;
   r.window.setInputEnabled(false); r.key('c', 'c'); r.window.sendShortcut('left', false, false, false);
@@ -1345,10 +1345,61 @@ test('IME commits once while paste mouse and protocol responses bypass semantic 
   assert.equal(r.window.preparePaste('composer'), 'composer');
   assert.deepEqual(r.messages, [
     { type: 'input', data: '\x1b[0n', pane: 'shell', target: null },
-    { type: 'keyboard', key: 'text', text: '한😀', control: false, shift: false, alt: false, applicationCursor: false, pane: 'shell', target: null },
-    { type: 'input', data: 'pasted text', pane: 'shell', target: null },
-    { type: 'input', data: '\x1b[<0;1;1M', pointer: true, pane: 'shell', target: null },
-    { type: 'input-binary', data: '\x1b[M \x85\xff', pointer: true, pane: 'shell', target: null },
+    { type: 'keyboard', user: true, key: 'text', text: '한😀', control: false, shift: false, alt: false, applicationCursor: false, pane: 'shell', target: null },
+    { type: 'input', data: 'pasted text', user: true, pane: 'shell', target: null },
+    { type: 'input', data: '\x1b[<0;1;1M', pointer: true, user: true, pane: 'shell', target: null },
+    { type: 'input-binary', data: '\x1b[M \x85\xff', pointer: true, user: true, pane: 'shell', target: null },
+  ]);
+});
+
+test('only the user\'s own input is marked to take the tmux window size, never emulator replies', () => {
+  // xterm answers these queries through the same onData as typed keys.
+  const replies = ['\x1b[?1;2c', '\x1b[>0;276;0c', '\x1b[0n', '\x1b[3;5R', '\x1b[?3;5R', '\x1b[?2004;1$y',
+    '\x1b[8;24;80t', '\x1b[4;480;640t', '\x1b]11;rgb:1111/1515/1b1b\x1b\\', '\x1bP1$r0m\x1b\\', '\x1b[I', '\x1b[O'];
+  const r = keyboardRenderer();
+  const unmarked = () => r.messages.splice(0).filter(m => m.user !== undefined);
+  for (const reply of replies) r.terminal.data(reply);
+  assert.deepEqual(r.messages.map(m => [m.type, m.data]), replies.map(reply => ['input', reply]));
+  assert.deepEqual(unmarked(), [], 'an idle renderer answering queries must not claim the window');
+  // A reply right after a key, or while an IME composes, stays a reply.
+  r.key('a', 'a'); r.terminal.data('\x1b[0n');
+  r.emit('compositionstart'); r.emit('input', { inputType: 'insertCompositionText', data: '한' });
+  r.terminal.data('\x1b[3;5R');
+  r.emit('compositionend'); r.terminal.data('한'); r.flushTimers();
+  assert.deepEqual(r.messages.map(m => [m.type, m.user === true]),
+    [['keyboard', true], ['input', false], ['input', false], ['keyboard', true]]);
+  r.messages.length = 0;
+  r.emit('paste'); r.terminal.data('pasted'); r.flushTimers(); r.terminal.data('\x1b[0n');
+  r.window.sendShortcut('c', true, false, false);
+  r.terminal.data('\x1b[<0;1;1M'); r.terminal.binary('\x1b[M !!');
+  assert.deepEqual(r.messages.map(m => [m.type, m.user === true]),
+    [['input', true], ['input', false], ['keyboard', true], ['input', true], ['input-binary', true]]);
+  // A blocked renderer reports blocked input, never a marked message.
+  r.messages.length = 0; r.window.setInputEnabled(false);
+  r.key('a', 'a'); r.terminal.data('\x1b[0n');
+  assert.deepEqual(r.messages, [{ type: 'blocked-input' }, { type: 'blocked-input' }]);
+});
+
+test('IME text with control characters is the user\'s and consumes its origin', () => {
+  const r = keyboardRenderer();
+  r.emit('input', { inputType: 'insertText', data: 'a\nb' });
+  r.terminal.data('a\nb');
+  // The origin is consumed: later data, even without ESC, is not marked by it.
+  r.terminal.data('\x1b[0n'); r.terminal.data('x\ny');
+  assert.deepEqual(r.messages, [
+    { type: 'input', data: 'a\nb', user: true, pane: 'shell', target: null },
+    { type: 'input', data: '\x1b[0n', pane: 'shell', target: null },
+    { type: 'input', data: 'x\ny', pane: 'shell', target: null },
+  ]);
+  r.messages.length = 0;
+  // Replies that arrive while an IME origin is pending stay replies and keep the origin.
+  r.emit('compositionstart'); r.emit('input', { inputType: 'insertCompositionText', data: '한' });
+  r.terminal.data('\x1b[?1;2c'); r.terminal.data('\x1b]11;rgb:1111/1515/1b1b\x1b\\'); r.terminal.data('\x1b[I');
+  r.emit('compositionend'); r.terminal.data('한\r줄'); r.flushTimers();
+  r.terminal.data('\x1b[3;5R');
+  assert.deepEqual(r.messages.map(m => [m.type, m.data, m.user === true]), [
+    ['input', '\x1b[?1;2c', false], ['input', '\x1b]11;rgb:1111/1515/1b1b\x1b\\', false], ['input', '\x1b[I', false],
+    ['input', '한\r줄', true], ['input', '\x1b[3;5R', false],
   ]);
 });
 

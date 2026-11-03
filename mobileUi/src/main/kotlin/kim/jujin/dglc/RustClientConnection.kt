@@ -80,6 +80,7 @@ class RustClientConnection(
     private var recentPending = false
     private val recentSaveLock = Any()
     private val resizes = TerminalResizeQueue()
+    private val sizeClaims = TerminalSizeClaims()
     private val recovery = TerminalRecovery()
     private val presentation = TerminalPresentation()
     private val backgroundResume = BackgroundResume()
@@ -143,6 +144,11 @@ class RustClientConnection(
                                 val completion = inputCompletions.remove(id)
                                 val input = id?.let { inputRequests.remove(it) } == true
                                 val resumed = id?.let { resumeRequests.remove(it) } == true
+                                // A size claim's result is never shown. A focus claim that found no
+                                // attached client waits for the next Ready state.
+                                val claim = id?.let { sizeClaims.complete(it, code, status.value.phase) } == true
+                                // Only a pointer report's resize race behind a claim stays silent.
+                                val report = id?.let { sizeClaims.completeInput(it, code) } == true
                                 if (resumed) trace("check-complete request=$id error=${code ?: "none"}")
                                 if (id != null && id == snapshotRequest) {
                                     snapshotRequest = null
@@ -153,14 +159,19 @@ class RustClientConnection(
                                     }
                                 }
                                 if (completion != null) completion.complete(InputCompletion(code?.let(::nativeInputError)))
-                                else if (code != null && input) rejectInput(code)
-                                else if (code != null && !resumed && code !in setOf("Cancelled", "StaleGeneration")) notice.value = message(code)
+                                // A silenced pointer report ends here: no rejection and no notice.
+                                else if (code != null && input) { if (!report) rejectInput(code) }
+                                else if (code != null && !resumed && !claim && code !in setOf("Cancelled", "StaleGeneration")) notice.value = message(code)
                             }
                         }
                     }
-                    synchronized(this@RustClientConnection) {
+                    val claim = synchronized(this@RustClientConnection) {
                         if (current == epoch && !closed && status.value.phase in setOf(Phase.Ready, Phase.Shell, Phase.Selecting, Phase.MissingSession)) submitResize(connection)
+                        if (current == epoch && !closed) sizeClaims.ready(status.value.phase) else null
                     }
+                    // The owner re-checks that this screen is still shown and focused, and takes
+                    // its own lock first, so this runs outside the adapter lock.
+                    claim?.invoke()
                     delay(16)
                 }
             } catch (e: CancellationException) { throw e }
@@ -597,13 +608,44 @@ class RustClientConnection(
             notice.value = t("화면 크기 변경을 전송하지 못했습니다. 잠시 후 다시 시도합니다.")
         }
     }
+    /**
+     * Focus claims always go out; input claims only after another client took the window.
+     * Errors are never reported. A focus claim refused while connecting, reconnecting or
+     * restoring keeps [deferred] for the next Ready state (an automatic reconnect attaches
+     * without taking the window); shell, selection, Closed or a full queue drop it.
+     */
+    @Synchronized override fun claimSize(force: Boolean, deferred: (() -> Unit)?) {
+        if (closed) return
+        val retry = deferred.takeIf { force }
+        val c = native ?: return sizeClaims.refused("NotReady", status.value.phase, retry)
+        if (!sizeClaims.shouldClaim(force) { stateOf(c)["displaced"]?.jsonPrimitive?.booleanOrNull == true }) return
+        try {
+            sizeClaims.submitted(c.submitAction(buildJsonObject { put("action", "claimSize"); put("force", force) }.toString()), retry)
+        } catch (error: Exception) {
+            // The core refuses by its own phase; the adapter's status may lag one poll behind.
+            val phase = runCatching { Phase.valueOf(stateOf(c)["phase"]?.jsonPrimitive?.content ?: "") }.getOrDefault(status.value.phase)
+            sizeClaims.refused(inputCode(error), phase, retry)
+        }
+    }
+    // paneInput also carries the renderer's automatic replies, so its caller claims for user
+    // input. input() and sendInput() are only user, CLI launcher, volume key or composer input.
     @Synchronized override fun paneInput(pane: String, target: String?, bytes: ByteArray) {
         val c = native ?: return rejectInput("Closed")
         if (!status.value.acceptsInput) return rejectInput("NotReady")
         val current = c.targetJson() ?: return rejectInput("NotReady")
         if (target == null || inputTargetIdentity(target) != inputTargetIdentity(current) || json.parseToJsonElement(current).jsonObject["pane_id"]?.jsonPrimitive?.content != pane) return rejectInput("StaleGeneration")
         // A size-only change keeps the destination; submit against the latest grid generation.
-        try { inputRequests.add(c.submitInput(current, bytes)) } catch (error: Exception) { rejectInput(inputCode(error)) }
+        // The bridge claims before user input, so a pointer report may queue behind that claim:
+        // when the claim changes the grid the core refuses the report, which is not an error.
+        val behind = sizeClaims.behindClaim(bytes)
+        try {
+            val id = c.submitInput(current, bytes)
+            inputRequests.add(id)
+            if (behind) sizeClaims.reportSubmitted(id)
+        } catch (error: Exception) {
+            val code = inputCode(error)
+            if (!(behind && TerminalSizeClaims.reportRace(code))) rejectInput(code)
+        }
     }
     @Synchronized override fun inputBlocked() { if (!status.value.acceptsInput) rejectInput("NotReady") }
     @Synchronized override fun pointerInput(pane: String, target: String?, bytes: ByteArray) {
@@ -626,6 +668,7 @@ class RustClientConnection(
         if (!status.value.acceptsInput) return rejectInput("NotReady")
         try {
             val target = c.targetJson() ?: return rejectInput("NotReady")
+            claimSize(force = false)
             inputRequests.add(c.submitInput(target, bytes))
         } catch (error: Exception) { rejectInput(inputCode(error)) }
     }
@@ -644,6 +687,7 @@ class RustClientConnection(
             bytes.isEmpty() || bytes.size > TerminalInput.MAX_BYTES -> completion.complete(InputCompletion(t("입력은 1바이트 이상, 64 KiB 이하여야 합니다.")))
             else -> try {
                 // Use the latest size generation, then let the core validate again at dequeue.
+                claimSize(force = false)
                 inputCompletions[c.submitInput(raw, bytes)] = completion
             } catch (error: Exception) { completion.complete(InputCompletion(nativeInputError(inputCode(error)))) }
         }
@@ -656,6 +700,7 @@ class RustClientConnection(
     @Synchronized private fun detach() {
         failInputs()
         resumeRequests.clear()
+        sizeClaims.reset()
         snapshotRequest = null
         resizes.reset()
         appliedSequence = -1L
@@ -672,7 +717,7 @@ class RustClientConnection(
         state?.cancel(); output?.cancel(); if (old != null) { id?.let(old::unsubscribe); old.stop(); cleanup += scope.launch(NonCancellable) { state?.join(); output?.join(); try { old.shutdown() } finally { old.close() } } }
     }
     @Synchronized override fun disconnect() { backgroundResume.cancel(); agents.value = AgentSnapshot(); ++epoch; ++adapterGeneration; detach(); status.value = ConnectionStatus() }
-    @Synchronized override fun close() { if (closed) return; closed = true; disconnect(); surface = null; val pending = cleanup.toList(); scope.launch { pending.forEach { it.join() }; scope.cancel() } }
+    @Synchronized override fun close() { if (closed) return; closed = true; sizeClaims.close(); disconnect(); surface = null; val pending = cleanup.toList(); scope.launch { pending.forEach { it.join() }; scope.cancel() } }
 
     private class TrustRecordMismatch : Exception()
     private fun message(code: String) = when (code) {

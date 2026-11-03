@@ -21,6 +21,7 @@ pub struct WindowTerminal {
     last_display: Option<Arc<dgl_core::connection::State>>,
     rejection_shown: bool,
     drag: Option<(RemotePane, Point<Pixels>, bool, PaneTarget)>,
+    claims: Claims,
     pub enabled: bool,
     pub notice: Option<SnackbarRequest>,
     #[cfg(test)]
@@ -36,10 +37,12 @@ impl WindowTerminal {
         let subscription = connection.output().subscribe().unwrap();
         let _ = connection.action(Action::Snapshot);
         let owner = cx.entity().downgrade();
+        let claims = Claims::default();
         let shell = cx.new(|cx| {
             let mut terminal = Terminal::build(
                 connection.clone(),
                 Some("shell".into()),
+                claims.clone(),
                 font_size,
                 scrollback,
                 cx,
@@ -61,6 +64,7 @@ impl WindowTerminal {
             last_display: None,
             rejection_shown: false,
             drag: None,
+            claims,
             enabled: true,
             notice: None,
             #[cfg(test)]
@@ -76,6 +80,7 @@ impl WindowTerminal {
                     let mut terminal = Terminal::build(
                         self.connection.clone(),
                         Some(id.to_owned()),
+                        self.claims.clone(),
                         self.font.effective(),
                         self.scrollback,
                         cx,
@@ -169,11 +174,21 @@ impl WindowTerminal {
         if self.connection.target().is_none() {
             self.reject_input(dgl_core::Error::NotReady);
         }
-        if let Some(target) = self.connection.target()
-            && let Err(e) = self.connection.input(target, bytes)
-        {
-            self.reject_input(e);
+        if let Some(target) = self.connection.target() {
+            self.claims.before_input(&self.connection);
+            if let Err(e) = self.connection.input(target, bytes) {
+                self.reject_input(e);
+            }
         }
+    }
+    /// Focus claim: this screen takes its tmux window's size. Silent; `NotReady`
+    /// when there is no attached window yet, for the caller to defer.
+    pub fn claim_size(&self) -> dgl_core::Result<u64> {
+        self.claims.force(&self.connection)
+    }
+    /// For user input sent directly to the connection (the composer).
+    pub fn claims(&self) -> Claims {
+        self.claims.clone()
     }
     pub fn clear_modifiers(&mut self, cx: &mut App) {
         for pane in self.panes.values() {
@@ -228,7 +243,21 @@ impl WindowTerminal {
         }
         Ok(bytes)
     }
-    pub fn complete(&mut self, id: u64, succeeded: bool, cx: &mut App) -> bool {
+    pub fn complete(
+        &mut self,
+        id: u64,
+        error: Option<&dgl_core::Error>,
+        cx: &mut App,
+    ) -> InputCompletion {
+        if let Some(focus) = self.claims.complete(id) {
+            return match error {
+                Some(e) if focus && crate::size_claim::defers_focus_claim(e) => {
+                    InputCompletion::DeferFocus
+                }
+                _ => InputCompletion::Quiet,
+            };
+        }
+        let succeeded = error.is_none();
         if let Some((request, size)) = self.resize_request
             && request == id
         {
@@ -238,9 +267,12 @@ impl WindowTerminal {
                 self.resize_due = Instant::now() + Duration::from_millis(150);
             }
         }
-        let mut input = false;
+        let mut input = InputCompletion::Other;
         for pane in self.panes.values() {
-            input |= pane.update(cx, |t, _| t.complete(id));
+            match pane.update(cx, |t, _| t.complete(id, error)) {
+                InputCompletion::Other => {}
+                found => input = found,
+            }
         }
         input
     }
@@ -693,9 +725,9 @@ mod tests {
             }
             assert_eq!(request.1.columns, 90);
             assert_eq!(t.applied_size, None, "submission is not success");
-            t.complete(request.0 + 100, true, cx);
+            t.complete(request.0 + 100, None, cx);
             assert_eq!(t.resize_request, Some(request));
-            t.complete(request.0, true, cx);
+            t.complete(request.0, None, cx);
             t.tick(cx);
             assert!(t.resize_request.is_none(), "minimum 50 ms start interval");
             t.resize_due = std::time::Instant::now();
@@ -703,14 +735,14 @@ mod tests {
             assert_ne!(t.resize_request, Some(request));
             let latest = t.resize_request.unwrap();
             assert_eq!(latest.1, Size::new(149, 31).unwrap());
-            t.complete(latest.0, false, cx);
+            t.complete(latest.0, Some(&dgl_core::Error::Network), cx);
             t.tick(cx);
             assert_eq!(t.resize_request, None, "failure retries are debounced");
             t.resize_due = std::time::Instant::now();
             t.tick(cx);
             let retry = t.resize_request.unwrap();
             assert_eq!(retry.1, latest.1, "the same failed size must be retried");
-            t.complete(retry.0, true, cx);
+            t.complete(retry.0, None, cx);
             t.tick(cx);
             assert_eq!(t.resize_request, None);
             assert_eq!(t.applied_size, Some(latest.1));
@@ -773,6 +805,84 @@ mod tests {
             let mut missing = target.clone();
             missing.pane_id = "%99".into();
             assert!(t.prepare_paste(&missing, "hello", cx).is_err());
+        });
+        connection.close();
+        runtime.block_on(connection.join());
+    }
+
+    #[gpui::test]
+    fn size_claims_and_pointer_reports_queued_after_one_complete_silently(cx: &mut TestAppContext) {
+        use super::InputCompletion;
+        // Unpolled runtime: requests stay queued, completions are driven by hand.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _enter = runtime.enter();
+        let host: HostProfile = serde_json::from_value(serde_json::json!({
+            "id":"fixture", "alias":"fixture", "hostname":"127.0.0.1", "port":1,
+            "username":"test", "credentialRef":"fixture"
+        }))
+        .unwrap();
+        let connection = Connection::start(host, Credential::default(), None);
+        let terminal = cx.new(|cx| WindowTerminal::new(connection.clone(), 14, 5000, cx));
+        terminal.update(cx, |t, cx| {
+            use dgl_core::Error;
+            // Not attached yet: a focus claim is refused without a request or notice.
+            assert_eq!(t.claim_size(), Err(Error::NotReady));
+            let claims = t.claims();
+            assert!(!claims.pending());
+            claims.track(41, true);
+            let pane = t.panes["shell"].clone();
+            assert!(
+                pane.read(cx).claims.pending(),
+                "panes share the viewport's claims"
+            );
+            assert_eq!(t.complete(41, None, cx), InputCompletion::Quiet);
+            assert!(!claims.pending());
+            assert_eq!(t.complete(41, None, cx), InputCompletion::Other);
+            assert_eq!(t.complete(99, None, cx), InputCompletion::Other);
+            // A focus claim lost with the transport is retried after reconnecting;
+            // an input claim or any other failure is just dropped.
+            claims.track(42, true);
+            claims.track(43, false);
+            claims.track(44, true);
+            assert_eq!(
+                t.complete(42, Some(&Error::Network), cx),
+                InputCompletion::DeferFocus
+            );
+            assert_eq!(
+                t.complete(43, Some(&Error::NotReady), cx),
+                InputCompletion::Quiet
+            );
+            assert_eq!(
+                t.complete(44, Some(&Error::Protocol), cx),
+                InputCompletion::Quiet
+            );
+            pane.update(cx, |p, _| {
+                p.input_requests.extend([7, 8, 9, 10]);
+                p.claimed_reports.extend([8, 9, 10]);
+            });
+            assert_eq!(
+                t.complete(7, Some(&Error::StaleGeneration), cx),
+                InputCompletion::Input
+            );
+            assert_eq!(
+                t.complete(8, Some(&Error::StaleGeneration), cx),
+                InputCompletion::Quiet
+            );
+            assert_eq!(t.complete(8, None, cx), InputCompletion::Other);
+            assert_eq!(
+                t.complete(9, Some(&Error::NotReady), cx),
+                InputCompletion::Quiet
+            );
+            assert_eq!(
+                t.complete(10, Some(&Error::QueueFull), cx),
+                InputCompletion::Input,
+                "only the claim's own resize race is silenced"
+            );
+            assert!(pane.read(cx).claimed_reports.is_empty());
+            assert!(t.notice.is_none());
         });
         connection.close();
         runtime.block_on(connection.join());

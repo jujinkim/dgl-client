@@ -1,3 +1,4 @@
+use crate::size_claim::{Claims, expected_report_error};
 use crate::snackbar::{SnackbarDuration, SnackbarRequest};
 use alacritty_terminal::{
     Term,
@@ -22,6 +23,9 @@ mod window;
 use input::{ScrollAccumulator, button_code, key_sequence, mouse_modifiers, mouse_sequence};
 use paint::{CellLayer, Run, Runs, paint_grid};
 pub use window::WindowTerminal;
+/// Emulator answers (DA, DSR, cursor position, OSC queries) go straight to the
+/// connection, never through `Terminal::send`: an idle screen answering a query must
+/// not claim the tmux window's size from the screen the user operates.
 #[derive(Clone)]
 struct Listener(Arc<Connection>, Option<String>);
 impl EventListener for Listener {
@@ -35,6 +39,20 @@ impl EventListener for Listener {
             let _ = self.0.input(t, text.into_bytes());
         }
     }
+}
+/// How a completed request relates to this terminal's input.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputCompletion {
+    /// Not an input or claim of this terminal.
+    Other,
+    /// User input; a failure is reported once as an input rejection.
+    Input,
+    /// A size claim, or a pointer report queued behind one that failed only because
+    /// the claim changed the grid: never reported.
+    Quiet,
+    /// A focus claim that failed for want of a transport: silent, and sent again
+    /// once the connection is `Ready` (`size_claim::FocusClaims::defer`).
+    DeferFocus,
 }
 struct GridSize(usize, usize);
 impl Dimensions for GridSize {
@@ -76,6 +94,10 @@ pub struct Terminal {
     pub sent: Vec<Vec<u8>>,
     pub notice: Option<SnackbarRequest>,
     input_requests: HashSet<u64>,
+    /// Pointer reports queued behind a size claim. They carry the old grid's
+    /// coordinates, so the core may reject them; that rejection is not reported.
+    claimed_reports: HashSet<u64>,
+    claims: Claims,
     pub modifiers: KeyModifiers,
     modifier_target: Option<(u64, u64, String, u64)>,
     modifier_phase: Option<dgl_core::connection::Phase>,
@@ -88,11 +110,19 @@ impl Terminal {
         scrollback: i32,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::build(connection, None, font_size, scrollback, cx)
+        Self::build(
+            connection,
+            None,
+            Claims::default(),
+            font_size,
+            scrollback,
+            cx,
+        )
     }
     fn build(
         connection: Arc<Connection>,
         pane_id: Option<String>,
+        claims: Claims,
         font_size: i32,
         scrollback: i32,
         cx: &mut Context<Self>,
@@ -130,6 +160,8 @@ impl Terminal {
             sent: Vec::new(),
             notice: None,
             input_requests: HashSet::new(),
+            claimed_reports: HashSet::new(),
+            claims,
             modifiers: KeyModifiers::default(),
             modifier_target: None,
             modifier_phase: None,
@@ -174,7 +206,12 @@ impl Terminal {
         }
         self.displayed_pane = Some(pane.into());
     }
+    /// User input: keys, IME commits, pastes, shortcuts and pointer buttons/wheel.
     pub fn send(&mut self, bytes: Vec<u8>) {
+        self.send_input(bytes, true);
+    }
+    /// `claim` is false for pointer motion: hovering is not operating the screen.
+    fn send_input(&mut self, bytes: Vec<u8>, claim: bool) {
         if !self.enabled {
             return;
         }
@@ -193,10 +230,23 @@ impl Terminal {
             .target()
             .filter(|t| self.pane_id.as_ref().is_none_or(|id| id == &t.pane_id))
         {
+            // Queued before the input, so the core resizes the window first.
+            if claim {
+                self.claims.before_input(&self.connection);
+            }
+            // A report queued behind any claim in flight may find a new grid.
+            let report = self.claims.pending() && input::pointer_report(&bytes);
             match self.connection.input(t, bytes) {
                 Ok(id) => {
                     self.input_requests.insert(id);
+                    if report {
+                        self.claimed_reports.insert(id);
+                    }
                 }
+                // The claim already started resizing: the report would land on the
+                // old grid, so dropping it is the expected outcome of the claim.
+                // Any other refusal (`QueueFull`, `Closed`, ...) is still reported.
+                Err(e) if report && expected_report_error(Some(&e)) => {}
                 Err(e) => {
                     self.notice = Some(SnackbarRequest::new(
                         tr!("입력을 보내지 못했습니다: {0}", e),
@@ -271,8 +321,13 @@ impl Terminal {
             ));
         }
     }
-    pub fn complete(&mut self, id: u64) -> bool {
-        self.input_requests.remove(&id)
+    pub fn complete(&mut self, id: u64, error: Option<&dgl_core::Error>) -> InputCompletion {
+        let report = self.claimed_reports.remove(&id);
+        match self.input_requests.remove(&id) {
+            true if report && expected_report_error(error) => InputCompletion::Quiet,
+            true => InputCompletion::Input,
+            false => InputCompletion::Other,
+        }
     }
     pub fn set_font(&mut self, n: i32) {
         self.font_size = n.clamp(10, 28) as f32;
@@ -367,7 +422,7 @@ impl Terminal {
             release,
             modifiers,
         ) {
-            self.send(bytes);
+            self.send_input(bytes, code & 32 == 0);
             self.last_mouse = if release { None } else { Some(state) };
         }
     }
@@ -386,6 +441,8 @@ impl Terminal {
         if let Some(id) = self.pane_id.as_ref()
             && self.connection.state().pane.as_ref() != Some(id)
         {
+            // Clicking a pane operates this screen like input does.
+            self.claims.before_input(&self.connection);
             let _ = self
                 .connection
                 .action(Action::SelectPane { id: id.clone() });

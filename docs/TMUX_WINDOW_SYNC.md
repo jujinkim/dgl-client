@@ -15,7 +15,15 @@ Android는 WebView 하나 안에 pane별 xterm을 유지한다. 확대 시 활�
 연결당 창 컨테이너 하나만 `refresh-client -C`를 요청한다. 두 플랫폼 모두 첫 변경을 즉시 제출하고
 이후 최소 50ms 간격으로 최신 크기를 합치며 한 요청만 진행한다. 실패 후 재시도는 150ms 간격이다.
 서버 크기를 받은 결과로 viewport 요청을 다시 만들지 않는다.
-다른 클라이언트가 크기를 제한하면 tmux의 기존 window-size 정책과 서버 확정 크기를 따른다.
+같은 tmux 창을 여러 클라이언트가 열면 창 크기는 마지막으로 포커스·조작한 클라이언트를 따른다.
+tmux 기본 `window-size latest`에서 control client의 `refresh-client -C`·`send-keys`는 최근 클라이언트를 바꾸지 않으므로
+앱 창 활성화·절전 복귀와 탭·그룹·연결 전환 때 표시 중인 연결이 포커스 연결을 마지막으로 `claimSize`를 보낸다.
+`claimSize`는 대상 없는 `select-window`로 최근 클라이언트가 된 뒤 같은 왕복의 `refresh-client -C`로 크기를 즉시 적용·캡처한다.
+포커스 연결과 같은 서버 창을 보이는 다른 연결은 보내지 않으며, 연결 중이라 거절된 포커스 claim은 Ready에서 한 번 보낸다.
+다른 클라이언트가 크기를 가져간 뒤(`State.displaced`)에는 첫 사용자 입력 직전에도 한 번 보낸다.
+자동 재접속은 `attach-session -f ignore-size`로 붙어 사용 중인 다른 기기의 크기를 빼앗지 않고, 첫 claim에서 `!ignore-size`로 되돌린다.
+첫 연결과 사용자의 세션 선택은 크기를 가져온다. 터미널 자동 응답과 숨긴 탭은 보내지 않는다. 그동안 다른 기기 화면의 크기는 맞지 않을 수 있으며 그 기기로 돌아오면 다시 맞춘다.
+사용자가 `smallest`·`largest`·`manual` 등 다른 정책을 설정했으면 그 정책과 서버 확정 크기를 따르고, 효과 없는 claim을 반복하지 않는다.
 GUI의 픽셀 드래그는 가장 가까운 문자 셀 수로 반올림하며 셀 경계를 넘지 않은 이동은 요청하지 않는다.
 경계 드래그는 셀 단위 `resize-pane -x/-y` 요청이며 응답 후 서버 배치를 표시한다.
 
@@ -53,4 +61,5 @@ format/capture만으로 VT의 모든 내부 상태를 직렬화할 수는 없다
 Windows MSVC x64 빌드·ZIP·수동 CI 경로는 유지하며 실제 Windows 검증은 사용자 담당이다.
 
 근거: [tmux 3.3a 매뉴얼](https://github.com/tmux/tmux/blob/3.3a/tmux.1)의 Control Mode,
-window/pane formats, refresh-client와 resize-pane. 검증 범위는 [VALIDATION.md](VALIDATION.md)를 따른다.
+window/pane formats, refresh-client와 resize-pane, `window-size latest`. 제어 클라이언트의 최근 클라이언트는
+`select-window`·attach에서만 바뀌며, tmux 3.3a·3.7c 격리 SSH 통합 검사 `last_focused_client_takes_the_window_size`로 확인한다. 검증 범위는 [VALIDATION.md](VALIDATION.md)를 따른다.

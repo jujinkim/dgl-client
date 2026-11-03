@@ -165,7 +165,8 @@ python3 scripts/integration.py --tmux .tools/tmux-3.7c/tmux-3.7c/tmux --command 
 ```
 
 개별 선택 이름은 `isolated_auth_management_input_reconnect`, `workspace_focus_tree_and_independent_connections`,
-`hierarchy_titles_all_sessions_without_screen_reset`, `resume::healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_input`처럼
+`hierarchy_titles_all_sessions_without_screen_reset`, `last_focused_client_takes_the_window_size`,
+`resume::healthy_resume_and_blackhole_recovery_preserve_work_without_replaying_input`처럼
 `crates/dgl-core/tests/ssh_integration*`의 함수 경로를 사용합니다.
 
 JVM 참조 엔진의 SSH 회귀가 필요할 때만 아래처럼 실행하고 `ssh` 모드 검증기로 결과를 대조합니다.

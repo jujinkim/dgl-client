@@ -1,3 +1,4 @@
+use super::input::{paste_bytes, pointer_report};
 use super::{Connection, TermMode, Terminal, key_sequence, mouse_sequence};
 use gpui::{
     Entity, EntityInputHandler, Keystroke, Modifiers, MouseButton, MouseMoveEvent, Pixels, Point,
@@ -105,6 +106,30 @@ fn mouse_encodings_preserve_raw_coordinates_and_modifiers() {
     assert!(mouse_sequence(normal | TermMode::UTF8_MOUSE, 2015, 0, 0, false, plain).is_none());
     assert!(mouse_sequence(sgr, 499, 249, 0, false, plain).is_some());
     assert!(mouse_sequence(TermMode::SGR_MOUSE, 0, 0, 0, false, plain).is_none());
+}
+
+#[test]
+fn pointer_reports_are_told_apart_from_keys_and_pastes() {
+    let plain = Modifiers::default();
+    let normal = TermMode::MOUSE_REPORT_CLICK;
+    for mode in [
+        normal,
+        normal | TermMode::SGR_MOUSE,
+        normal | TermMode::UTF8_MOUSE,
+    ] {
+        // Button presses, releases and wheel steps carry coordinates.
+        for (code, release) in [(0, false), (2, true), (64, false), (67, false)] {
+            let report = mouse_sequence(mode, 5, 3, code, release, plain).unwrap();
+            assert!(pointer_report(&report), "{mode:?} {code}");
+        }
+    }
+    let up = Keystroke::parse("up").unwrap();
+    assert!(!pointer_report(&key_sequence(&up, TermMode::NONE).unwrap()));
+    assert!(!pointer_report(
+        &key_sequence(&up, TermMode::APP_CURSOR).unwrap()
+    ));
+    assert!(!pointer_report(&paste_bytes("hello", true)));
+    assert!(!pointer_report(b"a"));
 }
 
 fn setup(

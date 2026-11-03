@@ -53,6 +53,10 @@ pub struct State {
     pub resizing: bool,
     #[serde(default)]
     pub checking: bool,
+    /// Another client of the same tmux window has taken its size since this one last
+    /// had it. A platform claims it back with `Action::ClaimSize` before user input.
+    #[serde(default)]
+    pub displaced: bool,
     pub generation: Generation,
     pub session: Option<String>,
     pub pane: Option<String>,
@@ -243,6 +247,13 @@ pub enum Action {
     Resize {
         columns: u16,
         rows: u16,
+    },
+    /// Makes the current tmux window follow this client's size (`Operation::ClaimSize`).
+    /// A focus gain claims with `force`; user input claims without it, which does
+    /// nothing unless another client has taken the size since (`State::displaced`).
+    ClaimSize {
+        #[serde(default)]
+        force: bool,
     },
 }
 enum RequestKind {
@@ -452,6 +463,7 @@ impl Connection {
                 phase: Phase::Connecting,
                 resizing: false,
                 checking: false,
+                displaced: false,
                 generation: Generation {
                     connection: 1,
                     pane: 0,
@@ -537,6 +549,7 @@ impl Connection {
                 s.agents.invalidate();
                 s.pane = None;
                 s.window = None;
+                s.displaced = false;
                 s.generation.connection = s.generation.connection.saturating_add(1);
                 s.render_targets.clear();
             });
@@ -762,6 +775,13 @@ impl Connection {
             Action::Resize { columns, rows } => {
                 Size::new(*columns, *rows)?;
             }
+            // Only an attached tmux client has a window to claim; a focus change while
+            // detached, reconnecting or in a plain shell has nothing to do.
+            Action::ClaimSize { .. }
+                if !matches!(self.state().phase, Phase::Ready | Phase::Restoring) =>
+            {
+                return Err(Error::NotReady);
+            }
             _ => {}
         }
         if matches!(action, Action::AgentSetup { .. }) {
@@ -886,6 +906,13 @@ struct Control {
     events: VecDeque<Event>,
     shared: Arc<Shared>,
     size: Size,
+    /// The size last requested with `refresh-client -C`; `size` is the last capture's.
+    client: Size,
+    /// The current window had `client`'s size at the last listing.
+    fits: bool,
+    /// Attached with `ignore-size`: an automatic reattach must not take the window from
+    /// the client in use. The first claim makes the size count again.
+    ignoring_size: bool,
     screens: BTreeMap<String, (PaneTarget, Size, String)>,
     capturing: Option<String>,
     dirty: bool,
@@ -952,15 +979,23 @@ impl Control {
                     self.dirty = true;
                 }
             }
+            Event::Response { flags, .. } if flags & 1 == 0 => {}
             Event::Response { .. } => return Err(Error::Protocol),
         }
         Ok(())
     }
+    /// The reply to the next command DGL sent.
     async fn response(&mut self) -> Result<Vec<Vec<u8>>> {
+        self.reply(true).await
+    }
+    async fn reply(&mut self, sent: bool) -> Result<Vec<Vec<u8>>> {
         tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 let e = self.next().await?;
                 match e {
+                    // A command that DGL did not send on this stream, such as a hook's, is
+                    // framed with flags 0; only flag 1 blocks answer DGL's commands, in order.
+                    Event::Response { flags, .. } if sent && flags & 1 == 0 => {}
                     Event::Response { failed, lines, .. } => {
                         return if failed {
                             Err(Error::InvalidArgument)
@@ -1017,6 +1052,8 @@ impl Control {
         let lists = replies.split_off(ops.len());
         let [sessions, windows, panes] = <[_; 3]>::try_from(lists).unwrap();
         let remote = model::remote(&sessions?, &windows?, &panes?)?;
+        let (client, was_fitting) = (self.client, self.fits);
+        let mut now_fits = false;
         self.shared.update(|s| {
             s.remote = remote;
             if s.session
@@ -1043,7 +1080,25 @@ impl Control {
                 }
                 s.window = window.map(|w| w.id.clone());
             }
+            // Only a change from fitting to not fitting means another client took the
+            // window: a window-size policy other than `latest` that keeps it at another
+            // size, or a failed claim, must not claim again on every key.
+            let fits = s
+                .remote
+                .windows
+                .iter()
+                .find(|w| {
+                    Some(&w.id) == s.window.as_ref() && Some(&w.session) == s.session.as_ref()
+                })
+                .is_some_and(|w| w.width == client.columns && w.height == client.rows);
+            if fits || s.window.is_none() {
+                s.displaced = false;
+            } else if was_fitting {
+                s.displaced = true;
+            }
+            now_fits = fits;
         });
+        self.fits = now_fits;
         replies.into_iter().collect()
     }
     async fn refresh_title(&mut self) -> Result<()> {
@@ -1120,12 +1175,22 @@ impl Control {
             .iter()
             .find(|w| w.id == p.window && Some(&w.session) == state.session.as_ref())
             .ok_or(Error::InvalidArgument)?;
-        let ops = [
+        let mut ops = vec![
             Operation::SelectWindow {
                 target: window.id.clone(),
             },
             Operation::SelectPane { target: id },
         ];
+        // `select-window` makes this client the window's latest but tmux resizes it only
+        // after the listing below; the client size applies it now, so the listing is not
+        // read as another client's takeover. A window that already has this size needs
+        // none: `refresh-client -C` would still resize (and redraw) every window.
+        if (window.width, window.height) != (self.client.columns, self.client.rows) {
+            ops.push(Operation::ClientSize {
+                columns: self.client.columns,
+                rows: self.client.rows,
+            });
+        }
         self.refresh_screen_after(&ops, false).await.map(drop)
     }
     async fn sync_screens(&mut self, resizing: bool, force: bool) -> Result<()> {
@@ -1377,8 +1442,9 @@ async fn attach(
     id: String,
     size: Size,
     remembered: Option<String>,
+    ignore_size: bool,
 ) -> Result<Control> {
-    let stream = ssh.control(&id).await?;
+    let stream = ssh.control(&id, ignore_size).await?;
     shared.update(|s| {
         s.phase = Phase::Restoring;
         s.resizing = false;
@@ -1386,6 +1452,7 @@ async fn attach(
         s.session = Some(id.clone());
         s.pane = None;
         s.window = None;
+        s.displaced = false;
         s.render_targets.clear();
     });
     let mut c = Control {
@@ -1394,6 +1461,12 @@ async fn attach(
         events: VecDeque::new(),
         shared,
         size,
+        client: size,
+        // An attach makes this client the window's latest, so the first listing that
+        // finds another size is not a takeover (see `refresh_after`). An attach that
+        // ignores its size leaves the window to the others: that is one.
+        fits: ignore_size,
+        ignoring_size: ignore_size,
         screens: BTreeMap::new(),
         capturing: None,
         dirty: false,
@@ -1403,7 +1476,8 @@ async fn attach(
     };
     c.titles
         .set_last_start(c.shared.title_visibility.lock().unwrap().last_start);
-    c.response().await?;
+    // The attach command itself, given on the command line, is framed with flags 0.
+    c.reply(false).await?;
     let subscribe = ssh
         .tmux_version
         .as_deref()
@@ -1595,6 +1669,7 @@ async fn run(
             };
             s.retry.connecting = true;
         });
+        let reattach = !first;
         first = false;
         let connection = async {
             let mut ssh =
@@ -1609,7 +1684,7 @@ async fn run(
             // The observer uses a separate exec channel and runs even if output delivery
             // is backpressured or no terminal is subscribed. Dropping this future cancels it.
             let result = tokio::select! {
-                result = connected(&ssh, shared.clone(), &mut rx, &mut checked_rx, tmux, &mut size, &mut remembered) => result,
+                result = connected(&ssh, shared.clone(), &mut rx, &mut checked_rx, tmux, &mut size, &mut remembered, reattach) => result,
                 result = check_connections(&ssh, shared.clone(), &mut check_rx, checked_tx) => result,
                 _ = observe_agents(&ssh, shared.clone(), tmux) => unreachable!(),
             };
@@ -1643,6 +1718,7 @@ async fn run(
                 .expect("connection generation exhausted");
             s.pane = None;
             s.window = None;
+            s.displaced = false;
             s.render_targets.clear();
         });
         let delay = match result {
@@ -2000,6 +2076,8 @@ struct Actor<'a> {
     remembered: &'a mut Option<String>,
     /// Requests taken from `rx` while merging input, served before newer ones.
     backlog: VecDeque<Request>,
+    /// An automatic reconnect: its attach must not take the window from the client in use.
+    reattach: bool,
 }
 async fn connected(
     ssh: &Ssh,
@@ -2009,6 +2087,7 @@ async fn connected(
     tmux: bool,
     size: &mut Size,
     remembered: &mut Option<String>,
+    reattach: bool,
 ) -> Result<()> {
     let remote = if tmux {
         Remote::Tmux(None)
@@ -2022,6 +2101,7 @@ async fn connected(
         size,
         remembered,
         backlog: VecDeque::new(),
+        reattach,
     };
     actor.start().await?;
     // A successfully restored connection gets a fresh budget for the next outage.
@@ -2062,7 +2142,15 @@ impl Actor<'_> {
                 match session {
                     Some(id) if remote.sessions.iter().any(|s| s.id == id) => {
                         *control = Some(
-                            attach(self.ssh, self.shared.clone(), id, *self.size, None).await?,
+                            attach(
+                                self.ssh,
+                                self.shared.clone(),
+                                id,
+                                *self.size,
+                                None,
+                                self.reattach,
+                            )
+                            .await?,
                         );
                     }
                     Some(_) => self.shared.phase(Phase::MissingSession),
@@ -2181,6 +2269,7 @@ impl Actor<'_> {
         self.shared.update(|s| {
             s.remote = remote;
             s.window = None;
+            s.displaced = false;
             s.render_targets.clear();
             s.phase = Phase::MissingSession;
             s.error = Some(Error::MissingSession);
@@ -2310,6 +2399,33 @@ impl Actor<'_> {
                 _ => Ok(()),
             },
             Action::Resize { columns, rows } => self.resize(*columns, *rows).await,
+            Action::ClaimSize { force } => match &mut self.remote {
+                Remote::Tmux(Some(c)) if *force || self.shared.state.lock().unwrap().displaced => {
+                    // One claim per takeover: if the window keeps another size anyway
+                    // (a policy other than `latest`), later input does not claim again.
+                    self.shared.update(|s| s.displaced = false);
+                    // `select-window` only marks the window for a resize after the listing;
+                    // the client size applies it in this round trip, so the new grid is
+                    // captured as a resize and keyboard input stays admitted.
+                    let mut ops = vec![
+                        Operation::ClaimSize,
+                        Operation::ClientSize {
+                            columns: c.client.columns,
+                            rows: c.client.rows,
+                        },
+                    ];
+                    if c.ignoring_size {
+                        ops.insert(0, Operation::CountSize);
+                    }
+                    let result = c.refresh_screen_after(&ops, true).await;
+                    if result.is_ok() {
+                        c.ignoring_size = false;
+                    }
+                    result.map(drop)
+                }
+                Remote::Tmux(Some(_)) => Ok(()),
+                _ => Err(Error::NotReady),
+            },
         }
     }
     /// Replaces any control client with one attached to `session`.
@@ -2320,7 +2436,18 @@ impl Actor<'_> {
         if let Some(c) = control.take() {
             let _ = c.stream.close().await;
         }
-        *control = Some(attach(self.ssh, self.shared.clone(), session, *self.size, pane).await?);
+        // Choosing a session is a use of this client: it takes the window.
+        *control = Some(
+            attach(
+                self.ssh,
+                self.shared.clone(),
+                session,
+                *self.size,
+                pane,
+                false,
+            )
+            .await?,
+        );
         Ok(())
     }
     async fn select_target(
@@ -2440,10 +2567,22 @@ impl Actor<'_> {
                 self.shared.update(|s| s.generation.size += 1);
                 self.shared.emit(OutputKind::Resize, next, &[]).await
             }
-            Remote::Tmux(Some(c)) => c
-                .refresh_screen_after(&[Operation::ClientSize { columns, rows }], true)
-                .await
-                .map(drop),
+            Remote::Tmux(Some(c)) => {
+                c.client = next;
+                // After an automatic reattach that no other client has taken the window
+                // from, this client's own resizes must count: tmux ignores a flagged
+                // client while any unflagged one is attached anywhere on the server.
+                let count = c.ignoring_size && c.fits;
+                let mut ops = vec![Operation::ClientSize { columns, rows }];
+                if count {
+                    ops.insert(0, Operation::CountSize);
+                }
+                let result = c.refresh_screen_after(&ops, true).await;
+                if count && result.is_ok() {
+                    c.ignoring_size = false;
+                }
+                result.map(drop)
+            }
             Remote::Tmux(None) => Ok(()),
         }
     }
@@ -2964,5 +3103,35 @@ mod tests {
         );
         assert!(c.shared.requests.lock().unwrap().is_empty());
         assert!(c.completions().is_empty());
+    }
+    #[tokio::test]
+    async fn size_claims_need_an_attached_tmux_window() {
+        let c = Connection::start(host(1), Credential::default(), None);
+        for phase in [
+            Phase::Connecting,
+            Phase::Selecting,
+            Phase::Reconnecting,
+            Phase::MissingSession,
+            Phase::Shell,
+        ] {
+            c.shared.phase(phase.clone());
+            for force in [false, true] {
+                assert_eq!(
+                    c.action(Action::ClaimSize { force }),
+                    Err(Error::NotReady),
+                    "{phase:?}"
+                );
+            }
+        }
+        c.shared.phase(Phase::Ready);
+        assert!(c.action(Action::ClaimSize { force: true }).is_ok());
+        c.close();
+        tokio::time::timeout(Duration::from_secs(1), c.join())
+            .await
+            .unwrap();
+        assert_eq!(
+            c.action(Action::ClaimSize { force: true }),
+            Err(Error::Closed)
+        );
     }
 }

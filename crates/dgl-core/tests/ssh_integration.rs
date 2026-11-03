@@ -1516,3 +1516,318 @@ mod window_sync;
 
 #[path = "ssh_integration/resume.rs"]
 mod resume;
+
+#[tokio::test]
+#[ignore = "requires scripts/integration.py disposable OpenSSH/tmux"]
+async fn last_focused_client_takes_the_window_size() {
+    use dgl_core::connection::State;
+    async fn until(c: &Connection, what: &str, f: impl Fn(&State) -> bool) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let s = c.state();
+                if s.phase == Phase::Ready && f(&s) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("{what}: {:?}", c.state()));
+    }
+    /// Ends the transport of the session's client that is `width` columns wide, as a
+    /// network loss would, and waits for the connection's automatic reattach.
+    async fn reconnect(c: &Connection, session: &str, width: u16) {
+        let clients = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
+            .args([
+                "list-clients",
+                "-t",
+                session,
+                "-F",
+                "#{client_pid} #{client_width}",
+            ])
+            .output()
+            .unwrap();
+        let clients = String::from_utf8(clients.stdout).unwrap();
+        let client = clients
+            .lines()
+            .find(|l| l.ends_with(&format!(" {width}")))
+            .and_then(|l| l.split_whitespace().next())
+            .unwrap_or_else(|| panic!("client {width}: {clients}"))
+            .to_owned();
+        let parent = std::process::Command::new("ps")
+            .args(["-o", "ppid=", "-p", &client])
+            .output()
+            .unwrap();
+        let parent = String::from_utf8(parent.stdout).unwrap().trim().to_owned();
+        let connection = c.state().generation.connection;
+        assert!(
+            std::process::Command::new("kill")
+                .arg(&parent)
+                .status()
+                .unwrap()
+                .success()
+        );
+        tokio::time::timeout(Duration::from_secs(20), async {
+            while c.state().generation.connection == connection {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the transport ends");
+        phase(c, Phase::Ready).await;
+    }
+    fn window(s: &State) -> (u16, u16) {
+        let w = s
+            .remote
+            .windows
+            .iter()
+            .find(|w| Some(&w.id) == s.window.as_ref())
+            .unwrap();
+        (w.width, w.height)
+    }
+    let (host, credential, fingerprint) = fixture("DGL_TEST_KEY_FILE");
+    let desktop = Connection::start(host.clone(), credential.clone(), Some(fingerprint.clone()));
+    phase(&desktop, Phase::Selecting).await;
+    completion(
+        &desktop,
+        desktop
+            .action(Action::Manage {
+                operation: Operation::NewSession {
+                    name: "size-claim".into(),
+                },
+            })
+            .unwrap(),
+    )
+    .await;
+    let session = desktop
+        .state()
+        .remote
+        .sessions
+        .iter()
+        .find(|s| s.name == "size-claim")
+        .unwrap()
+        .id
+        .clone();
+    completion(
+        &desktop,
+        desktop
+            .action(Action::SelectSession {
+                id: session.clone(),
+            })
+            .unwrap(),
+    )
+    .await;
+    completion(
+        &desktop,
+        desktop
+            .action(Action::Resize {
+                columns: 120,
+                rows: 40,
+            })
+            .unwrap(),
+    )
+    .await;
+    until(&desktop, "desktop size", |s| window(s) == (120, 40)).await;
+    // Claims need an attached tmux client.
+    let (mut mobile_host, mobile_credential, mobile_fingerprint) = fixture("DGL_TEST_KEY_FILE");
+    mobile_host.last_session = Some(session.clone());
+    let mobile = Connection::start(mobile_host, mobile_credential, Some(mobile_fingerprint));
+    assert_eq!(
+        mobile.action(Action::ClaimSize { force: true }),
+        Err(Error::NotReady)
+    );
+    phase(&mobile, Phase::Ready).await;
+    completion(
+        &mobile,
+        mobile
+            .action(Action::Resize {
+                columns: 70,
+                rows: 20,
+            })
+            .unwrap(),
+    )
+    .await;
+    // The client that attached last owns the window; the other one notices the takeover.
+    until(&mobile, "mobile size", |s| {
+        window(s) == (70, 20) && !s.displaced
+    })
+    .await;
+    until(&desktop, "desktop displaced", |s| {
+        window(s) == (70, 20) && s.displaced
+    })
+    .await;
+    // Unforced claims (before user input) only act after a takeover.
+    completion(
+        &mobile,
+        mobile.action(Action::ClaimSize { force: false }).unwrap(),
+    )
+    .await;
+    assert_eq!(window(&mobile.state()), (70, 20));
+    // Hook output reaches control clients as blocks DGL did not ask for.
+    let hook = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
+        .args([
+            "set-hook",
+            "-t",
+            &session,
+            "after-select-window",
+            "display-message -p hooked",
+        ])
+        .output()
+        .unwrap();
+    assert!(hook.status.success());
+    let target = desktop.target().unwrap();
+    completion(
+        &desktop,
+        desktop.action(Action::ClaimSize { force: false }).unwrap(),
+    )
+    .await;
+    // The claim's resize is applied and captured in its own round trip.
+    let s = desktop.state();
+    assert_eq!(window(&s), (120, 40));
+    assert!(!s.displaced && s.accepts_input(), "{s:?}");
+    assert!(
+        desktop.target().unwrap().same_input_destination(&target),
+        "a claim keeps the input destination"
+    );
+    until(&mobile, "mobile displaced", |s| {
+        window(s) == (120, 40) && s.displaced
+    })
+    .await;
+    // A focus gain claims even without an observed takeover, and the window follows.
+    completion(
+        &mobile,
+        mobile.action(Action::ClaimSize { force: true }).unwrap(),
+    )
+    .await;
+    until(&desktop, "mobile focus", |s| {
+        window(s) == (70, 20) && s.displaced
+    })
+    .await;
+    completion(
+        &desktop,
+        desktop.action(Action::ClaimSize { force: true }).unwrap(),
+    )
+    .await;
+    until(&mobile, "desktop focus", |s| {
+        window(s) == (120, 40) && s.displaced
+    })
+    .await;
+    // An automatic reconnect does not take the window from the client in use.
+    completion(
+        &mobile,
+        mobile.action(Action::ClaimSize { force: true }).unwrap(),
+    )
+    .await;
+    until(&desktop, "mobile in use", |s| {
+        window(s) == (70, 20) && s.displaced
+    })
+    .await;
+    reconnect(&desktop, &session, 120).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(window(&mobile.state()), (70, 20));
+    let s = desktop.state();
+    assert_eq!(window(&s), (70, 20));
+    assert!(s.displaced, "the reattached client knows it is displaced");
+    completion(
+        &desktop,
+        desktop.action(Action::ClaimSize { force: false }).unwrap(),
+    )
+    .await;
+    assert_eq!(window(&desktop.state()), (120, 40));
+    until(&mobile, "reattached claim", |s| {
+        window(s) == (120, 40) && s.displaced
+    })
+    .await;
+    // A policy other than `latest` keeps its size: one claim, then input does not claim again.
+    let result = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
+        .args([
+            "set-option",
+            "-w",
+            "-t",
+            &session,
+            "window-size",
+            "smallest",
+        ])
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    until(&desktop, "smallest policy", |s| {
+        window(s) == (70, 20) && s.displaced
+    })
+    .await;
+    completion(
+        &desktop,
+        desktop.action(Action::ClaimSize { force: false }).unwrap(),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let s = desktop.state();
+    assert_eq!(window(&s), (70, 20));
+    assert!(!s.displaced, "an ineffective claim is not repeated");
+    // A reattached client that nobody took the window from resizes it, although an
+    // unflagged client is attached elsewhere on the server.
+    completion(
+        &mobile,
+        mobile
+            .action(Action::Manage {
+                operation: Operation::NewSession {
+                    name: "size-claim-other".into(),
+                },
+            })
+            .unwrap(),
+    )
+    .await;
+    let other = mobile
+        .state()
+        .remote
+        .sessions
+        .iter()
+        .find(|s| s.name == "size-claim-other")
+        .unwrap()
+        .id
+        .clone();
+    completion(
+        &mobile,
+        mobile
+            .action(Action::SelectSession { id: other.clone() })
+            .unwrap(),
+    )
+    .await;
+    until(&desktop, "desktop alone", |s| window(s) == (120, 40)).await;
+    reconnect(&desktop, &session, 120).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!desktop.state().displaced);
+    completion(
+        &desktop,
+        desktop
+            .action(Action::Resize {
+                columns: 100,
+                rows: 30,
+            })
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(window(&desktop.state()), (100, 30));
+    for c in [desktop, mobile] {
+        c.close();
+        c.join().await;
+    }
+    let mut inspector = ssh::connect(
+        &host,
+        &credential,
+        Some(fingerprint),
+        Arc::new(Mutex::new(None)),
+    )
+    .await
+    .unwrap();
+    assert!(inspector.discover().await.unwrap());
+    for target in [session, other] {
+        inspector
+            .execute_tmux(
+                &dgl_core::command::Command::new(&Operation::KillSession { target }).unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+    inspector.close().await;
+}

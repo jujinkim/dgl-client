@@ -38,11 +38,13 @@ pub(super) fn complete(
     let Some(composer) = composers.get_mut(&id) else {
         return false;
     };
+    let claims = tab.terminal.read(cx).claims();
     if !composer.complete(
         result,
         Destination::capture(&tab.connection),
         selected,
         |target, bytes| {
+            claims.before_input(&tab.connection);
             tab.connection
                 .input(target.clone(), bytes)
                 .map_err(|e| e.to_string())
@@ -260,6 +262,8 @@ impl Desktop {
                 let bytes = tab
                     .terminal
                     .update(cx, |t, cx| t.prepare_paste(target, text, cx))?;
+                // A user send: claim the window back first if another client took it.
+                tab.terminal.read(cx).claims().before_input(&tab.connection);
                 tab.connection
                     .input(target.clone(), bytes)
                     .map_err(|e| tr!("전송 실패: {0}. 초안은 유지됩니다.", e))

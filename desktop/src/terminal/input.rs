@@ -41,6 +41,12 @@ pub(super) fn button_code(button: MouseButton) -> Option<u8> {
     }
 }
 
+/// The core's test for input that carries grid coordinates (`Connection::input`):
+/// such input is admitted only for the exact size generation it was encoded for.
+pub(super) fn pointer_report(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"\x1b[M") || bytes.starts_with(b"\x1b[<")
+}
+
 pub(super) fn mouse_modifiers(m: Modifiers) -> u8 {
     4 * u8::from(m.shift) + 8 * u8::from(m.alt) + 16 * u8::from(m.control)
 }

@@ -81,6 +81,14 @@ pub enum Operation {
         columns: u16,
         rows: u16,
     },
+    /// Makes this client the latest one of its current window, so that under tmux's
+    /// default `window-size latest` the window takes this client's size. A control
+    /// client's `refresh-client -C` and `send-keys` never do this; `select-window` does.
+    /// Without a target it resolves to the client's own current window and changes no
+    /// selection that other clients share.
+    ClaimSize,
+    /// Lets this client's size count again after an attach with `ignore-size`.
+    CountSize,
     Send {
         target: String,
         bytes: Vec<u8>,
@@ -187,6 +195,8 @@ impl Command {
                 Size::new(*columns, *rows)?;
                 format!("refresh-client -C {columns},{rows}")
             }
+            ClaimSize => "select-window".into(),
+            CountSize => "refresh-client -f '!ignore-size'".into(),
             Send { target: t, bytes } => {
                 if bytes.is_empty() || bytes.len() > 256 {
                     return Err(Error::InvalidArgument);

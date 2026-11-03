@@ -39,6 +39,22 @@ fn pane_resize_uses_tmux_cell_dimensions_independently_of_viewport_limits() {
         .is_err()
     );
 }
+#[test]
+fn size_claim_selects_the_clients_own_window_without_a_target() {
+    let command = Command::new(&Operation::ClaimSize).unwrap();
+    assert_eq!(command.wire, "select-window");
+    assert_eq!(command.shell_wire, "tmux select-window");
+    use dgl_core::connection::Action;
+    for (json, expected) in [
+        (json!({"action": "claimSize"}), false),
+        (json!({"action": "claimSize", "force": true}), true),
+    ] {
+        let Action::ClaimSize { force } = serde_json::from_value(json).unwrap() else {
+            panic!("claimSize action");
+        };
+        assert_eq!(force, expected);
+    }
+}
 fn text<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap()
 }

@@ -32,7 +32,7 @@
 - `State::accepts_output(target)`: shell은 입력 target과 완전히 같을 때, 그 외는 `render_targets[pane_id]`와 같고
   단계가 Ready/Restoring일 때만 true다. UniFFI `NativeConnection.accepts_output(target_json)`이 같은 판정을 노출한다.
 - `Command { requestId, operation }`: 세션/창/패널 생성·선택·이름 변경·분할·resize·삭제,
-  새로고침, snapshot, `checkConnection`. raw shell/control 문자열을 일반 UI에 노출하지 않는다.
+  창 크기 되찾기(`claimSize`), 새로고침, snapshot, `checkConnection`. raw shell/control 문자열을 일반 UI에 노출하지 않는다.
 - `dgl_core::Error`: 필드 없는 enum이다. Authentication, HostKeyUnknown, HostKeyChanged, Network, Protocol,
   MissingSession, Storage, InvalidArgument, QueueFull, NotReady, StaleGeneration, Cancelled, Closed.
   JSON(`State.error`, 완료 결과 `error`)과 `Display`는 변형 이름 문자열이다. UniFFI는 이를 `CoreError::Failure { code }`
@@ -204,6 +204,17 @@ Kotlin 패키지 변경은 저장 키 교체나 초기 앱 데이터 자동 이�
 - `Operation::FocusPane { target, direction }` / JSON `focusPane`는 `%N`과 `L/R/U/D`만 허용한다. `select-pane -t '%N' -L/-R/-U/-D` 실행 뒤 창의 실제 활성 패널을 다시 조회하고 입력 PaneTarget(포커스 세대)·화면을 함께 갱신한다. 현재 표시 패널과 다른 시작 target은 StaleGeneration으로 거부한다.
 - 같은 세션의 외부 창·활성 pane 선택을 반영한다. 다른 세션으로의 이동은 따라가지 않는다. 출력 target은 pane별 렌더링 식별자, 입력 target은 현재 포커스를 사용한다.
 - 데스크톱 resize는 터미널별 한 요청만 진행하며 이후 크기는 최신 값으로 병합한다. 요청 완료 후 달라진 최신 크기를 보낸다.
+- `Action::ClaimSize { force }` / JSON `claimSize`(`force` 기본 false)는 대상 없는 `select-window`로 이 control client를 현재 창의
+  최근 클라이언트로 만들어 tmux 기본 `window-size latest`에서 창이 이 클라이언트의 요청 크기를 따르게 한다. 선택 창·pane은 바꾸지 않는다.
+  `select-window`의 크기 변경은 지연 적용되므로 같은 왕복에 `refresh-client -C`를 보내 즉시 적용·캡처한다. 크기가 다른 창을 DGL이 선택할 때도 같다.
+  Ready/Restoring이 아니면 즉시 `NotReady`다. resize처럼 크기만 바뀐 재캡처 중에도 같은 대상의 키 입력을 받으며,
+  claim 뒤에 대기하던 좌표 입력은 크기 세대가 바뀌어 StaleGeneration이다.
+  자동 재접속의 attach는 `-f ignore-size`로 크기를 세지 않고 첫 claim이 `refresh-client -f '!ignore-size'`로 되돌린다.
+  창을 가져간 클라이언트가 없으면(목록 크기가 요청 크기와 같으면) 다음 resize도 되돌린다.
+  첫 연결과 `selectSession`·세션 전환 attach는 크기를 가져온다.
+  `State.displaced`는 목록에서 현재 창 크기가 요청 클라이언트 크기와 같다가 달라지면 true, 다시 같아지거나 claim·분리·재접속하면 false다.
+  `force: false`는 displaced일 때만 실행하므로 다른 window-size 정책에서 효과 없는 claim은 다음 이탈 전까지 반복하지 않는다.
+  플랫폼은 창 활성화·연결 전환 때 force로(연결 중 거절은 Ready에서 한 번), 자동 응답이 아닌 사용자 입력 직전에는 displaced일 때만 보내며 결과·오류를 표시하지 않는다.
 
 ## 창 단위 렌더링
 

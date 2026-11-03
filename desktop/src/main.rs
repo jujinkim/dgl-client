@@ -25,6 +25,7 @@ mod platform;
 mod resume;
 mod session_tabs;
 mod settings;
+mod size_claim;
 mod snackbar;
 mod storage;
 mod terminal;
@@ -139,6 +140,7 @@ struct Desktop {
     focus: FocusHandle,
     agents: agent_ui::AgentState,
     resume: resume::ResumeDetector,
+    size_focus: size_claim::FocusClaims,
     cloud_sync: cloud_sync::CloudSync,
 }
 impl Desktop {
@@ -225,6 +227,7 @@ impl Desktop {
                 ..Default::default()
             },
             resume: Default::default(),
+            size_focus: Default::default(),
             cloud_sync,
         }
     }
@@ -235,13 +238,45 @@ impl Desktop {
             );
         }
     }
+    /// The screen focused last owns the tmux window size: each of `tabs` (visible
+    /// ones) claims its window, the focused one last. A claim refused because the
+    /// connection is not attached yet is deferred until it is `Ready` again.
+    fn send_focus_claims(&mut self, tabs: &[TabId], cx: &mut Context<Self>) {
+        let order = size_claim::claim_order(tabs, self.workspace.selected(), |id| {
+            let tab = self.tabs.iter().find(|t| t.id == id)?;
+            let state = tab.connection.state();
+            size_claim::ServerWindow::new(
+                &tab.host,
+                state.fingerprint.as_deref(),
+                state.window.as_deref(),
+            )
+        });
+        for id in order {
+            if let Some(tab) = self.tabs.iter().find(|t| t.id == id)
+                && let Err(e) = tab.terminal.update(cx, |t, _| t.claim_size())
+                && size_claim::defers_focus_claim(&e)
+            {
+                let ready = tab.connection.state().phase == Phase::Ready;
+                self.size_focus.defer(id, ready, std::time::Instant::now());
+            }
+        }
+    }
     fn tick(&mut self, cx: &mut Context<Self>) {
         let foreground = cx.windows().into_iter().any(|h| {
             cx.update_window(h, |_, w, _| w.is_window_active())
                 .unwrap_or(false)
         });
         self.sync_title_updates(foreground);
-        if self.resume.update(foreground, SystemTime::now()) {
+        let resumed = self.resume.update(foreground, SystemTime::now());
+        // Waking from sleep while active is a focus event: the user is back here.
+        if self
+            .size_focus
+            .update(foreground, self.workspace.selected(), resumed)
+        {
+            let visible = self.workspace.visible_tabs();
+            self.send_focus_claims(&visible, cx);
+        }
+        if resumed {
             let mut checked = HashSet::new();
             for tab in &self.tabs {
                 if checked.insert(tab.connection.state().handle) {
@@ -342,9 +377,22 @@ impl Desktop {
                     tab.refresh = None;
                     changed = true;
                 }
-                let input = tab.terminal.update(cx, |t, cx| {
-                    t.complete(result.request_id, result.error.is_none(), cx)
-                });
+                let input = match tab.terminal.update(cx, |t, cx| {
+                    t.complete(result.request_id, result.error.as_ref(), cx)
+                }) {
+                    // Size claims are best effort and never reported.
+                    terminal::InputCompletion::Quiet => continue,
+                    terminal::InputCompletion::DeferFocus => {
+                        self.size_focus.defer(
+                            tab.id,
+                            state.phase == Phase::Ready,
+                            std::time::Instant::now(),
+                        );
+                        continue;
+                    }
+                    terminal::InputCompletion::Input => true,
+                    terminal::InputCompletion::Other => false,
+                };
                 if let Some(e) = result.error
                     && (input
                         || !matches!(
@@ -363,6 +411,17 @@ impl Desktop {
                     changed = true;
                 }
             }
+        }
+        // Deferred focus claims of tabs still visible, once their connection is back.
+        let visible = self.workspace.visible_tabs();
+        let due = self
+            .size_focus
+            .due(&visible, std::time::Instant::now(), |id| {
+                let tab = self.tabs.iter().find(|t| t.id == id)?;
+                Some(tab.connection.state().phase == Phase::Ready)
+            });
+        if !due.is_empty() {
+            self.send_focus_claims(&due, cx);
         }
         for tab in &self.tabs {
             if let Some(error) = tab.terminal.update(cx, |t, _| t.notice.take()) {

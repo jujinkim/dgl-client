@@ -194,6 +194,14 @@ impl Workspace {
     pub fn selected(&self) -> Option<TabId> {
         self.groups.get(&self.active)?.selected
     }
+    /// Each group shows its selected tab; the others are hidden.
+    pub fn visible_tabs(&self) -> Vec<TabId> {
+        self.layout
+            .groups()
+            .into_iter()
+            .filter_map(|id| self.groups.get(&id)?.selected)
+            .collect()
+    }
     pub fn group_for(&self, tab: TabId) -> Option<GroupId> {
         self.groups
             .iter()
@@ -479,5 +487,21 @@ mod title_visibility_tests {
         assert!(w.title_updates_enabled(b, true));
         assert!(!w.title_updates_enabled(a, false));
         assert!(!w.title_updates_enabled(999, true));
+    }
+    #[test]
+    fn visible_tabs_are_each_groups_selected_tab_in_layout_order() {
+        let mut w = Workspace::new(Layout::default());
+        assert!(w.visible_tabs().is_empty());
+        let a = w.add_tab();
+        let b = w.add_tab();
+        assert_eq!(w.visible_tabs(), vec![b]);
+        assert!(w.split(1, Axis::Horizontal, 1000., 600.));
+        assert_eq!(w.visible_tabs(), vec![b], "a new group is empty");
+        w.move_tab(a, w.active, None);
+        assert_eq!(w.visible_tabs(), vec![b, a]);
+        assert_eq!(w.selected(), Some(a));
+        w.select(1, b);
+        assert_eq!(w.visible_tabs(), vec![b, a]);
+        assert_eq!(w.selected(), Some(b));
     }
 }

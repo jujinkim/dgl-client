@@ -20,13 +20,40 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             field = value
             if (!value) clearShortcutModifiers()
             updateTitleVisibility()
+            claimFocusedSizes()
         } }
     @Volatile var hostEditing = false
     @Volatile var visibleConnection: ClientConnection? = null
     @Volatile var visibleConnections: Set<ClientConnection> = emptySet()
-        set(value) { synchronized(this) { field = value; updateTitleVisibility() } }
+        set(value) { synchronized(this) { field = value; updateTitleVisibility(); claimFocusedSizes() } }
     private fun updateTitleVisibility() {
         connections.value.forEach { it.setTitleUpdatesEnabled(foreground && it in visibleConnections) }
+    }
+    private val focusClaims = TerminalFocusClaims<ClientConnection>()
+    /**
+     * The tmux window follows the screen focused last: an app activation or a move to another
+     * tab or group claims every shown terminal once, the selected one last. Called under this
+     * model's lock whenever foreground, selection or the shown terminals change. Only the
+     * layout's shown set counts: a narrow screen's last input connection may already be hidden.
+     * Each connection's claim runs on its own native actor, so a shown terminal on the selected
+     * one's server window does not claim: claim order alone would not let the selected one win.
+     */
+    private fun claimFocusedSizes() {
+        val open = connections.value
+        val shown = visibleConnections.filter { client -> open.any { it === client } }
+        focusClaims.update(foreground, selected.value, shown, ::sameServerWindow).forEach(::claimFocusedSize)
+    }
+    private fun sameServerWindow(a: ClientConnection, b: ClientConnection) =
+        TerminalFocusClaims.sameServerWindow(a.host, a.status.value.window, b.host, b.status.value.window)
+    // Opening the app often reconnects: a focus claim refused until then is sent at the
+    // connection's next Ready state, only if it is still shown, focused and in the foreground,
+    // and not on the focused terminal's server window, which may be known only by now.
+    private fun claimFocusedSize(client: ClientConnection) {
+        client.claimSize(force = true) {
+            synchronized(this@AppModel) {
+                if (focusClaims.stillClaims(client, ::sameServerWindow) && connections.value.any { it === client }) claimFocusedSize(client)
+            }
+        }
     }
     @Volatile var workspaceEnabled = false
     @Volatile var sendAgentNotification: (AgentNotice) -> Unit = {}
@@ -82,6 +109,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         if (previous.activeTab != next.activeTab || previous.activeGroup != next.activeGroup) clearShortcutModifiers()
         workspace.value = next
         selected.value = tabClient(next.activeTab)
+        claimFocusedSizes()
         if (previous.root != next.root) runCatching { repository.workspace.save(next.root) }.onFailure {
             backgroundConnectionError.value = t("작업 공간 배치를 저장하지 못했습니다.")
         }
@@ -91,6 +119,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         if (selected.value !== client) clearShortcutModifiers()
         selected.value = client
         tabId(client)?.let { workspace.value = workspace.value.select(it) }
+        claimFocusedSizes()
     }
     @Synchronized fun composer(connection: ClientConnection): TextComposer =
         resources(connection).run { composer ?: TextComposer(connection, agentScope).also { composer = it } }
@@ -176,6 +205,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         workspace.value = workspace.value.add(id)
         clearShortcutModifiers()
         selected.value = connection
+        claimFocusedSizes()
         resources(connection).sessionJob = agentScope.launch {
             connection.session.collect { session -> synchronized(this@AppModel) {
                 if (session != null && connection in connections.value) {
@@ -240,6 +270,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             if (id != null) { workspace.value = workspace.value.close(id); tabClients.remove(id) }
             connections.value -= connection
             if (selected.value == connection) selected.value = tabClient(workspace.value.activeTab)
+            claimFocusedSizes()
             owned?.shortcutInput?.clear()
             owned?.composer
         }

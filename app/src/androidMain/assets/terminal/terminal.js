@@ -252,10 +252,13 @@
   let pasteCapture = null;
   let wheelOrigin = null;
   let keyOrigin = null, textOrigin = false, textTarget = null, composing = false, compositionPending = false, compositionVersion = 0, pasting = false;
+  // `user` marks the user's own keys, IME text, paste and pointer reports; native code may
+  // then take the tmux window size back for this screen. xterm emits its replies to
+  // DA/DSR/CPR/OSC queries and focus reports through the same onData, always unmarked.
   const keyboard = (key, text, modifiers = {}, target = pane === active ? inputTarget : null) => {
     if (fontGesture) return;
     if (!enabled) { post({ type: 'blocked-input' }); return; }
-    post({ type: 'keyboard', key, text, target, control: modifiers.ctrlKey === true,
+    post({ type: 'keyboard', user: true, key, text, target, control: modifiers.ctrlKey === true,
       shift: modifiers.shiftKey === true, alt: modifiers.altKey === true,
       applicationCursor: (snapshotInputModes || term.modes)?.applicationCursorKeysMode === true });
   };
@@ -299,7 +302,7 @@
     // pending key/IME origin. xterm emits these synchronously during dispatch.
     if (wheelOrigin) {
       if (!pointerBlocked() && new TextEncoder().encode(data).length <= 65536)
-        post({ type: 'input', data, target: wheelOrigin.target, pointer: true });
+        post({ type: 'input', data, target: wheelOrigin.target, pointer: true, user: true });
       return;
     }
     if (pasting && snapshotInputModes) {
@@ -323,13 +326,20 @@
       keyboard({ '\r': 'enter', '\t': 'tab', '\x7f': 'backspace' }[data], null, {}, textTarget); textOrigin = composing; compositionPending = composing;
     } else if (enabled && !fontGesture) {
       const pointer = /^\x1b\[([<M])/.test(data);
-      if (!pointer || !pointerBlocked()) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}) });
+      // xterm's own replies (DA/DSR/CPR/DECRQM/OSC/DCS, focus reports) always start with
+      // ESC or a C1 control. Anything else arriving with a pending IME/text origin is that
+      // committed text with control characters (e.g. a newline): the user's, and it consumes
+      // the origin so the origin cannot mark later data.
+      const committed = !pasting && !pointer && textOrigin && !/^[\x1b\x80-\x9f]/.test(data);
+      if (committed) { textOrigin = composing; compositionPending = composing; }
+      if (!pointer || !pointerBlocked()) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}),
+        ...(committed ? { target: textTarget } : {}), ...(pointer || pasting || committed ? { user: true } : {}) });
     } else if (!fontGesture) post({ type: 'blocked-input' });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
   term.onBinary(data => {
     if (!pointerBlocked() && data.length <= 65536)
-      post({ type: 'input-binary', data, pointer: true, target: wheelOrigin ? wheelOrigin.target : pane === active ? inputTarget : null });
+      post({ type: 'input-binary', data, pointer: true, user: true, target: wheelOrigin ? wheelOrigin.target : pane === active ? inputTarget : null });
   });
   // Capture xterm's own paste transformation (including current bracketed-paste mode)
   // without emitting input. Kotlin sends Enter separately after the paste request succeeds.

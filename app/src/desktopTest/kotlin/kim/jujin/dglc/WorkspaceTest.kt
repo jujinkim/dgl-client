@@ -260,8 +260,157 @@ class WorkspaceTest {
             assertTrue(created.none { it.titleUpdates })
         }
     }
+    @Test fun sizeClaimsFollowTheLastFocusedShownTabWithItLast() = runBlocking {
+        withModel { model, created ->
+            repeat(3) { model.open(HostProfile("host$it", "alias", "example.test", username = "test")) }
+            val (first, second, third) = created
+            val log = mutableListOf<Pair<Connection, Boolean>>()
+            created.forEach { client -> client.claimed = { force -> log += client to force } }
+            fun claims() = log.toList().also { log.clear() }
+            model.selectConnection(first)
+            model.visibleConnections = setOf(first, second)
+            assertEquals(emptyList(), claims(), "a background app never claims")
+            model.foreground = true
+            assertEquals(listOf(second to true, first to true), claims(), "activation claims shown tabs, the focused one last")
+            // Recomposition and repeated focus reports are not new focus.
+            model.visibleConnections = setOf(first, second); model.foreground = true; model.selectConnection(first)
+            assertEquals(emptyList(), claims())
+            model.selectConnection(second)
+            assertEquals(listOf(first to true, second to true), claims(), "moving to another shown group")
+            // A tab switch is laid out after the selection: the old tab must not take the size.
+            model.selectConnection(third)
+            assertEquals(emptyList(), claims())
+            model.visibleConnection = first
+            assertEquals(emptyList(), claims(), "a stale input connection is not a shown tab")
+            model.visibleConnections = setOf(third)
+            assertEquals(listOf(third to true), claims())
+            model.foreground = false
+            model.foreground = true
+            assertEquals(listOf(third to true), claims(), "regaining OS focus claims again")
+            // Hidden (explorer, modal) terminals wait until they are shown again.
+            model.visibleConnection = null; model.visibleConnections = emptySet()
+            model.foreground = false; model.foreground = true
+            assertEquals(emptyList(), claims())
+            model.visibleConnections = setOf(third)
+            assertEquals(listOf(third to true), claims())
+            // A closed tab never claims, even while the old layout still lists it.
+            model.visibleConnections = setOf(first, second, third)
+            model.removeConnection(third)
+            val after = claims()
+            assertTrue(after.isNotEmpty() && after.none { it.first === third } && after.all { it.second })
+            assertSame(model.selected.value, after.last().first)
+        }
+    }
+    @Test fun focusClaimsRefusedWhileReconnectingWaitForReadyOnlyWhileStillFocused() = runBlocking {
+        withModel { model, created ->
+            repeat(2) { model.open(HostProfile("host$it", "alias", "example$it.test", username = "test")) }
+            val (first, second) = created
+            val log = mutableListOf<Pair<Connection, Boolean>>()
+            created.forEach { client -> client.claimed = { force -> log += client to force } }
+            fun claims() = log.toList().also { log.clear() }
+            model.selectConnection(first)
+            model.visibleConnections = setOf(first, second)
+            // Opening the app reconnects the selected tab: its foreground claim waits for Ready.
+            first.attached = false
+            model.foreground = true
+            assertEquals(listOf(second to true), claims())
+            first.becomeReady()
+            assertEquals(listOf(first to true), claims(), "sent once the reconnect is Ready")
+            first.becomeReady()
+            assertEquals(emptyList(), claims(), "only once")
+            // Backgrounded meanwhile: dropped.
+            model.foreground = false
+            first.attached = false
+            model.foreground = true; claims()
+            model.foreground = false
+            first.becomeReady()
+            assertEquals(emptyList(), claims(), "a backgrounded app never claims")
+            // A newer focus made another tab the target: the waiting tab is still shown and claims
+            // with that focus, but a stale wait from the old focus does not add a claim of its own.
+            first.attached = false; second.attached = false
+            model.foreground = true
+            model.selectConnection(second)
+            val waiting = first.waiting
+            model.visibleConnections = setOf(second)
+            assertNotNull(waiting)
+            first.attached = true; waiting.invoke()
+            assertEquals(emptyList(), claims(), "a hidden tab never claims")
+            second.becomeReady()
+            assertEquals(listOf(second to true), claims())
+            // A closed tab never claims.
+            model.visibleConnections = setOf(first, second)
+            model.selectConnection(first)
+            assertEquals(listOf(second to true, first to true), claims())
+            model.foreground = false; first.attached = false; model.foreground = true
+            assertEquals(listOf(second to true), claims())
+            val closed = first.waiting
+            model.removeConnection(first)
+            claims()
+            closed?.invoke()
+            assertTrue(claims().none { it.first === first })
+        }
+    }
+    @Test fun aShownTabOnTheSelectedTabsServerWindowDoesNotClaim() = runBlocking {
+        withModel { model, created ->
+            val host = HostProfile("host", "alias", "example.test", username = "test")
+            // Two sessions of one profile, and another profile of the same account.
+            repeat(2) { model.open(host); created.last().session.value = "\$$it" }
+            model.open(HostProfile("other", "alias", "EXAMPLE.test", username = "test"))
+            val (first, second, third) = created
+            val log = mutableListOf<Connection>()
+            created.forEach { client -> client.claimed = { log += client } }
+            first.status.value = ConnectionStatus(Phase.Ready, window = "@1")
+            second.status.value = ConnectionStatus(Phase.Ready, window = "@2")
+            third.status.value = ConnectionStatus(Phase.Ready, window = "@1")
+            model.selectConnection(first)
+            model.visibleConnections = setOf(first, second, third)
+            model.foreground = true
+            assertEquals(listOf(second, first), log.toList(), "another profile of the same account shows the same window")
+            log.clear()
+            model.selectConnection(second)
+            assertEquals(listOf(first, third, second), log.toList())
+        }
+    }
+    @Test fun aWaitingClaimOfATabNowOnTheSelectedServerWindowDoesNotFire() = runBlocking {
+        withModel { model, created ->
+            val host = HostProfile("host", "alias", "example.test", username = "test")
+            repeat(2) { model.open(host); created.last().session.value = "\$$it" }
+            val (first, second) = created
+            val log = mutableListOf<Connection>()
+            created.forEach { client -> client.claimed = { log += client } }
+            first.status.value = ConnectionStatus(Phase.Ready, window = "@1")
+            // The second tab is reconnecting: its window is unknown when the focus claim is built.
+            second.status.value = ConnectionStatus(Phase.Reconnecting)
+            second.attached = false
+            model.selectConnection(first)
+            model.visibleConnections = setOf(first, second)
+            model.foreground = true
+            assertEquals(listOf(first), log.toList())
+            assertNotNull(second.waiting)
+            log.clear()
+            // At Ready it shows the selected tab's window and must not race the selected claim.
+            second.status.value = ConnectionStatus(Phase.Ready, window = "@1")
+            second.becomeReady()
+            assertEquals(emptyList(), log.toList())
+            // On another window it still claims.
+            model.foreground = false; second.attached = false
+            second.status.value = ConnectionStatus(Phase.Reconnecting)
+            model.foreground = true; log.clear()
+            second.status.value = ConnectionStatus(Phase.Ready, window = "@2")
+            second.becomeReady()
+            assertEquals(listOf(second), log.toList())
+        }
+    }
     private class Connection(override val host: HostProfile) : ClientConnection {
         var titleUpdates = false
+        var claimed: (Boolean) -> Unit = {}
+        // A connection that is not attached yet keeps the focus claim for its next Ready state.
+        var attached = true
+        var waiting: (() -> Unit)? = null
+        override fun claimSize(force: Boolean, deferred: (() -> Unit)?) {
+            if (attached) { claimed(force); if (force) waiting = null } else if (force) waiting = deferred
+        }
+        fun becomeReady() { attached = true; waiting.also { waiting = null }?.invoke() }
         override fun setTitleUpdatesEnabled(enabled: Boolean) { titleUpdates = enabled }
         override val agents = MutableStateFlow(AgentSnapshot())
         override var generation = 0L

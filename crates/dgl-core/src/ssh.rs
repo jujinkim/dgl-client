@@ -285,7 +285,9 @@ impl Ssh {
         }
         Ok(false)
     }
-    pub async fn control(&self, id: &str) -> Result<Stream> {
+    /// Attaches a control client to session `id`. With `ignore_size`, the client's size does
+    /// not count while other clients are attached, until `Operation::CountSize`.
+    pub async fn control(&self, id: &str, ignore_size: bool) -> Result<Stream> {
         command::target(id, '$')?;
         let c = self
             .handle
@@ -295,8 +297,9 @@ impl Ssh {
         c.exec(
             true,
             format!(
-                "{} -u -C attach-session -t {}",
+                "{} -u -C attach-session{} -t {}",
                 command::quote(self.tmux.as_deref().ok_or(Error::NotReady)?)?,
+                if ignore_size { " -f ignore-size" } else { "" },
                 command::target(id, '$')?
             ),
         )

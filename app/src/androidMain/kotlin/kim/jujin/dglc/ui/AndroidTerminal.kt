@@ -138,7 +138,9 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                         resources?.model?.shortcutInput(client)?.encode(key, text, physical, cursor)?.let { client.paneInput(pane, target, it) }
                     }
                 },
-                selection = { if (entry.visible) entry.selection = it }))
+                selection = { if (entry.visible) entry.selection = it },
+                // Before the user's own input only; the bridge never marks emulator replies.
+                userInput = { if (entry.visible && entry.focus.inputAllowed()) client.claimSize(force = false) }))
             return entry
         }
         resources?.entries?.getOrPut(client, ::create) ?: create()
@@ -398,7 +400,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private val blockedInput: () -> Unit = {},
     private val pointerInput: ((String, String?, ByteArray) -> Unit)? = null,
     private val keyboardInput: (String, String?, String, String?, TerminalModifiers, Boolean) -> Unit = { _, _, _, _, _, _ -> },
-    private val selection: (TerminalSelection?) -> Unit = {}) : TerminalSurface {
+    private val selection: (TerminalSelection?) -> Unit = {},
+    private val userInput: () -> Unit = {}) : TerminalSurface {
     var screenPending by mutableStateOf(false); private set
     internal var editorFocused = false; private set
     internal var keyboardFocusChanged: () -> Unit = {}
@@ -528,7 +531,10 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                         else if (paneInput != null) paneInput.invoke(json.getString("pane"), target(), bytes) else input(bytes)
                     }
                 }
-                when (json.getString("type")) {
+                val type = json.getString("type")
+                // Runs before the input it precedes, so the core takes the window size back first.
+                if (kim.jujin.dglc.core.TerminalSizeClaims.fromBridge(type, json.optBoolean("user"))) userInput()
+                when (type) {
                     "ready" -> {
                         applyConfiguration()
                         ready.complete(Unit)
