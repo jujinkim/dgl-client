@@ -97,7 +97,8 @@ Android 설정의 **터미널·입력 → 키보드가 열릴 때**에서 기기
 상단 메뉴와 하단 탭·단축키는 키보드 위에 유지합니다. Kotlin은 논리/가시 크기를 CSS 픽셀로 정규화해 IME 상태·
 렌더러 세대와 함께 전달하고, 오래된 갱신이나 분리된 표면의 크기 요청은 버립니다.
 IME 높이는 composition에서 매 프레임 읽지 않고 layout에서 적용합니다. WebView는 키보드가 닫힌 논리 높이로
-측정하고 바깥 컨테이너가 가시 영역을 자릅니다. native→JS 전달은 프레임당 최신 값 하나로 병합하며,
+측정하고 바깥 컨테이너가 가시 영역을 자릅니다. WebView에는 IME·시스템 바·컷아웃 insets를 0으로 전달하여
+Chromium(M139+)이 visual viewport를 따로 줄이거나 스크롤하지 않게 합니다. native→JS 전달은 프레임당 최신 값 하나로 병합하며,
 이동 모드의 같은 논리 크기 갱신은 셀 측정·pane 재배치 없이 패널 이동과 스크롤바만 바꿉니다.
 분할 그룹도 같은 방식으로 각 WebView와 작업 공간의 논리 크기를 유지합니다.
 단계 선택의 근거는 [Android Insets와 Compose phases](https://developer.android.com/develop/ui/compose/system/insets-ui#insets-and-jetpack-compose-phases)입니다.

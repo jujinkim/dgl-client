@@ -365,6 +365,13 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             // would stop the render acknowledgements that release it.
             if (screenPending) canvas.drawColor(android.graphics.Color.rgb(17, 21, 27))
         }
+        // DGL measures this WebView at the keyboard-closed logical height and clips it outside.
+        // Chromium M139+ would also shrink/scroll its visual viewport for these insets, shifting
+        // fixed terminal content and the panel scrollbar above the tabs. Zero them (never consume)
+        // so WebView also clears any earlier inset state.
+        override fun onApplyWindowInsets(insets: AndroidInsets): AndroidInsets = super.onApplyWindowInsets(
+            AndroidInsets.Builder(insets).setInsets(AndroidInsets.Type.ime() or AndroidInsets.Type.systemBars() or
+                AndroidInsets.Type.displayCutout(), android.graphics.Insets.NONE).build())
         override fun onAttachedToWindow() { super.onAttachedToWindow(); refreshViewport() }
         override fun onDetachedFromWindow() { cancelImeAnimation(); super.onDetachedFromWindow() }
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
