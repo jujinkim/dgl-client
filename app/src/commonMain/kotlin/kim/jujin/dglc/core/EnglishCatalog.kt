@@ -599,5 +599,15 @@ internal object EnglishCatalog {
         "idle_prompt와 task_complete는 응답 종료 알림으로 수집하지 않습니다." to "idle_prompt and task_complete are not collected as response-ended notices.",
         "연동 조회/설정 실패: Python·tmux·CLI 버전·설정 형식 또는 외부 변경을 확인한 뒤 다시 검사하세요." to "Integration check or setup failed. Check Python, tmux, the CLI version, the configuration format, or outside changes, then check again.",
         "설정 형식·경로 또는 CLI 버전 조회 실패 · 설치 제외" to "Could not read the configuration format, path, or CLI version · Not installed",
+        "복사" to "Copy",
+        "붙여넣기" to "Paste",
+        "링크 열기" to "Open link",
+        "링크 복사" to "Copy link",
+        "터미널 선택 메뉴" to "Terminal selection menu",
+        "복사할 텍스트가 없습니다." to "There is no text to copy.",
+        "클립보드에 붙여넣을 텍스트가 없습니다." to "There is no text on the clipboard to paste.",
+        "링크를 열 수 있는 앱이 없습니다." to "No app can open this link.",
+        "연결·세션·패널이 변경되어 붙여넣기를 취소했습니다." to "The connection, session, or pane changed, so the paste was canceled.",
+        "터미널 입력 준비 시간이 초과되었습니다." to "Timed out while preparing terminal input.",
     )
 }

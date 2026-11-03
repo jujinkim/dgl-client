@@ -850,13 +850,30 @@ function keyboardRenderer() {
   };
 }
 
+// Visible rows from buffer row `top`: strings or { text, wrapped }. Hangul and CJK
+// take two cells, the second with width 0, as in xterm's buffer API.
+function textBuffer(rows, columns, top) {
+  const lines = rows.map(row => {
+    const { text, wrapped = false } = typeof row === 'string' ? { text: row } : row;
+    const cells = [];
+    for (const char of text) {
+      const wide = /[ᄀ-ᅟ　-鿿가-힣]/u.test(char);
+      cells.push({ getChars: () => char, getWidth: () => wide ? 2 : 1 });
+      if (wide) cells.push({ getChars: () => '', getWidth: () => 0 });
+    }
+    while (cells.length < columns) cells.push({ getChars: () => '', getWidth: () => 1 });
+    return { isWrapped: wrapped, getCell: x => cells[x] };
+  });
+  return y => lines[y - top];
+}
+
 // Model pointer delivery and wheel mode routing; actual xterm encoding and DOM
 // geometry are additionally covered by AndroidPlatformTest with the bundled JS.
-function touchRenderer() {
+function touchRenderer({ lines } = {}) {
   const dom = createDom(), clock = createScheduler(), { Element } = dom;
   class TouchTerminal extends GridTerminal {
     modes = { mouseTrackingMode: 'none' }; buffer = { active: { type: 'normal', viewportY: 50, baseY: 50 } };
-    wheels = []; scrolls = [];
+    wheels = []; scrolls = []; selection = null;
     element = Object.assign(new Element(), {
       querySelector: selector => selector === '.xterm-screen' ? this.screen : null, contains: () => true,
     });
@@ -867,8 +884,26 @@ function touchRenderer() {
         this.wheels.push(event);
         (this.binaryMode ? this.binary : this.data)(event.deltaY < 0 ? 'wheel-up' : 'wheel-down');
       });
+      if (lines) this.buffer.active.getLine = textBuffer(lines, this.cols, 50);
     }
     scrollLines(lines) { this.scrolls.push(lines); this.buffer.active.viewportY += lines; }
+    onSelectionChange(callback) { this.selectionChanged = callback; }
+    select(column, row, length) { this.selection = { column, row, length }; this.selectionChanged?.(); }
+    clearSelection() { this.selection = null; this.selectionChanged?.(); }
+    hasSelection() { return this.selection !== null; }
+    // Wrapped rows join directly; other rows end trimmed with a newline, like xterm.
+    getSelection() {
+      if (!this.selection) return '';
+      const { column, row, length } = this.selection, start = row * this.cols + column;
+      let text = '', line = '';
+      for (let offset = start; offset < start + length; ++offset) {
+        const y = Math.floor(offset / this.cols), x = offset % this.cols, buffer = this.buffer.active.getLine?.(y);
+        if (x === 0 && offset !== start) { text += buffer?.isWrapped ? line : line.trimEnd() + '\n'; line = ''; }
+        const cell = buffer?.getCell(x);
+        if (cell && cell.getWidth() !== 0) line += cell.getChars() || ' ';
+      }
+      return text + line.trimEnd();
+    }
   }
   const { window, terminals, messages, body, element } = loadTerminal({ Terminal: TouchTerminal, dom,
     elements: { terminal: { clientWidth: 807, clientHeight: 480 }, window: { width: 807, height: 480 } },
@@ -893,6 +928,9 @@ function touchRenderer() {
   };
   return { window, terminals, messages, layout, pointer, canvas: element('window'), root: element('terminal'), body,
     advance: ms => clock.advance(ms),
+    // Hold still for the long press, then the selection timer fires.
+    hold: () => clock.expire(500),
+    longPress(x, y, term = terminals[0]) { pointer('pointerdown', x, y, term); clock.expire(500); },
     frame: ms => clock.frame(ms),
     pendingFrame: () => clock.pendingFrame(),
     drag(from, to, term = terminals[0]) {
@@ -1065,6 +1103,159 @@ test('horizontal drags and non-touch pointers stay outside vertical wheel handli
     r.pointer('pointerup', 100, 200, t, { pointerType });
   }
   assert.deepEqual(t.scrolls, []);
+});
+
+const selectionMessages = r => r.messages.filter(message => message.type === 'selection');
+
+test('long press selects a word or a wrapped link and opens the menu without remote input', () => {
+  const r = touchRenderer({ lines: [
+    'echo hello-world done',
+    'x'.repeat(60) + 'https://example.com/',
+    { text: 'path?q=(1)). tail', wrapped: true },
+  ] }), t = r.terminals[0];
+  r.longPress(75, 10);
+  assert.deepEqual(t.selection, { column: 5, row: 50, length: 11 });
+  assert.deepEqual(r.messages, [{ type: 'selection', pane: 'shell', state: 'start' }]);
+  r.pointer('pointerup', 75, 10);
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one', url: null,
+    left: 50, top: 0, right: 160, bottom: 20 });
+  for (const type of ['mousedown', 'mouseup', 'click']) assert.equal(r.pointer(type, 75, 10).stopped, true);
+  assert.equal(r.window.selectedText(), 'hello-world');
+  // A tap outside a native menu only dismisses the selection.
+  r.messages.length = 0;
+  r.pointer('pointerdown', 300, 300); r.pointer('pointerup', 300, 300);
+  assert.equal(r.pointer('click', 300, 300).stopped, true);
+  assert.deepEqual(r.messages, [{ type: 'selection', pane: 'shell', state: 'cleared' }]);
+  assert.equal(t.selection, null); assert.equal(r.window.selectedText(), null);
+
+  // Pressing the wrapped half selects the whole link, without the closing punctuation.
+  r.messages.length = 0;
+  r.longPress(35, 50); r.pointer('pointerup', 35, 50);
+  assert.deepEqual(t.selection, { column: 60, row: 51, length: 30 });
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one',
+    url: 'https://example.com/path?q=(1)', left: 0, top: 20, right: 800, bottom: 60 });
+  assert.equal(r.window.selectedText(), 'https://example.com/path?q=(1)');
+  r.messages.length = 0;
+  r.window.clearSelection();
+  assert.equal(t.selection, null); assert.deepEqual(r.messages, [], 'native clears are not echoed');
+  assert.equal(t.focuses, 0); assert.deepEqual(t.scrolls, []);
+});
+
+test('long press tolerates small movement, keeps wide characters whole and drags in both directions', () => {
+  const r = touchRenderer({ lines: ['한글 단어 abc def'] }), t = r.terminals[0];
+  r.window.setInputEnabled(false); // Local selection is read-only, unlike remote input.
+  r.messages.length = 0;
+  r.pointer('pointerdown', 65, 10); r.pointer('pointermove', 72, 17);
+  assert.equal(t.selection, null, 'the timer has not fired yet');
+  r.hold();
+  assert.deepEqual(t.selection, { column: 5, row: 50, length: 4 }, 'the right half selects the whole syllable word');
+  const forward = r.pointer('pointermove', 165, 10);
+  assert.equal(forward.defaultPrevented, true); assert.equal(forward.stopped, true);
+  assert.deepEqual(t.selection, { column: 5, row: 50, length: 12 });
+  r.pointer('pointermove', 15, 10);
+  assert.deepEqual(t.selection, { column: 0, row: 50, length: 9 }, 'a wide character right half extends to its start');
+  r.pointer('pointerup', 15, 10);
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one', url: null,
+    left: 0, top: 0, right: 90, bottom: 20 });
+  assert.equal(r.window.selectedText(), '한글 단어');
+  assert.deepEqual(t.scrolls, []); assert.deepEqual(r.messages.filter(m => m.type !== 'selection'), []);
+});
+
+test('moving first keeps scrolling, blank cells select one cell and only a leading http link opens', () => {
+  const r = touchRenderer({ lines: ['https://a.example/x, then more', 'javascript:alert(1) www.example.com'] }), t = r.terminals[0];
+  r.longPress(500, 210); r.pointer('pointerup', 500, 210);
+  assert.deepEqual(t.selection, { column: 50, row: 60, length: 1 });
+  assert.equal(selectionMessages(r).at(-1).url, null);
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
+  // The comma ends the initial link; a selection extended past it still starts with that link.
+  r.longPress(55, 10);
+  assert.deepEqual(t.selection, { column: 0, row: 50, length: 19 });
+  r.pointer('pointermove', 295, 10); r.pointer('pointerup', 295, 10);
+  assert.equal(r.window.selectedText(), 'https://a.example/x, then more');
+  assert.equal(selectionMessages(r).at(-1).url, 'https://a.example/x');
+  for (const x of [55, 285]) {
+    r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
+    r.longPress(x, 30); r.pointer('pointerup', x, 30);
+    assert.equal(selectionMessages(r).at(-1).url, null, 'other schemes and bare hosts are not links');
+  }
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0); r.messages.length = 0;
+  r.pointer('pointerdown', 100, 100); r.pointer('pointermove', 100, 108); r.hold();
+  r.pointer('pointermove', 100, 141); r.pointer('pointerup', 100, 141);
+  assert.deepEqual(t.scrolls, [-2]); assert.equal(t.selection, null);
+  r.pointer('pointerdown', 100, 100); r.pointer('pointermove', 108, 100); r.hold(); r.pointer('pointerup', 108, 100);
+  assert.equal(t.selection, null); assert.deepEqual(selectionMessages(r), []);
+});
+
+test('mouse-reporting and inactive panes select locally without wheel, pointer or focus input', () => {
+  const r = touchRenderer({ lines: ['vim buffer text'] }), t = r.terminals[0];
+  t.modes.mouseTrackingMode = 'any';
+  r.longPress(15, 10); r.pointer('pointermove', 15, 200); r.pointer('pointerup', 15, 200);
+  assert.deepEqual(t.selection, { column: 0, row: 50, length: 802 });
+  assert.deepEqual(t.wheels, []); assert.deepEqual(r.messages.filter(m => m.type !== 'selection'), []);
+
+  r.layout('one', '%1', true);
+  const left = r.terminals[1], right = r.terminals[2];
+  assert.equal(t.selection, null, 'a layout change clears the selection');
+  r.messages.length = 0;
+  r.longPress(15, 10, right); r.pointer('pointerup', 15, 10, right);
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: '%2', state: 'menu', target: null, url: null,
+    left: 0, top: 0, right: 30, bottom: 20 });
+  assert.equal(r.messages.some(m => m.type === 'focus'), false);
+  r.messages.length = 0;
+  r.pointer('pointerdown', 15, 10, left); r.pointer('pointerup', 15, 10, left);
+  assert.deepEqual(r.messages, [{ type: 'selection', pane: '%2', state: 'cleared' }]);
+  r.longPress(15, 10, left); r.pointer('pointerup', 15, 10, left);
+  assert.equal(r.messages.at(-1).target, 'one');
+  assert.equal(r.window.selectedText(), 'vim');
+});
+
+test('selection waits for pinch, recovery and snapshots, and every cancellation reports a clear', () => {
+  for (const block of [r => r.window.setFontGesture(true), r => r.window.setConnectionRecovery(true), r => r.window.beginSnapshot()]) {
+    const r = touchRenderer({ lines: ['blocked'] });
+    block(r); r.messages.length = 0;
+    r.longPress(15, 10); r.pointer('pointerup', 15, 10);
+    assert.equal(r.terminals[0].selection, null); assert.deepEqual(selectionMessages(r), []);
+  }
+  const cleared = [{ type: 'selection', pane: 'shell', state: 'cleared' }];
+  const cancellations = [
+    r => r.layout('replacement'),
+    r => r.window.setConnectionRecovery(true),
+    r => r.window.beginSnapshot(),
+    r => r.window.setFontGesture(true),
+    r => r.window.setPointerEnabled(false),
+    r => r.window.setViewport({ version: 1, width: 807, logicalHeight: 480, visibleHeight: 240, imeVisible: true }),
+    r => r.terminals[0].clearSelection(), // xterm: buffer switch, row resize or mouse mode change
+    r => r.pointer('pointerdown', 15, 10, r.terminals[0], { isPrimary: false }),
+  ];
+  for (const [index, cancel] of cancellations.entries()) for (const released of [true, false]) {
+    const r = touchRenderer({ lines: ['selected'] }), t = r.terminals[0];
+    r.longPress(15, 10);
+    if (released) r.pointer('pointerup', 15, 10);
+    r.messages.length = 0;
+    cancel(r);
+    assert.deepEqual(selectionMessages(r), cleared, `cancellation ${index}`);
+    assert.equal(t.selection, null); assert.equal(r.window.selectedText(), null);
+    r.pointer('pointermove', 100, 100); r.pointer('pointerup', 100, 100);
+    assert.deepEqual(selectionMessages(r), cleared, 'a cancelled drag cannot reopen the menu');
+  }
+  const r = touchRenderer({ lines: ['selected'] });
+  r.longPress(15, 10); r.messages.length = 0;
+  r.pointer('pointercancel', 15, 10);
+  assert.deepEqual(selectionMessages(r), cleared);
+});
+
+test('touch long press consumes contextmenu and horizontal panning before xterm', () => {
+  const r = touchRenderer({ lines: ['word'] }), t = r.terminals[0];
+  r.pointer('pointerdown', 15, 10);
+  assert.equal(r.pointer('touchmove', 15, 10).defaultPrevented, undefined, 'panning is not blocked before the long press');
+  r.hold();
+  const menu = r.pointer('contextmenu', 15, 10);
+  assert.equal(menu.defaultPrevented, true); assert.equal(menu.stopped, true);
+  assert.equal(r.pointer('touchmove', 40, 10).defaultPrevented, true);
+  r.pointer('pointerup', 15, 10);
+  r.pointer('pointerdown', 15, 10, t, { pointerType: 'mouse' }); r.pointer('pointerup', 15, 10, t, { pointerType: 'mouse' });
+  assert.equal(t.selection, null, 'a mouse press clears the touch selection');
+  assert.equal(r.pointer('contextmenu', 15, 10, t, { pointerType: 'mouse' }).stopped, undefined, 'a mouse right click keeps xterm behavior');
 });
 
 test('target changes, disabled input, recovery, pinch and cancellation discard unsent touch movement', () => {

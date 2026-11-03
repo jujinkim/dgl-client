@@ -137,6 +137,34 @@ class TextComposerTest {
         client.result.complete(InputCompletion()); runCurrent(); draft.close()
     }
 
+    @Test fun clipboardPasteChecksLimitsAndTargetsAndSendsOnceWithoutRetry() = runTest {
+        val client = Connection()
+        val target = client.captureInputTarget()
+        for ((destination, current, text) in listOf(Triple(target, true, ""), Triple(target, true, "a".repeat(65537)),
+            Triple(null, true, "x"), Triple(target, false, "x")))
+            assertNotNull(pasteTerminalText(client, destination, { current }, text, paste))
+        client.epoch++
+        assertNotNull(pasteTerminalText(client, target, { true }, "stale", paste), "a reconnect replaces the captured target")
+        val fresh = client.captureInputTarget()
+        val ready = CompletableDeferred<Unit>()
+        val changed = async { pasteTerminalText(client, fresh, { true }, "x") { text -> ready.await(); paste(text) } }
+        runCurrent(); client.pane.value = "%2"; ready.complete(Unit)
+        assertNotNull(changed.await(), "the pane changed while the paste was prepared")
+        val current = client.captureInputTarget()
+        assertNotNull(pasteTerminalText(client, current, { true }, "a".repeat(65536)) { text -> "\u001b[200~$text\u001b[201~".encodeToByteArray() })
+        assertEquals("Paste exceeds", pasteTerminalText(client, current, { true }, "x") { error("Paste exceeds") })
+        assertTrue(client.writes.isEmpty())
+        val sent = async { pasteTerminalText(client, current, { true }, "한글\n😀", paste) }
+        runCurrent()
+        assertEquals("한글\n😀", client.writes.single().decodeToString())
+        client.result.complete(InputCompletion("Network"))
+        assertEquals("Network", sent.await())
+        runCurrent(); assertEquals(1, client.writes.size, "a failed paste is never resent")
+        val accepted = async { pasteTerminalText(client, current, { true }, "ok", paste) }
+        runCurrent(); client.result.complete(InputCompletion())
+        assertNull(accepted.await())
+    }
+
     @Test fun enterWaitsForTextCompletionAndIsAcknowledgedSeparately() = runTest {
         val client = Connection(); val draft = TextComposer(client, this)
         val edited = TextFieldValue("한글😀\n끝\n", TextRange(2, 4))

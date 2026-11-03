@@ -241,7 +241,7 @@ private object AboveLauncher : PopupPositionProvider {
                             }
                         }
                     }
-                    if (overlay != null) RegisterCliMenuOverlay(overlay, launcherBounds, dismiss, menuContent)
+                    if (overlay != null) RegisterCliMenuOverlay(overlay, launcherBounds, dismiss, content = menuContent)
                     else {
                         DisposableEffect(opened, terminalFocus) { onDispose { terminalFocus.request() } }
                         Popup(popupPositionProvider = AboveLauncher, onDismissRequest = dismiss,

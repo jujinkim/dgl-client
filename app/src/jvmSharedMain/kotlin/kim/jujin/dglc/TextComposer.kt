@@ -17,6 +17,30 @@ fun inputTargetIdentity(raw: String): String {
         generation.getValue("connection"), generation.getValue("pane"))).toString()
 }
 
+/**
+ * One clipboard paste into the target captured when its menu opened. It uses the composer's
+ * limits and target checks, the acknowledged input queue, and is never retried.
+ * Returns the error to show, or null after the queue accepted the text.
+ */
+suspend fun pasteTerminalText(client: ClientConnection, destination: InputTarget?, current: () -> Boolean, text: String,
+    preparePaste: suspend (String) -> ByteArray): String? {
+    if (text.isEmpty()) return t("클립보드에 붙여넣을 텍스트가 없습니다.")
+    if (text.encodeToByteArray().size > TerminalInput.MAX_BYTES) return t("입력은 UTF-8 64 KiB 이하여야 합니다.")
+    fun matches() = destination != null && current() && destination == client.captureInputTarget()
+    val changed = t("연결·세션·패널이 변경되어 붙여넣기를 취소했습니다.")
+    if (!matches()) return changed
+    return try {
+        val bytes = preparePaste(text)
+        when {
+            bytes.isEmpty() || bytes.size > TerminalInput.MAX_BYTES -> t("입력은 붙여넣기 제어 문자를 포함하여 UTF-8 64 KiB 이하여야 합니다.")
+            !matches() -> changed
+            else -> client.sendInput(destination!!, bytes).error
+        }
+    } catch (_: TimeoutCancellationException) { t("터미널 입력 준비 시간이 초과되었습니다.") }
+    catch (cancelled: CancellationException) { throw cancelled }
+    catch (cause: Exception) { cause.message ?: t("전송 결과를 확인하지 못했습니다") }
+}
+
 /** Connection-owned, memory only. Neither saved-state Bundles nor settings contain drafts. */
 class TextComposer(private val client: ClientConnection, parent: CoroutineScope) {
     private val job = SupervisorJob(parent.coroutineContext[Job])

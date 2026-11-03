@@ -8,6 +8,27 @@
   let fontGesture = false, pointerEnabled = true, imeAnimating = false, imeVersion = 0;
   window.setPointerEnabled = enabled => { pointerEnabled = enabled === true; if (!pointerEnabled) { cancelTouchScroll(); cancelBoundaryDrag(); } };
   let touchSelection = null;
+  // The pane holding the long-press text selection; at most one pane at a time.
+  let selectionOwner = null;
+  const clearTextSelection = notify => selectionOwner?.clearSelection(notify);
+  const LONG_PRESS_MS = 500, MAX_LINK = 2048;
+  const LINKS = /https?:\/\/[^\s<>"'`]+/gi, LEADING_LINK = /^https?:\/\/[^\s<>"'`]+/i;
+  const WORD_SEPARATOR = /[\s()[\]{}'",`]/;
+  // Sentence punctuation and an unbalanced closing bracket end the link.
+  const trimLink = url => {
+    for (;;) {
+      const last = url.at(-1), open = { ')': '(', ']': '[', '}': '{' }[last];
+      const count = c => url.split(c).length - 1;
+      if ('.,;:!?'.includes(last) || (open && count(last) > count(open))) url = url.slice(0, -1);
+      else return url;
+    }
+  };
+  const isLink = url => url.length <= MAX_LINK && /^https?:\/\/[^/?#\s]/i.test(url);
+  const leadingLink = text => {
+    const match = typeof text === 'string' ? LEADING_LINK.exec(text.trim()) : null;
+    const url = match ? trimLink(match[0]) : null;
+    return url && isLink(url) ? url : null;
+  };
   let geometryObserver = null;
   const nativeViewport = document.body?.dataset?.nativeViewport === 'true';
   let viewport = null, viewportVersion = 0, viewportDetached = false;
@@ -357,7 +378,123 @@
   // pointerdown lets the subsequent default click blur the textarea and hide IME.
   api.focusTerminal = () => term.focus();
   let touch = null, suppressTouchClick = false;
+  // Long-press text selection is local and read-only. It never sends remote mouse,
+  // wheel, focus or keyboard input, even while the remote app reports the mouse.
+  let press = null, picking = null, picked = null, touchOrigin = false;
+  const selectionAllowed = () => !fontGesture && !imeAnimating && recoveryScreen === null && !snapshotUpdating && !draggingBoundary;
+  const screenBounds = () => term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
+  // Linear buffer cell (absolute row * columns + column) under a client point.
+  const cellAt = (x, y, clamp) => {
+    const bounds = screenBounds(), buffer = term.buffer?.active;
+    if (!(bounds?.width > 0 && bounds?.height > 0) || !buffer || !term.cols || !term.rows) return null;
+    let column = Math.floor((x - bounds.left) / (bounds.width / term.cols));
+    let row = Math.floor((y - bounds.top) / (bounds.height / term.rows));
+    if (!clamp && (column < 0 || row < 0 || column >= term.cols || row >= term.rows)) return null;
+    column = Math.max(0, Math.min(term.cols - 1, column)); row = Math.max(0, Math.min(term.rows - 1, row));
+    return (buffer.viewportY + row) * term.cols + column;
+  };
+  const cellWidth = offset => term.buffer?.active?.getLine?.(Math.floor(offset / term.cols))?.getCell?.(offset % term.cols)?.getWidth?.() ?? 1;
+  // The wrapped rows of one logical line as text, with each UTF-16 unit's cell span.
+  const logicalLine = offset => {
+    const buffer = term.buffer?.active, columns = term.cols, row = Math.floor(offset / columns);
+    if (typeof buffer?.getLine !== 'function') return null;
+    let first = row, last = row;
+    while (first > 0 && row - first < 32 && buffer.getLine(first)?.isWrapped) --first;
+    while (last - row < 32 && buffer.getLine(last + 1)?.isWrapped) ++last;
+    let text = '';
+    const spans = [];
+    for (let y = first; y <= last; ++y) {
+      const line = buffer.getLine(y);
+      if (typeof line?.getCell !== 'function') return null;
+      for (let x = 0; x < columns; ++x) {
+        const cell = line.getCell(x), width = cell?.getWidth() ?? 1;
+        if (width === 0) continue; // The right half of a wide character.
+        const chars = cell?.getChars() || ' ', start = y * columns + x;
+        for (let i = 0; i < chars.length; ++i) spans.push([start, start + Math.max(1, width) - 1]);
+        text += chars;
+      }
+    }
+    const index = spans.findIndex(([start, end]) => offset >= start && offset <= end);
+    return index < 0 ? null : { text, spans, index };
+  };
+  // A link containing the cell, else its word, else the cell itself.
+  const initialRange = offset => {
+    const line = logicalLine(offset);
+    if (!line) return [offset, offset];
+    const { text, spans, index } = line;
+    for (const match of text.matchAll(LINKS)) {
+      const url = trimLink(match[0]);
+      if (index >= match.index && index < match.index + url.length && isLink(url))
+        return [spans[match.index][0], spans[match.index + url.length - 1][1]];
+    }
+    if (WORD_SEPARATOR.test(text[index])) return spans[index];
+    let start = index, end = index;
+    while (start > 0 && !WORD_SEPARATOR.test(text[start - 1])) --start;
+    while (end + 1 < text.length && !WORD_SEPARATOR.test(text[end + 1])) ++end;
+    return [spans[start][0], spans[end][1]];
+  };
+  const selectRange = ([start, end]) => term.select?.(start % term.cols, Math.floor(start / term.cols), end - start + 1);
+  // Client CSS px of the selection's visible rows: the native menu anchor.
+  const rangeRect = ([start, end]) => {
+    const bounds = screenBounds(), buffer = term.buffer?.active;
+    if (!(bounds?.width > 0 && bounds?.height > 0) || !buffer || !term.cols || !term.rows) return null;
+    const columns = term.cols, width = bounds.width / columns, height = bounds.height / term.rows;
+    const first = Math.floor(start / columns) - buffer.viewportY, last = Math.floor(end / columns) - buffer.viewportY;
+    if (last < 0 || first >= term.rows) return null;
+    const single = first === last, top = Math.max(0, first), bottom = Math.min(term.rows - 1, last);
+    return { left: single ? bounds.left + start % columns * width : bounds.left, top: bounds.top + top * height,
+      right: single ? bounds.left + (end % columns + 1) * width : bounds.right, bottom: bounds.top + (bottom + 1) * height };
+  };
+  const cancelPress = () => {
+    if (press && typeof clearTimeout === 'function') clearTimeout(press.timer);
+    press = null;
+  };
+  api.clearSelection = notify => {
+    cancelPress();
+    if (selectionOwner === api) selectionOwner = null;
+    if (!picking && !picked) return;
+    picking = null; picked = null;
+    term.clearSelection?.();
+    if (notify) send({ type: 'selection', pane, state: 'cleared' });
+  };
+  api.selectedText = () => picked ? term.getSelection?.() ?? '' : null;
+  // xterm drops the selection on buffer switches, row resizes, trims and mouse mode changes.
+  term.onSelectionChange?.(() => { if ((picking || picked) && term.hasSelection?.() === false) api.clearSelection(true); });
+  const beginPick = gesture => {
+    if (press !== gesture) return;
+    press = null;
+    if (!selectionAllowed()) return;
+    if (selectionOwner && selectionOwner !== api) clearTextSelection(true);
+    api.cancelTouchScroll();
+    suppressTouchClick = true;
+    const range = initialRange(gesture.cell);
+    picking = { id: gesture.id, anchor: range, range };
+    selectionOwner = api;
+    if (gesture.trusted) host.setPointerCapture?.(gesture.id);
+    selectRange(range);
+    send({ type: 'selection', pane, state: 'start' });
+  };
+  // Extend from the initial word/link to the cell under the finger, whole wide characters only.
+  const extendPick = event => {
+    let cell = cellAt(event.clientX, event.clientY, true);
+    if (cell === null) return;
+    let [start, end] = picking.anchor;
+    if (cell < start) start = cellWidth(cell) === 0 && cell % term.cols > 0 ? cell - 1 : cell;
+    else if (cell > end) end = cellWidth(cell) === 2 && cell % term.cols < term.cols - 1 ? cell + 1 : cell;
+    if (start === picking.range[0] && end === picking.range[1]) return;
+    picking.range = [start, end];
+    selectRange(picking.range);
+  };
+  const finishPick = () => {
+    const range = picking.range;
+    picking = null; picked = range;
+    const rect = rangeRect(range);
+    if (!rect) { api.clearSelection(true); return; }
+    send({ type: 'selection', pane, state: 'menu', target: pane === active ? inputTarget : null,
+      url: leadingLink(term.getSelection?.()), ...rect });
+  };
   api.cancelTouchScroll = () => {
+    api.clearSelection(true);
     stopPanelFling();
     const previous = touch;
     touch = null;
@@ -399,16 +536,32 @@
   };
   host.addEventListener('pointerdown', event => {
     stopPanelFling();
-    if (event.pointerType !== 'touch') { suppressTouchClick = false; return; }
-    if (event.isPrimary === false || touch) { cancelTouchScroll(); return; }
+    touchOrigin = event.pointerType === 'touch';
+    if (event.pointerType !== 'touch') { cancelPress(); clearTextSelection(true); suppressTouchClick = false; return; }
+    if (event.isPrimary === false || touch || picking) { cancelTouchScroll(); return; }
     suppressTouchClick = false;
     touchSelection = null;
+    // The native menu normally consumes this tap; never turn the dismissal into a click.
+    if (selectionOwner) { clearTextSelection(true); suppressTouchClick = true; return; }
+    cancelPress();
+    const cell = selectionAllowed() && typeof setTimeout === 'function' ? cellAt(event.clientX, event.clientY, false) : null;
+    if (cell !== null) {
+      const gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, cell, trusted: event.isTrusted === true };
+      gesture.timer = setTimeout(() => beginPick(gesture), LONG_PRESS_MS);
+      press = gesture;
+    }
     if (gestureBlocked() || snapshotUpdating || draggingBoundary) return;
     touch = { id: event.pointerId, x: event.clientX, y: event.clientY, lastY: event.clientY,
       remainder: 0, dragging: false, selected: pane === active, target: inputTarget, panel: panelRange() > 0, offset: panelOffset, samples: [] };
     samplePanel(touch, event);
   }, true);
   host.addEventListener('pointermove', event => {
+    if (picking && event.pointerId === picking.id) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      extendPick(event);
+      return;
+    }
+    if (press?.id === event.pointerId && Math.max(Math.abs(event.clientX - press.x), Math.abs(event.clientY - press.y)) >= 8) cancelPress();
     const gesture = touch;
     if (!gesture || event.pointerId !== gesture.id) return;
     samplePanel(gesture, event);
@@ -461,6 +614,13 @@
     } finally { wheelOrigin = null; }
   }, { capture: true, passive: false });
   host.addEventListener('pointerup', event => {
+    if (picking && event.pointerId === picking.id) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (host.hasPointerCapture?.(event.pointerId)) host.releasePointerCapture(event.pointerId);
+      finishPick();
+      return;
+    }
+    if (press?.id === event.pointerId) cancelPress();
     if (touch?.id !== event.pointerId) return;
     if (touch.dragging) event.preventDefault();
     const previous = touch; touch = null; panelDragging = false;
@@ -471,8 +631,17 @@
     // Taking capture from xterm's implicitly captured cell bubbles a loss from
     // that child. Our host still owns the pointer, so the drag must continue.
     if (name === 'lostpointercapture' && host.hasPointerCapture?.(event.pointerId)) return;
+    if (press?.id === event.pointerId) cancelPress();
+    if (picking?.id === event.pointerId) api.clearSelection(true);
     if (touch?.id === event.pointerId) api.cancelTouchScroll();
   }, true);
+  // Chrome turns a touch long press into contextmenu, where xterm would focus its
+  // textarea and open the IME. The selection menu replaces it.
+  host.addEventListener('contextmenu', event => {
+    if (touchOrigin || press || picking) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }, true);
+  // While picking, a sideways drag extends the selection instead of panning the grid.
+  host.addEventListener('touchmove', event => { if (picking) event.preventDefault(); }, { capture: true, passive: false });
   // WebView may still synthesize mouse/click events after a consumed gesture.
   // Capture before xterm's mouse reporting and before our tap-to-focus handler.
   for (const name of ['mousedown', 'mouseup', 'click']) host.addEventListener(name, event => {
@@ -496,6 +665,9 @@
   window.cancelSnapshot = () => { for (const p of panes.values()) p.cancelSnapshot(); };
   window.focusTerminal = () => focused().focusTerminal();
   window.preparePaste = (...args) => focused().preparePaste(...args);
+  window.selectedText = () => selectionOwner?.selectedText() ?? null;
+  // Native already closed its menu; only touch-originated clears report back.
+  window.clearSelection = () => clearTextSelection(false);
   window.sendShortcut = (...args) => focused().sendShortcut(...args);
   window.setInputEnabled = value => { enabled = value === true; if (!enabled) { cancelTouchScroll(); cancelBoundaryDrag(); } };
   window.setSmoothTransitions = value => { smooth = value === true; for (const p of panes.values()) p.setSmoothTransitions(smooth); };
@@ -766,6 +938,7 @@
     for (const [id, p] of panes) if (id !== 'shell' && !value.panes.some(s => s.id === id)) {
       const screen = p.term.element?.querySelector('.xterm-screen');
       if (screen) geometryObserver?.unobserve(screen);
+      p.clearSelection(true);
       p.cancelSnapshot(); p.term.dispose(); p.host.remove(); panes.delete(id);
     }
     arrange();

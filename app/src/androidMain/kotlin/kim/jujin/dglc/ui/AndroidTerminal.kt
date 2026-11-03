@@ -1,11 +1,14 @@
 package kim.jujin.dglc.ui
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.net.Uri
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.inputmethod.InputMethodManager
@@ -30,6 +33,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,7 +41,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.viewinterop.AndroidView
@@ -49,6 +55,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import kim.jujin.dglc.ClientConnection
 import kim.jujin.dglc.AppModel
+import kim.jujin.dglc.SnackbarDuration
+import kim.jujin.dglc.pasteTerminalText
+import kim.jujin.dglc.terminalWebLink
 import kim.jujin.dglc.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -83,6 +92,7 @@ private class TerminalEntry(val terminal: AndroidTerminal) {
     var restoreIme = false
     val keyboardVisibility = TerminalKeyboardVisibility()
     var updateKeyboard: () -> Unit = {}
+    var selection by mutableStateOf<TerminalSelection?>(null)
 }
 private tailrec fun Context.terminalLifecycleOwner(): LifecycleOwner? = when (this) {
     is LifecycleOwner -> this
@@ -127,7 +137,8 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                         client.captureInputTarget()?.identity == kim.jujin.dglc.inputTargetIdentity(target)) {
                         resources?.model?.shortcutInput(client)?.encode(key, text, physical, cursor)?.let { client.paneInput(pane, target, it) }
                     }
-                }))
+                },
+                selection = { if (entry.visible) entry.selection = it }))
             return entry
         }
         resources?.entries?.getOrPut(client, ::create) ?: create()
@@ -273,6 +284,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         onDispose {
             entry.restoreIme = entry.restoreIme || (entry.focus.inputAllowed() && terminal.view.rootWindowInsets?.isVisible(AndroidInsets.Type.ime()) == true)
             entry.visible = false; client.unbindSurface(terminal)
+            entry.selection = null; terminal.clearSelection()
             terminal.preparePresentation(true)
             if (resources == null) terminal.close()
         }
@@ -282,7 +294,10 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     val presenting = terminal.screenPending || status.presenting
     val fontOverride by terminal.fontSizeOverride.collectAsState()
     val occlusion = LocalTerminalOcclusion.current
-    Box(modifier.clipToBounds()) {
+    var terminalBounds by remember { mutableStateOf(Rect.Zero) }
+    val menuScope = rememberCoroutineScope()
+    val overlay = LocalCliMenuOverlay.current
+    Box(modifier.clipToBounds().onGloballyPositioned { terminalBounds = it.boundsInWindow() }) {
         key(terminal) { AndroidView(factory = {
             (terminal.view.parent as? android.view.ViewGroup)?.removeView(terminal.view)
             terminal.view
@@ -323,6 +338,55 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             }
         }
     }
+    val selection = entry.selection
+    if (selection != null && overlay != null && !presenting)
+        TerminalSelectionPopup(client, entry, selection, overlay, terminalBounds, menuScope, allowed && status.acceptsInput)
+}
+
+/** The selection menu above the terminal. Every action, an outside tap and Back clear the selection. */
+@Composable private fun TerminalSelectionPopup(client: ClientConnection, entry: TerminalEntry, selection: TerminalSelection,
+    overlay: CliMenuOverlay, terminalBounds: Rect, scope: CoroutineScope, inputAllowed: Boolean) {
+    val context = LocalContext.current
+    val terminal = entry.terminal
+    val clipboard = remember(context) { context.applicationContext.getSystemService(ClipboardManager::class.java) }
+    val dismiss = { if (entry.selection === selection) { entry.selection = null; terminal.clearSelection() } }
+    fun notice(message: String) = client.inputNotice.show(message, SnackbarDuration.Short)
+    // Android 13+ confirms clipboard writes itself, so copying shows no app notice.
+    fun clip(text: String) = clipboard.setPrimaryClip(ClipData.newPlainText("DaGaLi", text))
+    // Paste only reaches the pane that was the input target when the menu opened.
+    val pasteTarget = remember(selection) {
+        selection.target?.let { raw -> runCatching { kim.jujin.dglc.inputTargetIdentity(raw) }.getOrNull() }
+            ?.let { identity -> client.captureInputTarget()?.takeIf { it.identity == identity } }
+    }
+    val anchor = with(selection.bounds.translate(terminalBounds.topLeft)) {
+        Rect(left.coerceIn(terminalBounds.left, terminalBounds.right), top.coerceIn(terminalBounds.top, terminalBounds.bottom),
+            right.coerceIn(terminalBounds.left, terminalBounds.right), bottom.coerceIn(terminalBounds.top, terminalBounds.bottom))
+    }
+    RegisterCliMenuOverlay(overlay, anchor, dismiss, CliMenuPlacement.AroundCenter) {
+        TerminalSelectionMenu(selection.url,
+            paste = pasteTarget?.let { target -> {
+                dismiss()
+                val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                scope.launch {
+                    pasteTerminalText(client, target, { entry.visible && entry.focus.inputAllowed() }, text, terminal::preparePaste)
+                        ?.let(::notice)
+                }
+            } },
+            pasteEnabled = inputAllowed,
+            copy = { scope.launch {
+                val text = terminal.selectedText()
+                dismiss()
+                if (text.isNullOrEmpty()) notice(t("복사할 텍스트가 없습니다.")) else clip(text)
+            } },
+            openLink = {
+                val url = selection.url
+                dismiss()
+                if (url != null) try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
+                } catch (_: ActivityNotFoundException) { notice(t("링크를 열 수 있는 앱이 없습니다.")) }
+            },
+            copyLink = { selection.url?.let(::clip); dismiss() })
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -333,7 +397,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private val font: TerminalFontSize = TerminalFontSize(preferences.fontSize),
     private val blockedInput: () -> Unit = {},
     private val pointerInput: ((String, String?, ByteArray) -> Unit)? = null,
-    private val keyboardInput: (String, String?, String, String?, TerminalModifiers, Boolean) -> Unit = { _, _, _, _, _, _ -> }) : TerminalSurface {
+    private val keyboardInput: (String, String?, String, String?, TerminalModifiers, Boolean) -> Unit = { _, _, _, _, _, _ -> },
+    private val selection: (TerminalSelection?) -> Unit = {}) : TerminalSurface {
     var screenPending by mutableStateOf(false); private set
     internal var editorFocused = false; private set
     internal var keyboardFocusChanged: () -> Unit = {}
@@ -490,6 +555,27 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                         if (columns in 2..500 && rows in 2..250) resize(Size(columns, rows))
                     }
                     "ack" -> if (json.getLong("id") == awaiting?.first) awaiting?.second?.complete(Unit)
+                    "selection" -> when (json.getString("state")) {
+                        "start" -> {
+                            // Keep a sideways selection drag inside the WebView.
+                            view.parent?.requestDisallowInterceptTouchEvent(true)
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        }
+                        "menu" -> {
+                            val pane = json.getString("pane").takeIf { it.length in 1..64 } ?: return@addWebMessageListener
+                            val density = view.resources.displayMetrics.density
+                            fun px(name: String, limit: Int): Float {
+                                val value = json.getDouble(name)
+                                require(value.isFinite())
+                                return (value * density).toFloat().coerceIn(0f, limit.toFloat())
+                            }
+                            val left = px("left", view.width); val right = px("right", view.width)
+                            val top = px("top", view.height); val bottom = px("bottom", view.height)
+                            val url = if (json.isNull("url")) null else terminalWebLink(json.getString("url"))
+                            selection(TerminalSelection(pane, target(), url, Rect(minOf(left, right), minOf(top, bottom), maxOf(left, right), maxOf(top, bottom))))
+                        }
+                        "cleared" -> selection(null)
+                    }
                 }
             } catch (_: Exception) { /* Untrusted bridge messages never reach the model. */ }
         }
@@ -587,6 +673,19 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             }
             result.await()
         }
+    }
+    /** The long-press selection's text, read when the user copies it. */
+    suspend fun selectedText(): String? = withContext(Dispatchers.Main.immediate) {
+        if (closed || !ready.isCompleted) return@withContext null
+        val result = CompletableDeferred<String?>()
+        view.evaluateJavascript("window.selectedText()") { raw ->
+            result.complete(runCatching { org.json.JSONTokener(raw ?: "null").nextValue() as? String }.getOrNull())
+        }
+        withTimeoutOrNull(15_000) { result.await() }
+    }
+    /** Native closed the selection menu; the bridge does not report this clear back. */
+    fun clearSelection() {
+        if (!closed && ready.isCompleted) view.evaluateJavascript("window.clearSelection()", null)
     }
     suspend fun setSmoothTransitions(enabled: Boolean) {
         withTimeout(15_000) { ready.await() }

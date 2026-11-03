@@ -3,6 +3,11 @@ package kim.jujin.dglc
 import kim.jujin.dglc.core.*
 import kim.jujin.dglc.ui.CliCommand
 import kim.jujin.dglc.ui.CliLaunchRequest
+import kim.jujin.dglc.ui.CliMenuPlacement
+import kim.jujin.dglc.ui.cliMenuPosition
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.*
 
@@ -42,6 +47,19 @@ class CliLauncherTest {
         override fun restore() {}
         override fun disconnect() {}
         override fun close() {}
+    }
+
+    @Test fun menuPlacementKeepsTheLauncherAboveAndFlipsSelectionMenusInsideTheOverlay() {
+        val menu = IntSize(100, 40)
+        fun place(placement: CliMenuPlacement, anchor: Rect) = cliMenuPosition(placement, anchor, menu, 400, 600, 8)
+        // The launcher ends at its anchor's right edge, directly above it, whatever space is below.
+        assertEquals(IntOffset(150, 160), place(CliMenuPlacement.AboveEnd, Rect(200f, 200f, 250f, 240f)))
+        assertEquals(IntOffset(0, 0), place(CliMenuPlacement.AboveEnd, Rect(10f, 40f, 60f, 80f)))
+        // A selection menu is centered above the selection, below it near the top, and clamped.
+        assertEquals(IntOffset(100, 152), place(CliMenuPlacement.AroundCenter, Rect(100f, 200f, 200f, 220f)))
+        assertEquals(IntOffset(0, 48), place(CliMenuPlacement.AroundCenter, Rect(0f, 0f, 20f, 40f)))
+        assertEquals(IntOffset(300, 0), place(CliMenuPlacement.AroundCenter, Rect(380f, 0f, 400f, 600f)))
+        assertEquals(IntOffset(150, 520), place(CliMenuPlacement.AroundCenter, Rect(150f, 568f, 250f, 600f)))
     }
 
     @Test fun modifiersToggleUnionConsumeAndRejectUnsupportedWithoutReplay() {
