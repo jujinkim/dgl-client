@@ -1117,7 +1117,7 @@ test('long press selects a word or a wrapped link and opens the menu without rem
   assert.deepEqual(t.selection, { column: 5, row: 50, length: 11 });
   assert.deepEqual(r.messages, [{ type: 'selection', pane: 'shell', state: 'start' }]);
   r.pointer('pointerup', 75, 10);
-  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one', url: null,
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one', url: null, lineBreaks: false,
     left: 50, top: 0, right: 160, bottom: 20 });
   for (const type of ['mousedown', 'mouseup', 'click']) assert.equal(r.pointer(type, 75, 10).stopped, true);
   assert.equal(r.window.selectedText(), 'hello-world');
@@ -1133,7 +1133,7 @@ test('long press selects a word or a wrapped link and opens the menu without rem
   r.longPress(35, 50); r.pointer('pointerup', 35, 50);
   assert.deepEqual(t.selection, { column: 60, row: 51, length: 30 });
   assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one',
-    url: 'https://example.com/path?q=(1)', left: 0, top: 20, right: 800, bottom: 60 });
+    url: 'https://example.com/path?q=(1)', lineBreaks: false, left: 0, top: 20, right: 800, bottom: 60 });
   assert.equal(r.window.selectedText(), 'https://example.com/path?q=(1)');
   r.messages.length = 0;
   r.window.clearSelection();
@@ -1155,7 +1155,7 @@ test('long press tolerates small movement, keeps wide characters whole and drags
   r.pointer('pointermove', 15, 10);
   assert.deepEqual(t.selection, { column: 0, row: 50, length: 9 }, 'a wide character right half extends to its start');
   r.pointer('pointerup', 15, 10);
-  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one', url: null,
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one', url: null, lineBreaks: false,
     left: 0, top: 0, right: 90, bottom: 20 });
   assert.equal(r.window.selectedText(), '한글 단어');
   assert.deepEqual(t.scrolls, []); assert.deepEqual(r.messages.filter(m => m.type !== 'selection'), []);
@@ -1198,7 +1198,7 @@ test('mouse-reporting and inactive panes select locally without wheel, pointer o
   assert.equal(t.selection, null, 'a layout change clears the selection');
   r.messages.length = 0;
   r.longPress(15, 10, right); r.pointer('pointerup', 15, 10, right);
-  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: '%2', state: 'menu', target: null, url: null,
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: '%2', state: 'menu', target: null, url: null, lineBreaks: false,
     left: 0, top: 0, right: 30, bottom: 20 });
   assert.equal(r.messages.some(m => m.type === 'focus'), false);
   r.messages.length = 0;
@@ -1256,6 +1256,92 @@ test('touch long press consumes contextmenu and horizontal panning before xterm'
   r.pointer('pointerdown', 15, 10, t, { pointerType: 'mouse' }); r.pointer('pointerup', 15, 10, t, { pointerType: 'mouse' });
   assert.equal(t.selection, null, 'a mouse press clears the touch selection');
   assert.equal(r.pointer('contextmenu', 15, 10, t, { pointerType: 'mouse' }).stopped, undefined, 'a mouse right click keeps xterm behavior');
+});
+
+test('a long word broken by a real line break selects across rows and reports the break', () => {
+  const tail = 'b'.repeat(20) + '/end';
+  const r = touchRenderer({ lines: [
+    '  https://example.com/' + 'a'.repeat(58),
+    `  ${tail} more`,
+    'word '.repeat(14) + 'tenletters',
+    'next line',
+    'x'.repeat(60) + 'y'.repeat(20),
+    '      deeper than the word',
+  ] }), t = r.terminals[0];
+  // Apps and tmux redraws break the link with a newline; the continuation keeps its indentation.
+  r.longPress(105, 30); r.pointer('pointerup', 105, 30);
+  assert.deepEqual(t.selection, { column: 2, row: 50, length: 104 });
+  const url = 'https://example.com/' + 'a'.repeat(58) + tail;
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one',
+    url, lineBreaks: true, left: 0, top: 0, right: 800, bottom: 40 });
+  assert.equal(r.window.selectedText(), `https://example.com/${'a'.repeat(58)}\n  ${tail}`, 'copy keeps the line break');
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
+  r.longPress(25, 10); r.pointer('pointerup', 25, 10);
+  assert.deepEqual(t.selection, { column: 2, row: 50, length: 104 }, 'the first row selects the same link');
+  // A short word that happens to end at the edge stays on its row.
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
+  r.longPress(755, 50); r.pointer('pointerup', 755, 50);
+  assert.deepEqual(t.selection, { column: 70, row: 52, length: 10 });
+  assert.equal(r.messages.at(-1).lineBreaks, false);
+  // A row indented deeper than where the long word began starts a new line.
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
+  r.longPress(15, 90); r.pointer('pointerup', 15, 90);
+  assert.deepEqual(t.selection, { column: 0, row: 54, length: 80 });
+});
+
+test('Chrome\'s earlier long press starts the selection and its mouse motion never reaches xterm', () => {
+  const r = touchRenderer({ lines: ['vim buffer text'] }), t = r.terminals[0];
+  t.modes.mouseTrackingMode = 'any';
+  r.pointer('pointerdown', 15, 10);
+  // Chrome moves the mouse to the finger, then sends contextmenu at the system touch & hold delay.
+  assert.equal(r.pointer('mousemove', 15, 10).stopped, true);
+  assert.equal(r.pointer('contextmenu', 15, 10).defaultPrevented, true);
+  assert.deepEqual(t.selection, { column: 0, row: 50, length: 3 });
+  r.hold();
+  assert.deepEqual(selectionMessages(r).map(m => m.state), ['start'], 'our own timer does not restart it');
+  r.pointer('pointerup', 15, 10);
+  assert.equal(selectionMessages(r).at(-1).state, 'menu');
+  assert.equal(r.pointer('mousemove', 15, 10).stopped, undefined, 'motion after the finger lifts is unchanged');
+  assert.deepEqual(r.messages.filter(m => m.type !== 'selection'), []);
+  // A contextmenu after the finger moved away is only consumed.
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0); r.messages.length = 0;
+  r.pointer('pointerdown', 100, 100); r.pointer('pointermove', 100, 120);
+  r.pointer('contextmenu', 100, 120); r.pointer('pointerup', 100, 120);
+  assert.deepEqual(selectionMessages(r), []);
+});
+
+test('a finger resting on a pane keeps the textarea focused through Chrome\'s long-press blur', () => {
+  const r = touchRenderer({ lines: ['word'] }), t = r.terminals[0], events = [];
+  const textarea = t.textarea = { focus(options) {
+    events.push(['refocus', JSON.stringify(options)]);
+    // Blink dispatches the nested focus events before the outer blur's focusout.
+    for (const type of ['focus', 'focusin']) {
+      const event = { type, target: textarea };
+      r.root.dispatchEvent(event); events.push([type, event.stopped === true]);
+    }
+  } };
+  const blur = (relatedTarget = null) => {
+    const event = { type: 'blur', target: textarea, relatedTarget };
+    r.root.dispatchEvent(event);
+    const out = { type: 'focusout', target: textarea, relatedTarget };
+    r.root.dispatchEvent(out);
+    return [event.stopped === true, out.stopped === true];
+  };
+  assert.deepEqual(blur(), [false, false], 'no finger rests on a pane');
+  r.pointer('pointerdown', 15, 10);
+  assert.deepEqual(blur(), [true, true]);
+  assert.deepEqual(events, [['refocus', '{"preventScroll":true}'], ['focus', true], ['focusin', true]],
+    'xterm and the editor-focus bridge never see the textarea leave');
+  events.length = 0;
+  assert.deepEqual(blur({ tagName: 'TEXTAREA' }), [false, false], 'moving focus to another element is not undone');
+  r.pointer('pointerup', 15, 10);
+  assert.deepEqual(blur(), [false, false], 'a lifted finger releases the hold');
+  r.pointer('pointerdown', 15, 10); r.pointer('pointercancel', 15, 10);
+  assert.deepEqual(blur(), [false, false], 'a cancelled touch releases the hold');
+  assert.deepEqual(events, []);
+  const other = { type: 'blur', target: { focus() { throw new Error('not a pane textarea'); } }, relatedTarget: null };
+  r.pointer('pointerdown', 15, 10); r.root.dispatchEvent(other);
+  assert.equal(other.stopped, undefined);
 });
 
 test('target changes, disabled input, recovery, pinch and cancellation discard unsent touch movement', () => {

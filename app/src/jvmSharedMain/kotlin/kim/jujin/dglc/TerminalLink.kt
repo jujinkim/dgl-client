@@ -16,3 +16,11 @@ fun terminalWebLink(raw: String?): String? {
     if (uri.rawAuthority.isNullOrEmpty()) return null
     return scheme + raw.substring(scheme.length)
 }
+
+private val SELECTION_LINE_BREAK = Regex("[ \\t]*(?:\\r\\n|\\r|\\n)[ \\t]*")
+
+/**
+ * Terminal selection text without its line breaks, for a long word or link the screen width
+ * broke into rows. Each break goes together with the indentation that continues the next row.
+ */
+fun terminalTextWithoutLineBreaks(text: String): String = text.replace(SELECTION_LINE_BREAK, "")

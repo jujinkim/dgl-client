@@ -11,9 +11,12 @@
   // The pane holding the long-press text selection; at most one pane at a time.
   let selectionOwner = null;
   const clearTextSelection = notify => selectionOwner?.clearSelection(notify);
-  const LONG_PRESS_MS = 500, MAX_LINK = 2048;
+  // Chrome's own touch long press may come first: its delay is the system touch & hold setting.
+  const LONG_PRESS_MS = 500, MAX_LINK = 2048, LONG_WORD = 16;
   const LINKS = /https?:\/\/[^\s<>"'`]+/gi, LEADING_LINK = /^https?:\/\/[^\s<>"'`]+/i;
   const WORD_SEPARATOR = /[\s()[\]{}'",`]/;
+  // The touch pointer resting on a pane, and the textarea a long-press blur gave back focus.
+  let touchHold = null, keptFocus = null;
   // Sentence punctuation and an unbalanced closing bracket end the link.
   const trimLink = url => {
     for (;;) {
@@ -87,6 +90,26 @@
     recoveryScreen.setAttribute('aria-hidden', 'true'); recoveryScreen.inert = true;
     recoveryScreen.appendChild(previous); document.body.appendChild(recoveryScreen);
   };
+  // Chrome's touch long press runs Blink's mouse focus step at the pressed cell before its
+  // contextmenu, cancelled or not. Cells are not focusable, so that clears focus: xterm's
+  // textarea blurs and Android hides the IME, whose resize ends the selection. While a finger
+  // rests on a pane, a blur to nothing keeps the textarea focused, unseen by xterm and native.
+  const releaseTouchHold = event => { if (touchHold === event.pointerId) { touchHold = null; keptFocus = null; } };
+  for (const type of ['pointerup', 'pointercancel']) root.addEventListener(type, releaseTouchHold, true);
+  root.addEventListener('blur', event => {
+    const textarea = event.target;
+    if (touchHold === null || event.relatedTarget || document.hasFocus?.() !== true ||
+        ![...panes.values()].some(p => p.term.textarea === textarea)) return;
+    event.stopImmediatePropagation();
+    keptFocus = textarea;
+    textarea.focus({ preventScroll: true });
+  }, true);
+  // Blink dispatches the refocus events inside the blur, then the blur's focusout.
+  for (const type of ['focus', 'focusin', 'focusout']) root.addEventListener(type, event => {
+    if (keptFocus === null || event.target !== keptFocus) return;
+    event.stopImmediatePropagation();
+    if (type === 'focusout') keptFocus = null;
+  }, true);
   // Remote input and gestures that change remote state share these gates.
   const gestureBlocked = () => !enabled || !pointerEnabled || fontGesture || imeAnimating || recoveryScreen !== null;
   function createPane(pane, host) {
@@ -404,19 +427,46 @@
     return (buffer.viewportY + row) * term.cols + column;
   };
   const cellWidth = offset => term.buffer?.active?.getLine?.(Math.floor(offset / term.cols))?.getCell?.(offset % term.cols)?.getWidth?.() ?? 1;
+  // A cell's character; the right half of a wide character reads as its left half.
+  const cellChar = (line, x) => {
+    const cell = line?.getCell?.(x);
+    return cell?.getWidth?.() === 0 && x > 0 ? cellChar(line, x - 1) : cell?.getChars?.() || ' ';
+  };
+  const wordChar = char => !WORD_SEPARATOR.test(char);
+  // Apps and tmux redraws break a word longer than the row with a real line break, which xterm
+  // does not mark as wrapped. A long word (or a link) reaching the last column continues on the
+  // next row when that row starts with a word character, indented no deeper than the word began.
+  // Returns that indentation in cells, or -1.
+  const continuation = y => {
+    const buffer = term.buffer?.active, columns = term.cols;
+    const line = buffer?.getLine?.(y), next = buffer?.getLine?.(y + 1);
+    if (typeof line?.getCell !== 'function' || typeof next?.getCell !== 'function' || next.isWrapped ||
+        !wordChar(cellChar(line, columns - 1))) return -1;
+    let start = columns - 1;
+    while (start > 0 && wordChar(cellChar(line, start - 1))) --start;
+    let indent = 0;
+    while (indent < start && cellChar(next, indent) === ' ') ++indent;
+    if (!wordChar(cellChar(next, indent))) return -1;
+    if (columns - start >= LONG_WORD) return indent;
+    let tail = '';
+    for (let x = start; x < columns; ++x) if (line.getCell(x)?.getWidth?.() !== 0) tail += cellChar(line, x);
+    return /^https?:\/\//i.test(tail) ? indent : -1;
+  };
+  // Cells skipped at the start of row y when it continues the row above, or -1 for a new line.
+  const joinedIndent = y => term.buffer?.active?.getLine?.(y)?.isWrapped ? 0 : continuation(y - 1);
   // The wrapped rows of one logical line as text, with each UTF-16 unit's cell span.
   const logicalLine = offset => {
     const buffer = term.buffer?.active, columns = term.cols, row = Math.floor(offset / columns);
     if (typeof buffer?.getLine !== 'function') return null;
     let first = row, last = row;
-    while (first > 0 && row - first < 32 && buffer.getLine(first)?.isWrapped) --first;
-    while (last - row < 32 && buffer.getLine(last + 1)?.isWrapped) ++last;
+    while (first > 0 && row - first < 32 && joinedIndent(first) >= 0) --first;
+    while (last - row < 32 && buffer.getLine(last + 1) && joinedIndent(last + 1) >= 0) ++last;
     let text = '';
     const spans = [];
     for (let y = first; y <= last; ++y) {
       const line = buffer.getLine(y);
       if (typeof line?.getCell !== 'function') return null;
-      for (let x = 0; x < columns; ++x) {
+      for (let x = y === first ? 0 : joinedIndent(y); x < columns; ++x) {
         const cell = line.getCell(x), width = cell?.getWidth() ?? 1;
         if (width === 0) continue; // The right half of a wide character.
         const chars = cell?.getChars() || ' ', start = y * columns + x;
@@ -444,6 +494,23 @@
     return [spans[start][0], spans[end][1]];
   };
   const selectRange = ([start, end]) => term.select?.(start % term.cols, Math.floor(start / term.cols), end - start + 1);
+  // The selected cells as one text for link detection: wrapped and continued rows join,
+  // other rows end trimmed with a line break.
+  const rangeText = ([start, end]) => {
+    const buffer = term.buffer?.active, columns = term.cols, first = Math.floor(start / columns), last = Math.floor(end / columns);
+    let text = '';
+    for (let y = first, from = start % columns; y <= last; ++y) {
+      const line = buffer?.getLine?.(y);
+      let part = '';
+      for (let x = from; x <= (y === last ? end % columns : columns - 1); ++x)
+        if (line?.getCell?.(x)?.getWidth?.() !== 0) part += line?.getCell?.(x)?.getChars?.() || ' ';
+      if (y === last) return text + part.trimEnd();
+      from = joinedIndent(y + 1);
+      if (from >= 0) text += part;
+      else { text += part.trimEnd() + '\n'; from = 0; }
+    }
+    return text;
+  };
   // Client CSS px of the selection's visible rows: the native menu anchor.
   const rangeRect = ([start, end]) => {
     const bounds = screenBounds(), buffer = term.buffer?.active;
@@ -500,8 +567,9 @@
     picking = null; picked = range;
     const rect = rangeRect(range);
     if (!rect) { api.clearSelection(true); return; }
+    // Copy keeps xterm's text; `lineBreaks` offers a copy without its line breaks as well.
     send({ type: 'selection', pane, state: 'menu', target: pane === active ? inputTarget : null,
-      url: leadingLink(term.getSelection?.()), ...rect });
+      url: leadingLink(rangeText(range)), lineBreaks: /[\r\n]/.test(term.getSelection?.() ?? ''), ...rect });
   };
   api.cancelTouchScroll = () => {
     api.clearSelection(true);
@@ -549,6 +617,7 @@
     touchOrigin = event.pointerType === 'touch';
     if (event.pointerType !== 'touch') { cancelPress(); clearTextSelection(true); suppressTouchClick = false; return; }
     if (event.isPrimary === false || touch || picking) { cancelTouchScroll(); return; }
+    touchHold = event.pointerId;
     suppressTouchClick = false;
     touchSelection = null;
     // The native menu normally consumes this tap; never turn the dismissal into a click.
@@ -624,6 +693,7 @@
     } finally { wheelOrigin = null; }
   }, { capture: true, passive: false });
   host.addEventListener('pointerup', event => {
+    releaseTouchHold(event);
     if (picking && event.pointerId === picking.id) {
       event.preventDefault(); event.stopImmediatePropagation();
       if (host.hasPointerCapture?.(event.pointerId)) host.releasePointerCapture(event.pointerId);
@@ -641,14 +711,18 @@
     // Taking capture from xterm's implicitly captured cell bubbles a loss from
     // that child. Our host still owns the pointer, so the drag must continue.
     if (name === 'lostpointercapture' && host.hasPointerCapture?.(event.pointerId)) return;
+    if (name === 'pointercancel') releaseTouchHold(event);
     if (press?.id === event.pointerId) cancelPress();
     if (picking?.id === event.pointerId) api.clearSelection(true);
     if (touch?.id === event.pointerId) api.cancelTouchScroll();
   }, true);
   // Chrome turns a touch long press into contextmenu, where xterm would focus its
-  // textarea and open the IME. The selection menu replaces it.
+  // textarea and open the IME. The selection menu replaces it, and starts here when the
+  // system touch & hold delay is shorter than ours.
   host.addEventListener('contextmenu', event => {
-    if (touchOrigin || press || picking) { event.preventDefault(); event.stopImmediatePropagation(); }
+    if (!touchOrigin && !press && !picking) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (press) beginPick(press);
   }, true);
   // While picking, a sideways drag extends the selection instead of panning the grid.
   host.addEventListener('touchmove', event => { if (picking) event.preventDefault(); }, { capture: true, passive: false });
@@ -656,6 +730,11 @@
   // Capture before xterm's mouse reporting and before our tap-to-focus handler.
   for (const name of ['mousedown', 'mouseup', 'click']) host.addEventListener(name, event => {
     if (suppressTouchClick || panelFling) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }, true);
+  // Chrome's long press moves the mouse to the finger first. A reporting app would get that
+  // motion as remote input, and xterm clears its selection on any such input.
+  host.addEventListener('mousemove', event => {
+    if (touchHold !== null || picking) { event.preventDefault(); event.stopImmediatePropagation(); }
   }, true);
   host.addEventListener('wheel', event => {
     if (panelDragging || panelFling) { event.preventDefault(); event.stopImmediatePropagation(); }

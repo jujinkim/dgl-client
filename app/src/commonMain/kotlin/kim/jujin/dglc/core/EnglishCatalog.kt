@@ -609,5 +609,7 @@ internal object EnglishCatalog {
         "링크를 열 수 있는 앱이 없습니다." to "No app can open this link.",
         "연결·세션·패널이 변경되어 붙여넣기를 취소했습니다." to "The connection, session, or pane changed, so the paste was canceled.",
         "터미널 입력 준비 시간이 초과되었습니다." to "Timed out while preparing terminal input.",
+        "줄바꿈 없이" to "No line breaks",
+        "줄바꿈 없이 복사" to "Copy without line breaks",
     )
 }

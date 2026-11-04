@@ -57,6 +57,7 @@ import kim.jujin.dglc.ClientConnection
 import kim.jujin.dglc.AppModel
 import kim.jujin.dglc.SnackbarDuration
 import kim.jujin.dglc.pasteTerminalText
+import kim.jujin.dglc.terminalTextWithoutLineBreaks
 import kim.jujin.dglc.terminalWebLink
 import kim.jujin.dglc.core.*
 import kotlinx.coroutines.*
@@ -355,6 +356,12 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     fun notice(message: String) = client.inputNotice.show(message, SnackbarDuration.Short)
     // Android 13+ confirms clipboard writes itself, so copying shows no app notice.
     fun clip(text: String) = clipboard.setPrimaryClip(ClipData.newPlainText("DaGaLi", text))
+    // Read at action time, then close the selection before writing the clipboard.
+    fun copySelection(transform: (String) -> String) = scope.launch {
+        val text = terminal.selectedText()?.let(transform)
+        dismiss()
+        if (text.isNullOrEmpty()) notice(t("복사할 텍스트가 없습니다.")) else clip(text)
+    }
     // Paste only reaches the pane that was the input target when the menu opened.
     val pasteTarget = remember(selection) {
         selection.target?.let { raw -> runCatching { kim.jujin.dglc.inputTargetIdentity(raw) }.getOrNull() }
@@ -375,11 +382,8 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                 }
             } },
             pasteEnabled = inputAllowed,
-            copy = { scope.launch {
-                val text = terminal.selectedText()
-                dismiss()
-                if (text.isNullOrEmpty()) notice(t("복사할 텍스트가 없습니다.")) else clip(text)
-            } },
+            copy = { copySelection { it } },
+            copyWithoutLineBreaks = if (selection.lineBreaks) { { copySelection(::terminalTextWithoutLineBreaks) } } else null,
             openLink = {
                 val url = selection.url
                 dismiss()
@@ -578,7 +582,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                             val left = px("left", view.width); val right = px("right", view.width)
                             val top = px("top", view.height); val bottom = px("bottom", view.height)
                             val url = if (json.isNull("url")) null else terminalWebLink(json.getString("url"))
-                            selection(TerminalSelection(pane, target(), url, Rect(minOf(left, right), minOf(top, bottom), maxOf(left, right), maxOf(top, bottom))))
+                            selection(TerminalSelection(pane, target(), url, Rect(minOf(left, right), minOf(top, bottom), maxOf(left, right), maxOf(top, bottom)),
+                                lineBreaks = json.optBoolean("lineBreaks")))
                         }
                         "cleared" -> selection(null)
                     }

@@ -604,5 +604,7 @@
   "클립보드에 붙여넣을 텍스트가 없습니다.": "There is no text on the clipboard to paste.",
   "링크를 열 수 있는 앱이 없습니다.": "No app can open this link.",
   "연결·세션·패널이 변경되어 붙여넣기를 취소했습니다.": "The connection, session, or pane changed, so the paste was canceled.",
-  "터미널 입력 준비 시간이 초과되었습니다.": "Timed out while preparing terminal input."
+  "터미널 입력 준비 시간이 초과되었습니다.": "Timed out while preparing terminal input.",
+  "줄바꿈 없이": "No line breaks",
+  "줄바꿈 없이 복사": "Copy without line breaks"
 }

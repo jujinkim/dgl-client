@@ -65,7 +65,7 @@ TESTS = {
                          'enterWaitsForTextCompletionAndIsAcknowledgedSeparately',
                          'enterFailurePreservesDeliveredTextWithoutRetry', 'changedTargetsAfterTextDoNotSendEnter',
                          'clipboardPasteChecksLimitsAndTargetsAndSendsOnceWithoutRetry'],
-    'TerminalLinkTest': ['onlyBoundedHttpLinksWithAnAuthorityOpen'],
+    'TerminalLinkTest': ['onlyBoundedHttpLinksWithAnAuthorityOpen', 'copyWithoutLineBreaksJoinsRowsAndDropsTheirIndentation'],
     'core.TerminalResizeQueueTest': ['continuousAnimationSubmitsImmediatelyThenLatestEvery50Millis',
                                     'failedIntermediateSizeInvalidatesPreviouslyAppliedGeometry',
                                     'failedNativeRequestCanBeRetriedAfterConnectionRecovers',

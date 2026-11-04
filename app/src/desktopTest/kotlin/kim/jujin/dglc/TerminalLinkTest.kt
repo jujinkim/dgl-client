@@ -17,4 +17,11 @@ class TerminalLinkTest {
             "https://example.com/\u0085", "https://example.com/%zz"))
             assertNull(terminalWebLink(rejected), rejected)
     }
+
+    @Test fun copyWithoutLineBreaksJoinsRowsAndDropsTheirIndentation() {
+        assertEquals("https://example.com/aaaabbbb/end", terminalTextWithoutLineBreaks("https://example.com/aaaa\n  bbbb/end"))
+        assertEquals("abc", terminalTextWithoutLineBreaks("a \r\n\tb\r\nc"))
+        assertEquals("a b", terminalTextWithoutLineBreaks("a b"), "spaces inside a row stay")
+        assertEquals("", terminalTextWithoutLineBreaks("\n\n"))
+    }
 }
