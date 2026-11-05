@@ -35,6 +35,8 @@ interface ClientConnection {
     fun selectSession(id: String)
     fun selectPane(id: String)
     fun createSession(name: String)
+    /** Runs [created] with the new session's ID once the request succeeds; test doubles may ignore it. */
+    fun createSession(name: String, created: (String) -> Unit) = createSession(name)
     fun manage(command: TmuxCommand)
     fun refresh()
     fun paneInput(pane: String, target: String?, bytes: ByteArray) { input(bytes) }

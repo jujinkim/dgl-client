@@ -1473,6 +1473,7 @@ fn add_terminal_at_port(
             session: None,
             session_title: None,
             pending_target: None,
+            created_session: None,
         });
         cx.notify();
         terminal
@@ -2637,4 +2638,47 @@ fn shortcut_editor_drag_cancel_remove_readd_and_back_restore(cx: &mut TestAppCon
             assert!(s.modal.button("edit-shortcuts", cx).is_focused(w));
         })
     });
+}
+
+#[test]
+fn renames_start_from_the_current_name_and_creations_start_empty() {
+    use dgl_core::model::{RemotePane, RemoteSession, RemoteState, RemoteWindow};
+    let remote = RemoteState {
+        sessions: vec![RemoteSession {
+            id: "$1".into(),
+            name: "work #1".into(),
+            attached: 1,
+        }],
+        windows: vec![RemoteWindow {
+            id: "@1".into(),
+            session: "$1".into(),
+            name: "editor".into(),
+            active: true,
+            layout: String::new(),
+            index: 0,
+            width: 80,
+            height: 24,
+            zoomed: false,
+            visible_layout: String::new(),
+        }],
+        panes: vec![RemotePane {
+            id: "%1".into(),
+            window: "@1".into(),
+            width: 80,
+            height: 24,
+            active: true,
+            mode: String::new(),
+            command: "zsh".into(),
+            title: "build".into(),
+            left: 0,
+            top: 0,
+        }],
+    };
+    let name = |op: PromptOp| op.current_name(&remote);
+    assert_eq!(name(PromptOp::RenameSession("$1".into())), "work #1");
+    assert_eq!(name(PromptOp::RenameWindow("@1".into())), "editor");
+    assert_eq!(name(PromptOp::RenamePane("%1".into())), "build");
+    assert_eq!(name(PromptOp::RenameSession("$2".into())), "");
+    assert_eq!(name(PromptOp::Session), "");
+    assert_eq!(name(PromptOp::Window("$1".into())), "");
 }

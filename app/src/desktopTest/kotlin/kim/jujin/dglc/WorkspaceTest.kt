@@ -127,6 +127,43 @@ class WorkspaceTest {
             assertNull(model.terminalFont(reopened).overrideSize.value)
         }
     }
+    @Test fun createdSessionsOpenLikeTheirRowsOnlyForTheirGeneration() = runBlocking {
+        withModel { model, created ->
+            model.workspaceEnabled = true
+            model.open(HostProfile("host", "alias", "example.test", username = "test"))
+            val source = created.single()
+            // A selection tab without a session becomes the created session's tab.
+            source.status.value = ConnectionStatus(Phase.Selecting)
+            model.createSession(source, "first")
+            source.creations.removeFirst().let { (name, opened) -> assertEquals("first", name); opened("\$1") }
+            assertEquals(listOf(listOf<String?>("\$1", null, null)), source.targets)
+            assertEquals(1, created.size)
+            source.session.value = "\$1"; source.status.value = ConnectionStatus(Phase.Ready)
+            // An attached tab keeps its session; the created one opens and takes the selection.
+            model.createSession(source, "second")
+            source.creations.removeFirst().second("\$2")
+            assertEquals(2, created.size)
+            assertSame(created.last(), model.selected.value)
+            assertEquals("\$2", created.last().host.lastSession)
+            // A completion from before a reconnect opens nothing.
+            model.createSession(source, "late")
+            val late = source.creations.removeFirst().second
+            source.connect(); source.status.value = ConnectionStatus(Phase.Ready)
+            late("\$3")
+            assertEquals(2, created.size)
+            // Without the workspace the same connection selects the session.
+            model.workspaceEnabled = false
+            model.createSession(source, "plain")
+            source.creations.removeFirst().second("\$4")
+            assertEquals(listOf<String?>("\$4", null, null), source.targets.last())
+            assertEquals(2, created.size)
+        }
+        val sessions = RemoteState(sessions = listOf(RemoteSession("\$1", "work", 1), RemoteSession("\$2", "other", 0), RemoteSession("\$3", "work", 0)))
+        assertEquals("\$3", sessions.createdSession(setOf("\$1"), "work"))
+        assertNull(sessions.createdSession(setOf("\$1"), "missing"), "two other new sessions are ambiguous")
+        assertEquals("\$2", sessions.createdSession(setOf("\$1", "\$3"), "renamed"), "tmux may store another name")
+        assertNull(sessions.createdSession(sessions.sessions.mapTo(mutableSetOf()) { it.id }, "work"))
+    }
     @Test fun staleConnectionGenerationsRejectDelayedTargetsAndModalGates() = runBlocking {
         withModel { model, created ->
             model.open(HostProfile("host", "alias", "example.test", username = "test"))
@@ -431,6 +468,8 @@ class WorkspaceTest {
         override fun selectSession(id: String) {}
         override fun selectPane(id: String) {}
         override fun createSession(name: String) {}
+        val creations = mutableListOf<Pair<String, (String) -> Unit>>()
+        override fun createSession(name: String, created: (String) -> Unit) { creations += name to created }
         override fun manage(command: TmuxCommand) {}
         override fun refresh() {}
         override fun input(bytes: ByteArray) { error("navigation cannot send input") }

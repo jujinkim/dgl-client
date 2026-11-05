@@ -65,7 +65,7 @@ import kim.jujin.dglc.core.*
     val refreshing by client.refreshing.collectAsState()
     val notices by model.agentNotifications.collectAsState()
     val expanded = remember(client) { mutableStateMapOf<String, Boolean>() }
-    var prompt by remember(client) { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }
+    var prompt by remember(client) { mutableStateOf<NamePrompt?>(null) }
     var deletion by remember(client) { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     val owner = remember { Any() }
     WorkspaceInputBlock(model, owner, prompt != null || deletion != null)
@@ -75,7 +75,7 @@ import kim.jujin.dglc.core.*
         HorizontalDivider()
         Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(t("세션"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            IconButton({ prompt = t("세션 만들기") to client::createSession }, enabled = enabled,
+            IconButton({ prompt = NamePrompt(t("세션 만들기")) { model.createSession(client, it) } }, enabled = enabled,
                 modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
             IconButton(client::refresh, enabled = enabled && !refreshing,
                 modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { UiGlyph(UiIcons.refresh) }
@@ -84,12 +84,12 @@ import kim.jujin.dglc.core.*
             if (remote.sessions.isEmpty()) Text(t("세션 없음 · + 버튼으로 생성"), Modifier.padding(12.dp))
             remote.hierarchyRows(preferences.showAllHierarchy).forEach { row -> key(row.key) {
                 HierarchyEntry(row, 0, client, remote, session, pane, expanded, enabled, notices,
-                    { showAgents(client, it) }, { title, action -> prompt = title to action }, { title, action -> deletion = title to action },
+                    { showAgents(client, it) }, { prompt = it }, { title, action -> deletion = title to action },
                     { s, w, p -> model.openSession(client, s, w, p, generation) })
             } }
         }
     }
-    prompt?.let { (title, action) -> NameDialog(title, { if (client.generation == generation) action(it); prompt = null }, { prompt = null }) }
+    prompt?.let { p -> NameDialog(p.title, { if (client.generation == generation) p.accept(it); prompt = null }, { prompt = null }, p.initial) }
     deletion?.let { (title, action) -> ConfirmDialog(title, t("이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?"),
         { if (client.generation == generation) action(); deletion = null }, { deletion = null }) }
 }

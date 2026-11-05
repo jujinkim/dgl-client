@@ -28,7 +28,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -309,7 +311,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             navigationSheet.show()
         }
     }
-    var namePrompt by remember { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }
+    var namePrompt by remember { mutableStateOf<NamePrompt?>(null) }
     var deletion by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     val agentNav by model.agentNavigation.collectAsState()
     LaunchedEffect(agentNav) {
@@ -347,7 +349,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         Column(modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(t("세션"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                TextButton({ namePrompt = t("세션 만들기") to client::createSession }, enabled = canBrowse, modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
+                TextButton({ namePrompt = NamePrompt(t("세션 만들기")) { model.createSession(client, it) } }, enabled = canBrowse, modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
                 TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), tooltip = { PlainTooltip { Text(t("세션 새로고침")) } }, state = rememberTooltipState()) {
                     IconButton({ client.refresh() }, enabled = canBrowse && !refreshing, modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { UiGlyph(UiIcons.refresh) }
                 }
@@ -356,7 +358,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             else if (remote.sessions.isEmpty()) Text(if (canBrowse) t("세션 없음 · + 버튼으로 생성") else t("목록 대기 중"), Modifier.padding(16.dp))
             hierarchy.forEach { row ->
                 key(row.key) { HierarchyEntry(row, 0, client, remote, session, pane, expanded, canBrowse, agentNotices, showAgents,
-                    { title, action -> namePrompt = title to action }, { title, action -> deletion = title to action },
+                    { namePrompt = it }, { title, action -> deletion = title to action },
                     { s, w, p -> if (model.workspaceEnabled) model.openSession(client, s, w, p) else client.selectTarget(s, w, p) }) }
             }
         }
@@ -423,7 +425,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             text = { Column { Text(request.endpoint); Spacer(Modifier.height(8.dp)); SelectionContainer { Text(request.fingerprint) }; Spacer(Modifier.height(8.dp)); Text(t("서버 관리자에게 받은 SHA-256 지문과 일치하는지 확인하세요.")) } },
             confirmButton = { TextButton({ client.trust() }) { Text(t("신뢰하고 연결")) } }, dismissButton = { TextButton({ client.trustRequest.value = null; client.disconnect() }) { Text(t("취소")) } })
     }
-    namePrompt?.let { (title, action) -> NameDialog(title, { action(it); namePrompt = null }, { namePrompt = null }) }
+    namePrompt?.let { p -> NameDialog(p.title, { p.accept(it); namePrompt = null }, { namePrompt = null }, p.initial) }
     if (tmuxDetails && status.phase == Phase.Shell) tmuxProblem?.let {
         TmuxFailureDialog(client.host, it) { tmuxDetails = false }
     }
@@ -446,23 +448,26 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 
 @Composable internal fun HierarchyEntry(row: HierarchyRow, depth: Int, client: ClientConnection, remote: RemoteState,
     session: String?, pane: String?, expanded: MutableMap<String, Boolean>, enabled: Boolean, notices: List<AgentNotice>,
-    showAgents: (String) -> Unit, prompt: (String, (String) -> Unit) -> Unit, delete: (String, () -> Unit) -> Unit,
+    showAgents: (String) -> Unit, prompt: (NamePrompt) -> Unit, delete: (String, () -> Unit) -> Unit,
     selectTarget: (String, String?, String?) -> Unit = client::selectTarget) {
     val actions = buildList<Pair<String, () -> Unit>> {
         if (row.kind == TreeKind.Session) {
-            add(t("창 만들기") to { prompt(t("창 만들기")) { client.manage(TmuxCommand.newWindow(row.session, it)) } })
-            add(t("세션 이름 변경") to { prompt(t("세션 이름 변경")) { client.manage(TmuxCommand.renameSession(row.session, it)) } })
+            add(t("창 만들기") to { prompt(NamePrompt(t("창 만들기")) { client.manage(TmuxCommand.newWindow(row.session, it)) }) })
+            add(t("세션 이름 변경") to { prompt(NamePrompt(t("세션 이름 변경"), remote.sessions.firstOrNull { it.id == row.session }?.name.orEmpty()) {
+                client.manage(TmuxCommand.renameSession(row.session, it)) }) })
             add(t("세션 삭제…") to { delete(tr("세션 {0}", row.label.title)) { client.manage(TmuxCommand.killSession(row.session)) } })
         }
         if (row.kind != TreeKind.Pane) row.window?.let { w ->
-            add(t("창 이름 변경") to { prompt(t("창 이름 변경")) { client.manage(TmuxCommand.renameWindow(w, it)) } })
+            add(t("창 이름 변경") to { prompt(NamePrompt(t("창 이름 변경"), remote.windows.firstOrNull { it.id == w }?.name.orEmpty()) {
+                client.manage(TmuxCommand.renameWindow(w, it)) }) })
             add(t("창 삭제…") to { delete(t("창")) { client.manage(TmuxCommand.killWindow(w)) } })
         }
         remote.panes.firstOrNull { it.window == row.window && it.active }?.id?.let { p ->
             listOf(true to t("패널 좌우 나누기"), false to t("패널 상하 나누기")).forEach { (horizontal, label) ->
                 add(label to { client.selectTarget(row.session, row.window, p); client.manage(TmuxCommand.split(p, horizontal)) })
             }
-            add(t("패널 제목 변경") to { prompt(t("패널 제목 변경")) { client.manage(TmuxCommand.renamePane(p, it)) } })
+            add(t("패널 제목 변경") to { prompt(NamePrompt(t("패널 제목 변경"), remote.panes.firstOrNull { it.id == p }?.title.orEmpty()) {
+                client.manage(TmuxCommand.renamePane(p, it)) }) })
             add(t("패널 삭제…") to { delete(tr("패널 {0}", row.label.title)) { client.manage(TmuxCommand.killPane(p)) } })
         }
     }
@@ -728,9 +733,13 @@ private enum class SettingsPage { Main, Shortcuts, About }
     }
 }
 
-@Composable internal fun NameDialog(title: String, accept: (String) -> Unit, dismiss: () -> Unit) {
-    var value by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { OutlinedTextField(value, { value = it.take(128) }, label = { Text(t("이름")) }, singleLine = true) },
+/** A name dialog's title, the name it starts from (a rename's current name) and its action. */
+internal class NamePrompt(val title: String, val initial: String = "", val accept: (String) -> Unit)
+@Composable internal fun NameDialog(title: String, accept: (String) -> Unit, dismiss: () -> Unit, initial: String = "") {
+    // The current name starts selected: typing replaces it, moving the cursor edits it.
+    var field by remember { mutableStateOf(initial.take(128).let { TextFieldValue(it, TextRange(0, it.length)) }) }
+    val value = field.text
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { OutlinedTextField(field, { field = it.copy(text = it.text.take(128)) }, label = { Text(t("이름")) }, singleLine = true) },
         confirmButton = { TextButton({ accept(value) }, enabled = value.isNotBlank() && value.none { it == '.' || it == ':' || it.code < 32 }) { Text(t("확인")) } }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
 }
 @Composable internal fun ConfirmDialog(title: String, message: String, accept: () -> Unit, dismiss: () -> Unit) {

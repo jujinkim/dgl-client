@@ -237,6 +237,15 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         if (client !== source && (window != null || pane != null)) selectWhenReady(client, session, window, pane)
         return client
     }
+    /** A session created from [source] opens like a click on its row. */
+    fun createSession(source: ClientConnection, name: String) {
+        val generation = source.generation
+        source.createSession(name) { id ->
+            if (source.generation != generation) return@createSession
+            if (workspaceEnabled) openSession(source, id, expectedGeneration = generation)
+            else source.selectTarget(id)
+        }
+    }
     private fun selectWhenReady(client: ClientConnection, session: String, window: String?, pane: String?) {
         val generation = client.generation
         if (client.status.value.phase == Phase.Ready && client.session.value == session) {

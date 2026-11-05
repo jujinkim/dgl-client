@@ -50,6 +50,14 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
 data class RemoteSession(val id: String, val name: String, val attached: Int)
 data class RemoteWindow(val id: String, val session: String, val name: String, val active: Boolean, val layout: String, val index: Int = 0, val width: Int = 80, val height: Int = 24, val zoomed: Boolean = false, val visibleLayout: String = "")
 data class RemotePane(val id: String, val window: String, val width: Int, val height: Int, val active: Boolean, val mode: String, val command: String, val title: String = "", val left: Int = 0, val top: Int = 0)
+/**
+ * The session a `new-session` request added: absent from [known], with the requested name.
+ * A single new session also counts in case tmux stored another name.
+ */
+fun RemoteState.createdSession(known: Set<String>, name: String): String? {
+    val added = sessions.filter { it.id !in known }
+    return (added.firstOrNull { it.name == name } ?: added.singleOrNull())?.id
+}
 data class RemoteState(val sessions: List<RemoteSession> = emptyList(), val windows: List<RemoteWindow> = emptyList(), val panes: List<RemotePane> = emptyList())
 data class Size(val columns: Int = 80, val rows: Int = 24) {
     init { require(columns in 1..65535 && rows in 1..65535) }

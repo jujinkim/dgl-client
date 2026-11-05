@@ -88,6 +88,8 @@ class RustClientConnection(
     private val inputRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<ULong>()
     private val inputCompletions = mutableMapOf<ULong, CompletableDeferred<InputCompletion>>()
     private val resumeRequests = mutableSetOf<ULong>()
+    private class CreatedSession(val name: String, val known: Set<String>, val created: (String) -> Unit)
+    private val createdSessions = mutableMapOf<ULong, CreatedSession>()
     @Volatile private var closed = false
     private val cleanup = mutableListOf<Job>()
     private fun trace(event: String) {
@@ -106,7 +108,7 @@ class RustClientConnection(
         outputFailed = false
         outputRecoveryAttempted = false
         notice.value = null
-        inputRequests.clear()
+        inputRequests.clear(); createdSessions.clear()
         val current = ++epoch
         ++adapterGeneration; nativeGeneration = null
         status.value = ConnectionStatus(Phase.Connecting, t("SSH 연결 중…"), recovering = recovery.pending)
@@ -133,6 +135,7 @@ class RustClientConnection(
                         sequence = state.getValue("sequence").jsonPrimitive.long
                         synchronized(this@RustClientConnection) { if (current == epoch && !closed) applyState(state) }
                     }
+                    val opened = mutableListOf<() -> Unit>()
                     json.parseToJsonElement(connection.completionsJson()).jsonArray.forEach { result ->
                         val record = result.jsonObject
                         synchronized(this@RustClientConnection) {
@@ -141,6 +144,11 @@ class RustClientConnection(
                                 if (id != null) resizes.complete(id, record["error"] == null || record["error"] is JsonNull, System.nanoTime() / 1_000_000)
                                 if (id == refreshRequest) { refreshRequest = null; refreshing.value = false }
                                 val code = record["error"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+                                // The listing that includes the new session may not be applied yet.
+                                id?.let { createdSessions.remove(it) }?.takeIf { code == null }?.let { made ->
+                                    applyState(stateOf(connection))
+                                    remote.value.createdSession(made.known, made.name)?.let { opened += { made.created(it) } }
+                                }
                                 val completion = inputCompletions.remove(id)
                                 val input = id?.let { inputRequests.remove(it) } == true
                                 val resumed = id?.let { resumeRequests.remove(it) } == true
@@ -165,6 +173,8 @@ class RustClientConnection(
                             }
                         }
                     }
+                    // The owner opens the session under its own lock, outside the adapter lock.
+                    opened.forEach { it() }
                     val claim = synchronized(this@RustClientConnection) {
                         if (current == epoch && !closed && status.value.phase in setOf(Phase.Ready, Phase.Shell, Phase.Selecting, Phase.MissingSession)) submitResize(connection)
                         if (current == epoch && !closed) sizeClaims.ready(status.value.phase) else null
@@ -579,6 +589,15 @@ class RustClientConnection(
     override fun selectSession(id: String) = action(buildJsonObject { put("action", "selectSession"); put("id", id) })
     override fun selectPane(id: String) = action(buildJsonObject { put("action", "selectPane"); put("id", id) })
     override fun createSession(name: String) = manage(TmuxCommand.newSession(name))
+    @Synchronized override fun createSession(name: String, created: (String) -> Unit) {
+        val command = TmuxCommand.newSession(name)
+        val c = native ?: return
+        val known = remote.value.sessions.mapTo(mutableSetOf()) { it.id }
+        try {
+            val request = c.submitAction(buildJsonObject { put("action", "manage"); put("operation", command.operation) }.toString())
+            createdSessions[request] = CreatedSession(name, known, created)
+        } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") }
+    }
     override fun manage(command: TmuxCommand) = action(buildJsonObject { put("action", "manage"); put("operation", command.operation) })
     @Synchronized override fun refresh() {
         if (refreshing.value) return
@@ -695,7 +714,7 @@ class RustClientConnection(
     }
     private fun failInputs() {
         inputCompletions.values.forEach { it.complete(InputCompletion(t("연결이 종료되어 전송 결과를 확인하지 못했습니다. 자동 재전송하지 않습니다."))) }
-        inputCompletions.clear(); inputRequests.clear()
+        inputCompletions.clear(); inputRequests.clear(); createdSessions.clear()
     }
     @Synchronized private fun detach() {
         failInputs()

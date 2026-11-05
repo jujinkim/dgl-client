@@ -74,6 +74,13 @@ impl TextInput {
         }
     }
 
+    /// Starts with all of `value` selected, so typing replaces it and an arrow key edits it.
+    pub fn selected(value: &str, placeholder: &str, cx: &mut Context<Self>) -> Self {
+        let mut input = Self::new(value, placeholder, false, cx);
+        input.selected_range = 0..value.len();
+        input
+    }
+
     pub fn multiline(cx: &mut Context<Self>) -> Self {
         let mut input = Self::new("", "전송할 텍스트", false, cx);
         input.multiline = Some(Multiline::default());

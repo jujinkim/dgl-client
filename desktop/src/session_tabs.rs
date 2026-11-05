@@ -1,5 +1,5 @@
 use super::*;
-use dgl_core::connection::State;
+use dgl_core::{connection::State, model::RemoteSession};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Route {
@@ -58,6 +58,42 @@ impl PendingTarget {
             window: self.window.clone(),
             pane: self.pane.clone(),
         }
+    }
+}
+/// A `new-session` request from a tab, waiting for its completion to open the session.
+pub(super) struct CreatedSession {
+    pub request: u64,
+    name: String,
+    /// Sessions listed when the request was made; the created one is not among them.
+    known: Vec<String>,
+}
+impl CreatedSession {
+    pub fn new(request: u64, name: String, connection: &Connection) -> Self {
+        let known = connection
+            .state()
+            .remote
+            .sessions
+            .iter()
+            .map(|s| s.id.clone())
+            .collect();
+        Self {
+            request,
+            name,
+            known,
+        }
+    }
+    /// The ID of the session the request added. The requested name decides between
+    /// sessions that another client created at the same time.
+    pub fn resolve(&self, sessions: &[RemoteSession]) -> Option<String> {
+        let added: Vec<_> = sessions
+            .iter()
+            .filter(|s| !self.known.contains(&s.id))
+            .collect();
+        added
+            .iter()
+            .find(|s| s.name == self.name)
+            .or_else(|| added.first().filter(|_| added.len() == 1))
+            .map(|s| s.id.clone())
     }
 }
 impl Tab {
@@ -169,6 +205,7 @@ impl Desktop {
             session,
             session_title: None,
             pending_target: None,
+            created_session: None,
             refresh: None,
             last_sequence: 0,
         });
@@ -332,8 +369,40 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{PendingTarget, Route, route};
-    use dgl_core::connection::Phase::*;
+    use super::{CreatedSession, PendingTarget, Route, route};
+    use dgl_core::{connection::Phase::*, model::RemoteSession};
+    #[test]
+    fn a_created_session_is_the_new_one_with_the_requested_name() {
+        let session = |id: &str, name: &str| RemoteSession {
+            id: id.into(),
+            name: name.into(),
+            attached: 0,
+        };
+        let created = CreatedSession {
+            request: 1,
+            name: "work".into(),
+            known: vec!["$1".into()],
+        };
+        let before = session("$1", "work");
+        assert_eq!(created.resolve(std::slice::from_ref(&before)), None);
+        assert_eq!(
+            created.resolve(&[
+                before.clone(),
+                session("$2", "other"),
+                session("$3", "work")
+            ]),
+            Some("$3".into())
+        );
+        // tmux may store a different name; a single new session is still the created one.
+        assert_eq!(
+            created.resolve(&[before.clone(), session("$2", "work_")]),
+            Some("$2".into())
+        );
+        assert_eq!(
+            created.resolve(&[before, session("$2", "a"), session("$3", "b")]),
+            None
+        );
+    }
     #[test]
     fn pending_targets_wait_only_while_the_connection_settles() {
         for phase in [Connecting, TrustRequired, Authenticating, Restoring] {

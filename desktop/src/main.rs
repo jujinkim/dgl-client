@@ -72,6 +72,7 @@ struct Tab {
     session: Option<String>,
     session_title: Option<String>,
     pending_target: Option<session_tabs::PendingTarget>,
+    created_session: Option<session_tabs::CreatedSession>,
 }
 #[derive(Clone)]
 enum PromptOp {
@@ -80,6 +81,25 @@ enum PromptOp {
     RenameSession(String),
     RenameWindow(String),
     RenamePane(String),
+}
+impl PromptOp {
+    /// The name a rename replaces; empty for a new session or window, or a target gone.
+    fn current_name(&self, remote: &dgl_core::model::RemoteState) -> String {
+        match self {
+            PromptOp::Session | PromptOp::Window(_) => None,
+            PromptOp::RenameSession(id) => remote
+                .sessions
+                .iter()
+                .find(|s| &s.id == id)
+                .map(|s| &s.name),
+            PromptOp::RenameWindow(id) => {
+                remote.windows.iter().find(|w| &w.id == id).map(|w| &w.name)
+            }
+            PromptOp::RenamePane(id) => remote.panes.iter().find(|p| &p.id == id).map(|p| &p.title),
+        }
+        .cloned()
+        .unwrap_or_default()
+    }
 }
 #[derive(Clone)]
 enum DeleteOp {
@@ -321,6 +341,7 @@ impl Desktop {
         self.tick_cloud_sync(cx);
         let mut changed = false;
         let mut save_hosts = false;
+        let mut created = Vec::new();
         for tab in &mut self.tabs {
             tab.terminal.update(cx, |t, cx| t.tick(cx));
             let state = tab.connection.state();
@@ -377,6 +398,21 @@ impl Desktop {
                     tab.refresh = None;
                     changed = true;
                 }
+                // A session created from this tab opens like a click on its row.
+                if let Some(c) = tab
+                    .created_session
+                    .take_if(|c| c.request == result.request_id)
+                    && result.error.is_none()
+                {
+                    let state = tab.connection.state();
+                    if let Some(session) = c.resolve(&state.remote.sessions) {
+                        created.push((
+                            tab.connection.clone(),
+                            state.generation.connection,
+                            session,
+                        ));
+                    }
+                }
                 let input = match tab.terminal.update(cx, |t, cx| {
                     t.complete(result.request_id, result.error.as_ref(), cx)
                 }) {
@@ -410,6 +446,15 @@ impl Desktop {
                     }
                     changed = true;
                 }
+            }
+        }
+        for (connection, generation, session) in created {
+            if self
+                .select_session_tab(&connection, generation, &session, None, None, cx)
+                .is_some()
+            {
+                self.focus_active_terminal(cx);
+                changed = true;
             }
         }
         // Deferred focus claims of tabs still visible, once their connection is back.
@@ -585,11 +630,13 @@ impl Desktop {
     }
     fn prompt(&mut self, title: &str, operation: PromptOp, cx: &mut Context<Self>) {
         if let Some(tab) = self.active_tab() {
+            // A rename starts from the current name.
+            let current = operation.current_name(&tab.connection.state().remote);
             self.dialog = Some(Dialog::Prompt {
                 title: title.into(),
                 connection: tab.connection.clone(),
                 operation,
-                input: cx.new(|cx| TextInput::new("", t("이름"), false, cx)),
+                input: cx.new(|cx| TextInput::selected(&current, t("이름"), cx)),
             });
         }
     }
@@ -747,6 +794,7 @@ impl Desktop {
             return;
         }
         let name = input.read(cx).content.to_string();
+        let created = matches!(operation, PromptOp::Session).then(|| name.clone());
         let operation = match operation {
             PromptOp::Session => Operation::NewSession { name },
             PromptOp::Window(target) => Operation::NewWindow { target, name },
@@ -755,7 +803,21 @@ impl Desktop {
             PromptOp::RenamePane(target) => Operation::RenamePane { target, name },
         };
         match connection.action(Action::Manage { operation }) {
-            Ok(_) => self.dialog = None,
+            Ok(request) => {
+                self.dialog = None;
+                if let Some(name) = created
+                    && let Some(tab) = self
+                        .tabs
+                        .iter_mut()
+                        .find(|t| Arc::ptr_eq(&t.connection, &connection))
+                {
+                    tab.created_session = Some(session_tabs::CreatedSession::new(
+                        request,
+                        name,
+                        &connection,
+                    ));
+                }
+            }
             Err(e) => self
                 .snackbar
                 .show_snackbar(tr!("이름을 확인하세요: {0}", e)),
