@@ -73,8 +73,8 @@ Windows Rust 패키저·단위 검사·빌드 메뉴·수동 CI와 공통 JVM �
   호스트/세션 ID별 탭 재사용을 추가했습니다. tmux 세션·창·pane 제목을 기존 메타데이터 구독으로 GUI 탭에 반영하고,
   활성 pane의 OSC 0/2를 감지하면 제목만 즉시 조회합니다(연결당 500ms·동시 1건).
 - 크기: resize 최신값 병합·실패 후 재시도, 연결별 폰트 초기화와 데스크톱 Ctrl+휠을 추가했습니다.
-- 표시 이름·아이콘: 앱 표시 이름을 DaGaLi로 통일했습니다. 아이콘 원본·프롬프트를 보존하고 Android 적응형·단색,
-  macOS ICNS, Windows ICO를 같은 원본에서 재생성합니다. 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있습니다.
+- 표시 이름·아이콘: 앱 표시 이름을 DaGaLi로 통일했습니다. 아이콘은 재접속 고리 터미널 심볼·방사형 그라데이션 배경·타일 테두리로
+  바꿨고, 원본·프롬프트를 보존해 Android 적응형·단색, macOS ICNS, Windows ICO를 같은 원본에서 재생성합니다. 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있습니다.
 
 이 기간 검증은 Rust·JVM·웹·Python 단위 검사, Android Debug·lint, Mac ad-hoc 패키징, 일부 격리 tmux 검사 중심입니다.
 아이콘 작업 당시 전체 Rust 서식 검사는 기존 `password_shell.rs` 차이로 실패했습니다.
