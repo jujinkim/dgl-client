@@ -1289,6 +1289,35 @@ test('a long word broken by a real line break selects across rows and reports th
   assert.deepEqual(t.selection, { column: 0, row: 54, length: 80 });
 });
 
+test('a long word broken a few cells before the edge still continues on the next row', () => {
+  const r = touchRenderer({ lines: [
+    '  see https://example.com/' + 'a'.repeat(50),
+    '  ' + 'b'.repeat(10) + '?q=end',
+    '/usr/local/share/some/long/file-one.txt',
+    '/usr/local/share/some/long/file-two.txt',
+    'z'.repeat(71),
+    'continues past the slack',
+  ] }), t = r.terminals[0];
+  // The first row ends four cells short of the 80-column edge, inside the right margin.
+  r.longPress(305, 10); r.pointer('pointerup', 305, 10);
+  assert.deepEqual(t.selection, { column: 6, row: 50, length: 92 });
+  const url = 'https://example.com/' + 'a'.repeat(50) + 'b'.repeat(10) + '?q=end';
+  assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one',
+    url, lineBreaks: true, left: 0, top: 0, right: 800, bottom: 40 });
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
+  r.longPress(105, 30); r.pointer('pointerup', 105, 30);
+  assert.deepEqual(t.selection, { column: 6, row: 50, length: 92 }, 'the continuation selects the same link');
+  // Lines that end far from the edge stay separate even when they are long words.
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
+  r.longPress(55, 50); r.pointer('pointerup', 55, 50);
+  assert.deepEqual(t.selection, { column: 0, row: 52, length: 39 });
+  assert.equal(r.messages.at(-1).lineBreaks, false);
+  // Nine blank cells is past the margin.
+  r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
+  r.longPress(55, 90); r.pointer('pointerup', 55, 90);
+  assert.deepEqual(t.selection, { column: 0, row: 54, length: 71 });
+});
+
 test('Chrome\'s earlier long press starts the selection and its mouse motion never reaches xterm', () => {
   const r = touchRenderer({ lines: ['vim buffer text'] }), t = r.terminals[0];
   t.modes.mouseTrackingMode = 'any';

@@ -12,7 +12,7 @@
   let selectionOwner = null;
   const clearTextSelection = notify => selectionOwner?.clearSelection(notify);
   // Chrome's own touch long press may come first: its delay is the system touch & hold setting.
-  const LONG_PRESS_MS = 500, MAX_LINK = 2048, LONG_WORD = 16;
+  const LONG_PRESS_MS = 500, MAX_LINK = 2048, LONG_WORD = 16, WRAP_SLACK = 8;
   const LINKS = /https?:\/\/[^\s<>"'`]+/gi, LEADING_LINK = /^https?:\/\/[^\s<>"'`]+/i;
   const WORD_SEPARATOR = /[\s()[\]{}'",`]/;
   // The touch pointer resting on a pane, and the textarea a long-press blur gave back focus.
@@ -433,27 +433,37 @@
     return cell?.getWidth?.() === 0 && x > 0 ? cellChar(line, x - 1) : cell?.getChars?.() || ' ';
   };
   const wordChar = char => !WORD_SEPARATOR.test(char);
+  // The column after a row's last non-blank cell.
+  const textEnd = line => {
+    let end = term.cols;
+    while (end > 0 && cellChar(line, end - 1) === ' ') --end;
+    return end;
+  };
   // Apps and tmux redraws break a word longer than the row with a real line break, which xterm
-  // does not mark as wrapped. A long word (or a link) reaching the last column continues on the
-  // next row when that row starts with a word character, indented no deeper than the word began.
+  // does not mark as wrapped; apps that keep a right margin break it a few cells early. A long
+  // word (or a link) ending within WRAP_SLACK cells of the last column continues on the next row
+  // when that row starts with a word character, indented no deeper than the word began.
   // Returns that indentation in cells, or -1.
   const continuation = y => {
     const buffer = term.buffer?.active, columns = term.cols;
     const line = buffer?.getLine?.(y), next = buffer?.getLine?.(y + 1);
-    if (typeof line?.getCell !== 'function' || typeof next?.getCell !== 'function' || next.isWrapped ||
-        !wordChar(cellChar(line, columns - 1))) return -1;
-    let start = columns - 1;
+    if (typeof line?.getCell !== 'function' || typeof next?.getCell !== 'function' || next.isWrapped) return -1;
+    const end = textEnd(line);
+    if (end === 0 || columns - end > WRAP_SLACK || !wordChar(cellChar(line, end - 1))) return -1;
+    let start = end - 1;
     while (start > 0 && wordChar(cellChar(line, start - 1))) --start;
     let indent = 0;
     while (indent < start && cellChar(next, indent) === ' ') ++indent;
     if (!wordChar(cellChar(next, indent))) return -1;
-    if (columns - start >= LONG_WORD) return indent;
+    if (end - start >= LONG_WORD) return indent;
     let tail = '';
-    for (let x = start; x < columns; ++x) if (line.getCell(x)?.getWidth?.() !== 0) tail += cellChar(line, x);
+    for (let x = start; x < end; ++x) if (line.getCell(x)?.getWidth?.() !== 0) tail += cellChar(line, x);
     return /^https?:\/\//i.test(tail) ? indent : -1;
   };
   // Cells skipped at the start of row y when it continues the row above, or -1 for a new line.
   const joinedIndent = y => term.buffer?.active?.getLine?.(y)?.isWrapped ? 0 : continuation(y - 1);
+  // Where row y's text stops when row y + 1 continues it: a continued word drops the blank margin.
+  const joinedEnd = y => term.buffer.active.getLine(y + 1)?.isWrapped ? term.cols : textEnd(term.buffer.active.getLine(y));
   // The wrapped rows of one logical line as text, with each UTF-16 unit's cell span.
   const logicalLine = offset => {
     const buffer = term.buffer?.active, columns = term.cols, row = Math.floor(offset / columns);
@@ -466,7 +476,7 @@
     for (let y = first; y <= last; ++y) {
       const line = buffer.getLine(y);
       if (typeof line?.getCell !== 'function') return null;
-      for (let x = y === first ? 0 : joinedIndent(y); x < columns; ++x) {
+      for (let x = y === first ? 0 : joinedIndent(y), stop = y < last ? joinedEnd(y) : columns; x < stop; ++x) {
         const cell = line.getCell(x), width = cell?.getWidth() ?? 1;
         if (width === 0) continue; // The right half of a wide character.
         const chars = cell?.getChars() || ' ', start = y * columns + x;
@@ -506,7 +516,7 @@
         if (line?.getCell?.(x)?.getWidth?.() !== 0) part += line?.getCell?.(x)?.getChars?.() || ' ';
       if (y === last) return text + part.trimEnd();
       from = joinedIndent(y + 1);
-      if (from >= 0) text += part;
+      if (from >= 0) text += buffer.getLine(y + 1)?.isWrapped ? part : part.trimEnd();
       else { text += part.trimEnd() + '\n'; from = 0; }
     }
     return text;
