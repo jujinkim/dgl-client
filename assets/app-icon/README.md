@@ -10,7 +10,8 @@
 배경은 위쪽 중앙(변의 50%, 36%)의 `#232B38`에서 반경 78% 지점의 `#0A0D12`로 어두워지는 은은한 방사형 그라데이션입니다.
 OS가 테두리를 처리하지 않는 Windows·MSIX·대시보드 타일과 macOS 타일은 바깥 1px급 검정 헤어라인(알파 45%)과
 위가 밝고 아래로 옅어지는 안쪽 흰색 림(알파 16%→5%)으로 가장자리를 정리합니다.
-32px 이하에서는 두 줄 대신 1px 중간톤 림 `#3A4352` 하나만 씁니다. 앱 ID·버전과 독립적인 그래픽 리소스입니다.
+32px 이하에서는 두 줄 대신 1px 중간톤 림 `#3A4352` 하나만 씁니다.
+타일 안의 심볼은 원본 도형을 중심 기준 84%(`TILE_ART_SCALE`)로 줄여 넉넉한 여백을 둡니다. 모바일 Compose 아이콘도 같습니다. 앱 ID·버전과 독립적인 그래픽 리소스입니다.
 
 ## 원본과 출력
 
@@ -54,7 +55,7 @@ Python 3.9 이상을 사용합니다. Windows에서는 가상환경 실행 파�
   같은 공통 도형에서 생성합니다. 좁은 화면과 대화면 탐색기 왼쪽 상단에 24dp로 표시합니다.
   설정 맨 아래 `About app`에서도 같은 벡터를 사용합니다. 데스크톱 정보 화면은 `icon.png`를 바이너리에 포함합니다.
 - Android: `androidApp/src/main/res/drawable-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_foreground.png`.
-  컬러·단색 모두 108dp 레이어의 중심 64dp 원 안에 같은 크기와 위치로 배치합니다.
+  컬러·단색 모두 108dp 레이어의 중심 54dp 원(`ANDROID_ART_DP`) 안에 같은 크기와 위치로 배치합니다.
   컬러 전경은 원본 alpha를 보존합니다.
   단색은 `drawable/ic_launcher_monochrome.xml`, 연결은 `mipmap-anydpi/ic_launcher.xml`입니다.
   배경은 생성되는 `drawable/ic_launcher_background.xml` 방사형 그라데이션 벡터이며, 보이는 중앙 72dp를 타일과 같은
