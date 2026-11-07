@@ -192,7 +192,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                         Spacer(Modifier.width(8.dp))
                                     }
                                     Text(t("연결"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                                    TextButton({ model.hostEditing = true; adding = true }) { Text(t("+ 호스트")) }
+                                    BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("+ 호스트")) }
                                 }
                                 LazyColumn(Modifier.weight(if (workspaceMode && navigationClient != null) .45f else 1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                                     if (local.hosts.isEmpty()) item { Text(t("SSH 호스트를 추가하여 시작하세요.\n원격 서버에는 SSH와 tmux만 필요합니다."), Modifier.padding(12.dp)) }
@@ -206,7 +206,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                                 Text("${host.username}@${host.hostname}:${host.port}", style = MaterialTheme.typography.bodySmall)
                                                 if (host.lastConnected != 0L) Text(t("최근 연결: ") + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    TextButton({
+                                                    BorderedButton({
                                                         try {
                                                             if (model.credentials.read(host.credentialRef) == null) {
                                                                 model.hostEditing = true
@@ -262,14 +262,14 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                     }, status?.message?.takeIf { status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) }).filter { it.isNotEmpty() }.distinct().joinToString(" · "),
                         Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                     selected?.let { HostConnectionMenu(it, model) }
-                    TextButton({ notifications = true }) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
-                    TextButton({ settings = SettingsPage.Main }) { Text(t("설정")) }
+                    BorderedButton({ notifications = true }) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
+                    BorderedButton({ settings = SettingsPage.Main }) { Text(t("설정")) }
                 }
             }
         if (selected == null || explorer || settings != null || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
         agentDetails?.let { (client, pane) -> AgentDetails(client, model, pane) { agentDetails = null } }
         if (notifications && !mobileLayout) AgentNotifications(model) { notifications = false }
-        agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { TextButton({ model.agentNavigationError.value = null }) { Text(t("닫기")) } }) }
+        agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ model.agentNavigationError.value = null }) { Text(t("닫기")) } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
         settings?.let { SettingsDialog(model, mobileLayout, it) { settings = null } }
         deletion?.let { host -> ConfirmDialog(t("호스트 삭제"), tr("{0}의 로컬 설정과 저장된 자격 증명을 삭제합니다.", host.alias), {
@@ -279,7 +279,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                 deletion = null
             } catch (_: Exception) { error = t("자격 증명을 삭제하지 못했습니다.") }
         }, { deletion = null }) }
-        error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text(t("오류")) }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text(t("닫기")) } }) }
+        error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text(t("오류")) }, text = { Text(message) }, confirmButton = { BorderedButton({ error = null }) { Text(t("닫기")) } }) }
           }
           }
         }
@@ -379,9 +379,9 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             deletion = tr("패널 {0}", remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: t("제목 미확인")) to { client.manage(TmuxCommand.killPane(target)) }
         }
         if (!status.retryExhausted && (status.canRetryNow || status.canStopRetrying)) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
-                if (status.canRetryNow) TextButton({ client.retryNow() }) { Text(t("새로고침 재시도")) }
-                if (status.canStopRetrying) TextButton({ client.stopRetrying() }) { Text(t("재시도 정지")) }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (status.canRetryNow) BorderedButton({ client.retryNow() }) { Text(t("새로고침 재시도")) }
+                if (status.canStopRetrying) BorderedButton({ client.stopRetrying() }) { Text(t("재시도 정지")) }
             }
         }
         Box(Modifier.fillMaxWidth().height(4.dp)) {
@@ -420,20 +420,20 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         Column(Modifier.fillMaxWidth().heightIn(max = 600.dp)) {
             Text(t("tmux 세션 · 창"), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
             navigationContent(Modifier.weight(1f, fill = false))
-            TextButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text(t("터미널로 돌아가기")) }
+            BorderedButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text(t("터미널로 돌아가기")) }
         }
     }
     trust?.let { request ->
         AlertDialog(onDismissRequest = { client.trustRequest.value = null; client.disconnect() }, title = { Text(t("처음 연결하는 서버")) },
             text = { Column { Text(request.endpoint); Spacer(Modifier.height(8.dp)); SelectionContainer { Text(request.fingerprint) }; Spacer(Modifier.height(8.dp)); Text(t("서버 관리자에게 받은 SHA-256 지문과 일치하는지 확인하세요.")) } },
-            confirmButton = { TextButton({ client.trust() }) { Text(t("신뢰하고 연결")) } }, dismissButton = { TextButton({ client.trustRequest.value = null; client.disconnect() }) { Text(t("취소")) } })
+            confirmButton = { BorderedButton({ client.trust() }) { Text(t("신뢰하고 연결")) } }, dismissButton = { BorderedButton({ client.trustRequest.value = null; client.disconnect() }) { Text(t("취소")) } })
     }
     namePrompt?.let { p -> NameDialog(p.title, { p.accept(it); namePrompt = null }, { namePrompt = null }, p.initial) }
     if (tmuxDetails && status.phase == Phase.Shell) tmuxProblem?.let {
         TmuxFailureDialog(client.host, it) { tmuxDetails = false }
     }
     deletion?.let { (target, action) -> ConfirmDialog(tr("{0} 삭제", target), t("이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?"), { action(); deletion = null }, { deletion = null }) }
-    notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { TextButton({ client.notice.value = null }) { Text(t("닫기")) } }) }
+    notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ client.notice.value = null }) { Text(t("닫기")) } }) }
 }
 
 @Composable private fun hostConnectionActions(client: ClientConnection, model: AppModel): List<Pair<String, () -> Unit>> {
@@ -576,10 +576,10 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                 Text(if (privateKey.isEmpty()) t("Ed25519 / RSA · 암호화 키 지원") else t("개인키를 가져왔습니다."), style = MaterialTheme.typography.labelSmall)
                 OutlinedTextField(passphrase, { passphrase = it }, label = { Text(t("키 암호")) }, visualTransformation = passwordTransformation, singleLine = true)
                 showPasswordControl()
-                TextButton({ try { val generated = model.keys.ed25519(); privateKey = generated.credential.privateKey; passphrase = ""; generatedPublic = generated.publicKey } catch (_: Exception) { error = t("키 생성 실패") } }) { Text(t("Ed25519 키 생성")) }
+                BorderedButton({ try { val generated = model.keys.ed25519(); privateKey = generated.credential.privateKey; passphrase = ""; generatedPublic = generated.publicKey } catch (_: Exception) { error = t("키 생성 실패") } }) { Text(t("Ed25519 키 생성")) }
                 if (privateKey.isNotEmpty() || original?.auth == AuthKind.PrivateKey) {
                     Text(t("공개키를 서버의 authorized_keys에 등록하세요."))
-                    TextButton({
+                    BorderedButton({
                         try {
                             val credential = if (privateKey.isNotEmpty()) Credential(privateKey = privateKey, passphrase = passphrase)
                                 else requireNotNull(model.credentials.read(original!!.credentialRef)).let { if (passphrase.isNotEmpty()) Credential(it.password, it.privateKey, passphrase) else it }
@@ -592,7 +592,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }, confirmButton = {
-        TextButton({
+        BorderedButton({
             try {
                 val id = original?.id ?: UUID.randomUUID().toString()
                 val profile = HostProfile(id, alias.trim(), hostname.trim(), port.toInt(), username.trim(), auth, original?.credentialRef ?: id, favorite, original?.lastConnected ?: 0, original?.lastSession, original?.lastPane)
@@ -610,7 +610,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             } catch (_: IllegalArgumentException) { error = t("필수 입력과 포트(1–65535), 자격 증명을 확인하세요.") }
             catch (_: Exception) { error = t("보호 저장소에 저장하지 못했습니다. 저장을 중단했습니다.") }
         }) { Text(t("저장")) }
-    }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
+    }, dismissButton = { BorderedButton(dismiss) { Text(t("취소")) } })
 }
 
 private enum class SettingsPage { Main, Shortcuts, About }
@@ -629,8 +629,8 @@ private enum class SettingsPage { Main, Shortcuts, About }
         if (page == SettingsPage.Main && restoreFocus) { withFrameNanos { }; entryFocus.requestFocus(); restoreFocus = false }
     }
     EditorDialog(mobileLayout, settingsLayout = true, onDismissRequest = back, title = {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (page != SettingsPage.Main) TextButton(back) { Text(t("뒤로")) }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (page != SettingsPage.Main) BorderedButton(back) { Text(t("뒤로")) }
             Text(when (page) { SettingsPage.Main -> t("설정"); SettingsPage.Shortcuts -> t("하단 단축키"); SettingsPage.About -> t("About app") })
         }
     }, text = {
@@ -657,14 +657,16 @@ private enum class SettingsPage { Main, Shortcuts, About }
             SettingsCard(t("터미널·입력"), t("터미널 글자와 입력 도구를 조정합니다.")) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("터미널 글자 크기: {0}", local.preferences.fontSize), Modifier.weight(1f))
-                    TextButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize - 1).coerceAtLeast(10))) } }) { Text(t("작게")) }
-                    TextButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize + 1).coerceAtMost(28))) } }) { Text(t("크게")) }
+                    Spacer(Modifier.width(8.dp))
+                    BorderedButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize - 1).coerceAtLeast(10))) } }) { Text(t("작게")) }
+                    Spacer(Modifier.width(8.dp))
+                    BorderedButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize + 1).coerceAtMost(28))) } }) { Text(t("크게")) }
                 }
                 PlatformTerminalFontSettings(local.preferences.terminalFontFamily) { family ->
                     model.modify { it.copy(preferences = it.preferences.copy(terminalFontFamily = family)) }
                 }
                 Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
-                TextButton({ entryFocus = shortcutFocus; page = SettingsPage.Shortcuts }, modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(shortcutFocus)) {
+                BorderedButton({ entryFocus = shortcutFocus; page = SettingsPage.Shortcuts }, modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(shortcutFocus)) {
                     Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
                 }
                 SettingsSwitch(t("키보드 항상 보이기"), local.preferences.androidKeyboardAlwaysVisible) { enabled ->
@@ -701,16 +703,16 @@ private enum class SettingsPage { Main, Shortcuts, About }
             SettingsCard(t("보안·저장"), t("신뢰한 서버와 이 기기의 저장 위치를 확인합니다.")) {
                 Text(t("신뢰한 서버"), style = MaterialTheme.typography.titleSmall)
                 local.trust.forEach { (endpoint, fingerprint) ->
-                    Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; TextButton({ forget = endpoint }) { Text(t("신뢰 키 삭제")) } }
+                    Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; BorderedButton({ forget = endpoint }) { Text(t("신뢰 키 삭제")) } }
                 }
                 Text(model.storageDescription, style = MaterialTheme.typography.bodySmall)
             }
-            TextButton({ entryFocus = aboutFocus; page = SettingsPage.About },
+            BorderedButton({ entryFocus = aboutFocus; page = SettingsPage.About },
                 modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(aboutFocus)) {
                 Text(t("About app"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
             }
         }
-    }, confirmButton = { TextButton(back) { Text(t(if (page != SettingsPage.Main) "뒤로" else "닫기")) } })
+    }, confirmButton = { BorderedButton(back) { Text(t(if (page != SettingsPage.Main) "뒤로" else "닫기")) } })
     forget?.let { endpoint -> ConfirmDialog(t("신뢰 키 삭제"), tr("{0} 키를 삭제합니다. 다음 연결에서 지문을 다시 확인해야 합니다.", endpoint), { model.modify { it.copy(trust = it.trust - endpoint) }; forget = null }, { forget = null }) }
 }
 
@@ -724,7 +726,7 @@ private enum class SettingsPage { Main, Shortcuts, About }
         Text(tr("버전 {0}", APP_VERSION), style = MaterialTheme.typography.bodyLarge)
         Text("Reconnect less. Resume more.", style = MaterialTheme.typography.bodyLarge)
         listOf(t("앱 사이트") to "https://ddal.ggak.life", t("GitHub 저장소") to "https://github.com/jujinkim/dgl-client").forEach { (label, url) ->
-            TextButton({ uri.openUri(url) }) {
+            BorderedButton({ uri.openUri(url) }) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(label); Text(url, style = MaterialTheme.typography.bodySmall)
                 }
@@ -746,10 +748,10 @@ internal class NamePrompt(val title: String, val initial: String = "", val accep
     var field by remember { mutableStateOf(initial.take(128).let { TextFieldValue(it, TextRange(0, it.length)) }) }
     val value = field.text
     AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { OutlinedTextField(field, { field = it.copy(text = it.text.take(128)) }, label = { Text(t("이름")) }, singleLine = true) },
-        confirmButton = { TextButton({ accept(value) }, enabled = value.isNotBlank() && value.none { it == '.' || it == ':' || it.code < 32 }) { Text(t("확인")) } }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
+        confirmButton = { BorderedButton({ accept(value) }, enabled = value.isNotBlank() && value.none { it == '.' || it == ':' || it.code < 32 }) { Text(t("확인")) } }, dismissButton = { BorderedButton(dismiss) { Text(t("취소")) } })
 }
 @Composable internal fun ConfirmDialog(title: String, message: String, accept: () -> Unit, dismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(message) }, confirmButton = { TextButton(accept) { Text(t("삭제")) } }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(message) }, confirmButton = { BorderedButton(accept) { Text(t("삭제")) } }, dismissButton = { BorderedButton(dismiss) { Text(t("취소")) } })
 }
 
 @Composable private fun EditorDialog(
@@ -768,7 +770,7 @@ internal class NamePrompt(val title: String, val initial: String = "", val accep
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     ProvideTextStyle(MaterialTheme.typography.titleLarge) { title() }
                     Box(Modifier.weight(1f, fill = false).fillMaxWidth()) { text() }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { dismissButton(); confirmButton() }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) { dismissButton(); confirmButton() }
                 }
             }
         }
@@ -778,7 +780,7 @@ internal class NamePrompt(val title: String, val initial: String = "", val accep
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 ProvideTextStyle(MaterialTheme.typography.titleLarge) { title() }
                 Box(Modifier.weight(1f).fillMaxWidth()) { text() }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { dismissButton(); confirmButton() }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) { dismissButton(); confirmButton() }
             }
         }
     }

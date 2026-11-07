@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -29,7 +28,7 @@ import kim.jujin.dglc.core.t
     Column(modifier.widthIn(max = 480.dp).padding(8.dp)) {
         Snackbar(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface, action = {
-            TextButton({ state.dismiss(displayed.id) }) { Text(t("닫기")) }
+            BorderedButton({ state.dismiss(displayed.id) }) { Text(t("닫기")) }
         }) { Text(displayed.message, style = MaterialTheme.typography.bodySmall) }
         remaining?.let { fraction ->
             val color = MaterialTheme.colorScheme.onSurface

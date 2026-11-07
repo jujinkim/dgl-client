@@ -25,7 +25,7 @@ import kim.jujin.dglc.core.*
         missing -> tr("{0} 없음 · 기본 글꼴 사용", family)
         else -> family
     }
-    TextButton({ choosing = true }, Modifier.fillMaxWidth()) {
+    BorderedButton({ choosing = true }, Modifier.fillMaxWidth()) {
         Text(tr("터미널 글꼴: {0}", label), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
     }
     if (!choosing) return
@@ -43,7 +43,7 @@ import kim.jujin.dglc.core.*
                 if (list.isEmpty()) item { Text(t("다른 고정폭 글꼴을 찾지 못했습니다."), style = MaterialTheme.typography.bodySmall) }
             }
         }
-    }, confirmButton = { TextButton({ choosing = false }) { Text(t("닫기")) } })
+    }, confirmButton = { BorderedButton({ choosing = false }) { Text(t("닫기")) } })
 }
 
 /** Each family previews itself, so the choice shows the glyphs it will paint. */

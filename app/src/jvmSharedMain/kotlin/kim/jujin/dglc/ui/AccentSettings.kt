@@ -64,5 +64,5 @@ val LocalAccentFill = staticCompositionLocalOf { Color(0xff2468c9) to Color.Whit
         modifier = Modifier.fillMaxWidth().onPreviewKeyEvent {
             if (it.key == Key.Enter && it.type == KeyEventType.KeyUp) { apply(); true } else false
         })
-    TextButton({ apply() }, enabled = color != null) { Text(t("색상 적용")) }
+    BorderedButton({ apply() }, enabled = color != null) { Text(t("색상 적용")) }
 }

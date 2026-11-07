@@ -49,14 +49,14 @@ import kotlinx.serialization.json.*
                 Row { UiGlyph(agentIcon(o.last?.kind)); Text(o.last?.let { "${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}" } ?: t("미연동 · 상태 미확인")) }
                 Text(tr("진단 정보 · 세션 ID: {0} · 창 ID: {1} · 패널 ID: {2}", o.session, o.window, o.pane), style = MaterialTheme.typography.labelSmall)
                 Text(tr("수신 확인 사건: {0}", o.supported.joinToString { agentMessage(it) }.ifEmpty { t("미확인") }), style = MaterialTheme.typography.labelSmall)
-                TextButton({
+                BorderedButton({
                     model.openAgentObservation(client, o)
                     dismiss()
                 }) { Text(t("패널로 이동")) }
             }
             if (pane == null) {
             Text(t("선택 설치: Python 3 도우미와 사용자 훅을 추가합니다. 기존 훅을 보존하고 설정 백업을 만듭니다. 대화·명령 본문은 저장하지 않습니다."))
-            TextButton({ inspected = true; client.configureAgents("inspect") }) { Text(t("설치 전 검사 · 변경 내용 보기")) }
+            BorderedButton({ inspected = true; client.configureAgents("inspect") }) { Text(t("설치 전 검사 · 변경 내용 보기")) }
             if (inspected && preview == null) Text(t("검사 중…"))
             preview?.get("error")?.jsonPrimitive?.content?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (token != null) {
@@ -73,12 +73,12 @@ import kotlinx.serialization.json.*
                     c["limitations"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() }?.let { Text(it) }
                 }
                 Text(t("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 다음 실제 이벤트 수신 후 확인됩니다. 기존 CLI는 종료하지 않습니다."))
-                TextButton({ client.configureAgents("install", token) }) { Text(t("연동 설치")) }
-                TextButton({ client.configureAgents("remove", token) }) { Text(t("DaGaLi 훅만 해제")) }
+                BorderedButton({ client.configureAgents("install", token) }) { Text(t("연동 설치")) }
+                BorderedButton({ client.configureAgents("remove", token) }) { Text(t("DaGaLi 훅만 해제")) }
             }
             }
         }
-    }, confirmButton = { TextButton(dismiss) { Text(t("닫기")) } })
+    }, confirmButton = { BorderedButton(dismiss) { Text(t("닫기")) } })
 }
 
 @Composable internal fun AgentNotifications(model: AppModel, dismiss: () -> Unit) {
@@ -94,10 +94,10 @@ import kotlinx.serialization.json.*
                 }
                 Row { UiGlyph(agentIcon(n.event.kind)); Text(agentMessage(n.event.kind)) }
                 Text("${n.event.event} · ${java.util.Date(n.event.at)}", style = MaterialTheme.typography.labelSmall)
-                TextButton({ model.openAgentNotice(n.id); dismiss() }) { Text(t("패널로 이동 · 읽음")) }
+                BorderedButton({ model.openAgentNotice(n.id); dismiss() }) { Text(t("패널로 이동 · 읽음")) }
             }
         }
-    }, confirmButton = { TextButton(dismiss) { Text(t("닫기")) } })
+    }, confirmButton = { BorderedButton(dismiss) { Text(t("닫기")) } })
 }
 
 @Composable internal fun AgentNotificationSettingsUi(model: AppModel) {

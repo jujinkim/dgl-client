@@ -282,6 +282,9 @@ impl Desktop {
                                 s.group_focus(s.workspace.active, w, cx);
                             },
                         )
+                        // Host rows are list items; the row itself carries the selection.
+                        .rounded_none()
+                        .border_color(gpui::transparent_black())
                         .flex_1()
                         .min_w_0()
                         .truncate()
@@ -314,6 +317,7 @@ impl Desktop {
                         .pl_3()
                         .flex()
                         .flex_wrap()
+                        .gap_1()
                         .text_sm()
                         .child(self.host_connection_controls(&host.id, cx))
                         .child(self.button(
@@ -1045,7 +1049,7 @@ impl Desktop {
             );
         for tab_id in ids {
             if self.menu.as_deref() == Some(&format!("tab-menu-{tab_id}")) {
-                let mut menu = div().flex().flex_wrap().text_xs();
+                let mut menu = div().flex().flex_wrap().gap_1().text_xs();
                 for (delta, label) in [(-1i32, t("왼쪽으로")), (1, t("오른쪽으로"))] {
                     menu = menu.child(self.button(
                         format!("reorder-{tab_id}-{delta}"),
@@ -1092,7 +1096,7 @@ impl Desktop {
             if state.offers_retry() && !state.retry_exhausted() {
                 let retry_connection = tab.connection.clone();
                 let stop_connection = tab.connection.clone();
-                let mut retry_controls = div().flex().flex_wrap().text_xs().child(self.button(
+                let mut retry_controls = div().flex().flex_wrap().gap_1().text_xs().child(self.button(
                     format!("retry-now-{id}"),
                     t("새로고침 재시도"),
                     cx,
@@ -1277,7 +1281,7 @@ impl Desktop {
         body
     }
     fn host_connection_controls(&self, host: &str, cx: &mut Context<Self>) -> Div {
-        let mut controls = div().flex().text_xs();
+        let mut controls = div().flex().gap_1().text_xs();
         if let Some(tab) = self.active_tab().filter(|t| t.host.id == host) {
             let tid = tab.id;
             let handle = tab.connection.state().handle;
@@ -1596,6 +1600,7 @@ impl Desktop {
             .pl(px(depth as f32 * 20.))
             .flex()
             .flex_wrap()
+            .gap_1()
             .text_xs();
         if row.kind == hierarchy::Kind::Session {
             let add = row.session.clone();

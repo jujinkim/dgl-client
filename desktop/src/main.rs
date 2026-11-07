@@ -683,7 +683,7 @@ impl Desktop {
     ) -> Stateful<Div> {
         let button = self.button_base(id, cx, action);
         match label.into() {
-            ButtonLabel::Text(text) => button.child(text),
+            ButtonLabel::Text(text) => self.outlined(button).child(text),
             ButtonLabel::Icon(icon) => button
                 .flex()
                 .items_center()
@@ -696,7 +696,8 @@ impl Desktop {
                         .items_center()
                         .child(icon.render(self.palette.fg)),
                 ),
-            ButtonLabel::IconText(icon, text) => button
+            ButtonLabel::IconText(icon, text) => self
+                .outlined(button)
                 .flex()
                 .items_center()
                 .gap_1()
@@ -712,6 +713,12 @@ impl Desktop {
                 ))
                 .child(text),
         }
+    }
+    /// Text buttons keep a visible outline so they read as buttons; icon-only ones stay bare.
+    fn outlined(&self, button: Stateful<Div>) -> Stateful<Div> {
+        button
+            .rounded_sm()
+            .border_color(rgb(self.palette.control_border))
     }
     fn button_base(
         &self,

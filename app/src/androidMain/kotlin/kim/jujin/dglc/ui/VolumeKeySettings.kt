@@ -31,7 +31,7 @@ private val VolumeAction.label: String get() = when (this) {
     }
     Text(t("앱 전면의 입력 가능한 터미널에서만 실행합니다."), style = MaterialTheme.typography.bodySmall)
     listOf(true to preferences.volumeUp, false to preferences.volumeDown).forEach { (up, binding) ->
-        TextButton({ editing = up }) {
+        BorderedButton({ editing = up }) {
             val summary = if (binding.action == VolumeAction.Shortcut) (binding.steps.singleOrNull() as? MacroStep.Key)?.key?.label
                 else if (binding.action == VolumeAction.Macro) tr("{0}단계", binding.steps.size) else null
             Text(tr("볼륨 {0}: {1}", if (up) t("위") else t("아래"), binding.action.label) + (summary?.let { " · $it" } ?: ""))
@@ -87,27 +87,27 @@ private val VolumeAction.label: String get() = when (this) {
                                         steps = steps.toMutableList().also { it[index] = MacroStep.Key(value) }; error = null
                                     }
                                 }
-                                Row(Modifier.horizontalScroll(rememberScrollState())) {
-                                    TextButton({ steps = steps.toMutableList().also { it.add(index - 1, it.removeAt(index)) } }, enabled = index > 0,
+                                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    BorderedButton({ steps = steps.toMutableList().also { it.add(index - 1, it.removeAt(index)) } }, enabled = index > 0,
                                         modifier = Modifier.semantics { contentDescription = tr("{0}단계 위로", index + 1) }) { Text(t("위로")) }
-                                    TextButton({ steps = steps.toMutableList().also { it.add(index + 1, it.removeAt(index)) } }, enabled = index < steps.lastIndex,
+                                    BorderedButton({ steps = steps.toMutableList().also { it.add(index + 1, it.removeAt(index)) } }, enabled = index < steps.lastIndex,
                                         modifier = Modifier.semantics { contentDescription = tr("{0}단계 아래로", index + 1) }) { Text(t("아래로")) }
-                                    TextButton({ steps = steps.filterIndexed { i, _ -> i != index }; error = null },
+                                    BorderedButton({ steps = steps.filterIndexed { i, _ -> i != index }; error = null },
                                         modifier = Modifier.semantics { contentDescription = tr("{0}단계 삭제", index + 1) }) { Text(t("삭제")) }
                                 }
                             }
                         }
                     }
-                    Row {
-                        TextButton({ steps = steps + MacroStep.Text(""); error = null }) { Text(t("+ 텍스트")) }
-                        TextButton({ steps = steps + MacroStep.Key(TerminalKey.Enter); error = null }) { Text(t("+ 키")) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BorderedButton({ steps = steps + MacroStep.Text(""); error = null }) { Text(t("+ 텍스트")) }
+                        BorderedButton({ steps = steps + MacroStep.Key(TerminalKey.Enter); error = null }) { Text(t("+ 키")) }
                     }
                 }
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }, confirmButton = {
-        TextButton({
+        BorderedButton({
             val binding = VolumeBinding(action, when (action) {
                 VolumeAction.Default -> emptyList()
                 VolumeAction.Shortcut -> listOf(MacroStep.Key(shortcut))
@@ -119,5 +119,5 @@ private val VolumeAction.label: String get() = when (this) {
             } catch (e: IllegalArgumentException) { error = e.message }
             catch (_: Exception) { error = t("설정을 저장하지 못했습니다. 다시 시도하세요.") }
         }) { Text(t("저장")) }
-    }, dismissButton = { TextButton(dismiss) { Text(t("취소")) } })
+    }, dismissButton = { BorderedButton(dismiss) { Text(t("취소")) } })
 }

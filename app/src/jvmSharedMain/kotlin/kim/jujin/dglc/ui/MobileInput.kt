@@ -107,8 +107,9 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
                             if (compact) option(Modifier.weight(1f))
                             val button = if (compact) Modifier.height(32.dp) else Modifier
                             val padding = if (compact) PaddingValues(horizontal = 8.dp, vertical = 2.dp) else ButtonDefaults.TextButtonContentPadding
-                            TextButton(composer::dismiss, modifier = button, contentPadding = padding) { Text(t("취소")) }
-                            TextButton({ composer.send(current, focus.preparePaste) }, enabled = !sending && value.text.isNotEmpty() && ready,
+                            BorderedButton(composer::dismiss, modifier = button, contentPadding = padding) { Text(t("취소")) }
+                            Spacer(Modifier.width(8.dp))
+                            BorderedButton({ composer.send(current, focus.preparePaste) }, enabled = !sending && value.text.isNotEmpty() && ready,
                                 modifier = button, contentPadding = padding) { Text(if (sending) t("전송 중…") else t("전송")) }
                         }
                     }

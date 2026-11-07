@@ -18,7 +18,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -828,7 +827,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             } ?: onError(t("파일을 열 수 없습니다."))
         } catch (_: Exception) { onError(t("개인키를 읽지 못했습니다. 최대 크기는 128 KiB입니다.")) }
     }
-    TextButton({ launcher.launch(arrayOf("*/*")) }) { Text(t("개인키 파일 가져오기")) }
+    BorderedButton({ launcher.launch(arrayOf("*/*")) }) { Text(t("개인키 파일 가져오기")) }
 }
 @Composable actual fun rememberPublicKeyCopier(): (String) -> Unit {
     val context = LocalContext.current.applicationContext

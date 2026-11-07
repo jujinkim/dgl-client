@@ -96,11 +96,11 @@ import kim.jujin.dglc.core.*
                             }, onDrag = { change, amount -> change.consume(); pointerY += amount.y; locate() })
                         }, contentAlignment = Alignment.Center) { UiGlyph(UiIcons.grip) }
                     Text(key.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    TextButton({ update(moveShortcut(shortcuts, index, index - 1)) }, enabled = index > 0 && dragging == null,
+                    BorderedButton({ update(moveShortcut(shortcuts, index, index - 1)) }, enabled = index > 0 && dragging == null,
                         modifier = Modifier.semantics { contentDescription = tr("{0} 위로 이동", key.label) }, contentPadding = PaddingValues(4.dp)) { UiGlyph(UiIcons.arrowUp) }
-                    TextButton({ update(moveShortcut(shortcuts, index, index + 1)) }, enabled = index < shortcuts.lastIndex && dragging == null,
+                    BorderedButton({ update(moveShortcut(shortcuts, index, index + 1)) }, enabled = index < shortcuts.lastIndex && dragging == null,
                         modifier = Modifier.semantics { contentDescription = tr("{0} 아래로 이동", key.label) }, contentPadding = PaddingValues(4.dp)) { UiGlyph(UiIcons.arrowDown) }
-                    TextButton({ update(shortcuts.filterNot { it == key }) }, enabled = dragging == null,
+                    BorderedButton({ update(shortcuts.filterNot { it == key }) }, enabled = dragging == null,
                         modifier = Modifier.semantics { contentDescription = tr("{0} 제외", key.label) }, contentPadding = PaddingValues(4.dp)) { Text(t("제외")) }
                 }
             }
@@ -108,11 +108,11 @@ import kim.jujin.dglc.core.*
             itemsIndexed(TerminalShortcut.all.filterNot { it in shortcuts }, key = { _, key -> "excluded-${key.name}" }) { _, key ->
                 Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(key.label, Modifier.weight(1f))
-                    TextButton({ update(shortcuts + key) }, enabled = dragging == null,
+                    BorderedButton({ update(shortcuts + key) }, enabled = dragging == null,
                         modifier = Modifier.semantics { contentDescription = tr("{0} 추가", key.label) }) { Text(t("추가")) }
                 }
             }
-            item { TextButton({ update(TerminalShortcut.defaultShortcuts) }, enabled = dragging == null) { Text(t("단축키 기본값 복원")) } }
+            item { BorderedButton({ update(TerminalShortcut.defaultShortcuts) }, enabled = dragging == null) { Text(t("단축키 기본값 복원")) } }
         }
         dragging?.let { key ->
             Surface(Modifier.offset { IntOffset(48.dp.roundToPx(), pointerY.roundToInt() - 24.dp.roundToPx()) }

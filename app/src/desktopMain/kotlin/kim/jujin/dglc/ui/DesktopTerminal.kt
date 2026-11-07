@@ -1,7 +1,6 @@
 package kim.jujin.dglc.ui
 
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
@@ -81,7 +80,7 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
 }
 
 @Composable actual fun ImportKeyButton(onKey: (String) -> Unit, onError: (String) -> Unit) {
-    TextButton({
+    BorderedButton({
         val dialog = FileDialog(null as Frame?, "SSH 개인키 가져오기", FileDialog.LOAD)
         dialog.isVisible = true
         val selected = dialog.file

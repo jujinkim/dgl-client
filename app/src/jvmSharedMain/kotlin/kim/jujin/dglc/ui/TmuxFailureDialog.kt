@@ -63,5 +63,5 @@ import kim.jujin.dglc.core.*
             Text(t("확인 후 호스트에 다시 연결하면 tmux를 다시 탐지합니다."))
             Text(t("현재는 일반 SSH 셸로 연결되어 있습니다. 이 상태의 작업은 연결을 종료하면 끝날 수 있습니다."), style = MaterialTheme.typography.bodySmall)
         }
-    }, confirmButton = { TextButton(dismiss) { Text(t("닫기")) } })
+    }, confirmButton = { BorderedButton(dismiss) { Text(t("닫기")) } })
 }

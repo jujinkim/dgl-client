@@ -57,7 +57,7 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
                 withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(hostName?.let(::displayTreeText) ?: "—") }
             }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.width(8.dp))
-            TextButton(openTmux, enabled = hostName != null, modifier = Modifier.height(48.dp)
+            BorderedButton(openTmux, enabled = hostName != null, modifier = Modifier
                 .semantics { contentDescription = t("tmux 관리") }, contentPadding = PaddingValues(horizontal = 10.dp)) {
                 Text("tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.clearAndSetSemantics {})
                 Spacer(Modifier.width(4.dp))
@@ -174,7 +174,7 @@ internal class NotificationPopupPosition(private val available: IntRect, private
                 Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("최근 알림 · {0} 읽지 않음", notices.count { !it.read }), Modifier.weight(1f),
                         style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    TextButton(dismiss) { Text(t("닫기")) }
+                    BorderedButton(dismiss) { Text(t("닫기")) }
                 }
                 HorizontalDivider()
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f, fill = false)) {
