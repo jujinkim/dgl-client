@@ -41,3 +41,5 @@ The local `mobileShortcutBarTwoRows` preference defaults to true when absent; an
 The additive local `androidKeyboardMode` preference defaults to `auto`; old sources remain unchanged and their encoded expectations include that default. `pan` and `resize` are explicit choices, while unknown strings are preserved and behave as `auto` on Android. This does not change remote input/resize wire formats or cloud sync.
 
 The local `androidKeyboardAlwaysVisible` preference defaults to `false`. Enabling it uses `resize` on Android without overwriting the stored mode; disabling it restores the stored choice. Old fixture sources stay unchanged and their encoded expectations include the new default.
+
+The local `terminalFontFamily` preference defaults to `""` (platform default monospace). It names an installed family on this device only, is excluded from cloud sync, and falls back to the default when the family is missing. Old fixture sources stay unchanged and their encoded expectations include the new default.

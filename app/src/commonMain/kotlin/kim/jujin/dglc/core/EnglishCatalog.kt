@@ -611,5 +611,13 @@ internal object EnglishCatalog {
         "터미널 입력 준비 시간이 초과되었습니다." to "Timed out while preparing terminal input.",
         "줄바꿈 없이" to "No line breaks",
         "줄바꿈 없이 복사" to "Copy without line breaks",
+        "기본 ({0})" to "Default ({0})",
+        "{0} 없음 · 기본 글꼴 사용" to "{0} not found · using the default font",
+        "터미널 글꼴: {0}" to "Terminal font: {0}",
+        "터미널 글꼴" to "Terminal font",
+        "이 기기에 설치된 고정폭 글꼴만 표시합니다. 동기화하지 않습니다." to "Shows only monospace fonts installed on this device. Not synced.",
+        "글꼴 목록을 불러오는 중…" to "Loading fonts…",
+        "다른 고정폭 글꼴을 찾지 못했습니다." to "No other monospace fonts were found.",
+        "{0} 글꼴을 불러오지 못해 기본 글꼴을 사용합니다." to "Could not load {0}; using the default font.",
     )
 }

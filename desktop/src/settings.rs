@@ -1,5 +1,6 @@
 use super::*;
 use dgl_core::input::{TerminalShortcut, move_shortcut};
+use terminal::fonts::TerminalFace;
 
 #[derive(Default)]
 pub(super) struct SettingsState {
@@ -10,6 +11,9 @@ pub(super) struct SettingsState {
     destination: Option<usize>,
     pointer: Option<Point<Pixels>>,
     rows: HashMap<usize, Bounds<Pixels>>,
+    /// Installed monospace families, read when the font page first opens.
+    fonts: Option<Vec<String>>,
+    loading_fonts: bool,
 }
 impl SettingsState {
     pub fn main_offset(&self) -> Point<Pixels> {
@@ -112,9 +116,24 @@ impl Desktop {
                 },
             ));
         }
+        let face = cx.try_global::<TerminalFace>().cloned().unwrap_or_default();
+        let stored = &self.local.preferences.terminal_font_family;
+        let family = if !face.selected.is_empty() {
+            face.family.to_string()
+        } else if stored.is_empty() {
+            tr!("기본 ({0})", platform::TERMINAL_FONT)
+        } else {
+            tr!("{0} 없음 · 기본 글꼴 사용", stored)
+        };
         let terminal = self
             .settings_card("터미널·입력", "터미널 글자와 입력 도구를 조정합니다.")
             .child(font)
+            .child(self.button(
+                "terminal-font",
+                (UiIcon::ChevronRight, tr!("터미널 글꼴: {0}", family)),
+                cx,
+                |s, _, cx| s.open_terminal_fonts(cx),
+            ))
             .child(
                 div()
                     .id("scrollback-setting")
@@ -204,10 +223,10 @@ impl Desktop {
             }))
     }
     pub(super) fn settings_back(&mut self) {
-        self.settings.entry = if matches!(self.dialog, Some(Dialog::About)) {
-            "about-app"
-        } else {
-            "edit-shortcuts"
+        self.settings.entry = match self.dialog {
+            Some(Dialog::About) => "about-app",
+            Some(Dialog::TerminalFont) => "terminal-font",
+            _ => "edit-shortcuts",
         };
         self.settings.dragging = None;
         self.settings.destination = None;
@@ -478,5 +497,122 @@ impl Desktop {
                 s.save();
             },
         ))
+    }
+}
+impl Desktop {
+    /// Opens the family list; the system font collection is read off the UI thread.
+    pub(super) fn open_terminal_fonts(&mut self, cx: &mut Context<Self>) {
+        self.settings.main_offset = self.modal.scroll.offset();
+        self.settings.entry = "terminal-font";
+        self.dialog = Some(Dialog::TerminalFont);
+        if self.settings.fonts.is_some() || self.settings.loading_fonts {
+            return;
+        }
+        self.settings.loading_fonts = true;
+        let fonts = cx
+            .background_executor()
+            .spawn(async { terminal::fonts::installed_monospace() });
+        cx.spawn(async move |view, cx| {
+            let fonts = fonts.await;
+            let _ = view.update(cx, |s, cx| {
+                s.settings.loading_fonts = false;
+                s.settings.fonts = Some(fonts);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    /// Empty selects the platform default. A family that no longer resolves to an
+    /// installed monospace face is not stored.
+    pub(super) fn set_terminal_font(&mut self, family: &str, cx: &mut Context<Self>) {
+        let face = TerminalFace::resolve(family, cx.text_system());
+        if !family.is_empty() && face.selected.is_empty() {
+            self.snackbar.show_snackbar_with_duration(
+                tr!("{0} 글꼴을 불러오지 못해 기본 글꼴을 사용합니다.", family),
+                SnackbarDuration::Short,
+            );
+        }
+        self.local.preferences.terminal_font_family = face.selected.to_string();
+        cx.set_global(face);
+        for tab in &self.tabs {
+            tab.terminal.update(cx, |_, cx| cx.notify());
+        }
+        self.save();
+    }
+    pub(super) fn terminal_font_settings(&self, cx: &mut Context<Self>) -> Div {
+        let p = self.palette;
+        let face = cx.try_global::<TerminalFace>().cloned().unwrap_or_default();
+        let mut page = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(div().text_xl().child(t("터미널 글꼴")))
+            .child(self.button("terminal-font-back", t("뒤로"), cx, |s, _, _| {
+                s.settings_back()
+            }))
+            .child(div().text_xs().child(t(
+                "이 기기에 설치된 고정폭 글꼴만 표시합니다. 동기화하지 않습니다.",
+            )))
+            .child(
+                div()
+                    .id("terminal-font-preview")
+                    .p_3()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(rgb(p.line))
+                    .bg(rgb(terminal::DEFAULT_BACKGROUND))
+                    .text_color(rgb(0xdce1e8))
+                    .font_family(face.family.clone())
+                    .text_size(px(self.local.preferences.font_size as f32))
+                    .child("$ ls -la ~/src  0O 1lI {}[]() 한글"),
+            );
+        let Some(fonts) = &self.settings.fonts else {
+            return page.child(t("글꼴 목록을 불러오는 중…"));
+        };
+        let option =
+            |id: String, label: String, selected: bool, family: String, cx: &mut Context<Self>| {
+                self.button(
+                    id,
+                    (
+                        if selected {
+                            UiIcon::RadioSelected
+                        } else {
+                            UiIcon::Radio
+                        },
+                        label,
+                    ),
+                    cx,
+                    move |s, _, cx| s.set_terminal_font(&family, cx),
+                )
+            };
+        page = page.child(option(
+            "terminal-font-default".into(),
+            tr!("기본 ({0})", platform::TERMINAL_FONT),
+            face.selected.is_empty(),
+            String::new(),
+            cx,
+        ));
+        // The default family is already the first choice.
+        let installed: Vec<_> = fonts
+            .iter()
+            .filter(|f| f.as_str() != platform::TERMINAL_FONT)
+            .collect();
+        if installed.is_empty() {
+            page = page.child(
+                div()
+                    .text_xs()
+                    .child(t("다른 고정폭 글꼴을 찾지 못했습니다.")),
+            );
+        }
+        for family in installed {
+            page = page.child(option(
+                format!("terminal-font-{family}"),
+                family.clone(),
+                face.selected.as_ref() == family.as_str(),
+                family.clone(),
+                cx,
+            ));
+        }
+        page
     }
 }

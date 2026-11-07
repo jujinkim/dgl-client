@@ -5,6 +5,9 @@
   const panes = new Map();
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 12, scrollback = 5000, enabled = true, smooth = false;
+  // The WebView default monospace, or an installed face native serves at /fonts/<token>.
+  const DEFAULT_FONT = 'monospace';
+  let fontFamily = DEFAULT_FONT, fontRequest = 0;
   let fontGesture = false, pointerEnabled = true, imeAnimating = false, imeVersion = 0;
   window.setPointerEnabled = enabled => { pointerEnabled = enabled === true; if (!pointerEnabled) { cancelTouchScroll(); cancelBoundaryDrag(); } };
   let touchSelection = null;
@@ -389,6 +392,7 @@
     if (Number.isInteger(scrollback) && scrollback >= 100 && scrollback <= 10000) term.options.scrollback = scrollback;
 
   };
+  api.setFontFamily = family => { if (term.options.fontFamily !== family) term.options.fontFamily = family; };
   let initialized = false;
   let savedScroll = null;
   api.receive = (base64, reset, id) => {
@@ -773,7 +777,7 @@
   function ensure(id) {
     if (!panes.has(id)) {
       const host = document.createElement('div'); host.className = 'pane'; canvas.appendChild(host);
-      const p = createPane(id, host); p.configure(fontSize, scrollback); p.setSmoothTransitions(smooth);
+      const p = createPane(id, host); p.configure(fontSize, scrollback); p.setFontFamily(fontFamily); p.setSmoothTransitions(smooth);
       panes.set(id, p);
     }
     return panes.get(id);
@@ -975,6 +979,25 @@
     // Font metrics can settle after the options setter returns, including while
     // the measurement shell is hidden. Screen ResizeObservers catch later changes.
     requestAnimationFrame(resize);
+  };
+  function applyFontFamily(family) {
+    fontFamily = family;
+    for (const p of panes.values()) p.setFontFamily(family);
+    resize();
+    requestAnimationFrame(resize);
+  }
+  // Panes switch only after the face loads, so a failed or superseded load keeps the
+  // current metrics. Null restores the default.
+  window.setTerminalFont = token => {
+    const request = ++fontRequest;
+    if (token === null) { applyFontFamily(DEFAULT_FONT); return; }
+    if (typeof token !== 'string' || !/^f[0-9]{1,18}$/.test(token) || typeof FontFace !== 'function') return;
+    const family = `dgl-terminal-${token}`;
+    new FontFace(family, `url("/fonts/${token}")`).load().then(face => {
+      if (request !== fontRequest) return;
+      document.fonts.add(face);
+      applyFontFamily(`"${family}", ${DEFAULT_FONT}`);
+    }, () => { if (request === fontRequest) applyFontFamily(DEFAULT_FONT); });
   };
   function arrange() {
     if (draggingBoundary) return;

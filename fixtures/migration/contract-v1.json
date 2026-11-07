@@ -668,7 +668,8 @@
           "language": "system",
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
-          "androidKeyboardAlwaysVisible": false
+          "androidKeyboardAlwaysVisible": false,
+          "terminalFontFamily": ""
         }
       }
     },
@@ -732,7 +733,8 @@
           "language": "system",
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
-          "androidKeyboardAlwaysVisible": false
+          "androidKeyboardAlwaysVisible": false,
+          "terminalFontFamily": ""
         }
       }
     },
@@ -795,7 +797,8 @@
           "language": "system",
           "mobileShortcutBarTwoRows": false,
           "androidKeyboardMode": "auto",
-          "androidKeyboardAlwaysVisible": false
+          "androidKeyboardAlwaysVisible": false,
+          "terminalFontFamily": ""
         }
       }
     },
@@ -925,7 +928,8 @@
           "language": "system",
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
-          "androidKeyboardAlwaysVisible": false
+          "androidKeyboardAlwaysVisible": false,
+          "terminalFontFamily": ""
         }
       }
     },
@@ -1013,7 +1017,8 @@
           "language": "system",
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
-          "androidKeyboardAlwaysVisible": false
+          "androidKeyboardAlwaysVisible": false,
+          "terminalFontFamily": ""
         }
       }
     },
@@ -1124,7 +1129,8 @@
           "language": "system",
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
-          "androidKeyboardAlwaysVisible": false
+          "androidKeyboardAlwaysVisible": false,
+          "terminalFontFamily": ""
         }
       }
     },
@@ -1168,7 +1174,8 @@
           "language": "system",
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
-          "androidKeyboardAlwaysVisible": false
+          "androidKeyboardAlwaysVisible": false,
+          "terminalFontFamily": ""
         }
       }
     },
@@ -1231,7 +1238,8 @@
           "language": "system",
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
-          "androidKeyboardAlwaysVisible": false
+          "androidKeyboardAlwaysVisible": false,
+          "terminalFontFamily": ""
         }
       }
     }

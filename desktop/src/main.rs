@@ -129,6 +129,7 @@ enum Dialog {
     },
     Settings,
     Shortcuts,
+    TerminalFont,
     About,
     Agents(Arc<Connection>, String, Option<String>),
     Notifications,
@@ -213,6 +214,10 @@ impl Desktop {
             cx.notify();
         })
         .detach();
+        cx.set_global(terminal::fonts::TerminalFace::resolve(
+            &local.preferences.terminal_font_family,
+            cx.text_system(),
+        ));
         let mut snackbar = SnackbarState::default();
         if let Some(error) = error {
             snackbar.show_snackbar_with_duration(error, SnackbarDuration::Long);
@@ -902,6 +907,7 @@ impl Render for Desktop {
                 Dialog::Delete { .. } => ("delete", vec![]),
                 Dialog::Settings => ("settings", vec![]),
                 Dialog::Shortcuts => ("shortcuts", vec![]),
+                Dialog::TerminalFont => ("terminal-font", vec![]),
                 Dialog::About => ("about", vec![]),
                 Dialog::Agents(..) => ("agents", vec![]),
                 Dialog::Notifications => ("notifications", vec![]),
@@ -932,7 +938,10 @@ impl Render for Desktop {
                     .gap_3();
                 let mut footer = div().flex().gap_2().justify_end().child(self.button(
                     "cancel-dialog",
-                    if matches!(&dialog, Dialog::Shortcuts | Dialog::About) {
+                    if matches!(
+                        &dialog,
+                        Dialog::Shortcuts | Dialog::TerminalFont | Dialog::About
+                    ) {
                         t("뒤로")
                     } else if matches!(&dialog, Dialog::Compose(_)) {
                         t("취소")
@@ -1016,6 +1025,9 @@ impl Render for Desktop {
                     Dialog::Shortcuts => {
                         body = body.child(self.shortcut_settings(cx));
                     }
+                    Dialog::TerminalFont => {
+                        body = body.child(self.terminal_font_settings(cx));
+                    }
                     Dialog::About => {
                         body = body.child(self.about_app(cx));
                     }
@@ -1039,7 +1051,12 @@ impl Render for Desktop {
                                 .w(px(
                                     if matches!(
                                         self.dialog,
-                                        Some(Dialog::Settings | Dialog::Shortcuts | Dialog::About)
+                                        Some(
+                                            Dialog::Settings
+                                                | Dialog::Shortcuts
+                                                | Dialog::TerminalFont
+                                                | Dialog::About
+                                        )
                                     ) {
                                         720.
                                     } else {

@@ -28,6 +28,8 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
 @Serializable data class Preferences(
     val language: String = "system",
     val theme: String = "system", val fontSize: Int = 12, val scrollback: Int = 5000,
+    /** Installed monospace family; empty uses the platform default. Not synced: fonts differ by device. */
+    val terminalFontFamily: String = "",
     val mobilePaneToolbarVisible: Boolean = true,
     val mobileShortcutBarTwoRows: Boolean = true,
     val androidKeyboardMode: String = "auto",

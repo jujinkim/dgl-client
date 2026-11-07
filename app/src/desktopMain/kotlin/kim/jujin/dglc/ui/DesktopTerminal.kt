@@ -98,4 +98,5 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
     remember { { value: String -> Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(value), null) } }
 @Composable actual fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean) {}
 @Composable actual fun PlatformConnectionSettings(model: kim.jujin.dglc.AppModel) {}
+@Composable actual fun PlatformTerminalFontSettings(family: String, select: (String) -> Unit) {}
 @Composable actual fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit) {}

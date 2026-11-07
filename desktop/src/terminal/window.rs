@@ -332,7 +332,11 @@ impl Render for WindowTerminal {
             current
         };
         let font_size = self.font.effective();
-        let cell = super::cell_size_for(font_size as f32);
+        let face = cx
+            .try_global::<super::fonts::TerminalFace>()
+            .cloned()
+            .unwrap_or_default();
+        let cell = face.cell_size(font_size as f32);
         let remote_window = state.remote.windows.iter().find(|w| {
             Some(&w.id) == state.window.as_ref() && Some(&w.session) == state.session.as_ref()
         });
@@ -358,6 +362,7 @@ impl Render for WindowTerminal {
             let t = self.pane("shell", cx);
             t.update(cx, |t, _| {
                 t.set_font(font_size);
+                t.set_face(face.clone());
                 t.enabled = self.enabled;
                 t.pointer_enabled =
                     self.resize_request.is_none() && self.applied_size == Some(self.requested);
@@ -369,6 +374,7 @@ impl Render for WindowTerminal {
             let terminal = self.pane(&p.id, cx);
             terminal.update(cx, |t, _| {
                 t.set_font(font_size);
+                t.set_face(face.clone());
                 t.enabled = self.enabled;
                 t.pointer_enabled =
                     self.resize_request.is_none() && self.applied_size == Some(self.requested);

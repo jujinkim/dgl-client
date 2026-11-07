@@ -50,6 +50,8 @@ import kotlinx.coroutines.flow.first
 @Composable expect fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean)
 @Composable expect fun PlatformConnectionSettings(model: AppModel)
 @Composable expect fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit)
+/** Installed monospace family picker for the terminal; empty selects the platform default. */
+@Composable expect fun PlatformTerminalFontSettings(family: String, select: (String) -> Unit)
 /** Clipboard writer scoped to the calling composition, not to a process-wide context. */
 @Composable expect fun rememberPublicKeyCopier(): (String) -> Unit
 internal val LocalAppModel = staticCompositionLocalOf<AppModel?> { null }
@@ -656,6 +658,9 @@ private enum class SettingsPage { Main, Shortcuts, About }
                     Text(tr("터미널 글자 크기: {0}", local.preferences.fontSize), Modifier.weight(1f))
                     TextButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize - 1).coerceAtLeast(10))) } }) { Text(t("작게")) }
                     TextButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize + 1).coerceAtMost(28))) } }) { Text(t("크게")) }
+                }
+                PlatformTerminalFontSettings(local.preferences.terminalFontFamily) { family ->
+                    model.modify { it.copy(preferences = it.preferences.copy(terminalFontFamily = family)) }
                 }
                 Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
                 TextButton({ entryFocus = shortcutFocus; page = SettingsPage.Shortcuts }, modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(shortcutFocus)) {

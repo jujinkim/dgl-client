@@ -15,6 +15,7 @@ use dgl_core::tr;
 use gpui::{prelude::*, *};
 use std::{collections::HashSet, ops::Range, sync::Arc};
 mod font_size;
+pub mod fonts;
 mod input;
 #[cfg(test)]
 mod input_tests;
@@ -66,10 +67,6 @@ impl Dimensions for GridSize {
         self.0
     }
 }
-/// Fixed monospace cell ratios, shared by pane painting and the size requested from tmux.
-fn cell_size_for(font_size: f32) -> (f32, f32) {
-    (font_size * 0.61, font_size * 1.4)
-}
 pub struct Terminal {
     pub connection: Arc<Connection>,
     pane_id: Option<String>,
@@ -77,6 +74,8 @@ pub struct Terminal {
     parser: Processor,
     focus: FocusHandle,
     font_size: f32,
+    /// Shared with the window so pane painting and the size requested from tmux agree.
+    face: fonts::TerminalFace,
     font_owner: Option<WeakEntity<WindowTerminal>>,
     bounds: Bounds<Pixels>,
     marked: String,
@@ -143,6 +142,7 @@ impl Terminal {
             parser: Processor::new(),
             focus: cx.focus_handle(),
             font_size: font_size.clamp(10, 28) as f32,
+            face: fonts::TerminalFace::default(),
             font_owner: None,
             bounds: Bounds::default(),
             marked: String::new(),
@@ -332,8 +332,11 @@ impl Terminal {
     pub fn set_font(&mut self, n: i32) {
         self.font_size = n.clamp(10, 28) as f32;
     }
+    pub fn set_face(&mut self, face: fonts::TerminalFace) {
+        self.face = face;
+    }
     fn cell_size(&self) -> (f32, f32) {
-        cell_size_for(self.font_size)
+        self.face.cell_size(self.font_size)
     }
     fn point(&self, p: Point<Pixels>) -> CellPoint {
         let (w, h) = self.cell_size();
@@ -705,7 +708,7 @@ fn font_wheel_delta(e: &ScrollWheelEvent) -> Option<i32> {
     (e.modifiers.control && vertical.is_finite() && vertical != 0.)
         .then(|| if vertical > 0. { 1 } else { -1 })
 }
-const DEFAULT_BACKGROUND: u32 = 0x11151b;
+pub const DEFAULT_BACKGROUND: u32 = 0x11151b;
 /// Printable ASCII, sliced so the common one-character glyph needs no allocation.
 const ASCII: &str = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 fn glyph_text(cell: &alacritty_terminal::term::cell::Cell) -> SharedString {
@@ -846,7 +849,7 @@ impl Render for Terminal {
                                 } else {
                                     paint_run(runs.finish(), window);
                                     let text = glyph_text(cell);
-                                    let mut font = font(crate::platform::TERMINAL_FONT);
+                                    let mut font = this.face.font();
                                     if cell.flags.contains(Flags::BOLD) {
                                         font.weight = FontWeight::BOLD;
                                     }
@@ -885,7 +888,7 @@ impl Render for Terminal {
                                     px(this.font_size),
                                     &[TextRun {
                                         len: this.marked.len(),
-                                        font: font(crate::platform::TERMINAL_FONT),
+                                        font: this.face.font(),
                                         color: rgb(0xffffff).into(),
                                         background_color: None,
                                         underline: Some(UnderlineStyle {
@@ -936,11 +939,6 @@ mod tests {
         };
         cell.push_zerowidth('\u{301}');
         assert_eq!(super::glyph_text(&cell).as_ref(), "e\u{301}");
-    }
-    #[test]
-    fn pane_and_window_share_one_cell_size() {
-        assert_eq!(super::cell_size_for(10.0), (10.0 * 0.61, 10.0 * 1.4));
-        assert_eq!(super::cell_size_for(28.0), (28.0 * 0.61, 28.0 * 1.4));
     }
     #[gpui::test]
     fn same_pane_snapshot_preserves_history(cx: &mut TestAppContext) {

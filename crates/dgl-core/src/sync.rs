@@ -580,6 +580,7 @@ mod tests {
         local.preferences.mobile_shortcut_bar_two_rows = false;
         local.preferences.android_keyboard_mode = "resize".into();
         local.preferences.android_keyboard_always_visible = true;
+        local.preferences.terminal_font_family = "PRIVATE-FONT".into();
         let out = exchange(Some(a.cache), &local, doc.as_bytes(), &[]).unwrap();
         for value in [
             "SECRET-REFERENCE",
@@ -594,6 +595,8 @@ mod tests {
             "mobileShortcutBarTwoRows",
             "androidKeyboardMode",
             "androidKeyboardAlwaysVisible",
+            "terminalFontFamily",
+            "PRIVATE-FONT",
             "privateKey",
             "password",
         ] {
@@ -615,6 +618,7 @@ mod tests {
         assert!(other.local.preferences.mobile_shortcut_bar_two_rows);
         assert_eq!(other.local.preferences.android_keyboard_mode, "auto");
         assert!(!other.local.preferences.android_keyboard_always_visible);
+        assert_eq!(other.local.preferences.terminal_font_family, "");
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {

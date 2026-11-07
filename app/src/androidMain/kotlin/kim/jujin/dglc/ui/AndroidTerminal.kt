@@ -292,7 +292,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             if (resources == null) terminal.close()
         }
     }
-    LaunchedEffect(terminal, preferences.fontSize, preferences.scrollback, preferences.effectiveAndroidKeyboardMode) { terminal.configure(preferences) }
+    LaunchedEffect(terminal, preferences.fontSize, preferences.terminalFontFamily, preferences.scrollback, preferences.effectiveAndroidKeyboardMode) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
     val presenting = terminal.screenPending || status.presenting
     val fontOverride by terminal.fontSizeOverride.collectAsState()
@@ -421,6 +421,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     val fontSizeOverride get() = font.overrideSize
     private var scrollback = preferences.scrollback.coerceIn(100, 10000)
     private var keyboardMode = preferences.effectiveAndroidKeyboardMode
+    /** The installed face served at `/fonts/<token>`; read by the WebView's request thread. */
+    @Volatile private var terminalFont: Pair<String, TerminalFontFile>? = null
     private var consumingPinch = false
     private var managedViewport = false
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -513,9 +515,16 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?) = true
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse {
                 val uri = request.url
-                return if (uri.scheme == "https" && uri.host == "appassets.androidplatform.net" && uri.path in assets) {
-                    loader.shouldInterceptRequest(uri) ?: blocked()
-                } else blocked()
+                if (uri.scheme != "https" || uri.host != "appassets.androidplatform.net") return blocked()
+                if (uri.path in assets) return loader.shouldInterceptRequest(uri) ?: blocked()
+                // Only the face selected now, never a path the page chooses.
+                val (token, face) = terminalFont ?: return blocked()
+                if (uri.path != "/fonts/$token" || !uri.query.isNullOrEmpty()) return blocked()
+                return try {
+                    val bytes = face.standalone()
+                    val type = if (bytes.size >= 4 && bytes.decodeToString(0, 4) == "OTTO") "font/otf" else "font/ttf"
+                    WebResourceResponse(type, null, 200, "OK", mapOf("Cache-Control" to "no-store"), ByteArrayInputStream(bytes))
+                } catch (_: Exception) { blocked() }
             }
         }
         view.webChromeClient = object : WebChromeClient() {
@@ -541,6 +550,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                 when (type) {
                     "ready" -> {
                         applyConfiguration()
+                        applyTerminalFont()
                         ready.complete(Unit)
                         dispatchViewport()
                         keyboardFocusChanged()
@@ -649,12 +659,22 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
     suspend fun configure(preferences: Preferences) {
         withTimeout(15_000) { ready.await() }
+        // A family missing on this device keeps the WebView default monospace.
+        val face = try { AndroidTerminalFonts.find(preferences.terminalFontFamily) } catch (_: Exception) { null }
         withContext(Dispatchers.Main.immediate) {
             font.configure(preferences.fontSize)
             scrollback = preferences.scrollback.coerceIn(100, 10000)
             keyboardMode = preferences.effectiveAndroidKeyboardMode
             applyConfiguration()
+            val current = terminalFont?.second
+            if (if (face == null) current != null else !face.sameFace(current)) {
+                terminalFont = face?.let { "f${fontTokens.incrementAndGet()}" to it }
+                applyTerminalFont()
+            }
         }
+    }
+    private fun applyTerminalFont() {
+        if (!closed) view.evaluateJavascript("window.setTerminalFont(${terminalFont?.first?.let(JSONObject::quote) ?: "null"})", null)
     }
     private fun applyConfiguration() {
         if (!closed) view.evaluateJavascript("window.configure(${font.effective},$scrollback,${JSONObject.quote(keyboardMode)})", null)
@@ -791,6 +811,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     }
     companion object {
         private val assets = setOf("/assets/terminal/index.html", "/assets/terminal/terminal.js", "/assets/terminal/xterm.js", "/assets/terminal/xterm.css", "/assets/terminal/style.css")
+        /** Process-wide, so the shared WebView cache never pairs a token with another face. */
+        private val fontTokens = java.util.concurrent.atomic.AtomicLong()
         private fun blocked() = WebResourceResponse("text/plain", "UTF-8", 403, "Blocked", emptyMap(), ByteArrayInputStream(byteArrayOf()))
     }
 }

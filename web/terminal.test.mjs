@@ -675,6 +675,43 @@ test('pinch updates every pane locally, suppresses input and submits only the fi
   assert.deepEqual(r.messages, [{ type: 'resize', columns: 100, rows: 30 }]);
 });
 
+test('installed terminal fonts switch every pane only after loading and only for the latest request', async () => {
+  const faces = [], added = [];
+  class FontFace {
+    constructor(family, source) {
+      Object.assign(this, { family, source });
+      this.loaded = new Promise((resolve, reject) => { this.resolve = () => resolve(this); this.reject = reject; });
+      faces.push(this);
+    }
+    load() { return this.loaded; }
+  }
+  const r = loadTerminal({ Terminal: GridTerminal, FontFace, document: { fonts: { add: face => added.push(face.family) } },
+    requestAnimationFrame: () => 0 });
+  const families = () => r.terminals.map(t => t.options.fontFamily);
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  r.window.outputPane('%1', 'one');
+  // The shell takes the default from its constructor options; added panes set it explicitly.
+  const initial = families();
+  assert.equal(initial[1], 'monospace');
+  for (const token of ['../etc', 'f', 'f1?x', 7, undefined]) r.window.setTerminalFont(token);
+  assert.equal(faces.length, 0, 'only native tokens become font requests');
+  r.window.setTerminalFont('f1');
+  assert.equal(faces[0].source, 'url("/fonts/f1")');
+  await settle();
+  assert.deepEqual(families(), initial, 'metrics change only after the face loads');
+  faces[0].resolve(); await settle();
+  assert.deepEqual(added, ['dgl-terminal-f1']);
+  assert.deepEqual(families(), ['"dgl-terminal-f1", monospace', '"dgl-terminal-f1", monospace']);
+  r.window.outputPane('%2', 'two');
+  assert.equal(r.terminals[2].options.fontFamily, '"dgl-terminal-f1", monospace', 'new panes inherit the face');
+  r.window.setTerminalFont('f2'); r.window.setTerminalFont(null);
+  assert.ok(families().every(f => f === 'monospace'), 'null restores the default at once');
+  faces[1].resolve(); await settle();
+  assert.ok(families().every(f => f === 'monospace'), 'a superseded load is ignored');
+  r.window.setTerminalFont('f3'); faces[2].reject(new Error('blocked')); await settle();
+  assert.ok(families().every(f => f === 'monospace'), 'a failed load keeps the default');
+});
+
 test('screen geometry observes late font metrics without a hidden shell render and after redisplay', () => {
   const r = imeRenderer({ delayedFont: true });
   r.window.setLayout({ window: '@1', columns: 100, rows: 30, active: '%1', panes: [
