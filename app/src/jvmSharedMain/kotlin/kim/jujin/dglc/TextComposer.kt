@@ -51,6 +51,8 @@ class TextComposer(private val client: ClientConnection, parent: CoroutineScope)
     val sending = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)
     private var target: InputTarget? = null
+    /** The session captured on open; the dialog shows it so the destination is never ambiguous. */
+    val targetSession: String? get() = target?.session
 
     fun open() {
         if (!sending.value) { target = client.captureInputTarget(); error.value = null }

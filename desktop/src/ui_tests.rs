@@ -2325,6 +2325,11 @@ fn composer_restores_focus_draft_selection_and_enter_option_and_blocks_terminal(
         input.read_with(cx, |i, _| i.content.to_string()),
         "첫 줄 😀\n둘째 줄"
     );
+    redraw(cx);
+    let title = cx.debug_bounds("composer-session").unwrap();
+    let count = cx.debug_bounds("composer-count").unwrap();
+    assert!(title.bottom() <= count.top());
+    assert!(count.bottom() <= cx.debug_bounds("composer-enter-box").unwrap().top());
     cx.simulate_keystrokes("shift-left shift-left");
     let selection =
         cx.update(|w, cx| input.update(cx, |i, cx| i.selected_text_range(false, w, cx).unwrap()));

@@ -10,6 +10,8 @@ fun compactTabTitle(value: String): String {
     val overflow = grapheme.findAll(text).drop(20).firstOrNull() ?: return text
     return text.substring(0, overflow.range.first) + "…"
 }
+/** User-perceived characters, so Hangul syllables and emoji count once each. */
+fun graphemeCount(value: String): Int = grapheme.findAll(value).count()
 /** Keep names across recovery and view recreation; a different session clears the cache. */
 class SessionTitleCache {
     private var sessionId: String? = null
@@ -84,6 +86,9 @@ fun Phase.displayLabel(): String = when (this) {
     Phase.Selecting -> t("세션 선택"); Phase.Restoring -> t("터미널 복원 중"); Phase.Ready -> t("연결됨"); Phase.Reconnecting -> t("재접속 중")
     Phase.MissingSession -> t("이전 세션 없음"); Phase.Failed -> t("연결 실패"); Phase.Shell -> t("연결됨 · 일반 SSH")
 }
+/** The tmux session name shown where input is aimed; the stable ID stays the identity. */
+fun RemoteState.sessionName(session: String): String =
+    sessions.firstOrNull { it.id == session }?.let { named(it.name, t("이름 없는 세션")) } ?: displayTreeText(session)
 fun RemoteState.targetLabel(session: String?, pane: String?): String = buildList {
     sessions.firstOrNull { it.id == session }?.let { add(named(it.name, t("이름 없는 세션"))) }
     panes.firstOrNull { it.id == pane }?.let { p ->

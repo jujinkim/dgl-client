@@ -85,6 +85,15 @@ pub fn session_label(state: &RemoteState, session: &RemoteSession) -> Label {
         detail: tr!("창 {0}개 · 패널 {1}개", windows.len(), panes),
     }
 }
+/// The tmux session name shown where input is aimed; the stable ID stays the identity.
+pub fn session_name(state: &RemoteState, id: &str) -> String {
+    state
+        .sessions
+        .iter()
+        .find(|s| s.id == id)
+        .map(|s| named(&s.name, t("이름 없는 세션")))
+        .unwrap_or_else(|| display_text(id))
+}
 pub fn session_tab_title(state: &RemoteState, session: &RemoteSession) -> String {
     let window = state
         .windows
@@ -264,6 +273,28 @@ pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_name_uses_the_tmux_name_and_falls_back_safely() {
+        let state = RemoteState {
+            sessions: vec![
+                RemoteSession {
+                    id: "$1".into(),
+                    name: "work\u{202e}".into(),
+                    attached: 1,
+                },
+                RemoteSession {
+                    id: "$2".into(),
+                    name: " ".into(),
+                    attached: 0,
+                },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(session_name(&state, "$1"), "work");
+        assert_eq!(session_name(&state, "$2"), t("이름 없는 세션"));
+        assert_eq!(session_name(&state, "$3"), "$3");
+    }
     #[test]
     fn tab_titles_follow_active_window_and_pane_and_ignore_other_sessions() {
         for glyph in ["a", "한", "e\u{301}", "한", "😀", "👩🏽‍💻", "🇰🇷"] {

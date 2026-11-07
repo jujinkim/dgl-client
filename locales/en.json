@@ -614,5 +614,7 @@
   "이 기기에 설치된 고정폭 글꼴만 표시합니다. 동기화하지 않습니다.": "Shows only monospace fonts installed on this device. Not synced.",
   "글꼴 목록을 불러오는 중…": "Loading fonts…",
   "다른 고정폭 글꼴을 찾지 못했습니다.": "No other monospace fonts were found.",
-  "{0} 글꼴을 불러오지 못해 기본 글꼴을 사용합니다.": "Could not load {0}; using the default font."
+  "{0} 글꼴을 불러오지 못해 기본 글꼴을 사용합니다.": "Could not load {0}; using the default font.",
+  "입력 세션: {0}": "Session: {0}",
+  "글자 수: {0}": "Characters: {0}"
 }

@@ -619,5 +619,7 @@ internal object EnglishCatalog {
         "글꼴 목록을 불러오는 중…" to "Loading fonts…",
         "다른 고정폭 글꼴을 찾지 못했습니다." to "No other monospace fonts were found.",
         "{0} 글꼴을 불러오지 못해 기본 글꼴을 사용합니다." to "Could not load {0}; using the default font.",
+        "입력 세션: {0}" to "Session: {0}",
+        "글자 수: {0}" to "Characters: {0}",
     )
 }

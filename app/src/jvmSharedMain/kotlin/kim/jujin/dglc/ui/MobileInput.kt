@@ -2,6 +2,10 @@ package kim.jujin.dglc.ui
 
 import kim.jujin.dglc.core.t
 import kim.jujin.dglc.core.tr
+import kim.jujin.dglc.ClientConnection
+import kim.jujin.dglc.core.sessionName
+import kim.jujin.dglc.core.displayTreeText
+import kim.jujin.dglc.core.graphemeCount
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
@@ -38,7 +42,15 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
     UiGlyph(UiIcons.keyboard, Modifier.size(18.dp))
 }
 
-@Composable internal fun TextInputDialog(composer: TextComposer, focus: TerminalFocus, current: () -> Boolean, ready: Boolean) {
+/** "host · session" for the composer: the session captured on open, else the live one. */
+@Composable internal fun composerSession(client: ClientConnection, composer: TextComposer): String {
+    val remote by client.remote.collectAsState()
+    val session by client.session.collectAsState()
+    val target = (composer.targetSession ?: session)?.let(remote::sessionName) ?: t("세션 선택")
+    return "${displayTreeText(client.host.alias)} · $target"
+}
+
+@Composable internal fun TextInputDialog(composer: TextComposer, focus: TerminalFocus, current: () -> Boolean, ready: Boolean, session: String) {
     val value by composer.value.collectAsState()
     val enter by composer.includeEnter.collectAsState()
     val sending by composer.sending.collectAsState()
@@ -65,6 +77,15 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
                 Column(Modifier.heightIn(max = minOf(maxHeight, 420.dp)).padding(if (compact) 4.dp else 16.dp),
                     verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 8.dp)) {
                     if (!compact) Text(t("텍스트 작성"), style = MaterialTheme.typography.titleLarge)
+                    val sessionLabel: @Composable (Modifier) -> Unit = { modifier ->
+                        Text(tr("입력 세션: {0}", session), modifier, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = if (compact) 11.sp else 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                    val count: @Composable () -> Unit = {
+                        Text(tr("글자 수: {0}", graphemeCount(value.text)), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = if (compact) 11.sp else 12.sp, maxLines = 1)
+                    }
+                    if (!compact) sessionLabel(Modifier.fillMaxWidth())
                     val field = Modifier.weight(1f, fill = false).fillMaxWidth().focusRequester(requester)
                         .semantics { contentDescription = t("전송할 텍스트") }
                     // Keep one editor/input session when rotation or IME insets change the layout.
@@ -73,6 +94,10 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
                         textStyle = (if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge)
                             .copy(color = MaterialTheme.colorScheme.onSurface),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), minLines = if (compact) 1 else 3, maxLines = 8)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (compact) sessionLabel(Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
+                        count()
+                    }
                     if (!compact) Text(t("Enter는 줄바꿈 · 전송 버튼으로 보내기"), fontSize = 12.sp)
                     if (!compact) option(Modifier.fillMaxWidth())
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,

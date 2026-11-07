@@ -5,6 +5,20 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class HierarchyTest {
+    @Test fun composerShowsSessionNameAndCountsUserPerceivedCharacters() {
+        val previous = I18n.language
+        try {
+            I18n.configure("ko", "")
+            val remote = RemoteState(sessions = listOf(RemoteSession("$1", "work\u202e", 1), RemoteSession("$2", " ", 0)))
+            assertEquals("work", remote.sessionName("$1"))
+            assertEquals("이름 없는 세션", remote.sessionName("$2"))
+            assertEquals("$3", remote.sessionName("$3"))
+        } finally { I18n.configure(if (previous == UiLanguage.Korean) "ko" else "en", "") }
+        assertEquals(0, graphemeCount(""))
+        assertEquals(7, graphemeCount("한글\n초안 😀"))
+        assertEquals(2, graphemeCount("👨‍👩‍👧e\u0301"))
+    }
+
     @Test fun tabTitlesFollowActiveWindowAndPaneAndIgnoreOtherSessions() {
         listOf("a", "한", "e\u0301", "한", "😀", "👩🏽‍💻", "🇰🇷").forEach { glyph ->
             listOf(19, 20, 21).forEach { count ->

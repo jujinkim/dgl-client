@@ -310,7 +310,8 @@ private data class TabDrag(val tab: String, val position: Offset)
         keyboardAlwaysVisible = preferences.androidKeyboardAlwaysVisible, inputGate = model, openShortcutSettings = openShortcutSettings)
     if (opened) {
         DisposableEffect(composer) { onDispose { model.blockInput(owner, false); if (model.selected.value === client) focus.request() } }
-        TextInputDialog(composer, focus, { model.selected.value === client && !model.inputBlocked(owner) }, status.acceptsInput)
+        TextInputDialog(composer, focus, { model.selected.value === client && !model.inputBlocked(owner) }, status.acceptsInput,
+            composerSession(client, composer))
     }
     deleting?.let { pane -> ConfirmDialog(t("현재 tmux 패널 닫기"), t("이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?"),
         { client.manage(TmuxCommand.killPane(pane)); deleting = null }, { deleting = null }) }

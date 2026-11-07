@@ -4,6 +4,7 @@ use dgl_core::{
     connection::{Completion, CompletionOutcome},
     flow::PaneTarget,
 };
+use unicode_segmentation::UnicodeSegmentation;
 
 pub(super) struct Composer {
     pub input: Entity<TextInput>,
@@ -60,6 +61,11 @@ pub(super) fn complete(
         }
     }
     true
+}
+
+/// User-perceived characters: a Hangul syllable or an emoji counts once.
+pub(super) fn char_count(text: &str) -> usize {
+    text.graphemes(true).count()
 }
 
 #[derive(Clone)]
@@ -191,6 +197,14 @@ impl Composer {
         true
     }
 
+    /// The session this draft is aimed at: the one captured on open, else the live one.
+    fn session<'a>(&'a self, current: Option<&'a str>) -> Option<&'a str> {
+        self.target
+            .as_ref()
+            .and_then(|d| d.session.as_deref())
+            .or(current)
+    }
+
     fn enter_error(error: String) -> String {
         tr!(
             "텍스트는 전송되었지만 Enter 전송에 실패했습니다: {0}. 초안은 유지되며 자동 재전송하지 않습니다.",
@@ -284,18 +298,60 @@ impl Desktop {
         let pending = composer.pending.is_some();
         let checked = composer.include_enter;
         let palette = self.palette;
+        let session = self.tabs.iter().find(|t| t.id == id).map(|tab| {
+            let state = tab.connection.state();
+            let name = composer
+                .session(state.session.as_deref())
+                .map(|s| hierarchy::session_name(&state.remote, s))
+                .unwrap_or_else(|| t("세션 선택").into());
+            format!("{} · {name}", hierarchy::display_text(&tab.host.alias))
+        });
+        let count = char_count(&composer.input.read(cx).content);
         div()
             .flex()
             .flex_col()
             .gap_3()
             .child(
                 div()
-                    .id("composer-title")
-                    .text_xl()
-                    .child(t("텍스트 작성"))
-                    .native_tooltip(t("Enter는 줄바꿈 · 전송 버튼으로 보내기")),
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .id("composer-title")
+                            .text_xl()
+                            .child(t("텍스트 작성"))
+                            .native_tooltip(t("Enter는 줄바꿈 · 전송 버튼으로 보내기")),
+                    )
+                    .when_some(session, |d, session| {
+                        d.child(
+                            div()
+                                .debug_selector(|| "composer-session".into())
+                                .text_sm()
+                                .text_color(rgb(palette.muted))
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .child(tr!("입력 세션: {0}", session)),
+                        )
+                    }),
             )
-            .child(composer.input.clone())
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(composer.input.clone())
+                    .child(
+                        div()
+                            .debug_selector(|| "composer-count".into())
+                            .flex()
+                            .justify_end()
+                            .text_xs()
+                            .text_color(rgb(palette.muted))
+                            .child(tr!("글자 수: {0}", count)),
+                    ),
+            )
             .child(
                 self.button_base("composer-enter", cx, move |s, _, _| {
                     if let Some(composer) = s.composers.get_mut(&id)
@@ -347,7 +403,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{Composer, Destination, Pending, TextInput};
+    use super::{Composer, Destination, Pending, TextInput, char_count};
     use dgl_core::{
         Error,
         connection::{Completion, CompletionOutcome},
@@ -401,6 +457,22 @@ mod tests {
             |_, _| panic!("unexpected Enter"),
             cx,
         )
+    }
+
+    #[gpui::test]
+    fn shows_the_captured_session_and_counts_user_perceived_characters(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            let mut composer = draft(cx);
+            assert_eq!(composer.session(Some("$9")), Some("$1"));
+            composer.target = None;
+            assert_eq!(composer.session(Some("$9")), Some("$9"));
+            assert_eq!(composer.session(None), None);
+        });
+        assert_eq!(char_count(""), 0);
+        assert_eq!(char_count("한글\n초안 😀"), 7);
+        assert_eq!(char_count("👨‍👩‍👧e\u{301}"), 2);
     }
 
     #[gpui::test]

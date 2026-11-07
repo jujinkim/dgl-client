@@ -411,7 +411,8 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     }
     if (mobileLayout && composerOpen) {
         DisposableEffect(composer) { onDispose { model.blockInput(composerOwner, false); if (model.selected.value === client && inputAllowed()) terminalFocus.request() } }
-        TextInputDialog(composer, terminalFocus, { model.selected.value === client && inputAllowed() }, status.acceptsInput)
+        TextInputDialog(composer, terminalFocus, { model.selected.value === client && inputAllowed() }, status.acceptsInput,
+            composerSession(client, composer))
     }
     if (mobileLayout && navigation) ModalBottomSheet(onDismissRequest = { navigation = false }, sheetState = navigationSheet) {
         // A weighted child needs a finite height before the sheet computes its anchors.
