@@ -160,6 +160,31 @@ impl Desktop {
                     s.dialog = Some(Dialog::Shortcuts);
                 },
             ));
+        let power_mode =
+            crate::power::Mode::from_preference(&self.local.preferences.desktop_power_saving);
+        let mut power = div().flex().flex_wrap().gap_2();
+        for (mode, label) in [
+            (crate::power::Mode::System, t("OS 저전력 모드 따름")),
+            (crate::power::Mode::Always, t("항상 절전")),
+            (crate::power::Mode::Off, t("사용 안 함")),
+        ] {
+            power = power.child(self.button(
+                format!("power-saving-{}", mode.preference()),
+                (
+                    if power_mode == mode {
+                        UiIcon::RadioSelected
+                    } else {
+                        UiIcon::Radio
+                    },
+                    label,
+                ),
+                cx,
+                move |s, _, _| {
+                    s.local.preferences.desktop_power_saving = mode.preference().into();
+                    s.save();
+                },
+            ));
+        }
         let workspace = self
             .settings_card("작업 공간", "계층 표시와 화면 전환을 선택합니다.")
             .child(self.button(
@@ -178,7 +203,16 @@ impl Desktop {
                         !s.local.preferences.show_all_hierarchy;
                     s.save();
                 },
-            ));
+            ))
+            .child(
+                div()
+                    .id("power-saving-title")
+                    .native_tooltip(t(
+                        "절전 중에는 한가할 때 화면 확인 간격을 늘립니다. 입력·출력 중 반응 속도는 그대로입니다. 이 기기에만 저장합니다.",
+                    ))
+                    .child(t("절전 주기")),
+            )
+            .child(power);
         let alerts = self
             .settings_card("알림", "에이전트 알림과 OS 알림을 선택합니다.")
             .child(self.agent_settings(cx));

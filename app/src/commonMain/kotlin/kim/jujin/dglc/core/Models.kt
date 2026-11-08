@@ -30,6 +30,8 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val theme: String = "system", val fontSize: Int = 12, val scrollback: Int = 5000,
     /** Installed monospace family; empty uses the platform default. Not synced: fonts differ by device. */
     val terminalFontFamily: String = "",
+    /** Desktop idle pacing (system/always/off); unused on Android, kept for the shared settings format. */
+    val desktopPowerSaving: String = "system",
     val mobilePaneToolbarVisible: Boolean = true,
     val mobileShortcutBarTwoRows: Boolean = true,
     val androidKeyboardMode: String = "auto",

@@ -621,5 +621,10 @@ internal object EnglishCatalog {
         "{0} 글꼴을 불러오지 못해 기본 글꼴을 사용합니다." to "Could not load {0}; using the default font.",
         "입력 세션: {0}" to "Session: {0}",
         "글자 수: {0}" to "Characters: {0}",
+        "절전 주기" to "Power saving pacing",
+        "OS 저전력 모드 따름" to "Follow OS low power mode",
+        "항상 절전" to "Always save power",
+        "사용 안 함" to "Off",
+        "절전 중에는 한가할 때 화면 확인 간격을 늘립니다. 입력·출력 중 반응 속도는 그대로입니다. 이 기기에만 저장합니다." to "While saving power, idle screen checks run less often. Typing and output stay as responsive. Saved on this device only.",
     )
 }

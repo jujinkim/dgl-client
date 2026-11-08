@@ -91,6 +91,9 @@ pub struct Preferences {
     /// Installed monospace family for the terminal; empty uses the platform default.
     /// Stays on this device: another device may not have the same font installed.
     pub terminal_font_family: String,
+    /// Desktop idle pacing: `system` follows the OS power saving mode, `always` or `off`
+    /// override it. Unknown values are kept and behave as `system`. Stays on this device.
+    pub desktop_power_saving: String,
     pub scrollback: i32,
     pub terminal_shortcuts: Vec<crate::input::TerminalShortcut>,
     pub volume_keys_enabled: bool,
@@ -113,6 +116,7 @@ impl Default for Preferences {
             android_keyboard_always_visible: false,
             font_size: 12,
             terminal_font_family: String::new(),
+            desktop_power_saving: "system".into(),
             scrollback: 5000,
             terminal_shortcuts: crate::input::TerminalShortcut::defaults(),
             volume_keys_enabled: false,
@@ -135,6 +139,7 @@ mod keyboard_tests {
         let mut state = LocalState::decode(br#"{"preferences":{"fontSize":19}}"#).unwrap();
         assert_eq!(state.preferences.android_keyboard_mode, "auto");
         assert_eq!(state.preferences.terminal_font_family, "");
+        assert_eq!(state.preferences.desktop_power_saving, "system");
         assert!(!state.preferences.android_keyboard_always_visible);
         for mode in ["auto", "pan", "resize", "future-mode"] {
             state.preferences.android_keyboard_mode = mode.into();
@@ -146,10 +151,12 @@ mod keyboard_tests {
             state.preferences.android_keyboard_always_visible = false;
         }
         state.preferences.terminal_font_family = "JetBrains Mono".into();
+        state.preferences.desktop_power_saving = "always".into();
         let encoded = serde_json::to_vec(&state).unwrap();
         assert!(
             String::from_utf8_lossy(&encoded).contains(r#""terminalFontFamily":"JetBrains Mono""#)
         );
+        assert!(String::from_utf8_lossy(&encoded).contains(r#""desktopPowerSaving":"always""#));
         assert_eq!(LocalState::decode(&encoded).unwrap(), state);
     }
 }

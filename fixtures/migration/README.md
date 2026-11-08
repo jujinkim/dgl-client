@@ -43,3 +43,5 @@ The additive local `androidKeyboardMode` preference defaults to `auto`; old sour
 The local `androidKeyboardAlwaysVisible` preference defaults to `false`. Enabling it uses `resize` on Android without overwriting the stored mode; disabling it restores the stored choice. Old fixture sources stay unchanged and their encoded expectations include the new default.
 
 The local `terminalFontFamily` preference defaults to `""` (platform default monospace). It names an installed family on this device only, is excluded from cloud sync, and falls back to the default when the family is missing. Old fixture sources stay unchanged and their encoded expectations include the new default.
+
+The local `desktopPowerSaving` preference defaults to `system` (follow the OS power saving mode). `always` and `off` override it on the desktop; unknown strings are preserved and behave as `system`. Android ignores it. It is excluded from cloud sync, and old fixture sources stay unchanged while their encoded expectations include the default.

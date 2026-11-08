@@ -581,6 +581,7 @@ mod tests {
         local.preferences.android_keyboard_mode = "resize".into();
         local.preferences.android_keyboard_always_visible = true;
         local.preferences.terminal_font_family = "PRIVATE-FONT".into();
+        local.preferences.desktop_power_saving = "always".into();
         let out = exchange(Some(a.cache), &local, doc.as_bytes(), &[]).unwrap();
         for value in [
             "SECRET-REFERENCE",
@@ -597,6 +598,7 @@ mod tests {
             "androidKeyboardAlwaysVisible",
             "terminalFontFamily",
             "PRIVATE-FONT",
+            "desktopPowerSaving",
             "privateKey",
             "password",
         ] {
@@ -619,6 +621,7 @@ mod tests {
         assert_eq!(other.local.preferences.android_keyboard_mode, "auto");
         assert!(!other.local.preferences.android_keyboard_always_visible);
         assert_eq!(other.local.preferences.terminal_font_family, "");
+        assert_eq!(other.local.preferences.desktop_power_saving, "system");
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {

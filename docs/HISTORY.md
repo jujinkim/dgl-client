@@ -208,6 +208,7 @@ JVM·웹 단위 검사, Android Debug APK·계측 컴파일·lint까지 확인�
 입력은 루프를 즉시 깨워 에코 지연을 늘리지 않습니다. `cargo test -p dgl-desktop`만 확인했고 전력 측정·Windows 빌드는 하지 않았습니다.
 이어서 macOS 저전력 모드·Windows 배터리 절약 모드에서 한가할 때 주기를 250ms·500ms로 늘렸습니다.
 Windows 경로(`GetSystemPowerStatus`)는 이 Mac에 MinGW C 도구가 없어 교차 컴파일까지 확인하지 못했습니다.
+설정 → 작업 공간에 기기 로컬 `절전 주기`(OS 저전력 모드 따름 기본·항상 절전·사용 안 함)를 추가했습니다. 동기화하지 않고 Android는 무시합니다.
 
 ## 과거 파일 찾기
 

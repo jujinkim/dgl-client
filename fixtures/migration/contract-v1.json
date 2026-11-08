@@ -669,7 +669,8 @@
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
-          "terminalFontFamily": ""
+          "terminalFontFamily": "",
+          "desktopPowerSaving": "system"
         }
       }
     },
@@ -734,7 +735,8 @@
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
-          "terminalFontFamily": ""
+          "terminalFontFamily": "",
+          "desktopPowerSaving": "system"
         }
       }
     },
@@ -798,7 +800,8 @@
           "mobileShortcutBarTwoRows": false,
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
-          "terminalFontFamily": ""
+          "terminalFontFamily": "",
+          "desktopPowerSaving": "system"
         }
       }
     },
@@ -929,7 +932,8 @@
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
-          "terminalFontFamily": ""
+          "terminalFontFamily": "",
+          "desktopPowerSaving": "system"
         }
       }
     },
@@ -1018,7 +1022,8 @@
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
-          "terminalFontFamily": ""
+          "terminalFontFamily": "",
+          "desktopPowerSaving": "system"
         }
       }
     },
@@ -1130,7 +1135,8 @@
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
-          "terminalFontFamily": ""
+          "terminalFontFamily": "",
+          "desktopPowerSaving": "system"
         }
       }
     },
@@ -1175,7 +1181,8 @@
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
-          "terminalFontFamily": ""
+          "terminalFontFamily": "",
+          "desktopPowerSaving": "system"
         }
       }
     },
@@ -1239,7 +1246,8 @@
           "mobileShortcutBarTwoRows": true,
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
-          "terminalFontFamily": ""
+          "terminalFontFamily": "",
+          "desktopPowerSaving": "system"
         }
       }
     }

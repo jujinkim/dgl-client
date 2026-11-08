@@ -184,14 +184,19 @@ impl Desktop {
             let mut interval = cadence::ACTIVE;
             loop {
                 let woken = cadence::sleep(interval).await;
-                let Ok((active, foreground)) = view.update(cx, |this, cx| this.tick(cx)) else {
+                let Ok((active, foreground, mode)) = view.update(cx, |this, cx| {
+                    let (active, foreground) = this.tick(cx);
+                    let mode =
+                        power::Mode::from_preference(&this.local.preferences.desktop_power_saving);
+                    (active, foreground, mode)
+                }) else {
                     break;
                 };
                 let now = std::time::Instant::now();
                 if woken || active {
                     pace.mark(now);
                 }
-                interval = pace.interval(now, foreground, power.get(now));
+                interval = pace.interval(now, foreground, power.get(mode, now));
             }
         })
         .detach();
