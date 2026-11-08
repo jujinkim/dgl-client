@@ -79,6 +79,8 @@ Android·데스크톱 재시도는 네트워크 오류에 최대 3회, 첫 시�
 데스크톱은 창 활성화 전환과 3초 이상의 UI tick 간격으로 전면·절전 복귀를 감지합니다.
 데스크톱 UI tick은 출력·상태 변화·크기 조정·드래그·시간 제한 스낵바가 있거나 그 뒤 1.5초 동안 16ms로 돌고,
 한가하면 활성 창 100ms·비활성 250ms로 늘립니다. 키·마우스 누름과 원격 입력 전송은 다음 tick을 즉시 깨웁니다(`desktop/src/cadence.rs`).
+사용자가 켠 macOS 저전력 모드·Windows 배터리 절약 모드(30초마다 확인, `desktop/src/power.rs`)에서는 활동 중 16ms를 유지하고
+활동 뒤 유지 시간을 0.75초, 한가할 때를 250ms·500ms로 바꿉니다. 전원 연결 여부만으로는 바꾸지 않습니다.
 Android 복귀 시 네트워크 소진은 새 주기를 시작하지만 사용자 정지는 유지합니다.
 루트 뒤로가기는 [Android 기본 백그라운드 전환](https://developer.android.com/guide/components/activities/tasks-and-back-stack#back-press-behavior)을 사용합니다.
 최근 앱 제거는 앱 모델·연결·관측/동기화 작업을 닫으며 원격 tmux에는 종료 명령을 보내지 않습니다.

@@ -23,6 +23,7 @@ mod notification_panel;
 mod notifications;
 mod pane_toolbar;
 mod platform;
+mod power;
 mod resume;
 mod session_tabs;
 mod settings;
@@ -179,6 +180,7 @@ impl Desktop {
         };
         cx.spawn(async move |view, cx| {
             let mut pace = cadence::Cadence::default();
+            let mut power = power::PowerSaving::default();
             let mut interval = cadence::ACTIVE;
             loop {
                 let woken = cadence::sleep(interval).await;
@@ -189,7 +191,7 @@ impl Desktop {
                 if woken || active {
                     pace.mark(now);
                 }
-                interval = pace.interval(now, foreground);
+                interval = pace.interval(now, foreground, power.get(now));
             }
         })
         .detach();

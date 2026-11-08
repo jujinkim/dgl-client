@@ -14,6 +14,11 @@ pub const IDLE: Duration = Duration::from_millis(100);
 pub const BACKGROUND: Duration = Duration::from_millis(250);
 /// Keep the active rate this long after the last activity, for echoes and output bursts.
 pub const LINGER: Duration = Duration::from_millis(1500);
+/// OS power saving mode: interactive and streaming work keep the frame rate, idle waits
+/// grow and the linger is shorter.
+pub const SAVING_IDLE: Duration = Duration::from_millis(250);
+pub const SAVING_BACKGROUND: Duration = Duration::from_millis(500);
+pub const SAVING_LINGER: Duration = Duration::from_millis(750);
 
 #[derive(Default)]
 pub struct Cadence {
@@ -23,16 +28,21 @@ impl Cadence {
     pub fn mark(&mut self, now: Instant) {
         self.last_active = Some(now);
     }
-    pub fn interval(&self, now: Instant, foreground: bool) -> Duration {
+    pub fn interval(&self, now: Instant, foreground: bool, saving: bool) -> Duration {
+        let (linger, idle, background) = if saving {
+            (SAVING_LINGER, SAVING_IDLE, SAVING_BACKGROUND)
+        } else {
+            (LINGER, IDLE, BACKGROUND)
+        };
         if self
             .last_active
-            .is_some_and(|at| now.saturating_duration_since(at) < LINGER)
+            .is_some_and(|at| now.saturating_duration_since(at) < linger)
         {
             ACTIVE
         } else if foreground {
-            IDLE
+            idle
         } else {
-            BACKGROUND
+            background
         }
     }
 }
@@ -70,15 +80,37 @@ mod tests {
     fn activity_keeps_frame_rate_then_idles_by_window_state() {
         let start = Instant::now();
         let mut cadence = Cadence::default();
-        assert_eq!(cadence.interval(start, true), IDLE);
-        assert_eq!(cadence.interval(start, false), BACKGROUND);
+        assert_eq!(cadence.interval(start, true, false), IDLE);
+        assert_eq!(cadence.interval(start, false, false), BACKGROUND);
         cadence.mark(start);
-        assert_eq!(cadence.interval(start, false), ACTIVE);
+        assert_eq!(cadence.interval(start, false, false), ACTIVE);
         let lingering = start + LINGER - Duration::from_millis(1);
-        assert_eq!(cadence.interval(lingering, true), ACTIVE);
-        assert_eq!(cadence.interval(start + LINGER, true), IDLE);
-        assert_eq!(cadence.interval(start + LINGER, false), BACKGROUND);
+        assert_eq!(cadence.interval(lingering, true, false), ACTIVE);
+        assert_eq!(cadence.interval(start + LINGER, true, false), IDLE);
+        assert_eq!(cadence.interval(start + LINGER, false, false), BACKGROUND);
         assert!(BACKGROUND < Duration::from_secs(3) / 4);
+    }
+
+    #[test]
+    fn power_saving_keeps_the_frame_rate_for_activity_and_idles_longer() {
+        let start = Instant::now();
+        let mut cadence = Cadence::default();
+        cadence.mark(start);
+        assert_eq!(cadence.interval(start, true, true), ACTIVE);
+        assert_eq!(
+            cadence.interval(start + SAVING_LINGER, true, true),
+            SAVING_IDLE
+        );
+        assert_eq!(
+            cadence.interval(start + SAVING_LINGER, false, true),
+            SAVING_BACKGROUND
+        );
+        assert_eq!(cadence.interval(start + SAVING_LINGER, true, false), ACTIVE);
+        assert!(SAVING_IDLE > IDLE && SAVING_BACKGROUND > BACKGROUND && SAVING_LINGER < LINGER);
+        assert!(
+            SAVING_BACKGROUND < Duration::from_secs(3) / 4,
+            "resume detection needs a 3 s gap"
+        );
     }
 
     #[test]

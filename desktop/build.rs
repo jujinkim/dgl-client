@@ -16,6 +16,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/appearance/macos.m");
     println!("cargo:rerun-if-changed=src/native_tooltips/macos.m");
     println!("cargo:rerun-if-changed=src/terminal/fonts/macos.m");
+    println!("cargo:rerun-if-changed=src/power/macos.m");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         cc::Build::new()
             .file("src/notifications/macos.m")
@@ -23,6 +24,7 @@ fn main() {
             .file("src/appearance/macos.m")
             .file("src/native_tooltips/macos.m")
             .file("src/terminal/fonts/macos.m")
+            .file("src/power/macos.m")
             .flag("-fobjc-arc")
             .compile("dgl_notifications");
         println!("cargo:rustc-link-lib=framework=Foundation");
