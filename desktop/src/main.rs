@@ -7,6 +7,7 @@ mod accent_ui;
 mod agent_ui;
 mod app_info;
 mod appearance;
+mod cadence;
 mod cloud_sync;
 mod composer;
 mod file_picker;
@@ -177,11 +178,18 @@ impl Desktop {
             ),
         };
         cx.spawn(async move |view, cx| {
+            let mut pace = cadence::Cadence::default();
+            let mut interval = cadence::ACTIVE;
             loop {
-                Timer::after(Duration::from_millis(16)).await;
-                if view.update(cx, |this, cx| this.tick(cx)).is_err() {
+                let woken = cadence::sleep(interval).await;
+                let Ok((active, foreground)) = view.update(cx, |this, cx| this.tick(cx)) else {
                     break;
+                };
+                let now = std::time::Instant::now();
+                if woken || active {
+                    pace.mark(now);
                 }
+                interval = pace.interval(now, foreground);
             }
         })
         .detach();
@@ -286,7 +294,8 @@ impl Desktop {
             }
         }
     }
-    fn tick(&mut self, cx: &mut Context<Self>) {
+    /// Returns (activity that keeps the frame rate, whether a window is active).
+    fn tick(&mut self, cx: &mut Context<Self>) -> (bool, bool) {
         let foreground = cx.windows().into_iter().any(|h| {
             cx.update_window(h, |_, w, _| w.is_window_active())
                 .unwrap_or(false)
@@ -347,8 +356,10 @@ impl Desktop {
         let mut changed = false;
         let mut save_hosts = false;
         let mut created = Vec::new();
+        // Drags autoscroll and snackbar gauges animate from this loop.
+        let mut active = resumed || cx.has_active_drag() || self.snackbar.is_timed();
         for tab in &mut self.tabs {
-            tab.terminal.update(cx, |t, cx| t.tick(cx));
+            active |= tab.terminal.update(cx, |t, cx| t.tick(cx));
             let state = tab.connection.state();
             tab.update_session(&state);
             if let Some(target) = tab.pending_target.take() {
@@ -472,6 +483,7 @@ impl Desktop {
             });
         if !due.is_empty() {
             self.send_focus_claims(&due, cx);
+            active = true;
         }
         for tab in &self.tabs {
             if let Some(error) = tab.terminal.update(cx, |t, _| t.notice.take()) {
@@ -490,6 +502,7 @@ impl Desktop {
             }
             cx.notify();
         }
+        (active || changed, foreground)
     }
     fn save(&mut self) -> bool {
         self.reconcile_hosts();

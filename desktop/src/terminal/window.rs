@@ -111,7 +111,8 @@ impl WindowTerminal {
             cx.notify();
         });
     }
-    pub fn tick(&mut self, cx: &mut Context<Self>) {
+    /// True while output arrived or a resize is in flight, to keep the frame rate.
+    pub fn tick(&mut self, cx: &mut Context<Self>) -> bool {
         if self.connection.state().accepts_input() {
             self.rejection_shown = false;
         }
@@ -130,6 +131,7 @@ impl WindowTerminal {
                 Err(_) => self.resize_due = Instant::now() + Duration::from_millis(150),
             }
         }
+        let mut active = self.resize_request.is_some() || self.applied_size != Some(self.requested);
         let queue = self.connection.output();
         for _ in 0..128 {
             let Ok(Some(e)) = queue.poll(self.subscription) else {
@@ -139,6 +141,7 @@ impl WindowTerminal {
             self.accept(e, cx);
             let _ = queue.ack(self.subscription, sequence);
             cx.notify();
+            active = true;
         }
         for t in self.panes.values() {
             t.update(cx, |t, _| {
@@ -154,6 +157,7 @@ impl WindowTerminal {
                 }
             });
         }
+        active
     }
     pub fn reject_input(&mut self, error: dgl_core::Error) {
         if self.rejection_shown {
@@ -175,6 +179,7 @@ impl WindowTerminal {
             self.reject_input(dgl_core::Error::NotReady);
         }
         if let Some(target) = self.connection.target() {
+            crate::cadence::wake();
             self.claims.before_input(&self.connection);
             if let Err(e) = self.connection.input(target, bytes) {
                 self.reject_input(e);

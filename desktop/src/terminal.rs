@@ -236,6 +236,7 @@ impl Terminal {
             }
             // A report queued behind any claim in flight may find a new grid.
             let report = self.claims.pending() && input::pointer_report(&bytes);
+            crate::cadence::wake();
             match self.connection.input(t, bytes) {
                 Ok(id) => {
                     self.input_requests.insert(id);

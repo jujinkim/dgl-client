@@ -114,6 +114,12 @@ impl SnackbarState {
     pub fn is_none(&self) -> bool {
         self.current.is_none()
     }
+    /// A timed snackbar whose gauge and expiry advance with the main loop.
+    pub fn is_timed(&self) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|c| c.request.duration.timeout().is_some())
+    }
 
     pub fn dismiss(&mut self, id: u64) {
         if self

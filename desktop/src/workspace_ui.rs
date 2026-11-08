@@ -449,7 +449,10 @@ impl Desktop {
             .bg(rgb(p.bg))
             .text_color(rgb(p.fg))
             .track_focus(&self.focus)
+            // Any keyboard or pointer press resumes the frame rate before its effects arrive.
+            .capture_any_mouse_down(|_, _, _| crate::cadence::wake())
             .capture_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
+                crate::cadence::wake();
                 if e.keystroke.key == "escape"
                     && (s.pointer.dragging_tab.is_some() || s.pointer.dragging_host.is_some())
                     && cx.has_active_drag()
