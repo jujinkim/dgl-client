@@ -62,15 +62,7 @@
     return element;
   };
   // One rendered window, independent of pane snapshot timers and changing layouts.
-  // Compose draws the 45% black dim and status above this frozen viewport.
-  let recoveryScreen = null;
-  window.setConnectionRecovery = active => {
-    if (active !== true) {
-      recoveryScreen?.remove(); recoveryScreen = null;
-      return;
-    }
-    cancelTouchScroll(); cancelBoundaryDrag();
-    if (recoveryScreen) return;
+  const freezeCanvas = className => {
     const previous = stripInputHelpers(canvas.cloneNode(true));
     previous.removeAttribute('id');
     for (const element of previous.querySelectorAll('[id]')) {
@@ -88,11 +80,39 @@
       position: 'absolute', left: `${-root.scrollLeft}px`, top: `${-root.scrollTop}px`,
       width: `${bounds.width}px`, height: `${bounds.height}px`, minWidth: '100%', minHeight: '100%',
     });
-    recoveryScreen = document.createElement('div');
-    recoveryScreen.className = 'connection-cache';
-    recoveryScreen.setAttribute('aria-hidden', 'true'); recoveryScreen.inert = true;
-    recoveryScreen.appendChild(previous); document.body.appendChild(recoveryScreen);
+    const frozen = document.createElement('div');
+    frozen.className = className;
+    frozen.setAttribute('aria-hidden', 'true'); frozen.inert = true;
+    frozen.appendChild(previous); document.body.appendChild(frozen);
+    return frozen;
   };
+  // Compose draws the 45% black dim and status above this frozen viewport.
+  let recoveryScreen = null;
+  window.setConnectionRecovery = active => {
+    if (active !== true) {
+      recoveryScreen?.remove(); recoveryScreen = null;
+      return;
+    }
+    cancelTouchScroll(); cancelBoundaryDrag();
+    if (recoveryScreen) return;
+    recoveryScreen = freezeCanvas('connection-cache');
+  };
+  // A reattached tab keeps its last presented window while the fresh snapshot renders beneath.
+  // Independent of connection recovery; native releases it only after presenting the window.
+  let presentationScreen = null, presentationTimer = null;
+  window.setPresentationCache = active => {
+    if (active !== true) {
+      clearTimeout(presentationTimer); presentationTimer = null;
+      presentationScreen?.remove(); presentationScreen = null;
+      return;
+    }
+    cancelTouchScroll(); cancelBoundaryDrag();
+    if (presentationScreen) return;
+    presentationScreen = freezeCanvas('connection-cache presentation-cache');
+    // Error/background fallback: never leave a stale window covering the terminal.
+    presentationTimer = setTimeout(() => window.setPresentationCache(false), 15000);
+  };
+  const frozenWindow = () => recoveryScreen !== null || presentationScreen !== null;
   // Chrome's touch long press runs Blink's mouse focus step at the pressed cell before its
   // contextmenu, cancelled or not. Cells are not focusable, so that clears focus: xterm's
   // textarea blurs and Android hides the IME, whose resize ends the selection. While a finger
@@ -114,7 +134,7 @@
     if (type === 'focusout') keptFocus = null;
   }, true);
   // Remote input and gestures that change remote state share these gates.
-  const gestureBlocked = () => !enabled || !pointerEnabled || fontGesture || imeAnimating || recoveryScreen !== null;
+  const gestureBlocked = () => !enabled || !pointerEnabled || fontGesture || imeAnimating || frozenWindow();
   function createPane(pane, host) {
   const api = {};
   api.content = null;
@@ -418,7 +438,7 @@
   // Long-press text selection is local and read-only. It never sends remote mouse,
   // wheel, focus or keyboard input, even while the remote app reports the mouse.
   let press = null, picking = null, picked = null, touchOrigin = false;
-  const selectionAllowed = () => !fontGesture && !imeAnimating && recoveryScreen === null && !snapshotUpdating && !draggingBoundary;
+  const selectionAllowed = () => !fontGesture && !imeAnimating && !frozenWindow() && !snapshotUpdating && !draggingBoundary;
   const screenBounds = () => term.element?.querySelector('.xterm-screen')?.getBoundingClientRect();
   // Linear buffer cell (absolute row * columns + column) under a client point.
   const cellAt = (x, y, clamp) => {
@@ -809,7 +829,7 @@
   }
   function contentGeometry() {
     const specs = layout?.window != null ? layout.panes.filter(p => p.visible) : [{ id: 'shell', top: 0 }];
-    let bottom = 0, safe = specs.length > 0 && !recoveryScreen, fullscreen = false;
+    let bottom = 0, safe = specs.length > 0 && !frozenWindow(), fullscreen = false;
     for (const spec of specs) {
       const pane = panes.get(spec.id), content = pane?.content;
       const known = content && !pane.snapshotting();

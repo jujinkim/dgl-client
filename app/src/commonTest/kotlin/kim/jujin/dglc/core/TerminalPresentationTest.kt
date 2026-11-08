@@ -66,4 +66,40 @@ class TerminalPresentationTest {
         gate.presented(1, gate.cycle)
         assertFalse(gate.pending)
     }
+
+    @Test fun reattachToLastPresentedWindowPreviewsUntilPresented() {
+        val gate = TerminalPresentation()
+        val visible = setOf("%1"); val targets = mapOf("%1" to "fresh")
+        fun present(id: Long) { gate.rendered(id, gate.cycle, "%1", "fresh"); gate.presented(id, gate.cycle) }
+        gate.bind(1); gate.observe("1:s:A")
+        assertFalse(gate.preview, "A first presentation has no earlier frame")
+        present(1)
+        assertEquals("1:s:A", gate.lastPresented)
+        gate.unbind()
+        assertEquals("1:s:A", gate.lastPresented, "A hidden tab keeps the frame it presented last")
+
+        gate.bind(2); gate.observe("1:s:A")
+        assertTrue(gate.pending); assertTrue(gate.preview)
+        assertFalse(gate.ready(2, gate.cycle, Phase.Ready, visible, targets, false), "Preview still waits for fresh panes")
+        assertFalse(ConnectionStatus(Phase.Ready, presenting = true, presentingPreview = true).acceptsInput)
+        present(2)
+        assertFalse(gate.pending); assertFalse(gate.preview)
+
+        gate.observe("1:s:B")
+        assertFalse(gate.preview, "A tmux window switch keeps the curtain")
+        present(2); gate.unbind()
+        gate.bind(3); gate.observe("2:s:B")
+        assertFalse(gate.preview, "A new connection generation keeps the curtain")
+        present(3); gate.unbind()
+
+        gate.bind(4); gate.observe("2:s:B")
+        assertTrue(gate.preview)
+        gate.unbind()
+        assertNull(gate.lastPresented, "An interrupted restoration never previews a partial frame")
+        gate.bind(5); gate.observe("2:s:B")
+        assertFalse(gate.preview)
+        present(5)
+        gate.observe("2:s:C"); gate.observe("2:s:B")
+        assertFalse(gate.preview, "Leaving a window mid-restoration forgets the frame")
+    }
 }

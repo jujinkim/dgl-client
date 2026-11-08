@@ -29,7 +29,7 @@ class AndroidOutputRecoveryTest {
         @Volatile var snapshotWrites = 0
         private var snapshot = false
         private var pane = ""
-        override suspend fun presentationPending(active: Boolean) { delegate?.presentationPending(active); pending = active }
+        override suspend fun presentationPending(active: Boolean, preview: Boolean) { delegate?.presentationPending(active, preview); pending = active }
         override suspend fun layout(remote: RemoteState, window: String?, pane: String?, inputTarget: String?) { delegate?.layout(remote, window, pane, inputTarget) }
         override suspend fun outputPane(pane: String, target: String) { this.pane = pane; delegate?.outputPane(pane, target) }
         override suspend fun resizeRemote(size: Size) { delegate?.resizeRemote(size) }

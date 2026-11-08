@@ -375,6 +375,38 @@ test('connection recovery keeps the previous rendered window through layout repl
   r.window.setConnectionRecovery(false);
 });
 
+test('tab reattachment keeps the last presented window frozen until native releases it', () => {
+  const r = cachedRenderer();
+  r.window.setPresentationCache(true);
+  const cache = r.body.children[0], previous = cache.firstElementChild;
+  assert.equal(cache.className, 'connection-cache presentation-cache');
+  assert.equal(cache['aria-hidden'], 'true');
+  assert.equal(cache.inert, true);
+  assert.equal(previous.id, undefined);
+  assert.equal(previous.children[0].textContent, 'previous screen');
+  r.screen.textContent = 'partial replacement';
+  r.window.setPresentationCache(true);
+  assert.equal(r.body.children.length, 1, 'repeated freezes keep the first copy');
+  assert.equal(previous.children[0].textContent, 'previous screen');
+  // The output loop toggles connection recovery independently of the reattachment freeze.
+  r.window.setConnectionRecovery(false);
+  assert.equal(r.body.children[0], cache);
+  // Pane snapshots beneath swap atomically: no reconnect fade or dim on the pane cache.
+  r.window.beginSnapshot(); r.frame();
+  const paneCache = r.root.children[0];
+  assert.ok(!paneCache.classes.has('is-recovering'));
+  r.window.endSnapshot(3); r.render(); r.frame(); r.frame();
+  assert.deepEqual(r.messages, [{ type: 'ack', id: 3 }]);
+  assert.equal(r.root.children.length, 0);
+  assert.equal(r.body.children[0], cache, 'only native presentation releases the frozen window');
+  r.window.setPresentationCache(false);
+  assert.equal(r.body.children.length, 0);
+  r.window.setPresentationCache(false);
+  r.window.setPresentationCache(true);
+  r.expire(15000);
+  assert.equal(r.body.children.length, 0, 'a missing release never leaves a stale window forever');
+});
+
 test('opt-in reconnect transition morphs differing sizes with crossfade and blur', () => {
   const r = cachedRenderer();
   r.window.setConnectionRecovery(true);

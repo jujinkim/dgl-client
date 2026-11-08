@@ -250,7 +250,8 @@ class RustClientConnection(
             Phase.Shell -> t("일반 SSH · tmux 탐지 실패"); Phase.Reconnecting -> t("연결 복구 중…"); Phase.MissingSession -> t("이전 세션이 삭제되었습니다. 직접 선택하세요.")
             else -> t("연결 종료")
         }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering,
-            derivedFlag("retry_exhausted"), presenting = presentation.pending)
+            derivedFlag("retry_exhausted"), presenting = presentation.pending,
+            presentingPreview = presentation.pending && presentation.preview)
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         if (phase == Phase.Shell) tmuxOutput = false
         else if (phase in setOf(Phase.Ready, Phase.Restoring) && session.value != null) tmuxOutput = true
@@ -310,7 +311,10 @@ class RustClientConnection(
         outputFailed = false
         recovery.bind(id.toLong())
         presentation.bind(id.toLong())
-        status.value = status.value.copy(presenting = true)
+        // Observe the current window now, so the renderer knows before its first frame whether
+        // this is a reattachment to the window it presented last (keep that frame visible).
+        applyState(stateOf(c))
+        status.value = status.value.copy(presenting = true, presentingPreview = presentation.pending && presentation.preview)
         val current = epoch
         trace("output-bind")
         outputJob = launchTerminalOutput(scope, previous, consume = {
@@ -318,18 +322,19 @@ class RustClientConnection(
             var layoutSequence = ""
             var preserving: Boolean? = null
             var presentationApplied = true
-            terminal.presentationPending(true)
+            var previewApplied = synchronized(this@RustClientConnection) { presentation.preview }
+            terminal.presentationPending(true, previewApplied)
             terminal.cancelSnapshot()
             while (isActive && current == epoch) {
                 val state = stateOf(c)
                 synchronized(this@RustClientConnection) {
                     if (current == epoch && subscription == id) applyState(state)
                 }
-                val pending = synchronized(this@RustClientConnection) { presentation.pending }
+                val (pending, preview) = synchronized(this@RustClientConnection) { presentation.pending to presentation.preview }
                 val presentationCycle = synchronized(this@RustClientConnection) { presentation.cycle }
-                if (pending != presentationApplied) {
-                    terminal.presentationPending(pending)
-                    presentationApplied = pending
+                if (pending != presentationApplied || (pending && preview != previewApplied)) {
+                    terminal.presentationPending(pending, preview)
+                    presentationApplied = pending; previewApplied = preview
                 }
                 val preserve = synchronized(this@RustClientConnection) { recovery.pending } ||
                     state["phase"]?.jsonPrimitive?.content == "Reconnecting" ||
@@ -434,6 +439,7 @@ class RustClientConnection(
                     val preserve = synchronized(this@RustClientConnection) { surface === terminal && recovery.pending }
                     // Freeze the visible snapshot cache before cancelling it.
                     if (preserve) terminal.connectionRecovery(true)
+                    terminal.releasePresentationCache()
                     terminal.cancelSnapshot()
                     if (!preserve) terminal.connectionRecovery(false)
                 }
@@ -452,7 +458,7 @@ class RustClientConnection(
         if (id == null || current != epoch || native !== c || subscription != id) return
         c.unsubscribe(id)
         subscription = null; snapshotRequest = null; recovery.unbind(); presentation.unbind()
-        status.value = status.value.copy(presenting = false)
+        status.value = status.value.copy(presenting = false, presentingPreview = false)
         trace("output-release id=$id")
     }
     // Called under the adapter lock. State Ready alone says capture/enqueue is done,
@@ -472,12 +478,12 @@ class RustClientConnection(
             snapshotRequest != null || outputFailed || status.value.checking)
     }
     private suspend fun presentIfReady(c: NativeConnection, terminal: TerminalSurface, id: ULong, current: Long): Boolean {
-        val cycle = synchronized(this) {
+        val (cycle, preview) = synchronized(this) {
             val cycle = presentation.cycle
             if (!canPresent(c, id, current, cycle)) return false
-            cycle
+            cycle to presentation.preview
         }
-        terminal.presentationPending(false)
+        terminal.presentationPending(false, preview)
         currentCoroutineContext().ensureActive()
         val presented = synchronized(this) {
             if (surface !== terminal || !canPresent(c, id, current, cycle)) false
@@ -488,7 +494,9 @@ class RustClientConnection(
                 true
             }
         }
-        if (!presented) terminal.presentationPending(true)
+        // Keep the frozen preview until presentation is confirmed; releasing it earlier and then
+        // re-freezing on a lost race would capture a partially restored screen.
+        if (!presented) terminal.presentationPending(true, preview) else terminal.releasePresentationCache()
         return presented
     }
     private fun failOutput(c: NativeConnection, id: ULong?, current: Long) {

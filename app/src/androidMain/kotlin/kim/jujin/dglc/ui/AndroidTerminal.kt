@@ -17,6 +17,7 @@ import android.webkit.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.foundation.background
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.semantics.contentDescription
@@ -275,8 +277,9 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     DisposableEffect(terminal) {
         entry.visible = true
         client.bindSurface(terminal)
-        // Cover a retained WebView before its very first reattachment frame.
-        terminal.preparePresentation(client.status.value.presenting)
+        // Cover a retained WebView before its very first reattachment frame, or keep its frozen
+        // last frame when it reattaches to the window it presented last.
+        client.status.value.let { terminal.preparePresentation(it.presenting, it.presentingPreview) }
         if (entry.restoreIme && client.status.value.acceptsInput) {
             entry.restoreIme = false
             terminal.view.post { terminal.view.postOnAnimation {
@@ -288,12 +291,21 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             entry.visible = false; client.unbindSurface(terminal)
             entry.selection = null; terminal.clearSelection()
             terminal.preparePresentation(true)
+            terminal.releasePresentationFrame()
             if (resources == null) terminal.close()
         }
     }
     LaunchedEffect(terminal, preferences.fontSize, preferences.terminalFontFamily, preferences.scrollback, preferences.effectiveAndroidKeyboardMode) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
     val presenting = terminal.screenPending || status.presenting
+    // A reattachment keeps the tab's last frame; only failures still need the opaque curtain.
+    val presentationNotice = status.canRetryNow || status.phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired)
+    val previewing = presenting && terminal.presentationPreview && !presentationNotice
+    var previewSlow by remember(terminal) { mutableStateOf(false) }
+    LaunchedEffect(terminal, previewing) {
+        previewSlow = false
+        if (previewing) { delay(250); previewSlow = true }
+    }
     val fontOverride by terminal.fontSizeOverride.collectAsState()
     val occlusion = LocalTerminalOcclusion.current
     var terminalBounds by remember { mutableStateOf(Rect.Zero) }
@@ -328,10 +340,14 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                 }
             }
         }
-        if (presenting) {
+        if (previewing) {
+            if (previewSlow) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .25f)), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(28.dp).semantics { contentDescription = t("터미널 복원 중…") },
+                    color = Color.White, strokeWidth = 3.dp)
+            }
+        } else if (presenting) {
             Box(Modifier.fillMaxSize().background(Color(0xff11151b)), contentAlignment = Alignment.Center) {
-                Text(if (status.canRetryNow || status.phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired)) status.message
-                    else t("터미널 복원 중…"), color = Color.White, modifier = Modifier.padding(24.dp))
+                Text(if (presentationNotice) status.message else t("터미널 복원 중…"), color = Color.White, modifier = Modifier.padding(24.dp))
             }
         }
         status.recoveryMessage?.takeUnless { status.retryExhausted || presenting }?.let { message ->
@@ -406,16 +422,29 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private val selection: (TerminalSelection?) -> Unit = {},
     private val userInput: () -> Unit = {}) : TerminalSurface {
     var screenPending by mutableStateOf(false); private set
+    /** A reattachment shows the frozen last frame (input still blocked) instead of the curtain. */
+    var presentationPreview by mutableStateOf(false); private set
     internal var editorFocused = false; private set
     internal var keyboardFocusChanged: () -> Unit = {}
-    fun preparePresentation(active: Boolean) {
-        screenPending = active
+    fun preparePresentation(active: Boolean, preview: Boolean = false) {
+        val keep = active && preview
+        screenPending = active && !keep
+        presentationPreview = keep
         view.importantForAccessibility = if (active) android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             else android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        // Freeze before any reattachment layout/reset reaches the page; repeated calls keep the first copy.
+        if (keep && !closed && ready.isCompleted) view.evaluateJavascript("window.setPresentationCache(true)", null)
         view.invalidate()
     }
-    override suspend fun presentationPending(active: Boolean) {
-        withContext(Dispatchers.Main.immediate) { if (!closed) preparePresentation(active) }
+    /** Releases the frozen frame. Only after presentation is confirmed, on cleanup, or on detach. */
+    fun releasePresentationFrame() {
+        if (!closed && ready.isCompleted) view.evaluateJavascript("window.setPresentationCache(false)", null)
+    }
+    override suspend fun presentationPending(active: Boolean, preview: Boolean) {
+        withContext(Dispatchers.Main.immediate) { if (!closed) preparePresentation(active, preview) }
+    }
+    override suspend fun releasePresentationCache() {
+        withContext(Dispatchers.Main.immediate) { releasePresentationFrame() }
     }
     val fontSizeOverride get() = font.overrideSize
     private var scrollback = preferences.scrollback.coerceIn(100, 10000)

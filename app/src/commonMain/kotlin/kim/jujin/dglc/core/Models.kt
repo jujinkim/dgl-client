@@ -78,6 +78,8 @@ data class ConnectionStatus(
     val recovering: Boolean = false,
     val retryExhausted: Boolean = false,
     val presenting: Boolean = false,
+    /** While [presenting], the renderer keeps this tab's last frame visible instead of a curtain. */
+    val presentingPreview: Boolean = false,
 ) {
     val acceptsInput get() = !checking && !recovering && !presenting && (phase == Phase.Ready || phase == Phase.Shell || (phase == Phase.Restoring && resizing && !canStopRetrying))
     val acceptsPointer get() = acceptsInput && !resizing
@@ -101,8 +103,13 @@ interface CredentialStore {
 
 /** write completes only when bytes have been accepted by a bounded renderer queue. */
 interface TerminalSurface {
-    /** Hide a switching window until all of its current panes have painted. */
-    suspend fun presentationPending(active: Boolean) {}
+    /**
+     * Hide a switching window until all of its current panes have painted. With [preview] the
+     * renderer freezes and keeps showing its last frame of the same window instead of a curtain.
+     */
+    suspend fun presentationPending(active: Boolean, preview: Boolean = false) {}
+    /** Drop the frozen preview frame once the fresh window has been presented, or when unbinding. */
+    suspend fun releasePresentationCache() {}
     /** Keep the last rendered window visible while a connection restores its panes. */
     suspend fun connectionRecovery(active: Boolean) {}
     suspend fun layout(remote: RemoteState, window: String?, pane: String?, inputTarget: String?) {}
