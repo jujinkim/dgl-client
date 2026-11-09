@@ -702,6 +702,9 @@ impl Desktop {
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
         let button = self.button_base(id, cx, action);
+        self.labelled(button, label)
+    }
+    fn labelled(&self, button: Stateful<Div>, label: impl Into<ButtonLabel>) -> Stateful<Div> {
         match label.into() {
             ButtonLabel::Text(text) => self.outlined(button).child(text),
             ButtonLabel::Icon(icon) => button
@@ -746,7 +749,18 @@ impl Desktop {
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
-        self.styled_button(id, cx, action, false)
+        self.styled_button(id, cx, action, false, false)
+    }
+    /// A plain button whose hover also outlines it in the accent, for controls that sit on
+    /// a `selection` background where the usual hover fill would not show.
+    fn outline_hover_button(
+        &self,
+        id: impl Into<SharedString>,
+        outline: bool,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Stateful<Div> {
+        self.styled_button(id, cx, action, false, outline)
     }
     fn styled_button(
         &self,
@@ -754,6 +768,7 @@ impl Desktop {
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
         bottom: bool,
+        outline_hover: bool,
     ) -> Stateful<Div> {
         let id = id.into();
         let palette = self.palette;
@@ -775,6 +790,8 @@ impl Desktop {
                 let s = s.bg(rgb(palette.selection)).text_color(rgb(palette.fg));
                 if bottom {
                     s.border_color(rgb(palette.selection))
+                } else if outline_hover {
+                    s.border_color(rgb(palette.accent))
                 } else {
                     s
                 }
@@ -810,7 +827,8 @@ impl Desktop {
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
-        self.styled_button(id, cx, action, true).child(label.into())
+        self.styled_button(id, cx, action, true, false)
+            .child(label.into())
     }
     fn accept_name(&mut self, cx: &mut Context<Self>) {
         let Some(Dialog::Prompt {

@@ -10,9 +10,26 @@ pub(crate) struct PointerState {
     pub resizing: Option<Vec<bool>>,
     pub split_bounds: HashMap<Vec<bool>, Bounds<Pixels>>,
     pub group_bounds: HashMap<GroupId, Bounds<Pixels>>,
+    /// Horizontal scroll of each group's tab strip, read by its display-only scrollbar.
+    pub tab_scroll: HashMap<GroupId, ScrollHandle>,
 }
 
 const TAB_BAR_HEIGHT: f32 = 48.;
+const TAB_SCROLLBAR_HEIGHT: f32 = 2.;
+const TAB_SCROLLBAR_MIN_THUMB: f32 = 24.;
+
+/// The thumb's `(left, width)` inside a `viewport`-wide track, or `None` when nothing overflows.
+/// `offset` is the scroll offset, which runs from 0 down to `-max_offset`.
+pub(crate) fn scroll_thumb(viewport: f32, max_offset: f32, offset: f32) -> Option<(f32, f32)> {
+    if viewport <= 0. || max_offset <= 0.5 {
+        return None;
+    }
+    let width = (viewport * viewport / (viewport + max_offset))
+        .max(TAB_SCROLLBAR_MIN_THUMB)
+        .min(viewport);
+    let progress = (-offset / max_offset).clamp(0., 1.);
+    Some((progress * (viewport - width), width))
+}
 
 #[derive(Clone, Copy)]
 struct TabDropTarget {
@@ -868,12 +885,18 @@ impl Desktop {
         let selected = group.selected;
         let ids = group.tabs.clone();
         let entity = cx.entity();
+        let groups = &self.workspace.groups;
+        self.pointer
+            .tab_scroll
+            .retain(|g, _| groups.contains_key(g));
+        let scroll = self.pointer.tab_scroll.entry(id).or_default().clone();
         let mut header = div()
             .id(SharedString::from(format!("group-tabs-{id}")))
             .flex_1()
             .min_w_0()
-            .h_full()
+            .min_h_0()
             .overflow_x_scroll()
+            .track_scroll(&scroll)
             .flex()
             .items_center()
             .on_drop(cx.listener(move |s, tab: &DragTab, w, cx| {
@@ -888,22 +911,33 @@ impl Desktop {
             let menu = format!("tab-menu-{tab_id}");
             let toggle = menu.clone();
             let drag_view = cx.entity();
+            // The selected tab already wears `selection`, so its hovered control gets an outline.
+            let is_selected = selected == Some(tab_id);
             header = header.child(
                 div()
+                    .id(SharedString::from(format!("tab-item-{tab_id}")))
+                    .debug_selector(move || format!("tab-item-{tab_id}"))
                     .flex()
                     .flex_shrink_0()
                     .border_b_2()
-                    .border_color(if selected == Some(tab_id) {
+                    .border_color(if is_selected {
                         rgb(p.accent)
                     } else {
                         rgb(p.line)
                     })
-                    .when(selected == Some(tab_id), |d| d.bg(rgb(p.selection)))
+                    .when(is_selected, |d| d.bg(rgb(p.selection)))
+                    // A hovered tab is tinted weakly; the control under the cursor adds `selection`.
+                    .when(!is_selected, |d| d.hover(move |s| s.bg(rgb(p.hover))))
                     .child(
-                        self.button_base(format!("tab-{tab_id}"), cx, move |s, w, cx| {
-                            s.workspace.select(id, tab_id);
-                            s.group_focus(id, w, cx);
-                        })
+                        self.outline_hover_button(
+                            format!("tab-{tab_id}"),
+                            is_selected,
+                            cx,
+                            move |s, w, cx| {
+                                s.workspace.select(id, tab_id);
+                                s.group_focus(id, w, cx);
+                            },
+                        )
                         .h_full()
                         .flex()
                         .flex_col()
@@ -943,17 +977,61 @@ impl Desktop {
                             },
                         )),
                     )
-                    .child(self.button(menu.clone(), UiIcon::More, cx, move |s, _, _| {
-                        s.toggle_menu(toggle.clone())
-                    }))
-                    .child(self.button(
-                        format!("close-{tab_id}"),
+                    .child(self.labelled(
+                        self.outline_hover_button(menu.clone(), is_selected, cx, move |s, _, _| {
+                            s.toggle_menu(toggle.clone())
+                        }),
+                        UiIcon::More,
+                    ))
+                    .child(self.labelled(
+                        self.outline_hover_button(
+                            format!("close-{tab_id}"),
+                            is_selected,
+                            cx,
+                            move |s, _, _| s.close_tab(tab_id),
+                        ),
                         UiIcon::Close,
-                        cx,
-                        move |s, _, _| s.close_tab(tab_id),
                     )),
             );
         }
+        // Display-only: the track has no handlers, so pressing it does nothing.
+        let thumb_color = rgb(p.control_border);
+        let header = div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(
+                div()
+                    .debug_selector(move || format!("tab-scrollbar-{id}"))
+                    .w_full()
+                    .h(px(TAB_SCROLLBAR_HEIGHT))
+                    .flex_shrink_0()
+                    .child(
+                        canvas(
+                            |_, _, _| {},
+                            move |bounds, _, window, _| {
+                                // Read at paint time so the thumb matches this frame's layout.
+                                let viewport = f32::from(scroll.bounds().size.width);
+                                let max = f32::from(scroll.max_offset().width);
+                                let offset = f32::from(scroll.offset().x);
+                                if let Some((left, width)) = scroll_thumb(viewport, max, offset) {
+                                    let thumb = Bounds::new(
+                                        point(bounds.left() + px(left), bounds.top()),
+                                        size(px(width), bounds.size.height),
+                                    );
+                                    window.paint_quad(
+                                        fill(thumb, thumb_color)
+                                            .corner_radii(px(TAB_SCROLLBAR_HEIGHT / 2.)),
+                                    );
+                                }
+                            },
+                        )
+                        .size_full(),
+                    ),
+            );
         let bounds = self
             .pointer
             .group_bounds

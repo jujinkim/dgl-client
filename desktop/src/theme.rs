@@ -12,6 +12,8 @@ pub struct Palette {
     pub accent_fill: u32,
     pub on_accent: u32,
     pub selection: u32,
+    /// Weak hover tint between the panel and `selection`, for a hovered container.
+    pub hover: u32,
     pub input: u32,
 }
 impl Palette {
@@ -29,6 +31,7 @@ impl Palette {
                 accent_fill: 0x75aaff,
                 on_accent: 0x000000,
                 selection: 0x2b4264,
+                hover: dgl_core::accent::blend(0x2b4264, 0x25262a, 0.5),
                 input: 0x202125,
             }
         } else {
@@ -44,6 +47,7 @@ impl Palette {
                 accent_fill: 0x2468c9,
                 on_accent: 0xffffff,
                 selection: 0xdbe9ff,
+                hover: dgl_core::accent::blend(0xdbe9ff, 0xeeeef0, 0.5),
                 input: 0xffffff,
             }
         }
@@ -79,6 +83,7 @@ mod tests {
                 ] {
                     assert!(contrast(system.accent, bg) >= 4.5);
                     assert!(contrast(system.fg, system.selection) >= 4.5);
+                    assert!(contrast(system.fg, system.hover) >= 4.5);
                 }
                 let custom = AccentSettings {
                     mode: "custom".into(),
@@ -109,6 +114,7 @@ impl Palette {
         if raw != p.accent_fill {
             p.selection = blend(raw, p.bg, 0.22);
         }
+        p.hover = blend(p.selection, p.panel, 0.5);
         p.accent_fill = raw;
         p.on_accent = on_color(raw);
         p.accent = readable(

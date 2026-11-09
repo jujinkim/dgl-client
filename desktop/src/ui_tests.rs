@@ -2144,6 +2144,79 @@ fn split_emoji_buttons_stay_at_right_of_overflowing_tab_bar(cx: &mut TestAppCont
     assert_eq!(view.read_with(cx, |s, _| s.workspace.groups.len()), 1);
 }
 
+#[test]
+fn tab_scrollbar_thumb_tracks_the_overflow_and_offset() {
+    use super::workspace_ui::scroll_thumb;
+    assert_eq!(scroll_thumb(400., 0., 0.), None);
+    assert_eq!(scroll_thumb(0., 100., 0.), None);
+    assert_eq!(scroll_thumb(400., 400., 0.), Some((0., 200.)));
+    assert_eq!(scroll_thumb(400., 400., -200.), Some((100., 200.)));
+    assert_eq!(scroll_thumb(400., 400., -400.), Some((200., 200.)));
+    // Out-of-range offsets stay inside the track, and long strips keep a visible thumb.
+    assert_eq!(scroll_thumb(400., 400., 50.), Some((0., 200.)));
+    assert_eq!(scroll_thumb(400., 400., -900.), Some((200., 200.)));
+    assert_eq!(scroll_thumb(400., 100_000., -100_000.), Some((376., 24.)));
+}
+
+#[gpui::test]
+fn overflowing_tab_bar_shows_a_display_only_scrollbar(cx: &mut TestAppContext) {
+    use super::workspace_ui::scroll_thumb;
+    let (view, cx) = setup(cx);
+    add_terminal(&view, cx);
+    cx.simulate_resize(gpui::size(px(640.), px(480.)));
+    redraw(cx);
+    let thumb = |view: &Entity<Desktop>, cx: &mut VisualTestContext| {
+        let scroll = view.read_with(cx, |s, _| s.pointer.tab_scroll[&1].clone());
+        scroll_thumb(
+            f32::from(scroll.bounds().size.width),
+            f32::from(scroll.max_offset().width),
+            f32::from(scroll.offset().x),
+        )
+    };
+    assert_eq!(thumb(&view, cx), None);
+    for _ in 0..8 {
+        add_terminal(&view, cx);
+    }
+    redraw(cx);
+    let header = cx.debug_bounds("group-header-1").unwrap();
+    let track = cx.debug_bounds("tab-scrollbar-1").unwrap();
+    let tab = cx.debug_bounds("tab-item-1").unwrap();
+    assert!((f32::from(header.bottom() - track.bottom())).abs() <= 1.);
+    assert_eq!(track.size.height, px(2.));
+    // The tab keeps its full height above the track instead of overflowing the bar.
+    assert!(tab.top() >= header.top() - px(1.) && tab.bottom() <= track.top());
+    let (left, width) = thumb(&view, cx).unwrap();
+    assert_eq!(left, 0.);
+    assert!(width < f32::from(track.size.width));
+    cx.simulate_event(ScrollWheelEvent {
+        position: tab.center(),
+        delta: ScrollDelta::Pixels(point(px(-200.), px(0.))),
+        modifiers: Modifiers::default(),
+        touch_phase: TouchPhase::Moved,
+    });
+    redraw(cx);
+    assert!(thumb(&view, cx).unwrap().0 > 0.);
+    // Pressing the track neither selects a tab nor moves the strip.
+    let before = view.read_with(cx, |s, _| {
+        (
+            s.workspace.groups[&1].selected,
+            s.pointer.tab_scroll[&1].offset(),
+        )
+    });
+    cx.simulate_click(
+        point(track.left() + px(4.), track.center().y),
+        Modifiers::default(),
+    );
+    redraw(cx);
+    let after = view.read_with(cx, |s, _| {
+        (
+            s.workspace.groups[&1].selected,
+            s.pointer.tab_scroll[&1].offset(),
+        )
+    });
+    assert_eq!(before, after);
+}
+
 #[gpui::test]
 fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext) {
     let (view, cx) = setup(cx);
