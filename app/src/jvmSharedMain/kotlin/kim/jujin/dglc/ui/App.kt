@@ -455,13 +455,13 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     selectTarget: (String, String?, String?) -> Unit = client::selectTarget) {
     val actions = buildList<Pair<String, () -> Unit>> {
         if (row.kind == TreeKind.Session) {
-            add(t("창 만들기") to { prompt(NamePrompt(t("창 만들기")) { client.manage(TmuxCommand.newWindow(row.session, it)) }) })
-            add(t("세션 이름 변경") to { prompt(NamePrompt(t("세션 이름 변경"), remote.sessions.firstOrNull { it.id == row.session }?.name.orEmpty()) {
+            add(t("창 만들기…") to { prompt(NamePrompt(t("창 만들기")) { client.manage(TmuxCommand.newWindow(row.session, it)) }) })
+            add(t("세션 이름 변경…") to { prompt(NamePrompt(t("세션 이름 변경"), remote.sessions.firstOrNull { it.id == row.session }?.name.orEmpty()) {
                 client.manage(TmuxCommand.renameSession(row.session, it)) }) })
             add(t("세션 삭제…") to { delete(tr("세션 {0}", row.label.title)) { client.manage(TmuxCommand.killSession(row.session)) } })
         }
         if (row.kind != TreeKind.Pane) row.window?.let { w ->
-            add(t("창 이름 변경") to { prompt(NamePrompt(t("창 이름 변경"), remote.windows.firstOrNull { it.id == w }?.name.orEmpty()) {
+            add(t("창 이름 변경…") to { prompt(NamePrompt(t("창 이름 변경"), remote.windows.firstOrNull { it.id == w }?.name.orEmpty()) {
                 client.manage(TmuxCommand.renameWindow(w, it)) }) })
             add(t("창 삭제…") to { delete(t("창")) { client.manage(TmuxCommand.killWindow(w)) } })
         }
@@ -469,7 +469,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             listOf(true to t("패널 좌우 나누기"), false to t("패널 상하 나누기")).forEach { (horizontal, label) ->
                 add(label to { client.selectTarget(row.session, row.window, p); client.manage(TmuxCommand.split(p, horizontal)) })
             }
-            add(t("패널 제목 변경") to { prompt(NamePrompt(t("패널 제목 변경"), remote.panes.firstOrNull { it.id == p }?.title.orEmpty()) {
+            add(t("패널 제목 변경…") to { prompt(NamePrompt(t("패널 제목 변경"), remote.panes.firstOrNull { it.id == p }?.title.orEmpty()) {
                 client.manage(TmuxCommand.renamePane(p, it)) }) })
             add(t("패널 삭제…") to { delete(tr("패널 {0}", row.label.title)) { client.manage(TmuxCommand.killPane(p)) } })
         }

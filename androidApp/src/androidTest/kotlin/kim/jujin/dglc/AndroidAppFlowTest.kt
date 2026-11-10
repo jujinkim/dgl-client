@@ -222,7 +222,7 @@ class AndroidAppFlowTest {
                 clickText("tmux 관리")
                 stage = "session expand"
                 clickMatching { it.contentDescription?.toString()?.let { text -> text.startsWith("$name\n") && text.endsWith(" 메뉴") } == true }
-                clickText("창 만들기")
+                clickText("창 만들기…")
                 stage = "GUI name editor"
                 // Wait for the dialog window; the terminal itself also exposes an
                 // editable textarea and must not receive the test's name input.

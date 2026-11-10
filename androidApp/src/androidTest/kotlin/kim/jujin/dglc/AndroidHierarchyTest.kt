@@ -77,7 +77,7 @@ class AndroidHierarchyTest {
                 await(compact)
                 assertNull(node("$compact 펼치기"))
                 click("$compact 메뉴")
-                listOf("창 만들기", "세션 이름 변경", "세션 삭제…", "창 이름 변경", "창 삭제…").forEach { await(it) }
+                listOf("창 만들기…", "세션 이름 변경…", "세션 삭제…", "창 이름 변경…", "창 삭제…").forEach { await(it) }
                 instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
                 await(compact)
                 val badge = awaitPrefix("창 에이전트 상태 ·")

@@ -1687,7 +1687,7 @@ impl Desktop {
             let add = row.session.clone();
             menu = menu.child(self.button(
                 format!("new-window-{add}"),
-                t("창 만들기"),
+                t("창 만들기…"),
                 cx,
                 move |s, _, cx| {
                     s.menu = None;
@@ -1697,7 +1697,7 @@ impl Desktop {
             let target = row.session.clone();
             menu = menu.child(self.button(
                 format!("rename-session-{target}"),
-                t("세션 이름 변경"),
+                t("세션 이름 변경…"),
                 cx,
                 move |s, _, cx| {
                     s.menu = None;
@@ -1725,7 +1725,7 @@ impl Desktop {
             let target = window.clone();
             menu = menu.child(self.button(
                 format!("rename-{target}"),
-                t("창 이름 변경"),
+                t("창 이름 변경…"),
                 cx,
                 move |s, _, cx| {
                     s.menu = None;
@@ -1798,7 +1798,7 @@ impl Desktop {
             let target = pane.clone();
             menu = menu.child(self.button(
                 format!("rename-pane-{target}"),
-                t("패널 제목 변경"),
+                t("패널 제목 변경…"),
                 cx,
                 move |s, _, cx| {
                     s.menu = None;
