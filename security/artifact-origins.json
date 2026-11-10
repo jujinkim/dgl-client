@@ -91,6 +91,12 @@
       "source": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.7.0-beta01/annotation-jvm-1.7.0-beta01.module"
     },
     {
+      "coordinate": "androidx.annotation:annotation-jvm:1.9.1",
+      "artifact": "annotation-jvm-1.9.1-sources.jar",
+      "sha256": "c6ae897fbfb73ca09d4ae31a24bfff85c652097ad10644cdbb738488728cb39b",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.9.1/annotation-jvm-1.9.1-sources.jar"
+    },
+    {
       "coordinate": "androidx.annotation:annotation:1.1.0",
       "artifact": "annotation-1.1.0.pom",
       "sha256": "2e9372ba7780ef44952adbf86b66e1f08682c1e5277c926185f6564a13799efe",
@@ -103,10 +109,28 @@
       "source": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation/1.7.0-beta01/annotation-1.7.0-beta01.module"
     },
     {
+      "coordinate": "androidx.annotation:annotation:1.9.1",
+      "artifact": "annotation-1.9.1-sources.jar",
+      "sha256": "4560d6790c5174f4a6f1170fd8bd4c38ad918608fedd624fb67a35cd1a0f4e3a",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation/1.9.1/annotation-1.9.1-sources.jar"
+    },
+    {
       "coordinate": "androidx.arch.core:core-common:2.0.0",
       "artifact": "core-common-2.0.0.pom",
       "sha256": "4b6f1d459ddd146b4e85ed6d46e86eb8c2639c5de47904e6db4d698721334220",
       "source": "https://dl.google.com/dl/android/maven2/androidx/arch/core/core-common/2.0.0/core-common-2.0.0.pom"
+    },
+    {
+      "coordinate": "androidx.arch.core:core-common:2.2.0",
+      "artifact": "core-common-2.2.0-sources.jar",
+      "sha256": "563d430880d847890029234386ef03adb95403c34f3c9dec3a7002e2f4007ae4",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/arch/core/core-common/2.2.0/core-common-2.2.0-sources.jar"
+    },
+    {
+      "coordinate": "androidx.collection:collection-jvm:1.5.0",
+      "artifact": "collection-jvm-1.5.0-sources.jar",
+      "sha256": "bcc6197ec5fb349e86ae3ba6c94b164d3a9ac5a03d9f9c235d7c4eb24e5878b3",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/collection/collection-jvm/1.5.0/collection-jvm-1.5.0-sources.jar"
     },
     {
       "coordinate": "androidx.collection:collection:1.0.0",
@@ -121,10 +145,52 @@
       "source": "https://dl.google.com/dl/android/maven2/androidx/collection/collection/1.0.0/collection-1.0.0.pom"
     },
     {
+      "coordinate": "androidx.collection:collection:1.5.0",
+      "artifact": "collection-1.5.0-sources.jar",
+      "sha256": "8664c27604f69a439a7c0755c2b6e9f82b6c74c815804f07750fc9a8b5743209",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/collection/collection/1.5.0/collection-1.5.0-sources.jar"
+    },
+    {
+      "coordinate": "androidx.compose.runtime:runtime-annotation-jvm:1.9.4",
+      "artifact": "runtime-annotation-jvm-1.9.4-sources.jar",
+      "sha256": "fb61a54502ea77472b8a2c751c5a62d0773389611b4987bdf63d1ad90f20209d",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-annotation-jvm/1.9.4/runtime-annotation-jvm-1.9.4-sources.jar"
+    },
+    {
+      "coordinate": "androidx.compose.runtime:runtime-annotation:1.9.4",
+      "artifact": "runtime-annotation-1.9.4-sources.jar",
+      "sha256": "fb61a54502ea77472b8a2c751c5a62d0773389611b4987bdf63d1ad90f20209d",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-annotation/1.9.4/runtime-annotation-1.9.4-sources.jar"
+    },
+    {
+      "coordinate": "androidx.compose.runtime:runtime-desktop:1.9.4",
+      "artifact": "runtime-desktop-1.9.4-sources.jar",
+      "sha256": "05e9e29e2a93cb75cb34819ed12f043910c73d334b67c431d89dc1aba1b121d0",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-desktop/1.9.4/runtime-desktop-1.9.4-sources.jar"
+    },
+    {
       "coordinate": "androidx.compose.runtime:runtime-saveable-desktop:1.7.0",
       "artifact": "runtime-saveable-desktop-1.7.0.module",
       "sha256": "1743735da40e39b36a2ac1593a10e9d385e8eec8142a67a72a7cb4b1eae9bda2",
       "source": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-saveable-desktop/1.7.0/runtime-saveable-desktop-1.7.0.module"
+    },
+    {
+      "coordinate": "androidx.compose.runtime:runtime-saveable-desktop:1.9.4",
+      "artifact": "runtime-saveable-desktop-1.9.4-sources.jar",
+      "sha256": "3146401eaceabc4459ba7541f286d383c4cd8887508f97dbe439cfd97b6aee7c",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-saveable-desktop/1.9.4/runtime-saveable-desktop-1.9.4-sources.jar"
+    },
+    {
+      "coordinate": "androidx.compose.runtime:runtime-saveable:1.9.4",
+      "artifact": "runtime-saveable-1.9.4-sources.jar",
+      "sha256": "3146401eaceabc4459ba7541f286d383c4cd8887508f97dbe439cfd97b6aee7c",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime-saveable/1.9.4/runtime-saveable-1.9.4-sources.jar"
+    },
+    {
+      "coordinate": "androidx.compose.runtime:runtime:1.9.4",
+      "artifact": "runtime-1.9.4-sources.jar",
+      "sha256": "a8af436829e801385e2e52e00e13283bcb1cdb1799e76beb5c9498b1955afd46",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/compose/runtime/runtime/1.9.4/runtime-1.9.4-sources.jar"
     },
     {
       "coordinate": "androidx.compose.ui:ui-android:1.9.0",
@@ -278,6 +344,12 @@
     },
     {
       "coordinate": "androidx.databinding:databinding-common:9.3.3",
+      "artifact": "databinding-common-9.3.3-sources.jar",
+      "sha256": "1fffe5f560c73547df8c451fe47a7943463be3a8bbe72b9c49683fde9ab2fe21",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/databinding/databinding-common/9.3.3/databinding-common-9.3.3-sources.jar"
+    },
+    {
+      "coordinate": "androidx.databinding:databinding-common:9.3.3",
       "artifact": "databinding-common-9.3.3.jar",
       "sha256": "82816382a2a9dec4f0ab17c79cef08a9e4fe4b97d896ac20d7f215b6dd788b18",
       "source": "https://dl.google.com/dl/android/maven2/androidx/databinding/databinding-common/9.3.3/databinding-common-9.3.3.jar"
@@ -287,6 +359,12 @@
       "artifact": "databinding-common-9.3.3.pom",
       "sha256": "21d9c32cd0bc87455bde8deb0e8b838d96d5e7afc51a7a57e9c1f46ac87805c1",
       "source": "https://dl.google.com/dl/android/maven2/androidx/databinding/databinding-common/9.3.3/databinding-common-9.3.3.pom"
+    },
+    {
+      "coordinate": "androidx.databinding:databinding-compiler-common:9.3.3",
+      "artifact": "databinding-compiler-common-9.3.3-sources.jar",
+      "sha256": "98318225ff63edc652d147700d6d9f3e817e23e15e75b99a137d713797038913",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/databinding/databinding-compiler-common/9.3.3/databinding-compiler-common-9.3.3-sources.jar"
     },
     {
       "coordinate": "androidx.databinding:databinding-compiler-common:9.3.3",
@@ -313,10 +391,22 @@
       "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common-java8/2.8.7/lifecycle-common-java8-2.8.7.module"
     },
     {
+      "coordinate": "androidx.lifecycle:lifecycle-common-jvm:2.9.4",
+      "artifact": "lifecycle-common-jvm-2.9.4-sources.jar",
+      "sha256": "5764b2618dfb88b98668e5e84bec8e5af0e0c168d714687a0a3b3591f669846c",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common-jvm/2.9.4/lifecycle-common-jvm-2.9.4-sources.jar"
+    },
+    {
       "coordinate": "androidx.lifecycle:lifecycle-common:2.3.1",
       "artifact": "lifecycle-common-2.3.1.module",
       "sha256": "5fb7c8514d8c56cada5e29ef89dc0289e71942ab4cb0b2e6dca137b9dcb8fdd4",
       "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common/2.3.1/lifecycle-common-2.3.1.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-common:2.9.4",
+      "artifact": "lifecycle-common-2.9.4-sources.jar",
+      "sha256": "ee8d477281955af1a98d156fb6da3b57b4f41c7e69d3402266c8ea74674600b4",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common/2.9.4/lifecycle-common-2.9.4-sources.jar"
     },
     {
       "coordinate": "androidx.lifecycle:lifecycle-livedata-core:2.6.1",
@@ -349,10 +439,28 @@
       "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-compose-android/2.8.7/lifecycle-runtime-compose-android-2.8.7.module"
     },
     {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-compose-desktop:2.9.4",
+      "artifact": "lifecycle-runtime-compose-desktop-2.9.4-sources.jar",
+      "sha256": "aacae1df01c5f7e2a5e6d247c299ca371808ceac496cbf19f662e54a1cd83faf",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-compose-desktop/2.9.4/lifecycle-runtime-compose-desktop-2.9.4-sources.jar"
+    },
+    {
       "coordinate": "androidx.lifecycle:lifecycle-runtime-compose:2.8.7",
       "artifact": "lifecycle-runtime-compose-2.8.7.module",
       "sha256": "cc98a8849d81dab3064bc9ff871e43e91b48e0ba7d521f7c99ba26afec25657c",
       "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-compose/2.8.7/lifecycle-runtime-compose-2.8.7.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-compose:2.9.4",
+      "artifact": "lifecycle-runtime-compose-2.9.4-sources.jar",
+      "sha256": "f6104da1ef39dcd5e5e8a2c2e02bcd6dff9bf34e61326eae2c2af16bf5a204a6",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-compose/2.9.4/lifecycle-runtime-compose-2.9.4-sources.jar"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-desktop:2.9.4",
+      "artifact": "lifecycle-runtime-desktop-2.9.4-sources.jar",
+      "sha256": "00a5bf579ef186ae2c8eac89ff2d972e3581d687494af516c567accfda6e64cd",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime-desktop/2.9.4/lifecycle-runtime-desktop-2.9.4-sources.jar"
     },
     {
       "coordinate": "androidx.lifecycle:lifecycle-runtime-ktx:2.6.2",
@@ -380,9 +488,21 @@
     },
     {
       "coordinate": "androidx.lifecycle:lifecycle-runtime:2.9.4",
+      "artifact": "lifecycle-runtime-2.9.4-sources.jar",
+      "sha256": "aa288d55c9a1cd11c27671962a35ff0ee4926cf7e403f118f3f6fc2f52a2f1a3",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime/2.9.4/lifecycle-runtime-2.9.4-sources.jar"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-runtime:2.9.4",
       "artifact": "lifecycle-runtime-2.9.4.aar",
       "sha256": "142b8d22e93e4a6f3871901493c26e2bdfe1d5da1f88f2d8031d46ec6b6cc12b",
       "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime/2.9.4/lifecycle-runtime-2.9.4.aar"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-desktop:2.9.4",
+      "artifact": "lifecycle-viewmodel-desktop-2.9.4-sources.jar",
+      "sha256": "71307177192a0d228f7573847e72693e117316924d0bb5b898dee56284ed986b",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-desktop/2.9.4/lifecycle-viewmodel-desktop-2.9.4-sources.jar"
     },
     {
       "coordinate": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2",
@@ -397,6 +517,12 @@
       "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-ktx/2.8.7/lifecycle-viewmodel-ktx-2.8.7.module"
     },
     {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate-desktop:2.9.4",
+      "artifact": "lifecycle-viewmodel-savedstate-desktop-2.9.4-sources.jar",
+      "sha256": "ea63728f21ca7c883055061f3a40f8a1f5e0f356d31ac6b972d770fc43a6f249",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-savedstate-desktop/2.9.4/lifecycle-viewmodel-savedstate-desktop-2.9.4-sources.jar"
+    },
+    {
       "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.1",
       "artifact": "lifecycle-viewmodel-savedstate-2.6.1.module",
       "sha256": "dafb8649763d29c29cda27bc22fcdab9a9efc53c0fff9ae3de90882eabaa8944",
@@ -409,10 +535,22 @@
       "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-savedstate/2.6.2/lifecycle-viewmodel-savedstate-2.6.2.module"
     },
     {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate:2.9.4",
+      "artifact": "lifecycle-viewmodel-savedstate-2.9.4-sources.jar",
+      "sha256": "0858cf9b094e490f3dbb5b33ca35bcf067b1e09745bd6f294cdccea0aa2d4c7a",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel-savedstate/2.9.4/lifecycle-viewmodel-savedstate-2.9.4-sources.jar"
+    },
+    {
       "coordinate": "androidx.lifecycle:lifecycle-viewmodel:2.6.2",
       "artifact": "lifecycle-viewmodel-2.6.2.module",
       "sha256": "74e9a9ea46842a25642c91de2190ac24dcc1ea017395aae0eb250057d32699c6",
       "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel/2.6.2/lifecycle-viewmodel-2.6.2.module"
+    },
+    {
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel:2.9.4",
+      "artifact": "lifecycle-viewmodel-2.9.4-sources.jar",
+      "sha256": "cf92e89f5195e58638722e9b3f4ab9b1227c7fc517d00f30e9082024b8c44a6e",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-viewmodel/2.9.4/lifecycle-viewmodel-2.9.4-sources.jar"
     },
     {
       "coordinate": "androidx.navigationevent:navigationevent-android:1.0.0",
@@ -475,10 +613,34 @@
       "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate-compose-android/1.3.0/savedstate-compose-android-1.3.0.module"
     },
     {
+      "coordinate": "androidx.savedstate:savedstate-compose-desktop:1.3.3",
+      "artifact": "savedstate-compose-desktop-1.3.3-sources.jar",
+      "sha256": "87632984d47b10696a5b49c80c6876e0e1e65713695807959e10496b8912ba45",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate-compose-desktop/1.3.3/savedstate-compose-desktop-1.3.3-sources.jar"
+    },
+    {
+      "coordinate": "androidx.savedstate:savedstate-compose:1.3.3",
+      "artifact": "savedstate-compose-1.3.3-sources.jar",
+      "sha256": "fdd2e01a953600d5554d7d1d44fd1fcfde1c83ab070f629e8296630b281696e3",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate-compose/1.3.3/savedstate-compose-1.3.3-sources.jar"
+    },
+    {
+      "coordinate": "androidx.savedstate:savedstate-desktop:1.3.3",
+      "artifact": "savedstate-desktop-1.3.3-sources.jar",
+      "sha256": "e6d4ba23fb5155e6190ee0d6ddf05dc8b6c723fdb7c0b0dd4d0921a234e13c59",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate-desktop/1.3.3/savedstate-desktop-1.3.3-sources.jar"
+    },
+    {
       "coordinate": "androidx.savedstate:savedstate-ktx:1.3.1",
       "artifact": "savedstate-ktx-1.3.1.module",
       "sha256": "59007d8d33cf166fdfd1a9bf56ccfd212e9822c04b3a741966face5918610655",
       "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate-ktx/1.3.1/savedstate-ktx-1.3.1.module"
+    },
+    {
+      "coordinate": "androidx.savedstate:savedstate:1.3.3",
+      "artifact": "savedstate-1.3.3-sources.jar",
+      "sha256": "142c69a5c5f630ffe93b3059401a02d1016463684ceb7f9a5a27ed8b489aee3b",
+      "source": "https://dl.google.com/dl/android/maven2/androidx/savedstate/savedstate/1.3.3/savedstate-1.3.3-sources.jar"
     },
     {
       "coordinate": "androidx.startup:startup-runtime:1.0.0",
@@ -518,6 +680,12 @@
     },
     {
       "coordinate": "com.android.databinding:baseLibrary:9.3.3",
+      "artifact": "baseLibrary-9.3.3-sources.jar",
+      "sha256": "ad96bfd215758fe334d3ad7f33f9bbdb6cf931878aeaeb679c9b3e362d00419c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/databinding/baseLibrary/9.3.3/baseLibrary-9.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.databinding:baseLibrary:9.3.3",
       "artifact": "baseLibrary-9.3.3.jar",
       "sha256": "96ba2a5f000846d317acdd90de6a7429701ac56573de2ccc8423d2ba40446fd9",
       "source": "https://dl.google.com/dl/android/maven2/com/android/databinding/baseLibrary/9.3.3/baseLibrary-9.3.3.jar"
@@ -542,6 +710,12 @@
     },
     {
       "coordinate": "com.android.tools.analytics-library:crash:32.3.3",
+      "artifact": "crash-32.3.3-sources.jar",
+      "sha256": "19b696222be9f571e337ca66ed1b2728110439d896e86410fb3530a07a874816",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/crash/32.3.3/crash-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:crash:32.3.3",
       "artifact": "crash-32.3.3.jar",
       "sha256": "89e33b3eaf05e77576c88ca14a458c47dfe0735efbfa48ee18e5fa85f95f6f2a",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/crash/32.3.3/crash-32.3.3.jar"
@@ -551,6 +725,12 @@
       "artifact": "crash-32.3.3.pom",
       "sha256": "67f5150edade3b9735e099800c6f969965f44607cddbf7ee4e61d87b11875d75",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/crash/32.3.3/crash-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:protos:32.3.3",
+      "artifact": "protos-32.3.3-sources.jar",
+      "sha256": "a270acdf34a7be9118db15114446613987bacfd5943c7067d8497be186336ee0",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/protos/32.3.3/protos-32.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools.analytics-library:protos:32.3.3",
@@ -566,6 +746,12 @@
     },
     {
       "coordinate": "com.android.tools.analytics-library:shared:32.3.3",
+      "artifact": "shared-32.3.3-sources.jar",
+      "sha256": "c56b296b282be3aef95642c724f4d28b4e0c99a25a9650024172d2d0b49e174e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/shared/32.3.3/shared-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:shared:32.3.3",
       "artifact": "shared-32.3.3.jar",
       "sha256": "172a037b11dae0f2cb6b5c47a001c901afcf3631c637526f545e4517b973b68b",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/shared/32.3.3/shared-32.3.3.jar"
@@ -578,6 +764,12 @@
     },
     {
       "coordinate": "com.android.tools.analytics-library:tracker:32.3.3",
+      "artifact": "tracker-32.3.3-sources.jar",
+      "sha256": "22f324390e70a31da97216999a2e311b9f2856287af7fe55b0f8ed2376a9cece",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/32.3.3/tracker-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.analytics-library:tracker:32.3.3",
       "artifact": "tracker-32.3.3.jar",
       "sha256": "f083e82627981dbe1312b5e805e9470d26b4ff56d09ae8fddcce8f862d2e807a",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/32.3.3/tracker-32.3.3.jar"
@@ -587,6 +779,24 @@
       "artifact": "tracker-32.3.3.pom",
       "sha256": "373a0a2fbdf5f54ea7bfc8d592af2d853788293d70607994058762a320996238",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/32.3.3/tracker-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.build.jetifier:jetifier-core:1.0.0-beta10",
+      "artifact": "jetifier-core-1.0.0-beta10-sources.jar",
+      "sha256": "9b86f5a3a70d14a27363d20526276917c18e5a9d479a4eb179c2763f494ae007",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/jetifier/jetifier-core/1.0.0-beta10/jetifier-core-1.0.0-beta10-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build.jetifier:jetifier-processor:1.0.0-beta10",
+      "artifact": "jetifier-processor-1.0.0-beta10-sources.jar",
+      "sha256": "535e86bd7967d7461bd2e5520649df271bfd6be15ea9a534ce7e3adcbe6ee616",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/jetifier/jetifier-processor/1.0.0-beta10/jetifier-processor-1.0.0-beta10-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:aapt2-proto:9.3.3-15703166",
+      "artifact": "aapt2-proto-9.3.3-15703166-sources.jar",
+      "sha256": "4b0bb9f065c6826a014c06f34c111998f423875a2fdd14f711a819ad8b782b4d",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2-proto/9.3.3-15703166/aapt2-proto-9.3.3-15703166-sources.jar"
     },
     {
       "coordinate": "com.android.tools.build:aapt2-proto:9.3.3-15703166",
@@ -626,6 +836,12 @@
     },
     {
       "coordinate": "com.android.tools.build:aaptcompiler:9.3.3",
+      "artifact": "aaptcompiler-9.3.3-sources.jar",
+      "sha256": "60237e90334d6db447c37a825e35f7ff83337c1542ea0e9f0aee06b6e0484336",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aaptcompiler/9.3.3/aaptcompiler-9.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:aaptcompiler:9.3.3",
       "artifact": "aaptcompiler-9.3.3.jar",
       "sha256": "aaa3da8e958ac94c3352284224c82c0f153dcbc9376d9ddc0d8e935087849302",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aaptcompiler/9.3.3/aaptcompiler-9.3.3.jar"
@@ -635,6 +851,12 @@
       "artifact": "aaptcompiler-9.3.3.module",
       "sha256": "72ca0a3c78529484ed654c472b43f94e99016b73c4b2ef8c3fc241dd0490723a",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aaptcompiler/9.3.3/aaptcompiler-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:apksig:9.3.3",
+      "artifact": "apksig-9.3.3-sources.jar",
+      "sha256": "c7a0f43d1e40fdf39725ac090f5c7bbaeae82d1e0bfd9cf2ee507a70eb5136b5",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/9.3.3/apksig-9.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools.build:apksig:9.3.3",
@@ -650,6 +872,12 @@
     },
     {
       "coordinate": "com.android.tools.build:apkzlib:9.3.3",
+      "artifact": "apkzlib-9.3.3-sources.jar",
+      "sha256": "6a6b5982b18e3646a1d1ddd1ab1538798909af3240d87ea4d07465317e2cb0e6",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/9.3.3/apkzlib-9.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:apkzlib:9.3.3",
       "artifact": "apkzlib-9.3.3.jar",
       "sha256": "a7146985112bba9118c04b0e9745bab736a6673a8143f1467c2f3e4c262bde24",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/9.3.3/apkzlib-9.3.3.jar"
@@ -659,6 +887,12 @@
       "artifact": "apkzlib-9.3.3.pom",
       "sha256": "b110727c62a9f3fb6ce2147652272d8b62cccfe647547bbef5f27609dac23d1c",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/9.3.3/apkzlib-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder-model:9.3.3",
+      "artifact": "builder-model-9.3.3-sources.jar",
+      "sha256": "13bf2f5bdd638be3e9f862fb116d0c54ea4b6b6c5c60835ec30adc3cfbbbd4c1",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder-model/9.3.3/builder-model-9.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools.build:builder-model:9.3.3",
@@ -674,6 +908,12 @@
     },
     {
       "coordinate": "com.android.tools.build:builder-test-api:9.3.3",
+      "artifact": "builder-test-api-9.3.3-sources.jar",
+      "sha256": "0a3772d5aa670cd5f732a784524af66a898d18896f14fa8197dd9ea178f5eba3",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder-test-api/9.3.3/builder-test-api-9.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder-test-api:9.3.3",
       "artifact": "builder-test-api-9.3.3.jar",
       "sha256": "3cdf0caf8b2a104eb6239d4ea3e95a6c20ba2e76fa0ad1134c8e93e7757bd432",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder-test-api/9.3.3/builder-test-api-9.3.3.jar"
@@ -683,6 +923,12 @@
       "artifact": "builder-test-api-9.3.3.module",
       "sha256": "08ce9d9ac52e6b70d624c27d7aef97bcc55026c51244a5ccef5387ce90688865",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder-test-api/9.3.3/builder-test-api-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:builder:9.3.3",
+      "artifact": "builder-9.3.3-sources.jar",
+      "sha256": "a2423c86f77ed1715f9becf9b90e63c9806eaee69908bb41d048b9156de3792c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/builder/9.3.3/builder-9.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools.build:builder:9.3.3",
@@ -710,6 +956,12 @@
     },
     {
       "coordinate": "com.android.tools.build:gradle-api:9.3.3",
+      "artifact": "gradle-api-9.3.3-sources.jar",
+      "sha256": "f6bb5c976426836f1bd25b04a1d7bfde32d8dfc4d681ff38b86dfb6160e2790b",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-api/9.3.3/gradle-api-9.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-api:9.3.3",
       "artifact": "gradle-api-9.3.3.jar",
       "sha256": "7907d3a74613a572c4ae9dceb2946fcdc5ae50afd4d045a57bc81600c2dca83b",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-api/9.3.3/gradle-api-9.3.3.jar"
@@ -719,6 +971,12 @@
       "artifact": "gradle-api-9.3.3.module",
       "sha256": "7f2034fa8f22741aaee04ef3ca1299109a0cd5d24a46c40d9c82efb8deb57b5f",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-api/9.3.3/gradle-api-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-common-api:9.3.3",
+      "artifact": "gradle-common-api-9.3.3-sources.jar",
+      "sha256": "6bc327118717201217695378b6ebcdad1b0f09787c5989cabda1b033d724efa0",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-common-api/9.3.3/gradle-common-api-9.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools.build:gradle-common-api:9.3.3",
@@ -734,6 +992,12 @@
     },
     {
       "coordinate": "com.android.tools.build:gradle-settings-api:9.3.3",
+      "artifact": "gradle-settings-api-9.3.3-sources.jar",
+      "sha256": "b763c8c95da2786c088edb9d9d89adb8a07ca3e7e4f0698b923d593960f1ed6e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-settings-api/9.3.3/gradle-settings-api-9.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle-settings-api:9.3.3",
       "artifact": "gradle-settings-api-9.3.3.jar",
       "sha256": "22847e89f125294c301d51ee5b601bf541a4e0c53830cdcfea830046cdc62267",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-settings-api/9.3.3/gradle-settings-api-9.3.3.jar"
@@ -743,6 +1007,12 @@
       "artifact": "gradle-settings-api-9.3.3.module",
       "sha256": "761c64657dd8ca6163793bb403659f660756f56211ba92efaf6679f2c5f7b2f9",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle-settings-api/9.3.3/gradle-settings-api-9.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.build:gradle:9.3.3",
+      "artifact": "gradle-9.3.3-sources.jar",
+      "sha256": "01b85018194d61940d89b9cb89b6bc449dcb910eee56cb86b2d1bc5b783f786b",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/9.3.3/gradle-9.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools.build:gradle:9.3.3",
@@ -758,6 +1028,12 @@
     },
     {
       "coordinate": "com.android.tools.build:manifest-merger:32.3.3",
+      "artifact": "manifest-merger-32.3.3-sources.jar",
+      "sha256": "be5e9bf21d1c45c42922c53645e5f721aebdfbb7f53265ce85b7f883acab475e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/32.3.3/manifest-merger-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.build:manifest-merger:32.3.3",
       "artifact": "manifest-merger-32.3.3.jar",
       "sha256": "e35ff7aa0a4b29660d58b0a667df7b543aa85f7f1dd462a1dd2b021a3a175a30",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/32.3.3/manifest-merger-32.3.3.jar"
@@ -767,6 +1043,12 @@
       "artifact": "manifest-merger-32.3.3.module",
       "sha256": "cbc8f2bfa263af09be410566601cd758cd24d9fbe0a8e4da1cddf65628b2f3e3",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/32.3.3/manifest-merger-32.3.3.module"
+    },
+    {
+      "coordinate": "com.android.tools.ddms:ddmlib:32.3.3",
+      "artifact": "ddmlib-32.3.3-sources.jar",
+      "sha256": "f42b1724ab2a35a9dbf7d5d23d8875211191c318baf2fc262b547b6c3bb43221",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/ddms/ddmlib/32.3.3/ddmlib-32.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools.ddms:ddmlib:32.3.3",
@@ -830,6 +1112,12 @@
     },
     {
       "coordinate": "com.android.tools.layoutlib:layoutlib-api:32.3.3",
+      "artifact": "layoutlib-api-32.3.3-sources.jar",
+      "sha256": "3a8ab97846e39c1f405c05f8c084a4efd44f77d79259ebab6b2552dca3d424cc",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/layoutlib/layoutlib-api/32.3.3/layoutlib-api-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.layoutlib:layoutlib-api:32.3.3",
       "artifact": "layoutlib-api-32.3.3.jar",
       "sha256": "124f04eba80033e5080748a05797003a81c906deb5b76663abc289d009943e82",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/layoutlib/layoutlib-api/32.3.3/layoutlib-api-32.3.3.jar"
@@ -878,6 +1166,12 @@
     },
     {
       "coordinate": "com.android.tools.lint:lint-model:32.3.3",
+      "artifact": "lint-model-32.3.3-sources.jar",
+      "sha256": "5115d9c0f16a564add5e1eae155debd3e1b8b4004a4df6851285d2310c9dc056",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-model/32.3.3/lint-model-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-model:32.3.3",
       "artifact": "lint-model-32.3.3.jar",
       "sha256": "dba7719ec2ba9f7e800147dd21fb57be65e0ef315a37356f6878d81222e82fc6",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-model/32.3.3/lint-model-32.3.3.jar"
@@ -887,6 +1181,12 @@
       "artifact": "lint-model-32.3.3.pom",
       "sha256": "1e29417b6b932d02e870cae77e0339adc754be9a2e77feab7508e329fb9dbec4",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-model/32.3.3/lint-model-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools.lint:lint-typedef-remover:32.3.3",
+      "artifact": "lint-typedef-remover-32.3.3-sources.jar",
+      "sha256": "d9519caf32cacd176d06ee35adf0a9eec6a7c3e8d4d4e11c31e6c0e264529c55",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/lint/lint-typedef-remover/32.3.3/lint-typedef-remover-32.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools.lint:lint-typedef-remover:32.3.3",
@@ -1106,6 +1406,12 @@
     },
     {
       "coordinate": "com.android.tools.utp:gradle-work-action-api:32.3.3",
+      "artifact": "gradle-work-action-api-32.3.3-sources.jar",
+      "sha256": "d7281a4fee6c4308568590f9ca5c4d797a79d45e297939af00f4e84ca6aceddc",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/gradle-work-action-api/32.3.3/gradle-work-action-api-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools.utp:gradle-work-action-api:32.3.3",
       "artifact": "gradle-work-action-api-32.3.3.jar",
       "sha256": "de87773a677e87f619c751c306af6ee73a04a7b26e5f205fff287728d8af4ace",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/utp/gradle-work-action-api/32.3.3/gradle-work-action-api-32.3.3.jar"
@@ -1142,6 +1448,12 @@
     },
     {
       "coordinate": "com.android.tools:annotations:32.3.3",
+      "artifact": "annotations-32.3.3-sources.jar",
+      "sha256": "ed67d455a1b4b0ce47d32b546f19f6114e990d574b6bbf276068e79ccf92fbd7",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/annotations/32.3.3/annotations-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools:annotations:32.3.3",
       "artifact": "annotations-32.3.3.jar",
       "sha256": "32e90226ae4c7b59ed61b06689ae8356bab080cd79f6569455fd92925439a339",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/annotations/32.3.3/annotations-32.3.3.jar"
@@ -1154,6 +1466,12 @@
     },
     {
       "coordinate": "com.android.tools:common:32.3.3",
+      "artifact": "common-32.3.3-sources.jar",
+      "sha256": "12e69319878f886a348ba0cd8614d7e88b9eba8d86ba9adec7d045e169d4a6ef",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/common/32.3.3/common-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools:common:32.3.3",
       "artifact": "common-32.3.3.jar",
       "sha256": "fad897dad2dc892cb8f09a6621d34e6166738e602002ac3a7625494a64d63d7e",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/common/32.3.3/common-32.3.3.jar"
@@ -1163,6 +1481,12 @@
       "artifact": "common-32.3.3.pom",
       "sha256": "71643e03d1186a16225a90d5363557dffa34a307dd9c2227fc6bb0a22b3ef533",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/common/32.3.3/common-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools:dvlib:32.3.3",
+      "artifact": "dvlib-32.3.3-sources.jar",
+      "sha256": "7a3723c402746767c3cc3954bd533d294359c2ca638e576670967c0929fc7fac",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/dvlib/32.3.3/dvlib-32.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools:dvlib:32.3.3",
@@ -1190,6 +1514,12 @@
     },
     {
       "coordinate": "com.android.tools:repository:32.3.3",
+      "artifact": "repository-32.3.3-sources.jar",
+      "sha256": "e7d0095f96f03bfec55cb26e34c3c81b34a1b3f2e1c93af72ee5f23a5325bf7c",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/repository/32.3.3/repository-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools:repository:32.3.3",
       "artifact": "repository-32.3.3.jar",
       "sha256": "b9470bb01fbd8fcad4847e1d10967b20fa93255361c0d2b2103fc6dcff13b177",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/repository/32.3.3/repository-32.3.3.jar"
@@ -1199,6 +1529,12 @@
       "artifact": "repository-32.3.3.pom",
       "sha256": "186e56920aaab06306e850ebd2fc1a4c8276b3d99be8d06520a34fb2990c7430",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/repository/32.3.3/repository-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android.tools:sdk-common:32.3.3",
+      "artifact": "sdk-common-32.3.3-sources.jar",
+      "sha256": "7aadc0b139f22aa2983e8789c41a0ef2e325da180384639d1ac2202ba5f450af",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdk-common/32.3.3/sdk-common-32.3.3-sources.jar"
     },
     {
       "coordinate": "com.android.tools:sdk-common:32.3.3",
@@ -1214,6 +1550,12 @@
     },
     {
       "coordinate": "com.android.tools:sdklib:32.3.3",
+      "artifact": "sdklib-32.3.3-sources.jar",
+      "sha256": "f03b0cd306bbd9574041ea23e9481e1ff9a0f8876efc55b918187a37a3eac14e",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdklib/32.3.3/sdklib-32.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android.tools:sdklib:32.3.3",
       "artifact": "sdklib-32.3.3.jar",
       "sha256": "4433ca379db0a9f7bd0a5d5b931b0ac671747b10791706dc0d42a348dacbb782",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdklib/32.3.3/sdklib-32.3.3.jar"
@@ -1223,6 +1565,12 @@
       "artifact": "sdklib-32.3.3.pom",
       "sha256": "869350c798e644465ecd07ae7f778e1388611266c83e07c52e06e8e5059cb6ee",
       "source": "https://dl.google.com/dl/android/maven2/com/android/tools/sdklib/32.3.3/sdklib-32.3.3.pom"
+    },
+    {
+      "coordinate": "com.android:signflinger:9.3.3",
+      "artifact": "signflinger-9.3.3-sources.jar",
+      "sha256": "6ea6551350faf30f27845283e2961eed980228efaa1899f1839303b648ac50bb",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/signflinger/9.3.3/signflinger-9.3.3-sources.jar"
     },
     {
       "coordinate": "com.android:signflinger:9.3.3",
@@ -1238,6 +1586,12 @@
     },
     {
       "coordinate": "com.android:zipflinger:9.3.3",
+      "artifact": "zipflinger-9.3.3-sources.jar",
+      "sha256": "2516f5ce35477329e2ba9e2a99f36b5bc06d6c454ff9a4ce0601826a74424547",
+      "source": "https://dl.google.com/dl/android/maven2/com/android/zipflinger/9.3.3/zipflinger-9.3.3-sources.jar"
+    },
+    {
+      "coordinate": "com.android:zipflinger:9.3.3",
       "artifact": "zipflinger-9.3.3.jar",
       "sha256": "0a1984d14cc8070f734ddcc5a947f122dfee364cdbe18595afb691aa803890e0",
       "source": "https://dl.google.com/dl/android/maven2/com/android/zipflinger/9.3.3/zipflinger-9.3.3.jar"
@@ -1247,6 +1601,24 @@
       "artifact": "zipflinger-9.3.3.pom",
       "sha256": "83495309791193a6c47b84a5437e64ae401ab970daf20bdb116ea495e494552d",
       "source": "https://dl.google.com/dl/android/maven2/com/android/zipflinger/9.3.3/zipflinger-9.3.3.pom"
+    },
+    {
+      "coordinate": "com.google.auto.value:auto-value-annotations:1.6.2",
+      "artifact": "auto-value-annotations-1.6.2-sources.jar",
+      "sha256": "9cca705ffd696133e998e289defcc332be5196dbcb6813fcd317b14775a24612",
+      "source": "https://repo.maven.apache.org/maven2/com/google/auto/value/auto-value-annotations/1.6.2/auto-value-annotations-1.6.2-sources.jar"
+    },
+    {
+      "coordinate": "com.google.code.findbugs:jsr305:3.0.2",
+      "artifact": "jsr305-3.0.2-sources.jar",
+      "sha256": "1c9e85e272d0708c6a591dc74828c71603053b48cc75ae83cce56912a2aa063b",
+      "source": "https://repo.maven.apache.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2-sources.jar"
+    },
+    {
+      "coordinate": "com.google.code.gson:gson:2.11.0",
+      "artifact": "gson-2.11.0-sources.jar",
+      "sha256": "49a853f71bc874ee1898a4ad5009b57d0c536e5a998b3890253ffbf4b7276ad3",
+      "source": "https://repo.maven.apache.org/maven2/com/google/code/gson/gson/2.11.0/gson-2.11.0-sources.jar"
     },
     {
       "coordinate": "com.google.crypto.tink:tink:1.18.0",
@@ -1261,6 +1633,18 @@
       "source": "https://repo.maven.apache.org/maven2/com/google/crypto/tink/tink/1.18.0/tink-1.18.0.pom"
     },
     {
+      "coordinate": "com.google.crypto.tink:tink:1.7.0",
+      "artifact": "tink-1.7.0-sources.jar",
+      "sha256": "b2795d77719b0df17ee03c68c2bc00be0ffc61072fbb46d7de42d849ff16af60",
+      "source": "https://repo.maven.apache.org/maven2/com/google/crypto/tink/tink/1.7.0/tink-1.7.0-sources.jar"
+    },
+    {
+      "coordinate": "com.google.dagger:dagger:2.28.3",
+      "artifact": "dagger-2.28.3-sources.jar",
+      "sha256": "bd27a8952be63263a86c3dad1ee175eb02a66cdf9956d041a3985b50a1979b3a",
+      "source": "https://repo.maven.apache.org/maven2/com/google/dagger/dagger/2.28.3/dagger-2.28.3-sources.jar"
+    },
+    {
       "coordinate": "com.google.errorprone:error_prone_annotations:2.22.0",
       "artifact": "error_prone_annotations-2.22.0.pom",
       "sha256": "b725c521514168e9c20d3719a76aa01b50e5a7282859f4ea84c251cf9f842080",
@@ -1271,6 +1655,12 @@
       "artifact": "error_prone_annotations-2.27.0.jar",
       "sha256": "24c923372c58e35d0b9f16a028929bb9aedc77521867c274f2bd0735df5ba1f5",
       "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.27.0/error_prone_annotations-2.27.0.jar"
+    },
+    {
+      "coordinate": "com.google.errorprone:error_prone_annotations:2.36.0",
+      "artifact": "error_prone_annotations-2.36.0-sources.jar",
+      "sha256": "7e117e0931cb2cb4226372af336189b49edb79969d120ec958a6df0beacb0612",
+      "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.36.0/error_prone_annotations-2.36.0-sources.jar"
     },
     {
       "coordinate": "com.google.errorprone:error_prone_annotations:2.36.0",
@@ -1297,6 +1687,18 @@
       "source": "https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_parent/2.36.0/error_prone_parent-2.36.0.pom"
     },
     {
+      "coordinate": "com.google.flatbuffers:flatbuffers-java:1.12.0",
+      "artifact": "flatbuffers-java-1.12.0-sources.jar",
+      "sha256": "6522155eaadf630f60c05154c4f79505f14675e408d10e0f40c7fbfebf0a21ab",
+      "source": "https://repo.maven.apache.org/maven2/com/google/flatbuffers/flatbuffers-java/1.12.0/flatbuffers-java-1.12.0-sources.jar"
+    },
+    {
+      "coordinate": "com.google.guava:failureaccess:1.0.2",
+      "artifact": "failureaccess-1.0.2-sources.jar",
+      "sha256": "dd3bfa5e2ec5bc5397efb2c3cef044c192313ff77089573667ff97a60c6978e0",
+      "source": "https://repo.maven.apache.org/maven2/com/google/guava/failureaccess/1.0.2/failureaccess-1.0.2-sources.jar"
+    },
+    {
       "coordinate": "com.google.guava:guava-parent:33.4.0-jre",
       "artifact": "guava-parent-33.4.0-jre.pom",
       "sha256": "3a499ed34a0d9ee0f1bcc39230021a1cd4e2f7dd0426ab6844f585465d41dcd7",
@@ -1315,6 +1717,18 @@
       "source": "https://repo.maven.apache.org/maven2/com/google/guava/guava/33.4.0-jre/guava-33.4.0-jre.module"
     },
     {
+      "coordinate": "com.google.j2objc:j2objc-annotations:3.0.0",
+      "artifact": "j2objc-annotations-3.0.0-sources.jar",
+      "sha256": "bd60019a0423c3a025ef6ab24fe0761f5f45ffb48a8cca74a01b678de1105d38",
+      "source": "https://repo.maven.apache.org/maven2/com/google/j2objc/j2objc-annotations/3.0.0/j2objc-annotations-3.0.0-sources.jar"
+    },
+    {
+      "coordinate": "com.google.jimfs:jimfs:1.1",
+      "artifact": "jimfs-1.1-sources.jar",
+      "sha256": "adebb53450d2313d6927db5155c9be85336109e8f8c0af106ec2a30bc37e64ce",
+      "source": "https://repo.maven.apache.org/maven2/com/google/jimfs/jimfs/1.1/jimfs-1.1-sources.jar"
+    },
+    {
       "coordinate": "com.google.protobuf:protobuf-bom:4.28.2",
       "artifact": "protobuf-bom-4.28.2.pom",
       "sha256": "43666cd072728c646cc45a614aeeead1e0b23f818f652982df279a0e5adaf316",
@@ -1327,6 +1741,12 @@
       "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-bom/4.28.3/protobuf-bom-4.28.3.pom"
     },
     {
+      "coordinate": "com.google.protobuf:protobuf-java-util:3.25.5",
+      "artifact": "protobuf-java-util-3.25.5-sources.jar",
+      "sha256": "db5bda981edcda1fd4d60bf4cc7dca9ab144f6b880233fd4d1582fd0065f232c",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java-util/3.25.5/protobuf-java-util-3.25.5-sources.jar"
+    },
+    {
       "coordinate": "com.google.protobuf:protobuf-java-util:4.28.3",
       "artifact": "protobuf-java-util-4.28.3.jar",
       "sha256": "d706eb7b4fbb63b7a39891106341080ebbadbb78dd8daecba7a6e68d2831c9cd",
@@ -1337,6 +1757,12 @@
       "artifact": "protobuf-java-util-4.28.3.pom",
       "sha256": "8800be4ec046d97d95992cc4f3c6239c86ceb474ea55782c3d00b3e3e023c21d",
       "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java-util/4.28.3/protobuf-java-util-4.28.3.pom"
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-java:3.25.5",
+      "artifact": "protobuf-java-3.25.5-sources.jar",
+      "sha256": "d686e802329e42954e72e9b3b148b67eeb4f6f3ed327abc4508b79fda4937c3b",
+      "source": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java/3.25.5/protobuf-java-3.25.5-sources.jar"
     },
     {
       "coordinate": "com.google.protobuf:protobuf-java:4.28.2",
@@ -1453,6 +1879,30 @@
       "source": "https://dl.google.com/dl/android/maven2/com/google/testing/platform/launcher/0.0.9-alpha04/launcher-0.0.9-alpha04.pom"
     },
     {
+      "coordinate": "com.googlecode.juniversalchardet:juniversalchardet:1.0.3",
+      "artifact": "juniversalchardet-1.0.3-sources.jar",
+      "sha256": "3d1cb067f5cfe3cc19b77c837156f22368462af9acac5dd878e785966758fc27",
+      "source": "https://repo.maven.apache.org/maven2/com/googlecode/juniversalchardet/juniversalchardet/1.0.3/juniversalchardet-1.0.3-sources.jar"
+    },
+    {
+      "coordinate": "com.hierynomus:asn-one:0.6.0",
+      "artifact": "asn-one-0.6.0-sources.jar",
+      "sha256": "4a1c44c43d335d93f22d95c096e088bc4a4a11a45fd0f0df1d2e02a245708487",
+      "source": "https://repo.maven.apache.org/maven2/com/hierynomus/asn-one/0.6.0/asn-one-0.6.0-sources.jar"
+    },
+    {
+      "coordinate": "com.hierynomus:sshj:0.40.0",
+      "artifact": "sshj-0.40.0-sources.jar",
+      "sha256": "c5bdc6bffa6999a6bef42efc1b24dd909fd3defbb234bc36cd9d621ebb8165a9",
+      "source": "https://repo.maven.apache.org/maven2/com/hierynomus/sshj/0.40.0/sshj-0.40.0-sources.jar"
+    },
+    {
+      "coordinate": "com.squareup:javapoet:1.13.0",
+      "artifact": "javapoet-1.13.0-sources.jar",
+      "sha256": "d1699067787846453fdcc104aeba3946f070fb2c167cfb3445838e4c86bb1f11",
+      "source": "https://repo.maven.apache.org/maven2/com/squareup/javapoet/1.13.0/javapoet-1.13.0-sources.jar"
+    },
+    {
       "coordinate": "com.squareup:javapoet:1.13.0",
       "artifact": "javapoet-1.13.0.jar",
       "sha256": "4c7517e848a71b36d069d12bb3bf46a70fd4cda3105d822b0ed2e19c00b69291",
@@ -1463,6 +1913,30 @@
       "artifact": "javapoet-1.13.0.pom",
       "sha256": "54a34fa8502a46bc90efdb49262600591fa80bf9a34f5a4c798311aec16ca977",
       "source": "https://repo.maven.apache.org/maven2/com/squareup/javapoet/1.13.0/javapoet-1.13.0.pom"
+    },
+    {
+      "coordinate": "com.squareup:javawriter:2.5.0",
+      "artifact": "javawriter-2.5.0-sources.jar",
+      "sha256": "d1b91fc7cfdecf6f0e9b888d28c08c79e91152acc2359bff201f579732012048",
+      "source": "https://repo.maven.apache.org/maven2/com/squareup/javawriter/2.5.0/javawriter-2.5.0-sources.jar"
+    },
+    {
+      "coordinate": "com.sun.istack:istack-commons-runtime:3.0.8",
+      "artifact": "istack-commons-runtime-3.0.8-sources.jar",
+      "sha256": "4874ce5789c8684debd0099c8fa4ec8e00545626af4c9890760f0cb6fdf6d4db",
+      "source": "https://repo.maven.apache.org/maven2/com/sun/istack/istack-commons-runtime/3.0.8/istack-commons-runtime-3.0.8-sources.jar"
+    },
+    {
+      "coordinate": "com.sun.xml.fastinfoset:FastInfoset:1.2.16",
+      "artifact": "FastInfoset-1.2.16-sources.jar",
+      "sha256": "b648209797a327140d6fa4ecf78a276f613ec92c5d9ccd6e7a51ff71976b84b0",
+      "source": "https://repo.maven.apache.org/maven2/com/sun/xml/fastinfoset/FastInfoset/1.2.16/FastInfoset-1.2.16-sources.jar"
+    },
+    {
+      "coordinate": "commons-codec:commons-codec:1.17.1",
+      "artifact": "commons-codec-1.17.1-sources.jar",
+      "sha256": "2283aff7f425dff23ebdb7a8fc0f03ae21b4ced7a43aacba47cedae126dc5d4a",
+      "source": "https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.17.1/commons-codec-1.17.1-sources.jar"
     },
     {
       "coordinate": "commons-codec:commons-codec:1.17.1",
@@ -1477,10 +1951,82 @@
       "source": "https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.17.1/commons-codec-1.17.1.pom"
     },
     {
+      "coordinate": "commons-io:commons-io:2.16.1",
+      "artifact": "commons-io-2.16.1-sources.jar",
+      "sha256": "fcfe84e39fb44e38a0ea0ab0815b53adea6fff89c7b72535bc42495f400cb9a1",
+      "source": "https://repo.maven.apache.org/maven2/commons-io/commons-io/2.16.1/commons-io-2.16.1-sources.jar"
+    },
+    {
+      "coordinate": "commons-logging:commons-logging:1.2",
+      "artifact": "commons-logging-1.2-sources.jar",
+      "sha256": "44347acfe5860461728e9cb33251e97345be36f8a0dfd5c5130c172559455f41",
+      "source": "https://repo.maven.apache.org/maven2/commons-logging/commons-logging/1.2/commons-logging-1.2-sources.jar"
+    },
+    {
+      "coordinate": "gradle:gradle:9.7.0",
+      "artifact": "gradle-9.7.0-src.zip",
+      "sha256": "e4e703098cd27f95cd10b1d5c8466dd9a5bd3cfc1f34098e3a1b4e5e790d7c82",
+      "source": "https://services.gradle.org/distributions/gradle-9.7.0-src.zip"
+    },
+    {
+      "coordinate": "jakarta.activation:jakarta.activation-api:1.2.1",
+      "artifact": "jakarta.activation-api-1.2.1-sources.jar",
+      "sha256": "e9638b764202c0def1b4d54bd37a984c681b2ed46a548ae94ef3f7e4a4b58a31",
+      "source": "https://repo.maven.apache.org/maven2/jakarta/activation/jakarta.activation-api/1.2.1/jakarta.activation-api-1.2.1-sources.jar"
+    },
+    {
+      "coordinate": "jakarta.xml.bind:jakarta.xml.bind-api:2.3.2",
+      "artifact": "jakarta.xml.bind-api-2.3.2-sources.jar",
+      "sha256": "61ceb3ed35ecf99f1803eac9c4b8f12103c7531952beae38ba53cc727f405532",
+      "source": "https://repo.maven.apache.org/maven2/jakarta/xml/bind/jakarta.xml.bind-api/2.3.2/jakarta.xml.bind-api-2.3.2-sources.jar"
+    },
+    {
+      "coordinate": "javax.inject:javax.inject:1",
+      "artifact": "javax.inject-1-sources.jar",
+      "sha256": "c4b87ee2911c139c3daf498a781967f1eb2e75bc1a8529a2e7b328a15d0e433e",
+      "source": "https://repo.maven.apache.org/maven2/javax/inject/javax.inject/1/javax.inject-1-sources.jar"
+    },
+    {
+      "coordinate": "junit:junit:4.13.2",
+      "artifact": "junit-4.13.2-sources.jar",
+      "sha256": "34181df6482d40ea4c046b063cb53c7ffae94bdf1b1d62695bdf3adf9dea7e3a",
+      "source": "https://repo.maven.apache.org/maven2/junit/junit/4.13.2/junit-4.13.2-sources.jar"
+    },
+    {
+      "coordinate": "net.java.dev.jna:jna-platform:5.6.0",
+      "artifact": "jna-platform-5.6.0-sources.jar",
+      "sha256": "ec090292829f0974710c1890634a58b55d3285feecad8ac6121515a7e27891fe",
+      "source": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna-platform/5.6.0/jna-platform-5.6.0-sources.jar"
+    },
+    {
       "coordinate": "net.java.dev.jna:jna:5.18.1",
       "artifact": "jna-5.18.1.aar",
       "sha256": "7f053e3ec99e14dd71259c82c1c8a02738d64a13c31226b2acc170f3060951e0",
       "source": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.aar"
+    },
+    {
+      "coordinate": "net.java.dev.jna:jna:5.6.0",
+      "artifact": "jna-5.6.0-sources.jar",
+      "sha256": "3bb0536c6bfe8931afa898a5022af628f936b09a8437552429a2f9977d254c46",
+      "source": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.6.0/jna-5.6.0-sources.jar"
+    },
+    {
+      "coordinate": "net.sf.jopt-simple:jopt-simple:4.9",
+      "artifact": "jopt-simple-4.9-sources.jar",
+      "sha256": "17cf5b2a5fc3da6a077e37ec6567ce4999a8518704ca1253cc07fac190f8ff02",
+      "source": "https://repo.maven.apache.org/maven2/net/sf/jopt-simple/jopt-simple/4.9/jopt-simple-4.9-sources.jar"
+    },
+    {
+      "coordinate": "net.sf.kxml:kxml2:2.3.0",
+      "artifact": "kxml2-2.3.0-sources.jar",
+      "sha256": "85495366666158b58961e8911ced0f6f3bc92f1ebee865518b493fdb90760250",
+      "source": "https://repo.maven.apache.org/maven2/net/sf/kxml/kxml2/2.3.0/kxml2-2.3.0-sources.jar"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-compress:1.27.1",
+      "artifact": "commons-compress-1.27.1-sources.jar",
+      "sha256": "90839ce19b8afb8ee50db75c84aa7555ebc054ba1bd43fdb2202cbf094c77f81",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-compress/1.27.1/commons-compress-1.27.1-sources.jar"
     },
     {
       "coordinate": "org.apache.commons:commons-compress:1.27.1",
@@ -1505,6 +2051,12 @@
       "artifact": "commons-lang3-3.16.0.pom",
       "sha256": "e280383956c2e72c1deb3a307b3b75f05ee43649b7d43f0215f7b6c7b15eea2c",
       "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.16.0/commons-lang3-3.16.0.pom"
+    },
+    {
+      "coordinate": "org.apache.commons:commons-lang3:3.18.0",
+      "artifact": "commons-lang3-3.18.0-sources.jar",
+      "sha256": "b15732a13e40df7f07c30f2cb8572874798e8dde581f1398943d2ad3765bafaa",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.18.0/commons-lang3-3.18.0-sources.jar"
     },
     {
       "coordinate": "org.apache.commons:commons-lang3:3.18.0",
@@ -1537,6 +2089,36 @@
       "source": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/85/commons-parent-85.pom"
     },
     {
+      "coordinate": "org.apache.httpcomponents:httpclient:4.5.14",
+      "artifact": "httpclient-4.5.14-sources.jar",
+      "sha256": "55b01f9f4cbec9ac646866a4b64b176570d79e293a556796b5b0263d047ef8e6",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpclient/4.5.14/httpclient-4.5.14-sources.jar"
+    },
+    {
+      "coordinate": "org.apache.httpcomponents:httpcore:4.4.16",
+      "artifact": "httpcore-4.4.16-sources.jar",
+      "sha256": "705f8cf3671093b6c1db16bbf6971a7ef400e3819784f1af53e5bc3e67b5a9a0",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore/4.4.16/httpcore-4.4.16-sources.jar"
+    },
+    {
+      "coordinate": "org.apache.httpcomponents:httpmime:4.5.6",
+      "artifact": "httpmime-4.5.6-sources.jar",
+      "sha256": "3054d6f3160cdc1a4a60cf2a199f5acd2f3b209aa3e82e2f69e7028741847622",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpmime/4.5.6/httpmime-4.5.6-sources.jar"
+    },
+    {
+      "coordinate": "org.apache.sshd:sshd-common:2.20.0",
+      "artifact": "sshd-common-2.20.0-sources.jar",
+      "sha256": "7c4d4ec0e71481f6627c41b6bb49e04fd072afad07ab6a9c3d9667759a93ce0d",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/sshd/sshd-common/2.20.0/sshd-common-2.20.0-sources.jar"
+    },
+    {
+      "coordinate": "org.apache.sshd:sshd-core:2.20.0",
+      "artifact": "sshd-core-2.20.0-sources.jar",
+      "sha256": "164df31f336680dee13c71ad53751ac59e82fed6c86a98b47286913c0cf9ebb0",
+      "source": "https://repo.maven.apache.org/maven2/org/apache/sshd/sshd-core/2.20.0/sshd-core-2.20.0-sources.jar"
+    },
+    {
       "coordinate": "org.apache:apache:32",
       "artifact": "apache-32.pom",
       "sha256": "cfd872c0ec27f53ae68f43dbc0fecded8add773079a53afbd390e407b42ce72f",
@@ -1556,6 +2138,12 @@
     },
     {
       "coordinate": "org.bitbucket.b_c:jose4j:0.9.7",
+      "artifact": "jose4j-0.9.7-sources.jar",
+      "sha256": "fd0e74aab0375ae1b9d55a3a628797c4a8c6971367ba053a22d00f0e63f9a05b",
+      "source": "https://repo.maven.apache.org/maven2/org/bitbucket/b_c/jose4j/0.9.7/jose4j-0.9.7-sources.jar"
+    },
+    {
+      "coordinate": "org.bitbucket.b_c:jose4j:0.9.7",
       "artifact": "jose4j-0.9.7.jar",
       "sha256": "f2da13ca454cb04af926b9d830fd429169e0198adbbbd0bd64f6ae94f7b3d3fb",
       "source": "https://repo.maven.apache.org/maven2/org/bitbucket/b_c/jose4j/0.9.7/jose4j-0.9.7.jar"
@@ -1565,6 +2153,54 @@
       "artifact": "jose4j-0.9.7.pom",
       "sha256": "b5d9405da5dd2fff5591c08490cb262e80d60f15d903b12515cf8031571fc579",
       "source": "https://repo.maven.apache.org/maven2/org/bitbucket/b_c/jose4j/0.9.7/jose4j-0.9.7.pom"
+    },
+    {
+      "coordinate": "org.bouncycastle:bcpkix-jdk18on:1.86",
+      "artifact": "bcpkix-jdk18on-1.86-sources.jar",
+      "sha256": "0bb00b50a80404e40c6465cb8012d3835d2a9100d94d16eaa9efed4587d7e34d",
+      "source": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcpkix-jdk18on/1.86/bcpkix-jdk18on-1.86-sources.jar"
+    },
+    {
+      "coordinate": "org.bouncycastle:bcprov-jdk18on:1.86",
+      "artifact": "bcprov-jdk18on-1.86-sources.jar",
+      "sha256": "34a8b7dcb030a08ddd5356d3d5be962f9299ca5275e1460273186f8fdbe44c34",
+      "source": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcprov-jdk18on/1.86/bcprov-jdk18on-1.86-sources.jar"
+    },
+    {
+      "coordinate": "org.bouncycastle:bcutil-jdk18on:1.86",
+      "artifact": "bcutil-jdk18on-1.86-sources.jar",
+      "sha256": "a79e8cdbc04a24aecf64503eda9a4aa61019132484c64f7ce32a68ac30ef6df7",
+      "source": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcutil-jdk18on/1.86/bcutil-jdk18on-1.86-sources.jar"
+    },
+    {
+      "coordinate": "org.checkerframework:checker-qual:3.43.0",
+      "artifact": "checker-qual-3.43.0-sources.jar",
+      "sha256": "d6bdee58964cd05aabfca4e44947d3cbdada6bf617ed618b62b3b0d5a21de339",
+      "source": "https://repo.maven.apache.org/maven2/org/checkerframework/checker-qual/3.43.0/checker-qual-3.43.0-sources.jar"
+    },
+    {
+      "coordinate": "org.glassfish.jaxb:jaxb-runtime:2.3.2",
+      "artifact": "jaxb-runtime-2.3.2-sources.jar",
+      "sha256": "b85c2e314e6565e7dc4fb7e00ec8688c1c0fe9c9f7275125fb8dee43898f3743",
+      "source": "https://repo.maven.apache.org/maven2/org/glassfish/jaxb/jaxb-runtime/2.3.2/jaxb-runtime-2.3.2-sources.jar"
+    },
+    {
+      "coordinate": "org.glassfish.jaxb:txw2:2.3.2",
+      "artifact": "txw2-2.3.2-sources.jar",
+      "sha256": "a5ae8ac7886df60992e4039c75b7095cf04d1bea3a81f77f72e2c652f8f57a56",
+      "source": "https://repo.maven.apache.org/maven2/org/glassfish/jaxb/txw2/2.3.2/txw2-2.3.2-sources.jar"
+    },
+    {
+      "coordinate": "org.hamcrest:hamcrest-core:1.3",
+      "artifact": "hamcrest-core-1.3-sources.jar",
+      "sha256": "e223d2d8fbafd66057a8848cc94222d63c3cedd652cc48eddc0ab5c39c0f84df",
+      "source": "https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jdom:jdom2:2.0.6.1",
+      "artifact": "jdom2-2.0.6.1-sources.jar",
+      "sha256": "45deefd1f842e35f0c1089eeecd057df632230ec6096ccc6fccfc639b95548d4",
+      "source": "https://repo.maven.apache.org/maven2/org/jdom/jdom2/2.0.6.1/jdom2-2.0.6.1-sources.jar"
     },
     {
       "coordinate": "org.jdom:jdom2:2.0.6.1",
@@ -1577,6 +2213,306 @@
       "artifact": "jdom2-2.0.6.1.pom",
       "sha256": "55795e1018b8ae647b937967cf810a99b08582c2374e7873c128734c8c914bf3",
       "source": "https://repo.maven.apache.org/maven2/org/jdom/jdom2/2.0.6.1/jdom2-2.0.6.1.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-common:2.9.6",
+      "artifact": "lifecycle-common-2.9.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/lifecycle/lifecycle-common/2.9.6/lifecycle-common-2.9.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-desktop:2.9.6",
+      "artifact": "lifecycle-runtime-compose-desktop-2.9.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/lifecycle/lifecycle-runtime-compose-desktop/2.9.6/lifecycle-runtime-compose-desktop-2.9.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6",
+      "artifact": "lifecycle-runtime-compose-2.9.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/lifecycle/lifecycle-runtime-compose/2.9.6/lifecycle-runtime-compose-2.9.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime:2.9.6",
+      "artifact": "lifecycle-runtime-2.9.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/lifecycle/lifecycle-runtime/2.9.6/lifecycle-runtime-2.9.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate:2.9.6",
+      "artifact": "lifecycle-viewmodel-savedstate-2.9.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/lifecycle/lifecycle-viewmodel-savedstate/2.9.6/lifecycle-viewmodel-savedstate-2.9.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.6",
+      "artifact": "lifecycle-viewmodel-2.9.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/lifecycle/lifecycle-viewmodel/2.9.6/lifecycle-viewmodel-2.9.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.savedstate:savedstate-compose-desktop:1.3.6",
+      "artifact": "savedstate-compose-desktop-1.3.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/savedstate/savedstate-compose-desktop/1.3.6/savedstate-compose-desktop-1.3.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.savedstate:savedstate-compose:1.3.6",
+      "artifact": "savedstate-compose-1.3.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/savedstate/savedstate-compose/1.3.6/savedstate-compose-1.3.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.androidx.savedstate:savedstate:1.3.6",
+      "artifact": "savedstate-1.3.6-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/androidx/savedstate/savedstate/1.3.6/savedstate-1.3.6-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.animation:animation-core-desktop:1.9.3",
+      "artifact": "animation-core-desktop-1.9.3-sources.jar",
+      "sha256": "3670839cd23f441c048b44e975f13c058d5869430c48bcf21e9dac2d0d5ccb79",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/animation/animation-core-desktop/1.9.3/animation-core-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.animation:animation-core:1.9.3",
+      "artifact": "animation-core-1.9.3-sources.jar",
+      "sha256": "b775738237eb8ab32272855679305c19eb42e7b8cf41c89369b3eb4596c11089",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/animation/animation-core/1.9.3/animation-core-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.animation:animation-desktop:1.9.3",
+      "artifact": "animation-desktop-1.9.3-sources.jar",
+      "sha256": "fe4ac0cca11476b6aae39e5ce17ba7a04597f4f79f0897fb53d8377e5e78d5aa",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/animation/animation-desktop/1.9.3/animation-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.animation:animation:1.9.3",
+      "artifact": "animation-1.9.3-sources.jar",
+      "sha256": "da758d8ea47178da5b7cfd84a76e6c40fbc096ea5d60b9b69e77dd85ae4a20bd",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/animation/animation/1.9.3/animation-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.annotation-internal:annotation:1.9.3",
+      "artifact": "annotation-1.9.3-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/annotation-internal/annotation/1.9.3/annotation-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.collection-internal:collection:1.9.3",
+      "artifact": "collection-1.9.3-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/collection-internal/collection/1.9.3/collection-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.desktop:desktop-jvm:1.9.3",
+      "artifact": "desktop-jvm-1.9.3-sources.jar",
+      "sha256": "a7987977f5832ca3a0611e62caecdc662c6f46362af3597e3e85c08f50c52253",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/desktop/desktop-jvm/1.9.3/desktop-jvm-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.desktop:desktop:1.9.3",
+      "artifact": "desktop-1.9.3-sources.jar",
+      "sha256": "c6deada2fac53b8ea6523dbda77597b128006674616f140f04df23264c6d1aa3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/desktop/desktop/1.9.3/desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.foundation:foundation-desktop:1.9.3",
+      "artifact": "foundation-desktop-1.9.3-sources.jar",
+      "sha256": "4f6a4fd0046b6147dc1725777594d5fe0ba1bef718b3ea595dbc92cbe6296f6a",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/foundation/foundation-desktop/1.9.3/foundation-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.foundation:foundation-layout-desktop:1.9.3",
+      "artifact": "foundation-layout-desktop-1.9.3-sources.jar",
+      "sha256": "5644e9ba756367093391b3793b198d66dfaff4544382a6220dc715e2a8304a74",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/foundation/foundation-layout-desktop/1.9.3/foundation-layout-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.foundation:foundation-layout:1.9.3",
+      "artifact": "foundation-layout-1.9.3-sources.jar",
+      "sha256": "82a200f80356d979509dd2305c3af225a037855275d9e200dbb42b4a74afa5c1",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/foundation/foundation-layout/1.9.3/foundation-layout-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.foundation:foundation:1.9.3",
+      "artifact": "foundation-1.9.3-sources.jar",
+      "sha256": "a34b7e5984ded5613cdc8f3c9076628ec0503c58f0c4a226567cf913e9896250",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/foundation/foundation/1.9.3/foundation-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.material3:material3-desktop:1.9.0",
+      "artifact": "material3-desktop-1.9.0-sources.jar",
+      "sha256": "343fffb5881a3b173235dda4f256264617141fa67ebaca3027a5cd8c8e4cc54b",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/material3/material3-desktop/1.9.0/material3-desktop-1.9.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.material3:material3:1.9.0",
+      "artifact": "material3-1.9.0-sources.jar",
+      "sha256": "a21ae02b0ec8ef4ef0eaead0d743f61474a5db85f6b193c15af401e78297c420",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/material3/material3/1.9.0/material3-1.9.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.material:material-desktop:1.9.3",
+      "artifact": "material-desktop-1.9.3-sources.jar",
+      "sha256": "241e24764c40bb8a6e2477c8d2360cfe307d72487de1462fbfc8335021e0976c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/material/material-desktop/1.9.3/material-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.material:material-ripple-desktop:1.9.1",
+      "artifact": "material-ripple-desktop-1.9.1.jar",
+      "sha256": "2407d9e83c6fd84b90b123cc7ae6291fa7a18bb40938ad210f675e4c86425c8b",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/material/material-ripple-desktop/1.9.1/material-ripple-desktop-1.9.1.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.material:material-ripple-desktop:1.9.3",
+      "artifact": "material-ripple-desktop-1.9.3-sources.jar",
+      "sha256": "97205abc1b113d5875ff7527337305b404c6a4cd6947f5d498a3a127d04f167d",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/material/material-ripple-desktop/1.9.3/material-ripple-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.material:material-ripple:1.9.3",
+      "artifact": "material-ripple-1.9.3-sources.jar",
+      "sha256": "97205abc1b113d5875ff7527337305b404c6a4cd6947f5d498a3a127d04f167d",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/material/material-ripple/1.9.3/material-ripple-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.material:material:1.9.3",
+      "artifact": "material-1.9.3-sources.jar",
+      "sha256": "ec4b9dafcaa0abdba3f03f3bf0cda412933accbdfca252ef59b4a0e712f69f6b",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/material/material/1.9.3/material-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.runtime:runtime-desktop:1.9.3",
+      "artifact": "runtime-desktop-1.9.3-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/runtime/runtime-desktop/1.9.3/runtime-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.runtime:runtime-saveable-desktop:1.9.3",
+      "artifact": "runtime-saveable-desktop-1.9.3-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/runtime/runtime-saveable-desktop/1.9.3/runtime-saveable-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.runtime:runtime-saveable:1.9.3",
+      "artifact": "runtime-saveable-1.9.3-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/runtime/runtime-saveable/1.9.3/runtime-saveable-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.runtime:runtime:1.9.3",
+      "artifact": "runtime-1.9.3-sources.jar",
+      "sha256": "6f27472e1e5fe26259f156b498f6745feb57b651b673d65fe9938a7fec2d9065",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/runtime/runtime/1.9.3/runtime-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-backhandler-desktop:1.9.3",
+      "artifact": "ui-backhandler-desktop-1.9.3-sources.jar",
+      "sha256": "fadddec18665bd2393cf845b68c412b648f4be78f31de9a73498df66d33a05ea",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-backhandler-desktop/1.9.3/ui-backhandler-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-backhandler:1.9.3",
+      "artifact": "ui-backhandler-1.9.3-sources.jar",
+      "sha256": "fadddec18665bd2393cf845b68c412b648f4be78f31de9a73498df66d33a05ea",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-backhandler/1.9.3/ui-backhandler-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-desktop:1.9.3",
+      "artifact": "ui-desktop-1.9.3-sources.jar",
+      "sha256": "bf1cc4389698852c1f0ac0556c1429959c98e2b7fd84ff6f51119559ec66813e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-desktop/1.9.3/ui-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-geometry-desktop:1.9.3",
+      "artifact": "ui-geometry-desktop-1.9.3-sources.jar",
+      "sha256": "4d1dab1b80fc0a3a71db085c6cdfb7957a14f58e23686f2963a53968e51197d1",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-geometry-desktop/1.9.3/ui-geometry-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-geometry:1.9.3",
+      "artifact": "ui-geometry-1.9.3-sources.jar",
+      "sha256": "4d1dab1b80fc0a3a71db085c6cdfb7957a14f58e23686f2963a53968e51197d1",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-geometry/1.9.3/ui-geometry-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-graphics-desktop:1.9.3",
+      "artifact": "ui-graphics-desktop-1.9.3-sources.jar",
+      "sha256": "a988ccdd772b590e5a35d811ca03ffc2fe5d53bfa3bea89e232f4da9664be751",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-graphics-desktop/1.9.3/ui-graphics-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-graphics:1.9.3",
+      "artifact": "ui-graphics-1.9.3-sources.jar",
+      "sha256": "464680e3589e16af363a8acaf048e0d26445716c9682a8df3e9fac5d1be561fd",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-graphics/1.9.3/ui-graphics-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-text-desktop:1.9.3",
+      "artifact": "ui-text-desktop-1.9.3-sources.jar",
+      "sha256": "5150f7b34bc891255a25506abacb83db3ac1ed1c0005ebfc60349a480a32dee1",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-text-desktop/1.9.3/ui-text-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-text:1.9.3",
+      "artifact": "ui-text-1.9.3-sources.jar",
+      "sha256": "d259945a2eacafd17c48d24152b363f5900a3ad2843fbb2b0fcf7bded745f67f",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-text/1.9.3/ui-text-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-tooling-preview-desktop:1.9.3",
+      "artifact": "ui-tooling-preview-desktop-1.9.3-sources.jar",
+      "sha256": "9d7b280169884b32fd55902f24b757b35d1700c33a95faf3b6c2d271fef4d3e7",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-tooling-preview-desktop/1.9.3/ui-tooling-preview-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-tooling-preview:1.9.3",
+      "artifact": "ui-tooling-preview-1.9.3-sources.jar",
+      "sha256": "c6deada2fac53b8ea6523dbda77597b128006674616f140f04df23264c6d1aa3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-tooling-preview/1.9.3/ui-tooling-preview-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-uikit:1.9.3",
+      "artifact": "ui-uikit-1.9.3-sources.jar",
+      "sha256": "b786874f6ed58f0ba4b5a0c2e47b7361c73b1aaab5f7eb1d608a026944a86265",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-uikit/1.9.3/ui-uikit-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-unit-desktop:1.9.3",
+      "artifact": "ui-unit-desktop-1.9.3-sources.jar",
+      "sha256": "eead8dce6ba930471fa6ed9c666dfbba924aaa2e52ee8c21d3032b6f8b085a11",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-unit-desktop/1.9.3/ui-unit-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-unit:1.9.3",
+      "artifact": "ui-unit-1.9.3-sources.jar",
+      "sha256": "daa295399ebaf336dc9a1e4d25845afaf270c4d831c6fdcfe4b207a98d57afbb",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-unit/1.9.3/ui-unit-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-util-desktop:1.9.3",
+      "artifact": "ui-util-desktop-1.9.3-sources.jar",
+      "sha256": "e9aca27e0526d5436cc8b9517fef22c09cc44afa9f96fce7d8973598bab71b25",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-util-desktop/1.9.3/ui-util-desktop-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui-util:1.9.3",
+      "artifact": "ui-util-1.9.3-sources.jar",
+      "sha256": "d1c9ae5ff7ec7a46a8d1c53af2f7f77f35bd862235891fb03a3a5da418795526",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui-util/1.9.3/ui-util-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose.ui:ui:1.9.3",
+      "artifact": "ui-1.9.3-sources.jar",
+      "sha256": "70683c6fec03f36f4e42ec6d644b32fa75728b22e5ae05722a9cb105526b7eb9",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui/1.9.3/ui-1.9.3-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.compose:compose-gradle-plugin:1.9.3",
+      "artifact": "compose-gradle-plugin-1.9.3-sources.jar",
+      "sha256": "cb5dad6f890bf71fdc884c1f89d644daaf41dcf89df65c55e2722a90d2a986cb",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/compose/compose-gradle-plugin/1.9.3/compose-gradle-plugin-1.9.3-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin.jvm:org.jetbrains.kotlin.jvm.gradle.plugin:2.4.21",
@@ -1604,6 +2540,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.4.21",
+      "artifact": "compose-compiler-gradle-plugin-2.4.21-gradle96-sources.jar",
+      "sha256": "0271ceab73f0601bd77836a31a8508756053ccab49aab5c2c8f9038c775701b9",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/compose-compiler-gradle-plugin/2.4.21/compose-compiler-gradle-plugin-2.4.21-gradle96-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.4.21",
       "artifact": "compose-compiler-gradle-plugin-2.4.21-gradle96.jar",
       "sha256": "17b7d35e53e23f4820e0fb9f3ad71f7ab463970d68bcd8ba7f8d71498b50395f",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/compose-compiler-gradle-plugin/2.4.21/compose-compiler-gradle-plugin-2.4.21-gradle96.jar"
@@ -1628,6 +2570,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:fus-statistics-gradle-plugin:2.4.21",
+      "artifact": "fus-statistics-gradle-plugin-2.4.21-gradle96-sources.jar",
+      "sha256": "25225642ec723c9ea8e4c493e6362d84a796476e37df6e688d9de8fb415d9048",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/fus-statistics-gradle-plugin/2.4.21/fus-statistics-gradle-plugin-2.4.21-gradle96-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:fus-statistics-gradle-plugin:2.4.21",
       "artifact": "fus-statistics-gradle-plugin-2.4.21-gradle96.jar",
       "sha256": "44a07b9203eb2c75ceb2d33327f89b991f2d35095a96a0f1c224a012c5465367",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/fus-statistics-gradle-plugin/2.4.21/fus-statistics-gradle-plugin-2.4.21-gradle96.jar"
@@ -1637,6 +2585,12 @@
       "artifact": "fus-statistics-gradle-plugin-2.4.21.module",
       "sha256": "3090b4e873054cdc29991ae94c92fa45afb4c145d460441d803baf6ef165bbb8",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/fus-statistics-gradle-plugin/2.4.21/fus-statistics-gradle-plugin-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-statistics:2.4.21",
+      "artifact": "kotlin-build-statistics-2.4.21-sources.jar",
+      "sha256": "ecbd634434ee64033d46617be715d2a4ba4dfd58fbf47fb61ba544906fdc47e1",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-statistics/2.4.21/kotlin-build-statistics-2.4.21-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-build-statistics:2.4.21",
@@ -1661,6 +2615,12 @@
       "artifact": "kotlin-build-tools-api-2.4.0.pom",
       "sha256": "9686fa8f16867b2aba2e5c0e4cfc4a0aeecf59fe6de419f89f7bd838fdde8e74",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-api/2.4.0/kotlin-build-tools-api-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-api:2.4.21",
+      "artifact": "kotlin-build-tools-api-2.4.21-sources.jar",
+      "sha256": "fc58107718f670025aa4cf1b0bc32ba3b1daeb65afa4f948359b280309a79328",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-tools-api/2.4.21/kotlin-build-tools-api-2.4.21-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-build-tools-api:2.4.21",
@@ -1772,6 +2732,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-compiler-runner:2.4.21",
+      "artifact": "kotlin-compiler-runner-2.4.21-sources.jar",
+      "sha256": "1cb4641dbaed635d216418079bc7beacfeae284c239f09d31eb76580c39da5fb",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-runner/2.4.21/kotlin-compiler-runner-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-compiler-runner:2.4.21",
       "artifact": "kotlin-compiler-runner-2.4.21.jar",
       "sha256": "75cd5956405697559e6925ebc5808449a2e12002d4f017275281ad3d4c0c7985",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-runner/2.4.21/kotlin-compiler-runner-2.4.21.jar"
@@ -1805,6 +2771,12 @@
       "artifact": "kotlin-daemon-client-2.4.0.pom",
       "sha256": "143793627382d905eda93e152a28c993f6323fc4b748370a45c7badc99914a13",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/2.4.0/kotlin-daemon-client-2.4.0.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-daemon-client:2.4.21",
+      "artifact": "kotlin-daemon-client-2.4.21-sources.jar",
+      "sha256": "2aabd44c99459c847c9a8c83b5c1a5c02c7a5ceba8b828d30b38b7b6ddd1133a",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/2.4.21/kotlin-daemon-client-2.4.21-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-daemon-client:2.4.21",
@@ -1844,6 +2816,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:2.4.21",
+      "artifact": "kotlin-gradle-plugin-annotations-2.4.21-sources.jar",
+      "sha256": "36c90960d4f468a244e5ba6feddb3f32079a455ee1a99a5bc44b3b4cd77f7246",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/2.4.21/kotlin-gradle-plugin-annotations-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:2.4.21",
       "artifact": "kotlin-gradle-plugin-annotations-2.4.21.jar",
       "sha256": "5c386b0fa287584497b07d62af954e30d05907e6da867221124d0bb936989bbd",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/2.4.21/kotlin-gradle-plugin-annotations-2.4.21.jar"
@@ -1853,6 +2831,12 @@
       "artifact": "kotlin-gradle-plugin-annotations-2.4.21.pom",
       "sha256": "b0f6b87a35d4be7ae06e554efdb261ea4bc5d59fa282c23ee28061d30805ddd6",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/2.4.21/kotlin-gradle-plugin-annotations-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-api:2.4.21",
+      "artifact": "kotlin-gradle-plugin-api-2.4.21-gradle96-sources.jar",
+      "sha256": "4fa9a8d65622660b852cec5a13f1ed4d9676b23698c8fcaf4113ad34619e935e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/2.4.21/kotlin-gradle-plugin-api-2.4.21-gradle96-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-api:2.4.21",
@@ -1868,6 +2852,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-idea-proto:2.4.21",
+      "artifact": "kotlin-gradle-plugin-idea-proto-2.4.21-sources.jar",
+      "sha256": "65673fb356b7d7ad49d3404ceb038d1810b552ec4b988261bfc2f90c0146997f",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea-proto/2.4.21/kotlin-gradle-plugin-idea-proto-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-idea-proto:2.4.21",
       "artifact": "kotlin-gradle-plugin-idea-proto-2.4.21.jar",
       "sha256": "4559d92c5c1758a3e1ec5728822b059b2eb4aebef13c701ee86c7688acf164d5",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea-proto/2.4.21/kotlin-gradle-plugin-idea-proto-2.4.21.jar"
@@ -1880,6 +2870,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-idea:2.4.21",
+      "artifact": "kotlin-gradle-plugin-idea-2.4.21-sources.jar",
+      "sha256": "7d2c62633e1d654bb9400253d8e510e3744a109e403939423c74768e2b2fe062",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea/2.4.21/kotlin-gradle-plugin-idea-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin-idea:2.4.21",
       "artifact": "kotlin-gradle-plugin-idea-2.4.21.jar",
       "sha256": "086734484c7edf19a620ab1a617d097c40e03bc52602e77840ea5ebd6380e514",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea/2.4.21/kotlin-gradle-plugin-idea-2.4.21.jar"
@@ -1889,6 +2885,12 @@
       "artifact": "kotlin-gradle-plugin-idea-2.4.21.module",
       "sha256": "ddd2bb8f319a7c468ba2fb5a404b795c69e066bd5ad2d565b47b86fa2a337606",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-idea/2.4.21/kotlin-gradle-plugin-idea-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21",
+      "artifact": "kotlin-gradle-plugin-2.4.21-gradle96-sources.jar",
+      "sha256": "ad1efc39ac3a7388aefff4690f17e142fc529305ddf595ebfe1d8a0560e769d7",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin/2.4.21/kotlin-gradle-plugin-2.4.21-gradle96-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21",
@@ -1916,6 +2918,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-klib-commonizer-api:2.4.21",
+      "artifact": "kotlin-klib-commonizer-api-2.4.21-sources.jar",
+      "sha256": "c3cccf183731604a7a882f9a2c89444c2951b2f5b45c071bd9cf633d019aa0ed",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-klib-commonizer-api/2.4.21/kotlin-klib-commonizer-api-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-klib-commonizer-api:2.4.21",
       "artifact": "kotlin-klib-commonizer-api-2.4.21.jar",
       "sha256": "62ebe32fcf69600125b28388f0a80781276784d90e14d333bbd5080b4807220c",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-klib-commonizer-api/2.4.21/kotlin-klib-commonizer-api-2.4.21.jar"
@@ -1940,6 +2948,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-native-utils:2.4.21",
+      "artifact": "kotlin-native-utils-2.4.21-sources.jar",
+      "sha256": "ffd144294c976c7540c3ff6f61e49f315894e4ebf659992a7de8db6ea649a4aa",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/2.4.21/kotlin-native-utils-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-native-utils:2.4.21",
       "artifact": "kotlin-native-utils-2.4.21.jar",
       "sha256": "e1858bf1fb5bbb1738c4fa0f9cfb502b911cabf313a5de4cae686d6c50d74814",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/2.4.21/kotlin-native-utils-2.4.21.jar"
@@ -1961,6 +2975,12 @@
       "artifact": "kotlin-reflect-2.2.10.pom",
       "sha256": "ae46614906414404cefc41a467435205d6dee67a2390598328a639ad2bacbd11",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/2.2.10/kotlin-reflect-2.2.10.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-reflect:2.4.0",
+      "artifact": "kotlin-reflect-2.4.0-sources.jar",
+      "sha256": "ff246d790aad39f55779f44e410b477228999cd3c352585c73b56ea5df36549e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/2.4.0/kotlin-reflect-2.4.0-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-reflect:2.4.0",
@@ -2060,6 +3080,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-serialization:2.4.21",
+      "artifact": "kotlin-serialization-2.4.21-gradle96-sources.jar",
+      "sha256": "42ab5e732a3f2397a35271501b45d9985f91cee6850c5d2170a5586bbf04ecd0",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-serialization/2.4.21/kotlin-serialization-2.4.21-gradle96-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-serialization:2.4.21",
       "artifact": "kotlin-serialization-2.4.21-gradle96.jar",
       "sha256": "f5b6f5fdf64ec7ae5716816e9e77baa9eda6ae76291ca17b38fe4241e99aad3c",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-serialization/2.4.21/kotlin-serialization-2.4.21-gradle96.jar"
@@ -2083,6 +3109,18 @@
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-common/2.4.21/kotlin-stdlib-common-2.4.21.module"
     },
     {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.1.21",
+      "artifact": "kotlin-stdlib-jdk7-2.1.21-sources.jar",
+      "sha256": "2534c8908432e06de73177509903d405b55f423dd4c2f747e16b92a2162611e6",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/2.1.21/kotlin-stdlib-jdk7-2.1.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.10",
+      "artifact": "kotlin-stdlib-jdk7-2.2.10-sources.jar",
+      "sha256": "2534c8908432e06de73177509903d405b55f423dd4c2f747e16b92a2162611e6",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/2.2.10/kotlin-stdlib-jdk7-2.2.10-sources.jar"
+    },
+    {
       "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.10",
       "artifact": "kotlin-stdlib-jdk7-2.2.10.jar",
       "sha256": "cf95eccc6cc784dff479dee0b8834f3584b93292cc5d91972e82f5d7b9e13e3b",
@@ -2093,6 +3131,18 @@
       "artifact": "kotlin-stdlib-jdk7-2.2.10.pom",
       "sha256": "be494907e0e19c78bb821154afa1776d5ad7a058b4ab30090f74354b0e1338de",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/2.2.10/kotlin-stdlib-jdk7-2.2.10.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.21",
+      "artifact": "kotlin-stdlib-jdk8-2.1.21-sources.jar",
+      "sha256": "3cb6895054a0985bba591c165503fe4dd63a215af53263b67a071ccdc242bf6e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/2.1.21/kotlin-stdlib-jdk8-2.1.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.10",
+      "artifact": "kotlin-stdlib-jdk8-2.2.10-sources.jar",
+      "sha256": "3cb6895054a0985bba591c165503fe4dd63a215af53263b67a071ccdc242bf6e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/2.2.10/kotlin-stdlib-jdk8-2.2.10-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.10",
@@ -2138,6 +3188,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.0",
+      "artifact": "kotlin-stdlib-2.4.0-sources.jar",
+      "sha256": "bca27f834e278d08c1b85a40e636450867e8251c284fd4c24e9879bb99e301c5",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.0",
       "artifact": "kotlin-stdlib-2.4.0.jar",
       "sha256": "ccb14ff83fabcb11458b798dbc9824748ccdffeec79c9aba789e6ed1cda86b1c",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.jar"
@@ -2156,6 +3212,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+      "artifact": "kotlin-stdlib-2.4.21-sources.jar",
+      "sha256": "1e29c0668b0aa555e7b154e5da2e8094e1b755cfee25737839195bbbdad8a4a2",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
       "artifact": "kotlin-stdlib-2.4.21.jar",
       "sha256": "bd8250210584cb659847dce9cda660f8e9906e5def7fbebcea93dc6dcb6a88a3",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.jar"
@@ -2165,6 +3227,12 @@
       "artifact": "kotlin-stdlib-2.4.21.module",
       "sha256": "03b0df67c0cd74a948a45c5b03c4bbcfb31ab9b9879fb380adf7c187b6594b7f",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-test-junit:2.4.21",
+      "artifact": "kotlin-test-junit-2.4.21-sources.jar",
+      "sha256": "3fd39bbf3f8283cf7b7759e02abdd752ddde9964352f645467b779257bccef20",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test-junit/2.4.21/kotlin-test-junit-2.4.21-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-test-junit:2.4.21",
@@ -2186,6 +3254,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-test:2.4.21",
+      "artifact": "kotlin-test-2.4.21-sources.jar",
+      "sha256": "c1f6593aade90f8a3ea9669f60eebdcff231b534169dd0d15873410f337f0937",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test/2.4.21/kotlin-test-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-test:2.4.21",
       "artifact": "kotlin-test-2.4.21.jar",
       "sha256": "4b43f419bf41a9ede07094652db97b5034984a8cdc642f3c5b2bfd4767f6e365",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test/2.4.21/kotlin-test-2.4.21.jar"
@@ -2195,6 +3269,12 @@
       "artifact": "kotlin-test-2.4.21.module",
       "sha256": "9073c451baeadb4e4ee813788a69f37f61778278d9b4583d4292eedeaf3d6ba0",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-test/2.4.21/kotlin-test-2.4.21.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-tooling-core:2.4.21",
+      "artifact": "kotlin-tooling-core-2.4.21-sources.jar",
+      "sha256": "2d41ea328ee90b09bb0b917bcab82399158ab7046aeadeccb6e357d445aadac8",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-tooling-core/2.4.21/kotlin-tooling-core-2.4.21-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-tooling-core:2.4.21",
@@ -2210,6 +3290,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-util-io:2.4.21",
+      "artifact": "kotlin-util-io-2.4.21-sources.jar",
+      "sha256": "eecd494b0f8299a020941725446cf240c1983efdbb8c002599559f68dd64c9ae",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/2.4.21/kotlin-util-io-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-io:2.4.21",
       "artifact": "kotlin-util-io-2.4.21.jar",
       "sha256": "5821175f24578ca8f1ef405bc982b3668f3f40f1a5dd28bb3283dd5215a922d1",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/2.4.21/kotlin-util-io-2.4.21.jar"
@@ -2219,6 +3305,12 @@
       "artifact": "kotlin-util-io-2.4.21.pom",
       "sha256": "a16f898aa8c686dc0b83d556ac4adecfcadbb6662ca547fca7802bf536d6d3d3",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/2.4.21/kotlin-util-io-2.4.21.pom"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-klib-metadata:2.4.21",
+      "artifact": "kotlin-util-klib-metadata-2.4.21-sources.jar",
+      "sha256": "0e1a1b057190d9ac59839d35396435ed7e1f70d75f2bfc1423941452eaa38ab8",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib-metadata/2.4.21/kotlin-util-klib-metadata-2.4.21-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-util-klib-metadata:2.4.21",
@@ -2234,6 +3326,12 @@
     },
     {
       "coordinate": "org.jetbrains.kotlin:kotlin-util-klib:2.4.21",
+      "artifact": "kotlin-util-klib-2.4.21-sources.jar",
+      "sha256": "f8679bc3ce76f03d6d22b5f6ea6a4cc1f74afce722ee0e5db1c2321a863080fd",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib/2.4.21/kotlin-util-klib-2.4.21-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlin:kotlin-util-klib:2.4.21",
       "artifact": "kotlin-util-klib-2.4.21.jar",
       "sha256": "f01f79d54968941dfa83a525ae173be93460bb85b0bf2cc9ff06f6eb0864691e",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib/2.4.21/kotlin-util-klib-2.4.21.jar"
@@ -2245,16 +3343,40 @@
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib/2.4.21/kotlin-util-klib-2.4.21.pom"
     },
     {
+      "coordinate": "org.jetbrains.kotlinx:atomicfu-jvm:0.23.2",
+      "artifact": "atomicfu-jvm-0.23.2-sources.jar",
+      "sha256": "5cbc18e1ffd1160ed9d027fab9d81c5909fc4b7a0bb0492770d27cc018805a60",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/atomicfu-jvm/0.23.2/atomicfu-jvm-0.23.2-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:atomicfu:0.27.0",
+      "artifact": "atomicfu-0.27.0-sources.jar",
+      "sha256": "5bfe1057c05ab954f78feb2b05a3d2672e32e23238d0cf6e5403f0162926f351",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/atomicfu/0.27.0/atomicfu-0.27.0-sources.jar"
+    },
+    {
       "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.9.0",
       "artifact": "kotlinx-coroutines-bom-1.9.0.pom",
       "sha256": "bea5511e9001f2c593ab5080df131b219ab5e2085cc5979ce583eacd4946fd78",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-bom/1.9.0/kotlinx-coroutines-bom-1.9.0.pom"
     },
     {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2",
+      "artifact": "kotlinx-coroutines-core-jvm-1.10.2-sources.jar",
+      "sha256": "cd86e9635cc7ac1b7d9854ed589e3041fb11cc67d2273e7d312278ba5628e2c8",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.10.2/kotlinx-coroutines-core-jvm-1.10.2-sources.jar"
+    },
+    {
       "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.7.1",
       "artifact": "kotlinx-coroutines-core-jvm-1.7.1.module",
       "sha256": "db1fe0110fa82b565d332d39d3f3e62c1dc7eb6238333e3b15e4377fa56e39cb",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.7.1/kotlinx-coroutines-core-jvm-1.7.1.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0",
+      "artifact": "kotlinx-coroutines-core-jvm-1.9.0-sources.jar",
+      "sha256": "01e0f26a274d8f2f2ae702b161bc0980cea817bfcaf66ca4944434ea7b601771",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.9.0/kotlinx-coroutines-core-jvm-1.9.0-sources.jar"
     },
     {
       "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0",
@@ -2269,10 +3391,118 @@
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.9.0/kotlinx-coroutines-core-jvm-1.9.0.module"
     },
     {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2",
+      "artifact": "kotlinx-coroutines-core-1.10.2-sources.jar",
+      "sha256": "8178bb22665b78d08bc8b5f864a8ab946576d10fe352c77558dc9c8ed7f82ad7",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.10.2/kotlinx-coroutines-core-1.10.2-sources.jar"
+    },
+    {
       "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0",
       "artifact": "kotlinx-coroutines-core-1.9.0.module",
       "sha256": "ad534034a953b4e12cbeeb874c66adf8b1ca14df15fe0d2e6547aa34e86dfeca",
       "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.module"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2",
+      "artifact": "kotlinx-coroutines-swing-1.10.2-sources.jar",
+      "sha256": "e08647aaf14d303b6caaf489623a8843e8bd043587ada3d012d1dd5ea0f6b01d",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-swing/1.10.2/kotlinx-coroutines-swing-1.10.2-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-test-jvm:1.10.2",
+      "artifact": "kotlinx-coroutines-test-jvm-1.10.2-sources.jar",
+      "sha256": "03c2bbc551541ef7b7fdcda0c3be67a51e4ddb0e553fdb9df0493acdaebf7ba7",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-test-jvm/1.10.2/kotlinx-coroutines-test-jvm-1.10.2-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2",
+      "artifact": "kotlinx-coroutines-test-1.10.2-sources.jar",
+      "sha256": "a3091d5942acf8db3d1455b66e4a92162f79411d54ffb215cb382512eb3a00df",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-test/1.10.2/kotlinx-coroutines-test-1.10.2-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.7.1",
+      "artifact": "kotlinx-datetime-jvm-0.7.1-sources.jar",
+      "sha256": "7252432e626821da49ae6ba9bf6880988ee9e9977ba6fdcd4e225c57cd387f2f",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-datetime-jvm/0.7.1/kotlinx-datetime-jvm-0.7.1-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-datetime:0.7.1",
+      "artifact": "kotlinx-datetime-0.7.1-sources.jar",
+      "sha256": "af7dced787cc51f02aeeaf3a1fb6674735d5453c86a2fa6a7be37efc9e8d15f6",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-datetime/0.7.1/kotlinx-datetime-0.7.1-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.9.0",
+      "artifact": "kotlinx-serialization-core-jvm-1.9.0-sources.jar",
+      "sha256": "72ad8ca04529d29cb144f845858f650ad8f06ca3a43c637967ca88b733c06f19",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.9.0/kotlinx-serialization-core-jvm-1.9.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core:1.9.0",
+      "artifact": "kotlinx-serialization-core-1.9.0-sources.jar",
+      "sha256": "3422cf884d9e6f9703ed66a919125e9250ec0cbe6cd73730fec336d9de019db9",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core/1.9.0/kotlinx-serialization-core-1.9.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.9.0",
+      "artifact": "kotlinx-serialization-json-jvm-1.9.0-sources.jar",
+      "sha256": "6c231ddcd95b1023ffb72cfd98023a035f666e46b4479d68eff83cc30892396c",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.9.0/kotlinx-serialization-json-jvm-1.9.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0",
+      "artifact": "kotlinx-serialization-json-1.9.0-sources.jar",
+      "sha256": "903beada71846ccc955d1f7492993a761e95c88175ce70db5f03eb5f057f1bb9",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json/1.9.0/kotlinx-serialization-json-1.9.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.runtime:jbr-api:1.5.0",
+      "artifact": "jbr-api-1.5.0-sources.jar",
+      "sha256": "0b0da2fdf5b7c24b5c8c432088e7d3a71062b01716ea5859555dc5c5326486e3",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/runtime/jbr-api/1.5.0/jbr-api-1.5.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.skiko:skiko-awt-runtime-windows-x64:0.9.22.2",
+      "artifact": "skiko-awt-runtime-windows-x64-0.9.22.2-sources.jar",
+      "sha256": "65a8e6882c8a7d66d7cdddc23a8d579df84e9d1851b0766810a2ee9c2f03e591",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/skiko/skiko-awt-runtime-windows-x64/0.9.22.2/skiko-awt-runtime-windows-x64-0.9.22.2-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.skiko:skiko-awt:0.9.22.2",
+      "artifact": "skiko-awt-0.9.22.2-sources.jar",
+      "sha256": "1b488bac0258d297649c8945424087c371c06c0a5d609baef463c27d246db95e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/skiko/skiko-awt/0.9.22.2/skiko-awt-0.9.22.2-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains.skiko:skiko:0.9.22.2",
+      "artifact": "skiko-0.9.22.2-sources.jar",
+      "sha256": "11bd5e6af007fd1ce4f31517746c1f8ee5239785ecc3f3561d23bbecff57571e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/skiko/skiko/0.9.22.2/skiko-0.9.22.2-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains:annotations:13.0",
+      "artifact": "annotations-13.0-sources.jar",
+      "sha256": "42a5e144b8e81d50d6913d1007b695e62e614705268d8cf9f13dbdc478c2c68e",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains:annotations:23.0.0",
+      "artifact": "annotations-23.0.0-sources.jar",
+      "sha256": "ff2309b42f7584520497bb48bc609aca04c9886cf48708f14be83f00423ec144",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/23.0.0/annotations-23.0.0-sources.jar"
+    },
+    {
+      "coordinate": "org.jetbrains:annotations:24.0.1",
+      "artifact": "annotations-24.0.1-sources.jar",
+      "sha256": "40978d2ac2fe28e0fc2e1eddc443057572ab775986d7afc83cc0c48cc65652ab",
+      "source": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/24.0.1/annotations-24.0.1-sources.jar"
+    },
+    {
+      "coordinate": "org.jspecify:jspecify:1.0.0",
+      "artifact": "jspecify-1.0.0-sources.jar",
+      "sha256": "adf0898191d55937fb3192ba971826f4f294292c4a960740f3c27310e7b70296",
+      "source": "https://repo.maven.apache.org/maven2/org/jspecify/jspecify/1.0.0/jspecify-1.0.0-sources.jar"
     },
     {
       "coordinate": "org.junit:junit-bom:5.11.0-M2",
@@ -2305,6 +3535,18 @@
       "source": "https://repo.maven.apache.org/maven2/org/junit/junit-bom/5.9.2/junit-bom-5.9.2.module"
     },
     {
+      "coordinate": "org.jvnet.staxex:stax-ex:1.8.1",
+      "artifact": "stax-ex-1.8.1-sources.jar",
+      "sha256": "1333d591414aa494425e49fae1f3cb8aec6b58148956353ef1d0b53fac49129c",
+      "source": "https://repo.maven.apache.org/maven2/org/jvnet/staxex/stax-ex/1.8.1/stax-ex-1.8.1-sources.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-analysis:9.9",
+      "artifact": "asm-analysis-9.9-sources.jar",
+      "sha256": "ff731d401ea2407759ea19b4b025800d32495a51a912f2553d987cddda424773",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-analysis/9.9/asm-analysis-9.9-sources.jar"
+    },
+    {
       "coordinate": "org.ow2.asm:asm-analysis:9.9",
       "artifact": "asm-analysis-9.9.jar",
       "sha256": "6a15d28e8bd29ba4fd5bca4baf9b50e8fba2d7b51fbf78cfa0c875a7214c678b",
@@ -2318,6 +3560,12 @@
     },
     {
       "coordinate": "org.ow2.asm:asm-commons:9.9",
+      "artifact": "asm-commons-9.9-sources.jar",
+      "sha256": "218bbb648e24578a385cb6b6a21ceff222a2a8f8b2d5f6a256a8099dd336dc76",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.9/asm-commons-9.9-sources.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-commons:9.9",
       "artifact": "asm-commons-9.9.jar",
       "sha256": "db2f6f26150bbe7c126606b4a1151836bcc22a1e05a423b3585698bece995ff8",
       "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.9/asm-commons-9.9.jar"
@@ -2327,6 +3575,12 @@
       "artifact": "asm-commons-9.9.pom",
       "sha256": "18a5d3ef1377e7544b3ca3210f261396b987f6010ef591d3872adae63119ee43",
       "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.9/asm-commons-9.9.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-tree:9.9",
+      "artifact": "asm-tree-9.9-sources.jar",
+      "sha256": "9d1fe261fa1d29904ca9dbc76878396e76bc225191676a8c16ad2669a205321a",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.9/asm-tree-9.9-sources.jar"
     },
     {
       "coordinate": "org.ow2.asm:asm-tree:9.9",
@@ -2354,6 +3608,12 @@
     },
     {
       "coordinate": "org.ow2.asm:asm-util:9.9",
+      "artifact": "asm-util-9.9-sources.jar",
+      "sha256": "e518a00b1d004832e72c6448351c4865971ac95a7cfe78fb0315d76acb393a46",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.9/asm-util-9.9-sources.jar"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm-util:9.9",
       "artifact": "asm-util-9.9.jar",
       "sha256": "3842e13cfe324ee9ab7cdc4914be9943541ead397c17e26daf0b8a755bede717",
       "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.9/asm-util-9.9.jar"
@@ -2363,6 +3623,12 @@
       "artifact": "asm-util-9.9.pom",
       "sha256": "a98593fda1c53a9e70d7660f416720e308d24db8e1c456fa17e76ba78d272b6b",
       "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.9/asm-util-9.9.pom"
+    },
+    {
+      "coordinate": "org.ow2.asm:asm:9.9",
+      "artifact": "asm-9.9-sources.jar",
+      "sha256": "e37000a2a0bc9f0bef373714ad7dde4082212351847b74618d483057a4ae186c",
+      "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.9/asm-9.9-sources.jar"
     },
     {
       "coordinate": "org.ow2.asm:asm:9.9",
@@ -2387,6 +3653,36 @@
       "artifact": "asm-9.9.1.pom",
       "sha256": "aca68dee9ba2f6cd90ffde728efdc7e3ebfcf59f3f41fbfe248d2d01d5b866af",
       "source": "https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.9.1/asm-9.9.1.pom"
+    },
+    {
+      "coordinate": "org.slf4j:jcl-over-slf4j:1.7.36",
+      "artifact": "jcl-over-slf4j-1.7.36-sources.jar",
+      "sha256": "aa7a3dc5ff8fd8ca2e8b305d54442a99a722af90777227eb3ce4226c2ba47037",
+      "source": "https://repo.maven.apache.org/maven2/org/slf4j/jcl-over-slf4j/1.7.36/jcl-over-slf4j-1.7.36-sources.jar"
+    },
+    {
+      "coordinate": "org.slf4j:slf4j-api:1.7.30",
+      "artifact": "slf4j-api-1.7.30-sources.jar",
+      "sha256": "9ee459644577590fed7ea94afae781fa3cc9311d4553faee8a3219ffbd7cc386",
+      "source": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/1.7.30/slf4j-api-1.7.30-sources.jar"
+    },
+    {
+      "coordinate": "org.slf4j:slf4j-api:2.0.17",
+      "artifact": "slf4j-api-2.0.17-sources.jar",
+      "sha256": "db0d08d8efa05ad19d174d747bd9d8e68dbb02b596812fe7b3a681656e346694",
+      "source": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17-sources.jar"
+    },
+    {
+      "coordinate": "org.slf4j:slf4j-nop:2.0.17",
+      "artifact": "slf4j-nop-2.0.17-sources.jar",
+      "sha256": "8a7beeaa6ab09b8f90ca8658eb3a0a14188bd6fe9dc827dcfc56acc95c9ceab8",
+      "source": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-nop/2.0.17/slf4j-nop-2.0.17-sources.jar"
+    },
+    {
+      "coordinate": "org.tensorflow:tensorflow-lite-metadata:0.2.0",
+      "artifact": "tensorflow-lite-metadata-0.2.0-sources.jar",
+      "sha256": "178c49195d9728480e655cf37ab480963cb7d4065af52c5450e9508c18c64a1d",
+      "source": "https://repo.maven.apache.org/maven2/org/tensorflow/tensorflow-lite-metadata/0.2.0/tensorflow-lite-metadata-0.2.0-sources.jar"
     }
   ]
 }

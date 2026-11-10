@@ -39,6 +39,9 @@ def main():
         url = base + '/'.join([group.replace('.', '/'), name, version, artifact])
         if artifact.endswith(('.jar', '.aar', '.klib')):
             url = artifact_source(group, name, version, artifact)
+        # Android Studio resolves Gradle's sources from its distribution repository.
+        if (group, name) == ('gradle', 'gradle') and artifact == f'gradle-{version}-src.zip':
+            url = 'https://services.gradle.org/distributions/' + artifact
         candidates = [url]
         if name.endswith('.gradle.plugin') and not group.startswith('com.android'):
             candidates.append('https://plugins.gradle.org/m2/' + '/'.join([group.replace('.', '/'), name, version, artifact]))
