@@ -2,6 +2,7 @@ plugins { id("com.android.library") }
 android {
     namespace = "kim.jujin.dglc.bindings"
     compileSdk = 37
+    ndkVersion = "29.0.14206865"
     defaultConfig { minSdk = 34; ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
@@ -13,6 +14,10 @@ dependencies {
 val buildRustBindings by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
     commandLine("python3", "scripts/build_rust_android.py")
+    doFirst {
+        environment("ANDROID_HOME", androidComponents.sdkComponents.sdkDirectory.get().asFile.absolutePath)
+        environment("ANDROID_NDK_HOME", androidComponents.sdkComponents.ndkDirectory.get().asFile.absolutePath)
+    }
     inputs.files(rootProject.file("scripts/build_rust_android.py"), rootProject.fileTree("crates"), rootProject.fileTree("locales"), rootProject.file("Cargo.toml"), rootProject.file("Cargo.lock"))
     outputs.dir("src/main/jniLibs")
     outputs.dir("src/main/kotlin/uniffi")

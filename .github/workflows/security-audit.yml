@@ -1,31 +1,6 @@
 name: Dependency security audit
 on:
-  schedule:
-    - cron: '23 3 * * *' # 12:23 KST (UTC+9)
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: &audit_paths
-      - '**/Cargo.toml'
-      - 'Cargo.lock'
-      - '.cargo/**'
-      - 'rust-toolchain*'
-      - '**/*.gradle'
-      - '**/*.gradle.kts'
-      - '**/*gradle.lockfile'
-      - 'gradle/**'
-      - 'gradle.properties'
-      - 'gradlew*'
-      - 'web/package*.json'
-      - 'scripts/audit_dependencies.py'
-      - 'scripts/evidence.py'
-      - 'scripts/verify_wrapper.py'
-      - 'scripts/tests/test_security.py'
-      - 'security/dependency-exceptions.json'
-      - '.github/workflows/security-audit.yml'
-  pull_request:
-    branches: [main]
-    paths: *audit_paths
 permissions:
   contents: read
 env:

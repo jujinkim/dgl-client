@@ -44,9 +44,8 @@ Rust runtime 범위는 배포 타깃의 실제 빌드 기능으로 링크되는 
 이유(`blockedBy`)·근거·완화 조건·정확한 사용 범위를 갖춰야 하며, 모든 예외는 90일 안에 만료되어 재검토됩니다.
 과거 검사 결과의 패키지 수·0건 기록을 현재 버전의 결과로 재사용하지 않습니다.
 
-별도 [Dependency security audit](../.github/workflows/security-audit.yml)는 매일 12:23 KST(03:23 UTC),
-수동 실행과 의존성·감사 코드·예외 파일 변경 push/PR에서 실행합니다. Gradle inventory를 새로 생성하고
-Rust·Maven·npm을 감사하며 APK 패키징·실기 검사는 수행하지 않습니다. GitHub 예약 실행은 지연될 수 있습니다.
+별도 [Dependency security audit](../.github/workflows/security-audit.yml)는 수동 실행(`workflow_dispatch`)만 사용합니다.
+Gradle inventory를 새로 생성하고 Rust·Maven·npm을 감사하며 APK 패키징·실기 검사는 수행하지 않습니다.
 통신 실패·불완전한 inventory·미검토 알림·재검토 기한 경과/만료 예외는 실패 처리하고 inventory·감사 보고서를 14일 보관합니다.
 통신·입력 오류로 끝난 보고서는 `complete: false`, `status: failed`와 실패 원인을 남깁니다.
 

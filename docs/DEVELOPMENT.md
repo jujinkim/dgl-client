@@ -95,6 +95,11 @@ tmux 명령·에러 코드·원격 터미널 바이트는 언어와 무관하게
 
 ## Android 빌드
 
+Android Studio에서는 저장소 루트를 열고 `androidApp`을 실행합니다. SDK Manager에서
+NDK (Side by side) `29.0.14206865`를 설치합니다. Gradle은 Studio가 선택한 SDK·NDK 경로를
+Rust 빌드에 전달합니다. Windows에서도 같은 작업을 사용하며 Python 3, Rust MSVC 호스트와
+Visual Studio C++ Build Tools가 필요합니다. 아래 Android Rust 타깃 네 개도 설치해야 합니다.
+
 ```sh
 rustup target add --toolchain 1.98.1 aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 npm ci --prefix web --ignore-scripts --no-audit
@@ -107,8 +112,42 @@ Gradle의 Rust 작업은 `scripts/build_rust_android.py`로 네 ABI를 빌드합
 `dglEngine` 선택 속성은 제거되어 전달하면 실패합니다.
 Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나를 사용합니다.
 검사·배포 스크립트는 이 원본을 검증하고 APK 복사본을 만들지 않습니다. Release APK는
-`androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`이며 미서명입니다.
+서명 환경변수가 없으면 `androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`이며 미서명입니다.
 앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.0` / `1`입니다.
+
+### Google Play 내부 테스트 수동 배포
+
+[Publish DGL internal test](../.github/workflows/publish-google-play-internal.yml)는 `workflow_dispatch`로만
+실행합니다. GitHub Actions에서 해당 workflow → **Run workflow** → `main`을 선택하면
+기본 검사·release lint·서명된 AAB 생성·서명 검증 후 `kim.jujin.dglc`의 `internal` 트랙에 게시합니다.
+빌드·보안 검사·Windows 빌드를 포함한 모든 workflow는 `workflow_dispatch`로만 수동 실행합니다.
+
+GitHub 저장소의 **Settings → Environments → google-play**에 다음 secrets를 등록합니다.
+같은 이름의 repository secrets도 사용할 수 있습니다.
+
+| Secret | 값 |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | DGL 업로드 키스토어 파일 전체를 Base64로 인코딩한 문자열 |
+| `ANDROID_KEYSTORE_PASSWORD` | 키스토어 비밀번호 |
+| `ANDROID_KEY_ALIAS` | 업로드 키의 alias |
+| `ANDROID_KEY_PASSWORD` | 해당 키의 비밀번호 |
+| `PLAY_SERVICE_ACCOUNT_JSON` | Google Play API 서비스 계정 JSON 키 전체 원문(Base64 아님) |
+
+Windows에서 키스토어 Base64를 클립보드에 복사하는 예:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\path\dgl-upload.jks')) | Set-Clipboard
+```
+
+Google Play Console에 DGL 앱과 첫 AAB를 먼저 등록하고 Play App Signing의 업로드 키를 맞춥니다.
+서비스 계정에는 이 앱의 테스트 트랙 출시 권한을 부여하고 Google Play Developer API를 활성화합니다.
+기존 Play Console에 등록된 업로드 키스토어를 사용하며, 매 배포 전 `versionCode`를 이전 업로드보다
+큰 값으로 올려 커밋합니다. 서비스 계정 설정은 [공식 API 안내](https://developers.google.com/android-publisher/getting_started)를 따릅니다.
+
+로컬 서명 빌드는 `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
+`RELEASE_KEY_PASSWORD` 네 환경변수를 모두 설정하고 `./gradlew :androidApp:bundleRelease`를 실행합니다.
+결과는 `androidApp/build/outputs/bundle/release/androidApp-release.aab`입니다. 일부 변수만 설정하면
+구성 오류로 중단합니다. CI는 서명 AAB를 30일간 artifact로 보관하며 키스토어는 보관하지 않습니다.
 
 ### 앱 버전 관리
 
@@ -257,10 +296,11 @@ Rust 툴체인이 필요합니다. runtime은 배포 타깃별(Android 네 ABI�
 
 ## CI
 
-`main` push/PR의 **Build and verify**는 Linux 기본 job 하나를 실행합니다.
+모든 GitHub Actions는 수동 실행(`workflow_dispatch`)만 사용합니다.
+**Build and verify**는 수동 실행 시 Linux 기본 job 하나를 실행합니다.
 Python·Rust 코어/UniFFI·web·JVM 단위 검사, Android Debug 빌드·lint, Wrapper·비밀정보·번들 검사를 포함합니다.
 GPUI 데스크톱(`dgl-desktop`) 검사는 위 macOS 로컬 명령, Windows는 `build_windows.ps1 -Test`로 별도 실행합니다.
-`README.md`·`TASKS.md`·`AGENTS.md`·`docs/**`·`scripts/README.md`만 바뀌면 CI를 생략합니다. Debug APK는 `android-debug` artifact로 수집합니다.
+Debug APK는 `android-debug` artifact로 수집합니다.
 
 | 수동 입력 | 추가 작업 |
 |---|---|
@@ -271,6 +311,6 @@ GPUI 데스크톱(`dgl-desktop`) 검사는 위 macOS 로컬 명령, Windows는 `
 입력은 기본 꺼짐입니다. **Build Windows Rust candidate**는 별도 수동 workflow이며
 Windows MSVC 빌드·ZIP만 수행합니다. CI 성공은 서명·공개 릴리스·Windows 실기 인수 완료를 뜻하지 않습니다.
 
-**Dependency security audit**는 매일 12:23 KST(03:23 UTC)와 수동 실행, 의존성·감사 코드·예외 파일 변경
-push/PR에서 별도로 실행합니다. 기존 고정 Java·Rust·Node·Android 도구 환경으로 Gradle inventory와
+**Dependency security audit**는 별도 수동 workflow입니다.
+기존 고정 Java·Rust·Node·Android 도구 환경으로 Gradle inventory와
 Rust·Maven·npm OSV 감사를 수행하고 보고서를 14일 보관합니다. APK 빌드·패키징·실기 검사는 포함하지 않습니다.

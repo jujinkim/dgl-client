@@ -41,3 +41,4 @@ __pycache__/
 /target/
 /coreBindings/src/main/jniLibs/
 /coreBindings/src/main/kotlin/uniffi/
+/androidApp/release/

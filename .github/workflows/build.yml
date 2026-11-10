@@ -1,21 +1,5 @@
 name: Build and verify
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'README.md'
-      - 'TASKS.md'
-      - 'AGENTS.md'
-      - 'scripts/README.md'
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'README.md'
-      - 'TASKS.md'
-      - 'AGENTS.md'
-      - 'scripts/README.md'
   workflow_dispatch:
     inputs:
       verify_packaging:

@@ -5,6 +5,14 @@ plugins {
     kotlin("plugin.compose")
 }
 
+val releaseSigning = listOf("RELEASE_STORE_FILE", "RELEASE_STORE_PASSWORD", "RELEASE_KEY_ALIAS", "RELEASE_KEY_PASSWORD")
+    .associateWith { providers.environmentVariable(it).orNull }
+val signRelease = releaseSigning.values.any { !it.isNullOrBlank() }
+if (signRelease) {
+    val missing = releaseSigning.filterValues { it.isNullOrBlank() }.keys
+    require(missing.isEmpty()) { "Incomplete release signing configuration; missing: ${missing.joinToString()}" }
+}
+
 android {
     namespace = "kim.jujin.dglc"
     compileSdk = 37
@@ -26,7 +34,20 @@ android {
         resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/INDEX.LIST", "META-INF/DEPENDENCIES")
         resources.merges += setOf("META-INF/LICENSE.md", "META-INF/LICENSE", "META-INF/NOTICE.md", "META-INF/NOTICE")
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    if (signRelease) {
+        signingConfigs.create("release") {
+            storeFile = rootProject.file(releaseSigning.getValue("RELEASE_STORE_FILE")!!)
+            storePassword = releaseSigning.getValue("RELEASE_STORE_PASSWORD")
+            keyAlias = releaseSigning.getValue("RELEASE_KEY_ALIAS")
+            keyPassword = releaseSigning.getValue("RELEASE_KEY_PASSWORD")
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (signRelease) signingConfig = signingConfigs.getByName("release")
+        }
+    }
 }
 kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 dependencies {

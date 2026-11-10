@@ -8,7 +8,7 @@
 
 | 도구 | 역할·출력 |
 |---|---|
-| `build_rust_android.py` | Gradle에서 호출하는 Rust 네 ABI 빌드·UniFFI 생성 |
+| `build_rust_android.py` | Windows·macOS·Linux에서 Gradle이 선택한 SDK/NDK로 Rust 네 ABI 빌드·UniFFI 생성 |
 | `collect_rust_android.py` | 원본 Debug APK의 ID·SDK·네 ABI·Rust payload·서명 확인, `artifacts/rust-candidate/android/build.json` 기록 |
 | `verify_app_versions.py` | Cargo 버전과 선택 플랫폼의 패키지 비교. 기본/`--android`는 Kotlin·Debug APK, `--mac`은 `.app`, `--windows`는 ZIP 내부·외부 메타데이터 검사; 플래그 조합 가능 |
 | `collect_artifacts.py` | 원본 Android Debug/Release APK 정책·assets·라이선스 검사, `artifacts/` manifest·해시 생성 |
