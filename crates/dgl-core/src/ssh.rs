@@ -12,6 +12,27 @@ use std::{
     time::Duration,
 };
 pub type Stream = Channel<client::Msg>;
+const TRANSPORT_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Bound active transport work only; waiting for terminal output may be idle indefinitely.
+async fn transport<T>(
+    operation: impl std::future::Future<Output = std::result::Result<T, russh::Error>>,
+) -> Result<T> {
+    tokio::time::timeout(TRANSPORT_TIMEOUT, operation)
+        .await
+        .map_err(|_| Error::Network)?
+        .map_err(|_| Error::Network)
+}
+
+/// A timed-out write may have delivered a prefix. The caller must abandon the stream
+/// and complete the input as failed, never retry its bytes on a new connection.
+pub(crate) async fn write(stream: &Stream, bytes: &[u8]) -> Result<()> {
+    transport(stream.data(bytes)).await
+}
+
+#[cfg(test)]
+pub(crate) mod tests;
+
 pub struct Handler {
     trusted: Option<String>,
     observed: Arc<Mutex<Option<String>>>,
@@ -153,15 +174,7 @@ impl Ssh {
     }
     pub async fn execute(&self, command: &str) -> Result<(u32, Vec<u8>)> {
         tokio::time::timeout(Duration::from_secs(15), async {
-            let mut channel = self
-                .handle
-                .channel_open_session()
-                .await
-                .map_err(|_| Error::Network)?;
-            channel
-                .exec(true, command)
-                .await
-                .map_err(|_| Error::Network)?;
+            let mut channel = self.process(command).await?;
             let mut out = Vec::new();
             let mut exit = None;
             while let Some(m) = channel.wait().await {
@@ -289,41 +302,23 @@ impl Ssh {
     /// not count while other clients are attached, until `Operation::CountSize`.
     pub async fn control(&self, id: &str, ignore_size: bool) -> Result<Stream> {
         command::target(id, '$')?;
-        let c = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|_| Error::Network)?;
-        c.exec(
-            true,
-            format!(
-                "{} -u -C attach-session{} -t {}",
-                command::quote(self.tmux.as_deref().ok_or(Error::NotReady)?)?,
-                if ignore_size { " -f ignore-size" } else { "" },
-                command::target(id, '$')?
-            ),
-        )
+        self.process(&format!(
+            "{} -u -C attach-session{} -t {}",
+            command::quote(self.tmux.as_deref().ok_or(Error::NotReady)?)?,
+            if ignore_size { " -f ignore-size" } else { "" },
+            command::target(id, '$')?
+        ))
         .await
-        .map_err(|_| Error::Network)?;
-        Ok(c)
     }
     /// A command that keeps running on its own channel; its stdin and stdout are the stream.
     pub async fn process(&self, command: &str) -> Result<Stream> {
-        let c = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|_| Error::Network)?;
-        c.exec(true, command).await.map_err(|_| Error::Network)?;
+        let c = transport(self.handle.channel_open_session()).await?;
+        transport(c.exec(true, command)).await?;
         Ok(c)
     }
     pub async fn shell(&self, size: Size) -> Result<Stream> {
-        let c = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|_| Error::Network)?;
-        c.request_pty(
+        let c = transport(self.handle.channel_open_session()).await?;
+        transport(c.request_pty(
             true,
             "xterm-256color",
             size.columns.into(),
@@ -331,10 +326,9 @@ impl Ssh {
             0,
             0,
             &[],
-        )
-        .await
-        .map_err(|_| Error::Network)?;
-        c.request_shell(true).await.map_err(|_| Error::Network)?;
+        ))
+        .await?;
+        transport(c.request_shell(true)).await?;
         Ok(c)
     }
     pub async fn close(mut self) {

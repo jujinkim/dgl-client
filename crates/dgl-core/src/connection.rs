@@ -1022,10 +1022,7 @@ impl Control {
             wire.push_str(&Command::new(op)?.wire);
             wire.push('\n');
         }
-        self.stream
-            .data(wire.as_bytes())
-            .await
-            .map_err(|_| Error::Network)?;
+        ssh::write(&self.stream, wire.as_bytes()).await?;
         let mut replies = Vec::with_capacity(ops.len());
         for _ in ops {
             replies.push(match self.response().await {
@@ -1267,10 +1264,7 @@ impl Control {
             .collect::<Vec<_>>()
             .join(" ; ")
             + "\n";
-        self.stream
-            .data(wire.as_bytes())
-            .await
-            .map_err(|_| Error::Network)?;
+        ssh::write(&self.stream, wire.as_bytes()).await?;
         self.response().await?;
         let mode = self.response().await?;
         let fields = mode
@@ -2351,7 +2345,7 @@ impl Actor<'_> {
         let Remote::Shell(sh) = &self.remote else {
             return Err(Error::NotReady);
         };
-        sh.data(bytes).await.map_err(|_| Error::Network)
+        ssh::write(sh, bytes).await
     }
     async fn action(&mut self, action: &Action) -> Result<()> {
         match action {
@@ -2591,6 +2585,101 @@ impl Actor<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn stalled_control(window: u32) -> (crate::ssh::tests::Fixture, Ssh, Control) {
+        let fixture = crate::ssh::tests::Fixture::new(window, 32, true, false).await;
+        let ssh = fixture.connect().await;
+        let stream = ssh.shell(Size::default()).await.unwrap();
+        // Reuse the actor's real state, without running a second actor against it.
+        let c = Connection::start(host(1), Credential::default(), None);
+        c.close();
+        c.join().await;
+        c.shared.update(|s| {
+            s.phase = Phase::Ready;
+            s.pane = Some("%34".into());
+            s.retry = RetryState::default();
+        });
+        let control = Control {
+            stream,
+            parser: Parser::default(),
+            events: VecDeque::new(),
+            shared: c.shared.clone(),
+            size: Size::default(),
+            client: Size::default(),
+            fits: true,
+            ignoring_size: false,
+            screens: BTreeMap::new(),
+            capturing: None,
+            dirty: false,
+            paused: HashSet::new(),
+            titles: Default::default(),
+            metadata: None,
+        };
+        (fixture, ssh, control)
+    }
+
+    #[tokio::test]
+    async fn tmux_failed_and_partial_writes_complete_input_without_returning_it_for_replay() {
+        for window in [0, 32] {
+            let (_fixture, ssh, mut control) = stalled_control(window).await;
+            let shared = control.shared.clone();
+            let target = shared.target().unwrap();
+            let make_request = |id| Request {
+                id,
+                kind: RequestKind::Input {
+                    target: target.clone(),
+                    bytes: vec![b'x'; 4096],
+                    revision: shared.input_revision.load(Ordering::SeqCst),
+                    coordinates: false,
+                },
+                permit: None,
+                owner: Arc::downgrade(&shared),
+            };
+            let unsent = tokio::time::timeout(
+                Duration::from_secs(18),
+                send_input(&mut control, &shared, vec![make_request(1)]),
+            )
+            .await
+            .unwrap();
+            assert_eq!(unsent.error, Some(Error::Network));
+            assert!(
+                unsent.requests.is_empty(),
+                "delivery is unknown; never enqueue it again"
+            );
+            let results = shared.results.lock().unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].0.outcome, CompletionOutcome::TransportLost);
+            assert_eq!(results[0].0.error, Some(Error::Network));
+            drop(results);
+            shared.phase(Phase::Reconnecting);
+            assert_eq!(admit_input(&shared, &make_request(2)), Err(Error::NotReady));
+            shared.update(|s| {
+                s.phase = Phase::Ready;
+                s.generation.connection += 1;
+            });
+            assert_eq!(
+                admit_input(&shared, &make_request(3)),
+                Err(Error::StaleGeneration)
+            );
+            ssh.abort();
+            ssh.close().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn tmux_capture_request_write_is_bounded() {
+        let (_fixture, ssh, mut control) = stalled_control(0).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(18),
+            control.snapshot_pane("%34".into(), false),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result, Err(Error::Network));
+        ssh.abort();
+        ssh.close().await;
+    }
+
     fn snapshot_writer() -> (Arc<OutputQueue>, SnapshotWriter) {
         let output = Arc::new(OutputQueue::default());
         let id = output.subscribe().unwrap();

@@ -36,7 +36,7 @@
 | `verify_android_results.py` | 계측의 지정 테스트 이름·완료·실패/skip 검사; 실행 도구에서 import |
 | `verify_lint.py` | lint 진단·검토 조건·만료 확인 |
 | `scan_secrets.py` | Gitleaks로 작업 파일·전체 staged snapshot·Git refs 검사 |
-| `audit_dependencies.py` | Gradle 선택 inventory·Cargo.lock(crates.io)·npm lock의 OSV 검사 |
+| `audit_dependencies.py` | Gradle 선택 inventory·Cargo.lock(crates.io)·npm lock의 OSV 검사. 통신·입력 오류도 실패 보고서로 기록; 매일 12:23 KST의 별도 보안 CI와 수동/의존성 변경 실행 |
 | `verify_licenses.py` | 선택 inventory의 라이선스·원문 해시·고지 확인 |
 | `refresh_licenses.py` | 명시적으로 요청할 때 라이선스 근거 갱신; 생성 결과 검토 필요 |
 | `verify_dependency_origins.py` | 의존성 출처와 다운로드 해시 대조 |

@@ -301,8 +301,7 @@ impl Observer {
     ) -> Result<serde_json::Value> {
         command::target(session, '$')?;
         let request = serde_json::json!({"session": session, "after": after, "epoch": epoch});
-        self.stream
-            .data(format!("{request}\n").as_bytes())
+        crate::ssh::write(&self.stream, format!("{request}\n").as_bytes())
             .await
             .map_err(|_| Error::NotReady)?;
         loop {

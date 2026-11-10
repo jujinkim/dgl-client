@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import audit_dependencies as audit
@@ -114,6 +115,31 @@ class AuditTests(unittest.TestCase):
                 path.write_text(json.dumps(data), encoding="utf-8")
                 with self.assertRaises(ValueError):
                     audit.load_inventory(path)
+
+    def test_failed_audit_replaces_prior_success_and_preserves_diagnostic(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'artifacts').mkdir()
+            (root / 'web').mkdir()
+            (root / 'web/package-lock.json').write_text('{}', encoding='utf-8')
+            report = root / 'artifacts/dependency-audit.json'
+            # Both a broken inventory and unavailable OSV must fail closed and
+            # leave a collectable report, never the preceding successful audit.
+            for stage, failure in (('load_inventory', ValueError('Incomplete dependency inventory')),
+                                   ('query_osv', OSError('OSV offline'))):
+                report.write_text('{"complete": true, "status": "passed"}', encoding='utf-8')
+                with patch.object(audit, 'ROOT', root), patch.object(sys, 'argv', ['audit']), \
+                     patch.object(audit, 'context', return_value={'commit': 'a' * 40}), \
+                     patch.object(audit, 'load_inventory', return_value=[self.package()]), \
+                     patch.object(audit, 'cargo_inventory', return_value=[]), \
+                     patch.object(audit, 'npm_packages', return_value=[]), \
+                     patch.object(audit, stage, side_effect=failure):
+                    self.assertEqual(1, audit.main())
+                result = json.loads(report.read_text(encoding='utf-8'))
+                self.assertFalse(result['complete'])
+                self.assertEqual('failed', result['status'])
+                self.assertEqual(str(failure), result['error'])
 
 
 class LicenseTests(unittest.TestCase):

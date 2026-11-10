@@ -5,13 +5,14 @@
       "name": "rsa",
       "version": "0.10.0-rc.18",
       "id": "RUSTSEC-2023-0071",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
-      "reason": "Marvin timing side channel in RSA private-key operations; no fixed rsa release exists.",
-      "blockedBy": "russh 0.64.1 and 0.65.0 both require rsa =0.10.0-rc.18",
+      "reason": "Marvin timing side channel in RSA private-key operations; the advisory lists rsa >=0.10.0 as fixed, but the selected 0.10.0-rc.18 remains affected.",
+      "blockedBy": "russh 0.65.0 pins rsa =0.10.0-rc.18; stable rsa 0.10.0 is outside that exact requirement. Keep imported RSA keys compatible until russh updates its pin.",
       "evidence": [
-        "https://rustsec.org/advisories/RUSTSEC-2023-0071.html"
+        "https://rustsec.org/advisories/RUSTSEC-2023-0071.html",
+        "https://github.com/Eugeny/russh/blob/v0.65.0/russh/Cargo.toml"
       ],
       "conditions": [
         "DGL generates Ed25519 keys; RSA is used only when a user imports an RSA private key for SSH authentication.",
@@ -31,7 +32,7 @@
       "name": "grid",
       "version": "0.18.0",
       "id": "GHSA-38c5-483c-4qqp",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "Integer overflow in Grid::expand_rows; fixed only in grid 1.0.1.",
@@ -54,40 +55,14 @@
     },
     {
       "ecosystem": "crates.io",
-      "name": "block-buffer",
-      "version": "0.10.4",
-      "id": "GHSA-qwgh-2vcv-g2f7",
-      "reviewed": "2026-10-29",
-      "recheck": "2026-12-15",
-      "expires": "2027-01-27",
-      "reason": "A panic caught inside a buffered digest callback can corrupt the buffer cursor; fixed only in block-buffer 0.12.1.",
-      "blockedBy": "sha2 0.10.9 (gpui_http_client 0.2.2 and DGL Windows storage) requires digest 0.10, which requires block-buffer ^0.10",
-      "evidence": [
-        "https://github.com/advisories/GHSA-qwgh-2vcv-g2f7"
-      ],
-      "conditions": [
-        "Requires catching a panic from the hashing callback and reusing the hasher; DGL has no catch_unwind.",
-        "DGL hashes only short credential reference strings with Sha256::digest in one call."
-      ],
-      "usages": [
-        {
-          "module": "cargo",
-          "configuration": "Cargo.lock",
-          "platform": "rust-targets",
-          "scope": "runtime"
-        }
-      ]
-    },
-    {
-      "ecosystem": "crates.io",
       "name": "async-std",
       "version": "1.13.2",
       "id": "RUSTSEC-2025-0052",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "async-std is discontinued.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zed-async-tar 0.5.0-zed)",
+      "blockedBy": "gpui 0.2.2 selects this version (zed-async-tar 0.5.0-zed)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2025-0052.html"
       ],
@@ -106,14 +81,40 @@
     },
     {
       "ecosystem": "crates.io",
+      "name": "pin-utils",
+      "version": "0.1.1",
+      "id": "RUSTSEC-2026-0441",
+      "reviewed": "2026-11-11",
+      "recheck": "2026-12-15",
+      "expires": "2027-01-27",
+      "reason": "pin-utils is unmaintained; this advisory is a maintenance notice, not a reported exploitable vulnerability.",
+      "blockedBy": "dgl-desktop -> gpui 0.2.2 -> gpui_http_client 0.2.2 -> zed-async-tar 0.5.0-zed -> async-std 1.13.2 -> pin-utils 0.1.1",
+      "evidence": [
+        "https://rustsec.org/advisories/RUSTSEC-2026-0441.html"
+      ],
+      "conditions": [
+        "Indirect desktop runtime dependency; DGL does not call pin-utils directly and Android does not link it.",
+        "Remove when the GPUI dependency chain migrates to maintained pinning APIs; retain the existing review deadline and expiry."
+      ],
+      "usages": [
+        {
+          "module": "cargo",
+          "configuration": "Cargo.lock",
+          "platform": "rust-targets",
+          "scope": "runtime"
+        }
+      ]
+    },
+    {
+      "ecosystem": "crates.io",
       "name": "rustls-pemfile",
       "version": "2.2.0",
       "id": "RUSTSEC-2025-0134",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "rustls-pemfile is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zed-reqwest 0.12.15-zed)",
+      "blockedBy": "gpui 0.2.2 selects this version (zed-reqwest 0.12.15-zed)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2025-0134.html"
       ],
@@ -135,11 +136,11 @@
       "name": "rustybuzz",
       "version": "0.20.1",
       "id": "RUSTSEC-2026-0206",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "rustybuzz is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (usvg 0.45.1)",
+      "blockedBy": "gpui 0.2.2 selects this version (usvg 0.45.1)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0206.html"
       ],
@@ -161,11 +162,11 @@
       "name": "ttf-parser",
       "version": "0.25.1",
       "id": "RUSTSEC-2026-0192",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "ttf-parser is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (usvg 0.45.1, fontdb 0.23.0)",
+      "blockedBy": "gpui 0.2.2 selects this version (usvg 0.45.1, fontdb 0.23.0)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0192.html"
       ],
@@ -187,7 +188,7 @@
       "name": "git2",
       "version": "0.20.4",
       "id": "RUSTSEC-2026-0183",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "Unsound Remote::list(); fixed in git2 0.21.0.",
@@ -213,7 +214,7 @@
       "name": "git2",
       "version": "0.20.4",
       "id": "RUSTSEC-2026-0184",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "Unsound Signature from a buffer-created BlameHunk; fixed in git2 0.21.0.",
@@ -239,7 +240,7 @@
       "name": "basic-toml",
       "version": "0.1.10",
       "id": "RUSTSEC-2026-0374",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "basic-toml is unmaintained.",
@@ -265,11 +266,11 @@
       "name": "instant",
       "version": "0.1.13",
       "id": "RUSTSEC-2024-0384",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "instant is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (futures-lite 1.13.0 / fastrand 1.9.0)",
+      "blockedBy": "gpui 0.2.2 selects this version (futures-lite 1.13.0 / fastrand 1.9.0)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2024-0384.html"
       ],
@@ -291,11 +292,11 @@
       "name": "paste",
       "version": "1.0.15",
       "id": "RUSTSEC-2024-0436",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "paste is unmaintained (compile-time macro).",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (metal 0.29.0 and others)",
+      "blockedBy": "gpui 0.2.2 selects this version (metal 0.29.0 and others)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2024-0436.html"
       ],
@@ -317,11 +318,11 @@
       "name": "proc-macro-error2",
       "version": "2.0.1",
       "id": "RUSTSEC-2026-0173",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "proc-macro-error2 is unmaintained (compile-time macro).",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (stacksafe-macro 0.1.4)",
+      "blockedBy": "gpui 0.2.2 selects this version (stacksafe-macro 0.1.4)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0173.html"
       ],
@@ -343,11 +344,11 @@
       "name": "rustybuzz",
       "version": "0.14.1",
       "id": "RUSTSEC-2026-0206",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "rustybuzz is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (cosmic-text 0.14.2, Linux text system)",
+      "blockedBy": "gpui 0.2.2 selects this version (cosmic-text 0.14.2, Linux text system)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0206.html"
       ],
@@ -369,11 +370,11 @@
       "name": "ttf-parser",
       "version": "0.20.0",
       "id": "RUSTSEC-2026-0192",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "ttf-parser is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (cosmic-text 0.14.2 / fontdb 0.16.2)",
+      "blockedBy": "gpui 0.2.2 selects this version (cosmic-text 0.14.2 / fontdb 0.16.2)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0192.html"
       ],
@@ -395,11 +396,11 @@
       "name": "ttf-parser",
       "version": "0.21.1",
       "id": "RUSTSEC-2026-0192",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "ttf-parser is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (Linux text system)",
+      "blockedBy": "gpui 0.2.2 selects this version (Linux text system)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0192.html"
       ],
@@ -421,11 +422,11 @@
       "name": "zbus_names",
       "version": "4.3.5",
       "id": "RUSTSEC-2026-0371",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "zbus_names is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zbus 5.19.0, Linux portals)",
+      "blockedBy": "gpui 0.2.2 selects this version (zbus 5.19.0, Linux portals)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0371.html"
       ],
@@ -447,11 +448,11 @@
       "name": "zvariant",
       "version": "5.15.1",
       "id": "RUSTSEC-2026-0370",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "zvariant is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zbus 5.19.0, Linux portals)",
+      "blockedBy": "gpui 0.2.2 selects this version (zbus 5.19.0, Linux portals)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0370.html"
       ],
@@ -473,11 +474,11 @@
       "name": "zvariant_derive",
       "version": "5.15.1",
       "id": "RUSTSEC-2026-0372",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "zvariant_derive is unmaintained.",
-      "blockedBy": "gpui 0.2.2 (latest release) pins this version (zbus 5.19.0, Linux portals)",
+      "blockedBy": "gpui 0.2.2 selects this version (zbus 5.19.0, Linux portals)",
       "evidence": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0372.html"
       ],
@@ -499,7 +500,7 @@
       "name": "com.google.guava:guava",
       "version": "33.4.0-jre",
       "id": "GHSA-xxph-c9ww-hj94",
-      "reviewed": "2026-10-29",
+      "reviewed": "2026-11-11",
       "recheck": "2026-12-15",
       "expires": "2027-01-27",
       "reason": "Native Java deserialization of CompactHashMap/CompactHashSet/MapMakerInternalMap can allocate unbounded memory; fixed in 33.7.2.",

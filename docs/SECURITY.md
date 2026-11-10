@@ -9,6 +9,9 @@
   Windows는 참조별 entropy·해시 파일명·암호문 교체 저장을 사용합니다. 보호 저장 실패 시 평문으로 대체하지 않습니다.
 - 비밀번호·개인키·암호는 실행 중 메모리에 존재합니다. 모든 런타임의 메모리 완전 삭제를 보장하지 않습니다.
 - 복구 중 입력을 차단하고 실패한 입력을 자동 재전송하지 않습니다. 연결 종료는 tmux 세션 삭제 명령을 보내지 않습니다.
+- SSH 채널 열기·초기 요청과 tmux 명령·화면 캡처·일반 셸 쓰기는 각 15초로 제한합니다.
+  제한 시간 초과는 네트워크 오류로 연결을 종료하고 복구합니다. 일부 전송 여부가 불명확한 입력도 실패로 완료하며 재전송하지 않습니다.
+  터미널의 정상 유휴 시간에는 적용하지 않습니다. 에이전트 관측은 같은 쓰기 경로를 사용하지만 기존 8초 제한과 관측 실패 시 대체 경로를 유지합니다.
 - 원격 출력·사용자 입력·자격 증명을 기본 로그로 기록하지 않습니다. 진단과 수집 보고서에 비밀정보를 포함하지 않습니다.
 
 WebView는 고정 HTTPS appassets origin의 번들만 사용합니다. 외부 탐색·네트워크 요청·file/content 접근·
@@ -40,6 +43,24 @@ Wrapper 배포/JAR checksum, Gradle verification metadata·dependency lock, Carg
 Rust runtime 범위는 배포 타깃의 실제 빌드 기능으로 링크되는 일반 의존성입니다. runtime 권고 예외는 호환되는 수정판이 없는
 이유(`blockedBy`)·근거·완화 조건·정확한 사용 범위를 갖춰야 하며, 모든 예외는 90일 안에 만료되어 재검토됩니다.
 과거 검사 결과의 패키지 수·0건 기록을 현재 버전의 결과로 재사용하지 않습니다.
+
+별도 [Dependency security audit](../.github/workflows/security-audit.yml)는 매일 12:23 KST(03:23 UTC),
+수동 실행과 의존성·감사 코드·예외 파일 변경 push/PR에서 실행합니다. Gradle inventory를 새로 생성하고
+Rust·Maven·npm을 감사하며 APK 패키징·실기 검사는 수행하지 않습니다. GitHub 예약 실행은 지연될 수 있습니다.
+통신 실패·불완전한 inventory·미검토 알림·재검토 기한 경과/만료 예외는 실패 처리하고 inventory·감사 보고서를 14일 보관합니다.
+통신·입력 오류로 끝난 보고서는 `complete: false`, `status: failed`와 실패 원인을 남깁니다.
+
+SSH 엔진은 `ring`·RSA 기능을 유지한 `russh =0.65.0`, Windows 간접 의존성은 `pageant 0.2.5`입니다.
+[상류 릴리스](https://github.com/Eugeny/russh/releases/tag/v0.65.0)의 중첩 인증서 파싱·EXT_INFO 무제한 할당·
+최대 패킷 크기 0에 의한 쓰기 정지 수정과 pageant 프레임 길이 수정을 포함합니다.
+기본 로컬 회귀 검사는 `ssh-key` 직접 파싱이 아닌 russh의 보호된 파싱 진입점에서 중첩 인증서 거부를 확인합니다.
+
+남은 [RSA 권고](https://rustsec.org/advisories/RUSTSEC-2023-0071.html)는 수정판 `>=0.10.0`이 있지만
+`russh 0.65.0`의 `rsa =0.10.0-rc.18` 고정과 호환되지 않습니다. 기존 RSA 키 지원을 유지하고 강제로 교체하지 않습니다.
+DGL 생성 키는 Ed25519이며 RSA 개인키는 사용자가 가져온 키 인증에 쓰입니다. 상류 고정 버전 갱신을 추적합니다.
+`pin-utils`는 `gpui → gpui_http_client → zed-async-tar → async-std`의 데스크톱 간접 의존성으로,
+[유지보수 중단 공지](https://rustsec.org/advisories/RUSTSEC-2026-0441.html)를 한시적으로 예외 처리합니다.
+예외의 재검토일 2026-12-15·만료일 2027-01-27은 연장하지 않습니다.
 
 `verify_licenses.py`는 선택 inventory와 `licenses/dependencies.json`의 원문 해시·고지를 대조합니다.
 `refresh_licenses.py`는 검토를 위한 유지보수 도구이며 자동 승인 단계가 아닙니다.

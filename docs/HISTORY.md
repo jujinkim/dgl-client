@@ -210,6 +210,25 @@ JVM·웹 단위 검사, Android Debug APK·계측 컴파일·lint까지 확인�
 Windows 경로(`GetSystemPowerStatus`)는 이 Mac에 MinGW C 도구가 없어 교차 컴파일까지 확인하지 못했습니다.
 설정 → 작업 공간에 기기 로컬 `절전 주기`(OS 저전력 모드 따름 기본·항상 절전·사용 안 함)를 추가했습니다. 동기화하지 않고 Android는 무시합니다.
 
+## 2026-11-11: SSH 보안 수정과 정기 의존성 감사
+
+`russh 0.65.0`·Windows `pageant 0.2.5`로 갱신하고 나머지 Cargo 잠금 버전은 유지했습니다.
+SSH 채널 열기·초기 요청·tmux 명령/캡처·셸 쓰기에 15초 제한을 적용했습니다.
+관측은 기존 8초 제한을 유지하며, 실패 입력 미재전송·복구 중 입력 차단·대상 세대 검사를 보존했습니다.
+로컬 fixture 회귀 9개로 russh 보호 경로의 중첩 인증서 거부, 패킷 크기 0 거부, 전송 정지·부분 입력·취소·재접속·신뢰 경계를 확인했습니다.
+
+매일 12:23 KST·수동·의존성 관련 변경의 별도 보안 workflow를 추가하고 actionlint로 검사했습니다.
+최신 OSV 감사는 1,204개 선택 버전(Maven 358·Rust 845·npm 1), 유효 예외 20건·미검토 0건입니다.
+사라진 block-buffer 알림의 예외를 제거하고 GPUI 간접 pin-utils 유지보수 중단 예외를 추가했습니다.
+RSA 수정판은 존재하지만 russh의 `rsa =0.10.0-rc.18` 고정 제약이 남으며, 기존 재검토일·만료일은 연장하지 않았습니다.
+
+Rust 코어 60개(단위 51·계약 8·로컬 셸 1), UniFFI 3개, macOS 데스크톱 119개,
+Python 113개·터미널 JavaScript 71개·JVM 125개와 Android 네 ABI Debug APK 빌드·payload/서명 검사를 확인했습니다.
+JVM 외부 SSH 관련 8개 skip, Rust OpenSSH/tmux 7개 ignore, 대화형 macOS Keychain 1개 ignore는 통과에 포함하지 않았습니다.
+Windows 네이티브 빌드·실기, Android 계측·실기, GUI 인수와 GitHub의 실제 예약 실행은 수행하지 않았습니다.
+변경 Rust 파일의 포맷·문서 링크·대시보드 등록 검사는 통과했습니다. 전체 `cargo fmt --all --check`에는
+기존 `desktop/src/workspace_ui.rs`의 포맷 차이 한 곳이 남아 있으며 이 작업에서 수정하지 않았습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

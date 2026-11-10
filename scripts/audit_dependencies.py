@@ -227,6 +227,8 @@ def main():
         print(f'OSV: {len(packages)} selected versions ({ecosystems}); {runtime} runtime, {len(findings)-runtime} build/test, {blocked} blocked findings')
         return 1 if blocked else 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
+        report.write_text(json.dumps(dict(identity, complete=False, status='failed',
+                                          date=date.today().isoformat(), error=str(error)), indent=2) + '\n', encoding="utf-8")
         print('Dependency audit FAILED: ' + str(error), file=sys.stderr)
         return 1
 

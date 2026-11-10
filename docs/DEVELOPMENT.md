@@ -45,6 +45,11 @@ JVM 테스트 이름을 바꾸거나 추가·삭제하면 이 검증기의 명�
 
 skip·ignore 결과를 통과나 실기 검사로 보고하지 않습니다.
 
+기본 `dgl-core` 검사에는 로컬 russh fixture로 중첩 인증서 보호 경로·패킷 크기 0 거부,
+채널 열기/쓰기 정지 제한 시간·정상 전송·유휴 유지·즉시 종료·부분 입력 미재전송·이전 대상 거부·
+호스트 키 불일치 시 인증 차단을 확인하는 회귀 검사가 포함됩니다. 외부 서버·sshd·개인 인증정보는 필요하지 않습니다.
+15초 제한 자체를 검사하므로 해당 테스트는 실제 제한 시간만큼 대기합니다.
+
 macOS 데스크톱까지 확인할 때:
 
 ```sh
@@ -242,6 +247,8 @@ python3 scripts/scan_secrets.py
 `audit_dependencies.py`는 Gradle inventory·npm lock과 함께 Cargo.lock의 crates.io 패키지 전체를 OSV에 대조하므로
 Rust 툴체인이 필요합니다. runtime은 배포 타깃별(Android 네 ABI의 `dgl-uniffi`, macOS·Windows의 `dgl-desktop`)
 `cargo tree -e normal,no-proc-macro` 결과이며, 나머지는 build/test로 분류합니다. 예외는 `security/dependency-exceptions.json`입니다.
+감사 실패도 `artifacts/dependency-audit.json`에 기록합니다. OSV 통신 오류나 inventory 생성 실패를 건너뛰지 않으며,
+미검토 알림·기한이 지난 예외는 CI를 실패시킵니다. RSA의 남은 RC 고정 제약은 [보안 모델](SECURITY.md)을 따릅니다.
 `collect_artifacts.py`는 빌드된 Debug·Release APK를 확인하고 `artifacts/build-manifest.json`, `artifacts/SHA256SUMS`를 생성합니다.
 해시 목록의 APK 경로는 저장소 루트 기준이며, 루트에서 `sha256sum -c artifacts/SHA256SUMS`로 확인합니다.
 `collect_rust_android.py`는 원본 Debug APK의 서명·Rust payload를 확인하고
@@ -263,3 +270,7 @@ GPUI 데스크톱(`dgl-desktop`) 검사는 위 macOS 로컬 명령, Windows는 `
 
 입력은 기본 꺼짐입니다. **Build Windows Rust candidate**는 별도 수동 workflow이며
 Windows MSVC 빌드·ZIP만 수행합니다. CI 성공은 서명·공개 릴리스·Windows 실기 인수 완료를 뜻하지 않습니다.
+
+**Dependency security audit**는 매일 12:23 KST(03:23 UTC)와 수동 실행, 의존성·감사 코드·예외 파일 변경
+push/PR에서 별도로 실행합니다. 기존 고정 Java·Rust·Node·Android 도구 환경으로 Gradle inventory와
+Rust·Maven·npm OSV 감사를 수행하고 보고서를 14일 보관합니다. APK 빌드·패키징·실기 검사는 포함하지 않습니다.
