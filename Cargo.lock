@@ -1761,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "dgl-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rand 0.10.3",
  "russh",
@@ -1774,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "dgl-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "alacritty_terminal",
  "cc",
@@ -1799,7 +1799,7 @@ dependencies = [
 
 [[package]]
 name = "dgl-uniffi"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dgl-core",
  "serde_json",

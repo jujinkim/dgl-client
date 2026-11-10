@@ -113,7 +113,7 @@ Gradle의 Rust 작업은 `scripts/build_rust_android.py`로 네 ABI를 빌드합
 Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나를 사용합니다.
 검사·배포 스크립트는 이 원본을 검증하고 APK 복사본을 만들지 않습니다. Release APK는
 서명 환경변수가 없으면 `androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`이며 미서명입니다.
-앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.0` / `1`입니다.
+앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.1` / `101`입니다.
 
 ### Google Play 내부 테스트 수동 배포
 
@@ -141,8 +141,8 @@ Windows에서 키스토어 Base64를 클립보드에 복사하는 예:
 
 Google Play Console에 DGL 앱과 첫 AAB를 먼저 등록하고 Play App Signing의 업로드 키를 맞춥니다.
 서비스 계정에는 이 앱의 테스트 트랙 출시 권한을 부여하고 Google Play Developer API를 활성화합니다.
-기존 Play Console에 등록된 업로드 키스토어를 사용하며, 매 배포 전 `versionCode`를 이전 업로드보다
-큰 값으로 올려 커밋합니다. 서비스 계정 설정은 [공식 API 안내](https://developers.google.com/android-publisher/getting_started)를 따릅니다.
+기존 Play Console에 등록된 업로드 키스토어를 사용하며, 매 배포 전 workspace 버전을 올려 커밋합니다.
+자동 계산되는 `versionCode`가 이전 업로드보다 커야 합니다. 서비스 계정 설정은 [공식 API 안내](https://developers.google.com/android-publisher/getting_started)를 따릅니다.
 
 로컬 서명 빌드는 `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
 `RELEASE_KEY_PASSWORD` 네 환경변수를 모두 설정하고 `./gradlew :androidApp:bundleRelease`를 실행합니다.
@@ -151,14 +151,16 @@ Google Play Console에 DGL 앱과 첫 AAB를 먼저 등록하고 Play App Signin
 
 ### 앱 버전 관리
 
-루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.1.0`을 유지합니다.
+루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.1.1`입니다.
 Rust 코어·데스크톱은 workspace 버전을 상속하고 표시에는 빌드 시 `CARGO_PKG_VERSION`을 사용합니다.
 Gradle은 같은 값을 Android `versionName`과 `app/build/generated/appVersion/`의 Kotlin `APP_VERSION`으로 생성합니다.
 생성 디렉터리는 Git에 추가하지 않습니다. macOS 번들 두 버전 필드·`build.json`과 Windows ZIP의
 `build.json`도 Cargo 메타데이터를 사용합니다. Windows MSIX는 같은 버전에 Store 예약 자리 `.0`을 붙입니다.
 
-배포 시 workspace 버전을 수정하고 Android `androidApp/build.gradle.kts`의 `versionCode`를
-이전 배포보다 큰 정수로 올립니다. 현재 코드는 `1`입니다. APK와 필요한 데스크톱 패키지를 다시 빌드한 뒤:
+Android `versionCode`는 `major × 10000 + minor × 100 + patch`로 자동 계산합니다.
+major는 0–9, minor·patch는 각각 0–99이며 `0.0.0`은 허용하지 않습니다.
+예: `0.1.1 → 101`, `0.10.0 → 1000`, `1.2.3 → 10203`입니다. 앞의 0은 정수에서 생략됩니다.
+배포 시 workspace 버전을 이전 배포보다 높이고 APK와 필요한 데스크톱 패키지를 다시 빌드한 뒤:
 
 ```sh
 python3 scripts/verify_app_versions.py --android --mac

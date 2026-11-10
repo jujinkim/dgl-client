@@ -21,7 +21,7 @@ android {
         applicationId = "kim.jujin.dglc"
         minSdk = 34
         targetSdk = 36
-        versionCode = 1
+        versionCode = rootProject.extra["androidVersionCode"] as Int
         versionName = rootProject.extra["appVersion"] as String
         ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         testInstrumentationRunner = if (providers.gradleProperty("dglResourceProbe").orNull == "true")

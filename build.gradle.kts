@@ -28,9 +28,17 @@ apply(from = "gradle/dependency-inventory.gradle")
 // Cargo's workspace version is the source for every product surface and package.
 val workspaceManifest = providers.fileContents(layout.projectDirectory.file("Cargo.toml")).asText.get()
 val workspacePackage = workspaceManifest.substringAfter("[workspace.package]").substringBefore("\n[")
-extra["appVersion"] = Regex("""(?m)^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$""")
+val appVersion = Regex("""(?m)^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$""")
     .find(workspacePackage)?.groupValues?.get(1)
     ?: error("Cargo.toml must declare a numeric workspace.package.version")
+extra["appVersion"] = appVersion
+val (major, minor, patch) = appVersion.split('.').map { it.toInt() }
+require(major in 0..9 && minor in 0..99 && patch in 0..99) {
+    "Android version requires major 0..9, minor 0..99 and patch 0..99"
+}
+val androidVersionCode = major * 10000 + minor * 100 + patch
+require(androidVersionCode > 0) { "Android versionCode must be positive" }
+extra["androidVersionCode"] = androidVersionCode
 
 subprojects {
     // Lint runs in a separate classloader and does not inherit the plugin classpath fixes.

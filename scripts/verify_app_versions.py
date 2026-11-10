@@ -19,7 +19,14 @@ def workspace_version(root=ROOT):
 
 
 def android_version_code(root=ROOT):
-    return re.search(r'\bversionCode\s*=\s*(\d+)', (root / "androidApp/build.gradle.kts").read_text())[1]
+    version = workspace_version(root)
+    major, minor, patch = map(int, version.split('.'))
+    if not (0 <= major <= 9 and 0 <= minor <= 99 and 0 <= patch <= 99):
+        raise ValueError("Android version requires major 0..9, minor 0..99 and patch 0..99")
+    code = major * 10000 + minor * 100 + patch
+    if code <= 0:
+        raise ValueError("Android versionCode must be positive")
+    return str(code)
 
 
 def main():
