@@ -2820,3 +2820,38 @@ fn renames_start_from_the_current_name_and_creations_start_empty() {
     assert_eq!(name(PromptOp::Session), "");
     assert_eq!(name(PromptOp::Window("$1".into())), "");
 }
+
+#[gpui::test]
+fn local_is_first_fixed_and_does_not_connect_on_app_start(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    view.update(ui, |s, cx| {
+        assert!(s.tabs.is_empty());
+        let local = s.local_host();
+        assert!(s.credentials(&local, cx).is_some());
+        assert!(s.dialog.is_none());
+        for id in ["b", "a"] {
+            s.local.hosts.push(serde_json::from_value(serde_json::json!({
+                "id": id, "alias": id, "hostname": "localhost", "username": "fixture", "credentialRef": id
+            })).unwrap());
+        }
+        s.host_order.reconcile(&s.local.hosts);
+        assert!(s.host_order.drop_before("a", Some("b")));
+        assert!(!s.host_order.drop_before(super::local_host::ID, Some("a")));
+        cx.notify();
+    });
+    redraw(ui);
+    let local = ui.debug_bounds("host-row-:local").unwrap();
+    assert!(local.top() < ui.debug_bounds("host-row-a").unwrap().top());
+    assert!(local.top() < ui.debug_bounds("host-row-b").unwrap().top());
+    assert!(ui.debug_bounds("host-menu-:local").is_none());
+    view.read_with(ui, |s, _| {
+        assert!(s.tabs.is_empty());
+        assert_eq!(s.local.hosts.len(), 2);
+        assert!(
+            !s.host_order
+                .ids()
+                .iter()
+                .any(|id| id == super::local_host::ID)
+        );
+    });
+}

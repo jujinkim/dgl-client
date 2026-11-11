@@ -14,7 +14,8 @@ use self::windows as native;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod native {
     pub fn saving() -> bool {
-        false
+        std::fs::read_to_string("/sys/firmware/acpi/platform_profile")
+            .is_ok_and(|profile| profile.trim() == "low-power")
     }
 }
 

@@ -9,6 +9,24 @@ mod windows;
 pub type Selection = Result<Option<PathBuf>, ()>;
 
 pub fn select(directory: Option<PathBuf>, window: &Window, cx: &App) -> Task<Selection> {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = (directory, window);
+        let receiver = cx.prompt_for_paths(gpui::PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some(dgl_core::i18n::t("개인키 파일 선택").into()),
+        });
+        return cx.foreground_executor().spawn(async move {
+            receiver
+                .await
+                .map_err(|_| ())?
+                .map(|paths| paths.and_then(|p| p.into_iter().next()))
+                .map_err(|_| ())
+        });
+    }
+    #[cfg(not(target_os = "linux"))]
     let (sender, receiver) = tokio::sync::oneshot::channel();
     #[cfg(target_os = "windows")]
     {
@@ -32,6 +50,7 @@ pub fn select(directory: Option<PathBuf>, window: &Window, cx: &App) -> Task<Sel
         let _ = window;
         macos::select(directory, sender);
     }
+    #[cfg(not(target_os = "linux"))]
     cx.foreground_executor()
         .spawn(async move { receiver.await.unwrap_or(Err(())) })
 }

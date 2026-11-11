@@ -225,7 +225,14 @@ impl Desktop {
             self.save_host_order();
         }
         let _enter = self.runtime.enter();
-        let connection = Connection::start(host.clone(), credential, trusted);
+        let connection = match local_host::Target::of(host) {
+            local_host::Target::Local => Connection::start_local(dgl_core::local::LocalConfig {
+                last_session: host.last_session.clone(),
+                last_pane: host.last_pane.clone(),
+                ..Default::default()
+            }),
+            local_host::Target::Ssh(_) => Connection::start(host.clone(), credential, trusted),
+        };
         let terminal = cx.new(|cx| {
             Terminal::new(
                 connection.clone(),

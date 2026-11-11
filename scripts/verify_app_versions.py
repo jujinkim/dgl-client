@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check displayed/generated versions against Cargo's workspace version and built packages."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,7 @@ def main():
     parser.add_argument("--android", action="store_true", help="Check Kotlin and the Debug APK (default when no platform is selected)")
     parser.add_argument("--mac", action="store_true", help="Check the packaged macOS app")
     parser.add_argument("--windows", action="store_true", help="Check the native Windows package metadata")
+    parser.add_argument("--linux", action="store_true", help="Check AppImage filename, metadata and checksum")
     args = parser.parse_args()
     version = workspace_version()
     metadata = json.loads(subprocess.check_output(
@@ -41,7 +43,7 @@ def main():
     for package in metadata["packages"]:
         assert package["version"] == version, package["name"]
     checked = ["Cargo"]
-    if args.android or not (args.mac or args.windows):
+    if args.android or not (args.mac or args.windows or args.linux):
         kotlin = (ROOT / "app/build/generated/appVersion/kim/jujin/dglc/AppVersion.kt").read_text()
         assert f'const val APP_VERSION = "{version}"' in kotlin, "Kotlin display version"
         sdk = Path(os.environ.get("ANDROID_HOME", str(Path.home() / "Library/Android/sdk")))
@@ -67,6 +69,15 @@ def main():
                     "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}Identity")
                 assert identity.get("Version") == f"{version}.0", "Windows MSIX version"
         checked.append("Windows ZIP/MSIX" if msix.is_file() else "Windows ZIP")
+    if args.linux:
+        output = ROOT / "artifacts/rust-candidate/linux"
+        build = json.loads((output / "build.json").read_text())
+        assert build["version"] == version and build["arch"] == "x86_64-unknown-linux-gnu", "Linux build metadata"
+        image = output / f"DaGaLi-{version}-x86_64.AppImage"
+        checksums = dict(line.split("  ", 1)[::-1] for line in (output / "SHA256SUMS").read_text().splitlines())
+        for path in [image, output / "build.json"]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == checksums[path.name], "Linux package checksum"
+        checked.append("Linux AppImage")
     print(f"App/package versions match Cargo.toml: {version} ({', '.join(checked)})")
 
 

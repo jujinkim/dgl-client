@@ -17,10 +17,10 @@ REQUIRED_GRAPHS = {(':androidApp', 'debugRuntimeClasspath'), (':androidApp', 're
                    (':androidApp', 'debugAndroidTestRuntimeClasspath'), (':', 'classpath'),
                    (':androidApp', 'androidLintTool'), (':app', 'androidLintTool'), (':app', 'inventoryAapt2'),
                    (':coreBindings', 'debugRuntimeClasspath'), (':mobileUi', 'debugRuntimeClasspath')}
-# Shipped Rust package per target: Android APK ABIs, macOS app and Windows ZIP.
+# Shipped Rust package per target: Android APK ABIs, macOS app, Windows ZIP and Linux AppImage.
 CARGO_TARGETS = {'aarch64-linux-android': 'dgl-uniffi', 'armv7-linux-androideabi': 'dgl-uniffi',
                  'i686-linux-android': 'dgl-uniffi', 'x86_64-linux-android': 'dgl-uniffi',
-                 'aarch64-apple-darwin': 'dgl-desktop', 'x86_64-pc-windows-msvc': 'dgl-desktop'}
+                 'aarch64-apple-darwin': 'dgl-desktop', 'x86_64-pc-windows-msvc': 'dgl-desktop', 'x86_64-unknown-linux-gnu': 'dgl-desktop'}
 
 
 def load_inventory(path, root=ROOT):

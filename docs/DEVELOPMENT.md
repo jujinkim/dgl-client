@@ -1,6 +1,6 @@
 # 개발·빌드·검사
 
-저장소 루트에서 실행합니다. Windows 전용 환경은 [WINDOWS.md](WINDOWS.md)를 따릅니다.
+저장소 루트에서 실행합니다. Windows 전용 환경은 [WINDOWS.md](WINDOWS.md), Linux는 [LINUX.md](LINUX.md)를 따릅니다.
 현재 모듈은 [ARCHITECTURE.md](ARCHITECTURE.md), 도구별 역할은 [scripts/README.md](../scripts/README.md)에 있습니다.
 
 ## 도구
@@ -13,6 +13,7 @@
 | Gradle | Wrapper 9.7.0, AGP 9.3.3, Kotlin 2.4.21, Compose 1.9.3 |
 | 터미널 assets | Node.js/npm, CI Node.js 22.23.4, `web/package-lock.json` |
 | macOS | Xcode 26.6 + Metal Toolchain, ARM64 검증 경로 |
+| Linux | Ubuntu 24.04 x86_64, X11/Wayland 개발 라이브러리·Vulkan 드라이버([목록](LINUX.md)) |
 | Windows | VS 2022 C++·Windows SDK·CMake, Rust MSVC x64, Python·Git |
 
 Android 작업 전 `JAVA_HOME`을 JDK 17, `ANDROID_HOME`을 SDK 경로로 설정합니다.
@@ -93,6 +94,16 @@ tmux 명령·에러 코드·원격 터미널 바이트는 언어와 무관하게
 `scripts/generate_ui_icons.py`로 Compose `ImageVector`와 Rust 포함 목록을 생성합니다.
 `--check`는 SVG 형식과 생성물 일치를 검사합니다. 일반 빌드에는 생성 도구·외부 SVG 파일이 필요하지 않습니다.
 
+### 격리 Local 검사
+
+```sh
+DGL_LOCAL_TMUX=/absolute/path/to/tmux cargo test --locked -p dgl-core --test local_integration -- --ignored
+```
+
+독립 `-L` socket과 `/dev/null` 설정을 사용하며 사용자 기본 tmux 서버를 건드리지 않습니다.
+일반 검사에서 이 테스트의 ignore는 통과로 계산하지 않습니다. psmux 프레임·세션별 ID·캡처 fixture는
+공통 코어 단위 검사에서 실행합니다. 실제 Windows psmux·DPAPI·GUI는 사용자 담당입니다.
+
 ## Android 빌드
 
 Android Studio에서는 저장소 루트를 열고 `androidApp`을 실행합니다. SDK Manager에서
@@ -164,11 +175,11 @@ major는 0–9, minor·patch는 각각 0–99이며 `0.0.0`은 허용하지 않�
 
 ```sh
 python3 scripts/verify_app_versions.py --android --mac
-# Windows 네이티브 패키지를 만든 환경에서는 --windows
+# Windows 네이티브 패키지는 --windows, Linux AppImage는 --linux
 ```
 
 플랫폼을 생략하면 생성 Kotlin·Cargo 메타데이터·원본 Debug APK 버전을 비교합니다. `--android`·`--mac`·
-`--windows`를 조합해 필요한 플랫폼만 검사할 수 있습니다. macOS는 실제 `.app`과 메타데이터,
+`--windows`·`--linux`를 조합해 필요한 플랫폼만 검사할 수 있습니다. macOS는 실제 `.app`과 메타데이터,
 Windows는 ZIP 내부·외부 메타데이터와 MSIX가 있으면 그 매니페스트 버전을 비교하며 Android 도구가 필요하지 않습니다. 실제 네이티브 실행 검증은 별도입니다.
 README의 현재 버전과 Git 제외된 `.dashboard-props.json`의 프로젝트·파일별 버전/빌드 번호도 대조·갱신합니다.
 
@@ -183,6 +194,8 @@ python3 scripts/package_rust_mac.py --release
 출력은 `artifacts/rust-candidate/mac/DaGaLi.app`과 `build.json`입니다.
 스크립트는 Xcode 경로를 설정하고 로컬 ad-hoc 서명·검증을 수행합니다. Developer ID·공증은 하지 않습니다.
 저장된 `desktop/resources/dgl.icns`를 번들 Resources에 넣고 `CFBundleIconFile`로 연결한 뒤 서명합니다.
+Linux는 `python3 scripts/package_rust_linux.py`로 Ubuntu 24.04 x86_64에서 Release AppImage를 만듭니다.
+수동 Linux CI·도구 고정·FUSE 없는 실행은 [LINUX.md](LINUX.md)를 따릅니다.
 Windows는 `scripts/run_windows.cmd` 또는 `scripts/build_windows.ps1`로 빌드·포터블 ZIP을 생성합니다.
 기본은 빌드·ZIP만, `-CheckOnly`는 필수 도구 점검만, `-Test`는 단위 검사, `-Run`은 빌드 후 앱 실행,
 `-Msix`는 후속 Store 제출용 MSIX 추가 생성입니다.
@@ -286,7 +299,7 @@ python3 scripts/scan_secrets.py
 ```
 
 `audit_dependencies.py`는 Gradle inventory·npm lock과 함께 Cargo.lock의 crates.io 패키지 전체를 OSV에 대조하므로
-Rust 툴체인이 필요합니다. runtime은 배포 타깃별(Android 네 ABI의 `dgl-uniffi`, macOS·Windows의 `dgl-desktop`)
+Rust 툴체인이 필요합니다. runtime은 배포 타깃별(Android 네 ABI의 `dgl-uniffi`, macOS·Windows·Linux의 `dgl-desktop`)
 `cargo tree -e normal,no-proc-macro` 결과이며, 나머지는 build/test로 분류합니다. 예외는 `security/dependency-exceptions.json`입니다.
 감사 실패도 `artifacts/dependency-audit.json`에 기록합니다. OSV 통신 오류나 inventory 생성 실패를 건너뛰지 않으며,
 미검토 알림·기한이 지난 예외는 CI를 실패시킵니다. RSA의 남은 RC 고정 제약은 [보안 모델](SECURITY.md)을 따릅니다.

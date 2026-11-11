@@ -20,6 +20,20 @@ DaGaLi는 SSH 호스트와 tmux 세션·창·pane을 GUI로 관리합니다.
 데스크톱 제목 표시줄에는 `DaGaLi`를 표시합니다.
 Android 왼쪽 상단에는 24dp 앱 아이콘만 표시하며, 연결 중에도 같은 위치에 유지합니다.
 
+## 데스크톱 Local
+
+macOS·Windows·Linux의 Hosts 최상단에는 고정된 Local이 있습니다. Local은 SSH 서버나 자격 증명 없이
+현재 사용자의 tmux(macOS·Linux) 또는 psmux.exe(Windows)에 연결합니다. 앱 시작 시 자동 접속·생성하지
+않으며 Local을 클릭한 뒤 기존 세션을 선택하거나 세션 만들기를 사용합니다. 외부 터미널에서 만든 기본
+서버의 세션도 표시합니다. 이름·접속 정보 변경, 삭제, 드래그 정렬은 지원하지 않습니다.
+최근 세션·pane은 이 기기에만 저장하며 호스트 내보내기·가져오기·동기화에는 포함하지 않습니다.
+
+도구가 없거나 버전·권한이 맞지 않으면 설치 안내의 명령 복사·공식 안내 열기·다시 확인을 사용합니다.
+macOS는 `brew install tmux`, Windows는 `winget install psmux`, Linux는 배포판별 명령을 안내합니다.
+설치는 사용자가 직접 실행합니다. Windows ZIP 설치는 psmux.exe의 폴더를 PATH에 추가한 뒤 앱을
+재시작합니다. Local 연결 종료·앱 종료는 클라이언트만 닫으며 작업을 삭제하지 않습니다.
+Linux 경로·키링·빌드는 [LINUX.md](LINUX.md), Windows 실기 범위는 [WINDOWS.md](WINDOWS.md)를 따릅니다.
+
 ## 연결과 재접속
 
 1. 원격 서버에 SSH와 tmux를 설치하고 UTF-8 로케일을 구성합니다.

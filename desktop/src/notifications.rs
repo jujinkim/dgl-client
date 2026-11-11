@@ -1,4 +1,5 @@
 use dgl_core::agent::Notice;
+#[cfg(not(target_os = "linux"))]
 use dgl_core::i18n::t;
 use std::sync::{Mutex, OnceLock};
 static CLICKED: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
@@ -21,3 +22,8 @@ pub use macos::{authorize, initialize, show};
 mod windows;
 #[cfg(target_os = "windows")]
 pub use windows::{authorize, initialize, show};
+
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{authorize, initialize, show};

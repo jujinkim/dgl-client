@@ -1,7 +1,7 @@
 # 현재 아키텍처
 
 DGL은 공통 Rust SSH/tmux 코어에 Android와 데스크톱 UI를 연결합니다.
-Android는 Compose + WebView/xterm.js, macOS·Windows는 GPUI + alacritty_terminal을 사용합니다.
+Android는 Compose + WebView/xterm.js, macOS·Windows·Linux는 GPUI + alacritty_terminal을 사용합니다.
 iOS/iPadOS 앱·Swift/Xcode 타깃은 이 저장소에 없으며 연결 수명·IME 동작도 구현되어 있지 않습니다.
 이전 JVM 앱은 실행·배포하지 않으며 일부 Kotlin/JVM 구현은 회귀 검사와 격리 SSH fixture에만 남아 있습니다.
 
@@ -20,7 +20,11 @@ iOS/iPadOS 앱·Swift/Xcode 타깃은 이 저장소에 없으며 연결 수명·
 
 ## 연결과 세션
 
-연결마다 독립 SSH transport와 명령 actor를 둡니다. tmux Control Mode로 목록·배치를 읽고
+연결마다 독립 transport와 명령 actor를 둡니다. Android는 기존 SSH 경로를 사용합니다.
+데스크톱은 SSH 또는 Local을 선택하며 `Connection::start_local`은 argv로 실행한 로컬 control client를
+SSH 채널과 같은 입출력 인터페이스로 감쌉니다. Local의 기기 전용 최근 대상은 별도 파일에 저장합니다.
+Windows psmux 어댑터는 -CC 시작 프레임, 명시적 세션, 세션별 window/pane ID 범위, 기본 화면 캡처와
+흐름 제어 차이를 처리하며 POSIX SSH helper는 실행하지 않습니다. tmux Control Mode로 목록·배치를 읽고
 형식화된 명령으로 조작합니다. 원격 상태의 기준은 tmux이며 앱 종료가 원격 세션 삭제를 뜻하지 않습니다.
 지원 tmux가 없으면 일반 SSH PTY로 전환하고 세션 보존의 차이를 안내합니다.
 

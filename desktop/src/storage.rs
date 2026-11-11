@@ -1,3 +1,7 @@
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{delete, read, read_optional, write};
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]

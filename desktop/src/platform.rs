@@ -1,8 +1,8 @@
 use dgl_core::{Error, Result};
 use std::path::PathBuf;
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-compile_error!("dgl-desktop currently supports macOS and Windows build targets");
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+compile_error!("dgl-desktop currently supports macOS, Windows and Linux build targets");
 
 pub fn data_dir() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("DGL_CANDIDATE_DIR").filter(|p| !p.is_empty()) {
@@ -12,6 +12,15 @@ pub fn data_dir() -> Result<PathBuf> {
     let (variable, suffix) = ("HOME", "Library/Application Support/dgl-rust-candidate-v1");
     #[cfg(target_os = "windows")]
     let (variable, suffix) = ("LOCALAPPDATA", "dgl-rust-candidate-v1");
+    #[cfg(target_os = "linux")]
+    let (variable, suffix) = ("HOME", ".local/share/dgl-rust-candidate-v1");
+    #[cfg(target_os = "linux")]
+    if let Some(path) = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+    {
+        return Ok(path.join("dgl-rust-candidate-v1"));
+    }
     std::env::var_os(variable)
         .filter(|p| !p.is_empty())
         .map(|p| PathBuf::from(p).join(suffix))
@@ -19,7 +28,7 @@ pub fn data_dir() -> Result<PathBuf> {
 }
 
 pub fn user_home() -> Option<PathBuf> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let variable = "HOME";
     #[cfg(target_os = "windows")]
     let variable = "USERPROFILE";
@@ -29,7 +38,7 @@ pub fn user_home() -> Option<PathBuf> {
 }
 
 pub fn ssh_directory_placeholder() -> String {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let (variable, fallback) = ("HOME", "~/.ssh/");
     #[cfg(target_os = "windows")]
     let (variable, fallback) = ("USERPROFILE", "%USERPROFILE%\\.ssh\\");
@@ -47,38 +56,44 @@ pub fn ssh_directory_placeholder() -> String {
 
 pub const UI_FONT: &str = if cfg!(target_os = "windows") {
     "Segoe UI"
+} else if cfg!(target_os = "linux") {
+    "sans-serif"
 } else {
     ".AppleSystemUIFont"
 };
 pub const TERMINAL_FONT: &str = if cfg!(target_os = "windows") {
     "Consolas"
+} else if cfg!(target_os = "linux") {
+    "monospace"
 } else {
     "Menlo"
 };
 pub const STORAGE_LABEL: &str = if cfg!(target_os = "windows") {
     "Windows DPAPI"
+} else if cfg!(target_os = "linux") {
+    "Secret Service"
 } else {
     "macOS Keychain"
 };
-pub const EDIT_MODIFIER: &str = if cfg!(target_os = "windows") {
+pub const EDIT_MODIFIER: &str = if !cfg!(target_os = "macos") {
     "ctrl"
 } else {
     "cmd"
 };
-pub const QUIT_KEY: &str = if cfg!(target_os = "windows") {
+pub const QUIT_KEY: &str = if !cfg!(target_os = "macos") {
     "ctrl-shift-q"
 } else {
     "cmd-q"
 };
-pub const SHORTCUT_HELP: &str = if cfg!(target_os = "windows") {
+pub const SHORTCUT_HELP: &str = if !cfg!(target_os = "macos") {
     "Ctrl+Shift+N 호스트 · Ctrl+Shift+S 세션 · Ctrl+Shift+W 연결 종료 · Ctrl+Shift+F1–F9 연결 전환 · Ctrl+Shift+R 새로고침"
 } else {
     "⌘N 호스트 · ⇧⌘N 세션 · ⌘W 연결 종료 · ⌘1–9 연결 전환 · ⌘R 새로고침"
 };
 
-// Preserve Ctrl+C, Ctrl+V, Ctrl+R, etc. for the remote terminal on Windows.
+// Preserve Ctrl+C, Ctrl+V, Ctrl+R, etc. for the terminal on Windows and Linux.
 pub fn app_shortcut(modifiers: &gpui::Modifiers) -> bool {
-    if cfg!(target_os = "windows") {
+    if !cfg!(target_os = "macos") {
         modifiers.control && modifiers.shift && !modifiers.alt && !modifiers.platform
     } else {
         modifiers.platform
@@ -113,7 +128,7 @@ pub fn app_shortcut_for(keystroke: &gpui::Keystroke) -> Option<AppShortcut> {
             .map(SelectTab)
     };
     let key = keystroke.key.as_str();
-    if cfg!(target_os = "windows") {
+    if !cfg!(target_os = "macos") {
         match key {
             "n" => Some(NewHost),
             "s" => Some(NewSession),
@@ -140,10 +155,10 @@ pub fn app_shortcut_for(keystroke: &gpui::Keystroke) -> Option<AppShortcut> {
     }
 }
 
-/// Keys the terminal leaves to the app. macOS keeps every Command chord; Windows keeps
+/// Keys the terminal leaves to the app. macOS keeps every Command chord; Windows/Linux keep
 /// only the table's Ctrl+Shift chords, so arrows and F10-F12 reach the remote application.
 pub fn terminal_app_shortcut(key: &gpui::Keystroke) -> bool {
-    if cfg!(target_os = "windows") {
+    if !cfg!(target_os = "macos") {
         app_shortcut_for(key).is_some()
     } else {
         app_shortcut(&key.modifiers)
@@ -159,13 +174,13 @@ mod tests {
     }
     #[test]
     fn one_table_reserves_tab_keys_one_to_nine_only() {
-        let chord = if cfg!(target_os = "windows") {
+        let chord = if !cfg!(target_os = "macos") {
             "ctrl-shift-"
         } else {
             "cmd-"
         };
         let tab = |n: usize| {
-            if cfg!(target_os = "windows") {
+            if !cfg!(target_os = "macos") {
                 format!("{chord}f{n}")
             } else {
                 format!("{chord}{n}")
@@ -180,7 +195,7 @@ mod tests {
         // The remote application keeps its own Ctrl chords.
         assert_eq!(app_shortcut_for(&key("ctrl-c")), None);
         assert!(!terminal_app_shortcut(&key("ctrl-c")));
-        if cfg!(target_os = "windows") {
+        if !cfg!(target_os = "macos") {
             // F10-F12 are not tabs 10-12: they and Ctrl+Shift+arrows reach the remote.
             for k in ["f10", "f11", "f12", "left"] {
                 let k = key(&format!("{chord}{k}"));

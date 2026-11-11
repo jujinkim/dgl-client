@@ -2,6 +2,7 @@
 use gpui::{prelude::*, *};
 #[cfg(not(test))]
 use raw_window_handle::HasWindowHandle;
+#[cfg(any(not(target_os = "linux"), test))]
 use raw_window_handle::RawWindowHandle;
 use std::{
     cell::RefCell,
@@ -17,6 +18,13 @@ use self::macos::Tooltips;
 mod windows;
 #[cfg(target_os = "windows")]
 use self::windows::Tooltips;
+
+#[cfg(target_os = "linux")]
+struct Tooltips;
+#[cfg(target_os = "linux")]
+impl Tooltips {
+    fn set(&mut self, _: Option<&Region>) {}
+}
 
 #[derive(Clone, Debug, PartialEq)]
 struct Region {
@@ -109,7 +117,14 @@ pub trait NativeTooltip: Sized {
 impl NativeTooltip for Stateful<Div> {
     fn native_tooltip(self, text: impl Into<String>) -> Self {
         let text = text.into();
-        self.child(
+        #[cfg(target_os = "linux")]
+        let element = self.tooltip({
+            let text = text.clone();
+            move |_, cx| cx.new(|_| LinuxTooltip(text.clone())).into()
+        });
+        #[cfg(not(target_os = "linux"))]
+        let element = self;
+        element.child(
             canvas(
                 move |bounds, window, cx| {
                     let Some(manager) = cx
@@ -442,5 +457,20 @@ mod tests {
             weak.upgrade().is_none(),
             "closing the window releases its native manager"
         );
+    }
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxTooltip(String);
+#[cfg(target_os = "linux")]
+impl Render for LinuxTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .p_2()
+            .rounded_md()
+            .bg(rgb(0x242830))
+            .text_color(rgb(0xffffff))
+            .text_sm()
+            .child(self.0.clone())
     }
 }

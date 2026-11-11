@@ -24,6 +24,11 @@ windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Glob
 sha2 = "=0.10.9"
 tempfile = "=3.27.0"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+secret-service = { version = "=5.2.0", features = ["rt-async-io-crypto-rust"] }
+zbus = { version = "=5.19.0", default-features = false, features = ["tokio"] }
+futures-lite = "=2.6.1"
+
 [build-dependencies]
 cc = "=1.10.0"
 embed-resource = "=3.0.12"

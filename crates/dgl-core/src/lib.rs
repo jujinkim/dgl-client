@@ -5,10 +5,12 @@ pub mod connection;
 pub mod flow;
 pub mod i18n;
 pub mod input;
+pub mod local;
 pub mod model;
 pub mod protocol;
 pub mod ssh;
 pub mod sync;
+mod transport;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, thiserror::Error,
@@ -28,6 +30,16 @@ pub enum Error {
     MissingSession,
     #[error("Storage")]
     Storage,
+    #[error("Secret Service unavailable: start a session keyring service")]
+    StorageUnavailable,
+    #[error("Secret Service locked: unlock the session keyring")]
+    StorageLocked,
+    #[error("LocalToolMissing")]
+    LocalToolMissing,
+    #[error("LocalToolUnsupported")]
+    LocalToolUnsupported,
+    #[error("LocalToolPermission")]
+    LocalToolPermission,
     #[error("InvalidArgument")]
     InvalidArgument,
     #[error("QueueFull")]

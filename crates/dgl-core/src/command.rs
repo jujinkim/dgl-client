@@ -272,6 +272,19 @@ impl Command {
             shell_wire: format!("tmux {}", parts.join(" \\; ")),
         }
     }
+    /// Parse our generated control grammar into argv, without involving a shell.
+    pub fn argv(&self) -> Result<Vec<String>> {
+        let mut args = argv(&self.wire)?;
+        if self.wire != Self::inventory().wire {
+            for arg in &mut args {
+                // tmux's argv parser treats a trailing semicolon as a command separator.
+                if arg.ends_with(';') {
+                    arg.insert(arg.len() - 1, '\\');
+                }
+            }
+        }
+        Ok(args)
+    }
     pub fn shell_with_executable(&self, path: &str) -> Result<String> {
         if !path.starts_with('/') {
             return Err(Error::InvalidArgument);
@@ -300,4 +313,40 @@ pub fn supports_tmux(version: &str) -> bool {
 /// (`control_check_subs_timer`); 3.7 skips such clients.
 pub fn safe_subscriptions(version: &str) -> bool {
     tmux_minor(version).is_some_and(|n| n >= 7)
+}
+
+/// Only the quoting grammar emitted above. A semicolon is a separate tmux argument.
+pub(crate) fn argv(wire: &str) -> Result<Vec<String>> {
+    let mut args = Vec::new();
+    let mut word = String::new();
+    let mut quote = false;
+    let mut escaped = false;
+    let mut started = false;
+    for ch in wire.chars() {
+        if escaped {
+            word.push(ch);
+            escaped = false;
+        } else if ch == '\\' && !quote {
+            escaped = true;
+            started = true;
+        } else if ch == '\'' {
+            quote = !quote;
+            started = true;
+        } else if ch.is_whitespace() && !quote {
+            if started {
+                args.push(std::mem::take(&mut word));
+                started = false;
+            }
+        } else {
+            word.push(ch);
+            started = true;
+        }
+    }
+    if quote || escaped {
+        return Err(Error::InvalidArgument);
+    }
+    if started {
+        args.push(word);
+    }
+    Ok(args)
 }

@@ -1,0 +1,42 @@
+name: Build Linux Rust candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: linux-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config cmake clang libclang-dev libssl-dev libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxi-dev libx11-xcb-dev libfontconfig1-dev libfreetype-dev libvulkan-dev libdbus-1-dev desktop-file-utils squashfs-tools tmux
+      - name: Install the repository Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt && rustup default 1.98.1
+      - name: Native unit and isolated Local tests
+        run: |
+          cargo test --locked --workspace
+          DGL_LOCAL_TMUX=/usr/bin/tmux cargo test --locked -p dgl-core --test local_integration -- --ignored
+          python3 -m unittest discover -s scripts/tests -v
+      - name: Build AppImage and verify extraction (no GUI)
+        run: |
+          python3 scripts/package_rust_linux.py
+          python3 scripts/verify_app_versions.py --linux
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-rust-candidate
+          path: |
+            artifacts/rust-candidate/linux/*.AppImage
+            artifacts/rust-candidate/linux/build.json
+            artifacts/rust-candidate/linux/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7

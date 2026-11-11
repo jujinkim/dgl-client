@@ -17,6 +17,7 @@ mod host_order;
 mod i18n;
 mod key_file;
 mod launcher;
+mod local_host;
 mod modal;
 mod native_tooltips;
 mod notification_panel;
@@ -145,6 +146,7 @@ struct Desktop {
     tabs: Vec<Tab>,
     workspace: Workspace,
     host_order: host_order::HostOrder,
+    recent_local: local_host::Recent,
     last_host_tab: HashMap<String, Vec<TabId>>,
     palette: theme::Palette,
     appearance: Option<appearance::Appearance>,
@@ -212,6 +214,7 @@ impl Desktop {
                 dgl_core::agent::now_ms() + 20_000
             });
         let workspace = Workspace::new(Layout::load(&path.with_file_name("workspace-layout.json")));
+        let recent_local = local_host::Recent::load(&path.with_file_name("local-session.json"));
         let host_order =
             host_order::HostOrder::load(&path.with_file_name("host-order.json"), &local.hosts);
         let mut cloud_sync = cloud_sync::CloudSync::load(&path.with_file_name("cloud-sync.json"));
@@ -245,6 +248,7 @@ impl Desktop {
             tabs: vec![],
             workspace,
             host_order,
+            recent_local,
             last_host_tab: HashMap::new(),
             palette: theme::Palette::new(true),
             appearance: None,
@@ -390,6 +394,21 @@ impl Desktop {
                 }
             }
             if state.sequence != tab.last_sequence {
+                if tab.host.id == local_host::ID && state.phase == Phase::Ready {
+                    let recent = local_host::Recent {
+                        session: state.session.clone(),
+                        pane: state.pane.clone(),
+                    };
+                    if recent != self.recent_local {
+                        self.recent_local = recent;
+                        if let Err(e) = self
+                            .recent_local
+                            .save(&self.path.with_file_name("local-session.json"))
+                        {
+                            self.snackbar.show_snackbar(tr!("설정 저장 실패: {0}", e));
+                        }
+                    }
+                }
                 tab.last_sequence = state.sequence;
                 changed = true;
                 if state.phase == Phase::Ready
@@ -546,6 +565,9 @@ impl Desktop {
         host: &HostProfile,
         cx: &mut Context<Self>,
     ) -> Option<(Credential, Option<String>)> {
+        if local_host::Target::of(host) == local_host::Target::Local {
+            return Some((Credential::default(), None));
+        }
         if matches!(storage::read_optional(&host.credential_ref), Ok(None)) {
             self.edit(Some(host.clone()), cx);
             self.snackbar.show_snackbar_with_duration(
@@ -1216,6 +1238,7 @@ fn main() {
             let bounds = Bounds::centered(None, size(px(1240.), px(800.)), cx);
             cx.open_window(
                 WindowOptions {
+                    app_id: Some("kim.jujin.dglc".into()),
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
                         title: Some(app_info::base_title().into()),

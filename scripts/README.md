@@ -10,14 +10,15 @@
 |---|---|
 | `build_rust_android.py` | Windows·macOS·Linux에서 Gradle이 선택한 SDK/NDK로 Rust 네 ABI 빌드·UniFFI 생성 |
 | `collect_rust_android.py` | 원본 Debug APK의 ID·SDK·네 ABI·Rust payload·서명 확인, `artifacts/rust-candidate/android/build.json` 기록 |
-| `verify_app_versions.py` | Cargo 버전과 선택 플랫폼의 패키지 비교. 기본/`--android`는 Kotlin·Debug APK, `--mac`은 `.app`, `--windows`는 ZIP 내부·외부 메타데이터 검사; 플래그 조합 가능 |
+| `verify_app_versions.py` | Cargo 버전과 선택 플랫폼의 패키지 비교. 기본/`--android`는 Kotlin·Debug APK, `--mac`은 `.app`, `--windows`는 ZIP 내부·외부 메타데이터, `--linux`는 AppImage 이름·메타데이터·체크섬 검사; 플래그 조합 가능 |
 | `collect_artifacts.py` | 원본 Android Debug/Release APK 정책·assets·라이선스 검사, `artifacts/` manifest·해시 생성 |
+| `package_rust_linux.py` | Ubuntu 24.04 x86_64 Release·AppImage, 고정 도구/런타임 SHA-256·ELF/추출 검사·고지·해시 |
 | `package_rust_mac.py` | GPUI Debug/`--release` 빌드, `.app`·Rust 고지·ad-hoc 서명 |
 | `run_windows.cmd` / `windows_menu.ps1` | Windows 빌드·실행·검사 메뉴 |
 | `windows_tools.ps1` | Windows 필수 도구 전체 점검·선택적 설치/업데이트 |
 | `build_windows.ps1` | Windows MSVC 환경 구성·빌드·ZIP. `-CheckOnly`, `-Test`, `-Run`, `-Msix`(Store MSIX 추가) 지원 |
 | `package_rust_windows.py` | x64 PE 검사·고지·해시를 포함한 미서명 ZIP 생성. `--msix`일 때 Store 제출용 MSIX(`makeappx`)도 생성 |
-| `collect_rust_notices.py` | 배포 대상(Android 네 ABI·macOS host·Windows MSVC)으로 걸러낸 Cargo registry 고지·manifest·의존성 목록 수집, 패키저와 `:coreBindings`에서 사용 |
+| `collect_rust_notices.py` | 배포 대상(Android 네 ABI·macOS host·Windows MSVC·Linux x86_64)으로 걸러낸 Cargo registry 고지·manifest·의존성 목록 수집, 패키저와 `:coreBindings`에서 사용 |
 | `generate_app_icons.py` | 공통 도형에서 투명 원본·Android 전경/배경/단색/알림 벡터·모바일 Compose 벡터·macOS ICNS·Windows ICO·MSIX 로고·미리보기 생성. `--check`로 저장 파일 비교; [아이콘 안내](../assets/app-icon/README.md) |
 
 `collect_artifacts.py`와 `collect_rust_android.py`는 각각 전체 배포 정책 검사와 Debug 서명·Rust payload 검사를 담당합니다.

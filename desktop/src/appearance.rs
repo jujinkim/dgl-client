@@ -1,7 +1,9 @@
 //! Native appearance is refreshed from a short UI timer on notification,
 //! activation or theme changes. Rendering only reads the cached RGB value.
 use gpui::Window;
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use raw_window_handle::HasWindowHandle;
+#[cfg(not(target_os = "linux"))]
+use raw_window_handle::RawWindowHandle;
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -12,6 +14,18 @@ mod windows;
 #[cfg(target_os = "windows")]
 use self::windows as native;
 
+#[cfg(target_os = "linux")]
+mod native {
+    pub struct Appearance;
+    impl Appearance {
+        pub fn new() -> Self {
+            Self
+        }
+        pub fn dirty(&self) -> bool {
+            false
+        }
+    }
+}
 pub struct Appearance {
     native: native::Appearance,
     gate: RefreshGate,
@@ -39,7 +53,7 @@ impl Appearance {
         }
         #[cfg(target_os = "macos")]
         let system_dark = self.native.system_dark();
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         let system_dark = window_dark;
         let dark = match theme {
             "dark" => true,
@@ -48,6 +62,7 @@ impl Appearance {
         };
         let previous_dark = self.dark;
         self.dark = dark;
+        #[cfg(not(target_os = "linux"))]
         let background = crate::theme::Palette::new(dark).bg;
         let previous = self.accent;
         if let Ok(handle) = HasWindowHandle::window_handle(window) {

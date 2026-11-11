@@ -196,22 +196,16 @@ impl Desktop {
                     .text_color(rgb(p.muted))
                     .child(t("호스트")),
             );
-        let hosts: Vec<_> = self
+        let mut hosts: Vec<_> = self
             .host_order
             .ids()
             .iter()
             .filter_map(|id| self.local.hosts.iter().find(|h| &h.id == id).cloned())
             .collect();
         let mut explorer = div().id("explorer").flex_1().min_h_0().overflow_y_scroll();
-        if hosts.is_empty() {
-            explorer = explorer.child(
-                div()
-                    .p_3()
-                    .text_sm()
-                    .child(t("+ 버튼으로 SSH 호스트를 추가하세요.")),
-            );
-        }
+        hosts.insert(0, self.local_host());
         for host in hosts {
+            let is_local = local_host::Target::of(&host) == local_host::Target::Local;
             let id = host.id.clone();
             let open = host.clone();
             let edit = host.clone();
@@ -229,8 +223,9 @@ impl Desktop {
                 .and_then(|i| self.host_order.ids().get(i + 1))
                 .cloned();
             let drag_view = cx.entity();
-            let before_line = self.pointer.host_drop.as_ref() == Some(&Some(id.clone()));
-            let after_line = next.is_none() && self.pointer.host_drop == Some(None);
+            let before_line =
+                !is_local && self.pointer.host_drop.as_ref() == Some(&Some(id.clone()));
+            let after_line = !is_local && next.is_none() && self.pointer.host_drop == Some(None);
             explorer = explorer.child(
                 div()
                     .id(SharedString::from(format!("host-row-{id}")))
@@ -246,6 +241,9 @@ impl Desktop {
                     .on_drag_move::<DragHost>(cx.listener(
                         move |s, e: &DragMoveEvent<DragHost>, _, cx| {
                             if e.bounds.contains(&e.event.position) {
+                                if is_local {
+                                    return;
+                                }
                                 s.pointer.host_drop =
                                     Some(if e.event.position.y < e.bounds.center().y {
                                         Some(before.clone())
@@ -305,28 +303,31 @@ impl Desktop {
                         .flex_1()
                         .min_w_0()
                         .truncate()
-                        .cursor_move()
-                        .on_drag(
-                            DragHost {
-                                id: id.clone(),
-                                label: host.alias.clone(),
-                            },
-                            move |host, _, _, cx| {
-                                drag_view.update(cx, |s, cx| {
-                                    s.pointer.dragging_host = Some(host.id.clone());
-                                    s.pointer.host_drop = None;
-                                    s.menu = None;
-                                    cx.notify();
-                                });
-                                cx.new(|_| DragPreview(host.label.clone()))
-                            },
-                        ),
-                    )
-                    .child(
-                        self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
-                            s.toggle_menu(toggle.clone())
+                        .when(!is_local, |d| {
+                            d.cursor_move().on_drag(
+                                DragHost {
+                                    id: id.clone(),
+                                    label: host.alias.clone(),
+                                },
+                                move |host, _, _, cx| {
+                                    drag_view.update(cx, |s, cx| {
+                                        s.pointer.dragging_host = Some(host.id.clone());
+                                        s.pointer.host_drop = None;
+                                        s.menu = None;
+                                        cx.notify();
+                                    });
+                                    cx.new(|_| DragPreview(host.label.clone()))
+                                },
+                            )
                         }),
-                    ),
+                    )
+                    .when(!is_local, |d| {
+                        d.child(
+                            self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
+                                s.toggle_menu(toggle.clone())
+                            }),
+                        )
+                    }),
             );
             if self.menu.as_ref() == Some(&menu_id) {
                 explorer = explorer.child(
@@ -1174,17 +1175,82 @@ impl Desktop {
             let terminal = tab.terminal.clone();
             let state = tab.connection.state();
             body = body.child(self.render_pane_toolbar(tab, cx));
+            if tab.host.id == local_host::ID
+                && matches!(
+                    state.error,
+                    Some(
+                        dgl_core::Error::LocalToolMissing
+                            | dgl_core::Error::LocalToolUnsupported
+                            | dgl_core::Error::LocalToolPermission
+                    )
+                )
+            {
+                let (install, url) = local_host::installation();
+                let message = match state.error {
+                    Some(dgl_core::Error::LocalToolPermission) => {
+                        t("로컬 도구의 실행 권한을 확인하세요.")
+                    }
+                    Some(dgl_core::Error::LocalToolUnsupported) => {
+                        t("지원하는 tmux 3.3–3.7 또는 psmux 3.4 이상이 필요합니다.")
+                    }
+                    _ => t("Local을 사용하려면 tmux 또는 psmux를 설치하세요."),
+                };
+                let mut panel = div()
+                    .id("local-installation")
+                    .p_3()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(message);
+                if let Some(command) = install {
+                    panel = panel.child(command).child(self.button(
+                        "copy-local-install",
+                        t("명령 복사"),
+                        cx,
+                        move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(command.into()))
+                        },
+                    ));
+                }
+                if cfg!(target_os = "windows") {
+                    panel = panel.child(t("ZIP을 풀고 psmux.exe 폴더를 PATH에 추가할 수도 있습니다. 설치 후 DGL을 다시 시작하세요."));
+                }
+                panel = panel
+                    .child(self.button(
+                        "open-local-guide",
+                        t("공식 안내 열기"),
+                        cx,
+                        move |_, _, cx| cx.open_url(url),
+                    ))
+                    .child(self.button(
+                        "recheck-local-tool",
+                        t("다시 확인"),
+                        cx,
+                        move |s, _, cx| {
+                            s.workspace.active = id;
+                            s.reconnect(cx);
+                        },
+                    ));
+                body = body.child(panel);
+            }
+
             if state.offers_retry() && !state.retry_exhausted() {
                 let retry_connection = tab.connection.clone();
                 let stop_connection = tab.connection.clone();
-                let mut retry_controls = div().flex().flex_wrap().gap_1().text_xs().child(self.button(
-                    format!("retry-now-{id}"),
-                    t("새로고침 재시도"),
-                    cx,
-                    move |s, _, _| {
-                        s.submit(&retry_connection, Action::RetryNow);
-                    },
-                ));
+                let mut retry_controls =
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap_1()
+                        .text_xs()
+                        .child(self.button(
+                            format!("retry-now-{id}"),
+                            t("새로고침 재시도"),
+                            cx,
+                            move |s, _, _| {
+                                s.submit(&retry_connection, Action::RetryNow);
+                            },
+                        ));
                 if state.reconnecting() {
                     retry_controls = retry_controls.child(self.button(
                         format!("stop-retry-{id}"),

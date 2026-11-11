@@ -29,7 +29,25 @@ use self::windows as native;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod native {
     pub fn installed_families() -> Vec<String> {
-        Vec::new()
+        let mut command = std::process::Command::new("fc-list");
+        if std::env::var_os("APPDIR").is_some() || std::env::var_os("APPIMAGE").is_some() {
+            command
+                .env_remove("LD_LIBRARY_PATH")
+                .env_remove("LD_PRELOAD");
+        }
+        command
+            .args([":spacing=mono", "family"])
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| {
+                String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .flat_map(|s| s.split(',').map(str::trim))
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 

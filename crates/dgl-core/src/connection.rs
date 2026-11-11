@@ -3,9 +3,11 @@ use crate::{
     Error, Result,
     command::{Command, Operation},
     flow::{Generation, MAX_BATCH, OutputKind, OutputQueue, PaneTarget},
+    local::LocalConfig,
     model::{self, Credential, HostProfile, RemoteState, Size},
     protocol::{Event, Parser},
-    ssh::{self, Ssh, Stream},
+    ssh,
+    transport::{Stream, Transport},
 };
 use crate::{i18n::t, tr};
 use serde::{Deserialize, Serialize};
@@ -453,6 +455,31 @@ impl Shared {
 }
 impl Connection {
     pub fn start(host: HostProfile, credential: Credential, trusted: Option<String>) -> Arc<Self> {
+        Self::start_target(host, credential, trusted, None)
+    }
+    /// Local requires no SSH host, trust, or credentials. It never creates a session on start.
+    pub fn start_local(config: LocalConfig) -> Arc<Self> {
+        let host = HostProfile {
+            id: "local".into(),
+            alias: "Local".into(),
+            hostname: "localhost".into(),
+            port: 22,
+            username: "local".into(),
+            auth: Default::default(),
+            credential_ref: String::new(),
+            favorite: false,
+            last_connected: 0,
+            last_session: config.last_session.clone(),
+            last_pane: config.last_pane.clone(),
+        };
+        Self::start_target(host, Credential::default(), None, Some(config))
+    }
+    fn start_target(
+        host: HostProfile,
+        credential: Credential,
+        trusted: Option<String>,
+        local: Option<LocalConfig>,
+    ) -> Arc<Self> {
         let handle = NEXT_HANDLE
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| x.checked_add(1))
             .expect("connection handles exhausted");
@@ -512,7 +539,7 @@ impl Connection {
             tokio::pin!(stopped);
             stopped.as_mut().enable();
             if !shared.cancel.load(Ordering::SeqCst) {
-                tokio::select! {biased;_=stopped=>{},_=run(shared.clone(),host,credential,trusted,rx,retry_rx,check_rx)=>{}}
+                tokio::select! {biased;_=stopped=>{},_=run(shared.clone(),host,credential,trusted,local,rx,retry_rx,check_rx)=>{}}
             } else {
                 drop(rx);
                 drop(retry_rx);
@@ -902,6 +929,7 @@ struct MetadataPoll {
 }
 struct Control {
     stream: Stream,
+    psmux: Option<crate::local::psmux::Adapter>,
     parser: Parser,
     events: VecDeque<Event>,
     shared: Arc<Shared>,
@@ -915,6 +943,8 @@ struct Control {
     ignoring_size: bool,
     screens: BTreeMap<String, (PaneTarget, Size, String)>,
     capturing: Option<String>,
+    /// psmux cannot pause on demand. Preserve output arriving after its capture response.
+    capture_live: Option<Vec<Vec<u8>>>,
     dirty: bool,
     paused: HashSet<String>,
     titles: crate::title::Updates,
@@ -924,7 +954,10 @@ impl Control {
     async fn next(&mut self) -> Result<Event> {
         loop {
             if let Some(e) = self.events.pop_front() {
-                return Ok(e);
+                return match &self.psmux {
+                    Some(adapter) => adapter.event(e),
+                    None => Ok(e),
+                };
             }
             let msg = self.stream.wait().await.ok_or(Error::Network)?;
             match msg {
@@ -941,6 +974,15 @@ impl Control {
             Event::Output { pane, bytes } => {
                 self.titles.reconcile(self.shared.title_scope());
                 self.titles.feed(&pane, &bytes);
+                if self.capturing.as_ref() == Some(&pane)
+                    && let Some(pending) = &mut self.capture_live
+                {
+                    if pending.iter().map(Vec::len).sum::<usize>() + bytes.len() > 4 * 1024 * 1024 {
+                        return Err(Error::Network);
+                    }
+                    pending.push(bytes);
+                    return Ok(());
+                }
                 if self.capturing.as_ref() != Some(&pane)
                     && let Some((target, size, _)) = self.screens.get(&pane)
                 {
@@ -1017,12 +1059,89 @@ impl Control {
     /// Each is its own line, so a failed command (`Err` in its reply) does not stop
     /// the ones after it the way a `;` command list would.
     async fn commands(&mut self, ops: &[Operation]) -> Result<Vec<Result<Vec<Vec<u8>>>>> {
+        if self.psmux.is_some() {
+            let mut replies = Vec::new();
+            for op in ops {
+                if let Some(rows) = self.psmux.as_mut().unwrap().listing(op).await? {
+                    replies.push(Ok(rows));
+                    continue;
+                }
+                if matches!(
+                    op,
+                    Operation::CaptureMain { .. }
+                        | Operation::Pending { .. }
+                        | Operation::Pause { .. }
+                        | Operation::CountSize
+                        | Operation::MetadataPoll
+                ) {
+                    replies.push(Ok(Vec::new()));
+                    continue;
+                }
+                if matches!(
+                    op,
+                    Operation::NewSession { .. }
+                        | Operation::RenameSession { .. }
+                        | Operation::KillSession { .. }
+                        | Operation::NewWindow { .. }
+                ) {
+                    let (code, _) = self
+                        .psmux
+                        .as_ref()
+                        .unwrap()
+                        .local
+                        .execute(&Command::new(op)?)
+                        .await?;
+                    replies.push(if code == 0 {
+                        Ok(Vec::new())
+                    } else {
+                        Err(Error::InvalidArgument)
+                    });
+                    continue;
+                }
+                if let Operation::RenameWindow { target, .. }
+                | Operation::RenamePane { target, .. }
+                | Operation::KillWindow { target }
+                | Operation::KillPane { target } = op
+                {
+                    let adapter = self.psmux.as_ref().unwrap();
+                    if crate::local::psmux::native(target)?.0 != adapter.session {
+                        let (code, _) = adapter.local.execute(&Command::new(op)?).await?;
+                        replies.push(if code == 0 {
+                            Ok(Vec::new())
+                        } else {
+                            Err(Error::InvalidArgument)
+                        });
+                        continue;
+                    }
+                }
+                let command = self.psmux.as_ref().unwrap().operation(op)?;
+                self.stream
+                    .write(format!("{}\n", command.wire).as_bytes())
+                    .await?;
+                let mut rows = self.response().await;
+                if matches!(op, Operation::Capture { .. }) {
+                    self.capture_live = Some(Vec::new());
+                    rows = rows.map(crate::local::psmux::capture);
+                }
+                if matches!(op, Operation::Modes { .. }) {
+                    if let Ok(rows) = &mut rows {
+                        if let Some(row) = rows.first_mut() {
+                            let mut fields = model::split_record(row, 17)?;
+                            fields[2] = "0".into(); // ConPTY captures only the primary buffer.
+                            *row = fields.join("|").into_bytes();
+                        }
+                    }
+                }
+                replies.push(rows);
+            }
+            return Ok(replies);
+        }
         let mut wire = String::new();
         for op in ops {
             wire.push_str(&Command::new(op)?.wire);
             wire.push('\n');
         }
-        ssh::write(&self.stream, wire.as_bytes()).await?;
+        self.stream.write(wire.as_bytes()).await?;
         let mut replies = Vec::with_capacity(ops.len());
         for _ in ops {
             replies.push(match self.response().await {
@@ -1119,6 +1238,11 @@ impl Control {
         Ok(())
     }
     async fn poll_metadata(&mut self) -> Result<()> {
+        if self.psmux.is_some() {
+            self.dirty = true;
+            self.metadata.as_mut().unwrap().due = tokio::time::Instant::now() + METADATA_POLL;
+            return Ok(());
+        }
         let value = self.command(Operation::MetadataPoll).await;
         let poll = self.metadata.as_mut().unwrap();
         poll.due = tokio::time::Instant::now() + METADATA_POLL;
@@ -1243,6 +1367,7 @@ impl Control {
         // Every part of this capture belongs to the consumer present at its start.
         let subscription = self.shared.output.subscription();
         self.capturing = Some(id.clone());
+        self.capture_live = None;
         self.shared.update(|s| {
             s.phase = Phase::Restoring;
             s.resizing = resizing;
@@ -1255,6 +1380,11 @@ impl Control {
             Operation::Pending { target: id.clone() },
             Operation::Resume { target: id.clone() },
         ];
+        let psmux_replies = if self.psmux.is_some() {
+            Some(self.commands(&commands).await?)
+        } else {
+            None
+        };
         let wire = commands
             .iter()
             .map(Command::new)
@@ -1264,7 +1394,19 @@ impl Control {
             .collect::<Vec<_>>()
             .join(" ; ")
             + "\n";
-        ssh::write(&self.stream, wire.as_bytes()).await?;
+        if let Some(replies) = psmux_replies {
+            for (number, reply) in replies.into_iter().enumerate().rev() {
+                self.events.push_front(Event::Response {
+                    timestamp: 0,
+                    number: number as u64,
+                    flags: 1,
+                    failed: reply.is_err(),
+                    lines: reply.unwrap_or_default(),
+                });
+            }
+        } else {
+            self.stream.write(wire.as_bytes()).await?;
+        }
         self.response().await?;
         let mode = self.response().await?;
         let fields = mode
@@ -1378,11 +1520,16 @@ impl Control {
             .emit_to_subscription(subscription, &target, OutputKind::ResetEnd, self.size, &[])
             .await?;
         self.capturing = None;
+        for bytes in self.capture_live.take().unwrap_or_default() {
+            self.shared
+                .emit_to_subscription(subscription, &target, OutputKind::Live, self.size, &bytes)
+                .await?;
+        }
         self.paused.remove(&id);
         Ok(())
     }
 }
-async fn list(ssh: &Ssh) -> Result<RemoteState> {
+async fn list(ssh: &Transport) -> Result<RemoteState> {
     let (code, bytes) = ssh.execute_tmux(&Command::inventory()).await?;
     let rows: Vec<_> = bytes
         .split(|b| *b == b'\n')
@@ -1431,7 +1578,7 @@ fn resolve_target(
         .ok_or(Error::InvalidArgument)
 }
 async fn attach(
-    ssh: &Ssh,
+    ssh: &Transport,
     shared: Arc<Shared>,
     id: String,
     size: Size,
@@ -1451,6 +1598,12 @@ async fn attach(
     });
     let mut c = Control {
         stream,
+        psmux: match ssh {
+            Transport::Local(l) if ssh.psmux() => {
+                Some(crate::local::psmux::Adapter::new(l.clone(), &id)?)
+            }
+            _ => None,
+        },
         parser: Parser::default(),
         events: VecDeque::new(),
         shared,
@@ -1463,6 +1616,7 @@ async fn attach(
         ignoring_size: ignore_size,
         screens: BTreeMap::new(),
         capturing: None,
+        capture_live: None,
         dirty: false,
         paused: HashSet::new(),
         titles: Default::default(),
@@ -1472,10 +1626,7 @@ async fn attach(
         .set_last_start(c.shared.title_visibility.lock().unwrap().last_start);
     // The attach command itself, given on the command line, is framed with flags 0.
     c.reply(false).await?;
-    let subscribe = ssh
-        .tmux_version
-        .as_deref()
-        .is_some_and(crate::command::safe_subscriptions);
+    let subscribe = !ssh.psmux() && crate::command::safe_subscriptions(ssh.version());
     let setup = [
         Operation::FlowControl,
         // A polled baseline is read before the listing, so later changes are not missed.
@@ -1646,6 +1797,7 @@ async fn run(
     host: HostProfile,
     credential: Credential,
     trusted: Option<String>,
+    local: Option<LocalConfig>,
     mut rx: mpsc::Receiver<Request>,
     mut retry_rx: mpsc::Receiver<Request>,
     mut check_rx: mpsc::Receiver<Request>,
@@ -1666,13 +1818,21 @@ async fn run(
         let reattach = !first;
         first = false;
         let connection = async {
-            let mut ssh =
-                ssh::connect(&host, &credential, trusted.clone(), observed.clone()).await?;
-            shared.phase(Phase::Authenticating);
-            let tmux = ssh.discover().await?;
+            let (ssh, tmux, diagnostics) = if let Some(config) = &local {
+                let local = config.clone().detect().await?;
+                let diagnostic = local.diagnostic();
+                (Transport::Local(local), true, vec![diagnostic])
+            } else {
+                let mut ssh =
+                    ssh::connect(&host, &credential, trusted.clone(), observed.clone()).await?;
+                shared.phase(Phase::Authenticating);
+                let tmux = ssh.discover().await?;
+                let diagnostics = ssh.diagnostics.clone();
+                (Transport::Ssh(ssh), tmux, diagnostics)
+            };
             shared.update(|s| {
                 s.error = None;
-                s.diagnostics = ssh.diagnostics.clone();
+                s.diagnostics = diagnostics;
             });
             let (checked_tx, mut checked_rx) = mpsc::channel(1);
             // The observer uses a separate exec channel and runs even if output delivery
@@ -1736,7 +1896,7 @@ async fn run(
 // This future is polled alongside the terminal actor: neither a tmux response nor
 // a full output queue can delay the independent exec probe or its deadline.
 async fn check_connections(
-    ssh: &Ssh,
+    ssh: &Transport,
     shared: Arc<Shared>,
     rx: &mut mpsc::Receiver<Request>,
     tx: mpsc::Sender<Request>,
@@ -1751,7 +1911,7 @@ async fn check_connections(
             continue;
         }
         if !matches!(
-            tokio::time::timeout(CHECK_TIMEOUT, ssh.execute(":")).await,
+            tokio::time::timeout(CHECK_TIMEOUT, ssh.check()).await,
             Ok(Ok((0, _)))
         ) {
             shared.complete(request, Some(Error::Network));
@@ -1763,7 +1923,10 @@ async fn check_connections(
 /// How long a helper that never answered (no Python, a failed start) is left to the
 /// basic fallback. One that had answered is restarted on the next poll.
 const OBSERVER_RETRY: Duration = Duration::from_secs(30);
-async fn observe_agents(ssh: &Ssh, shared: Arc<Shared>, tmux: bool) {
+async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
+    let Some(ssh) = ssh.as_ssh() else {
+        return std::future::pending().await;
+    };
     let mut cursor = 0u64;
     let mut epoch = String::new();
     let mut scope = (String::new(), String::new());
@@ -2063,7 +2226,7 @@ enum Incoming {
 }
 /// One SSH connection serving requests in order until it fails or the client goes away.
 struct Actor<'a> {
-    ssh: &'a Ssh,
+    ssh: &'a Transport,
     shared: Arc<Shared>,
     remote: Remote,
     size: &'a mut Size,
@@ -2074,7 +2237,7 @@ struct Actor<'a> {
     reattach: bool,
 }
 async fn connected(
-    ssh: &Ssh,
+    ssh: &Transport,
     shared: Arc<Shared>,
     rx: &mut mpsc::Receiver<Request>,
     checks: &mut mpsc::Receiver<Request>,
@@ -2141,7 +2304,7 @@ impl Actor<'_> {
                                 self.shared.clone(),
                                 id,
                                 *self.size,
-                                None,
+                                self.remembered.clone(),
                                 self.reattach,
                             )
                             .await?,
@@ -2345,7 +2508,7 @@ impl Actor<'_> {
         let Remote::Shell(sh) = &self.remote else {
             return Err(Error::NotReady);
         };
-        ssh::write(sh, bytes).await
+        sh.write(bytes).await
     }
     async fn action(&mut self, action: &Action) -> Result<()> {
         match action {
@@ -2375,7 +2538,7 @@ impl Actor<'_> {
                 if let Some(token) = token {
                     args.extend(["--token", token]);
                 }
-                let result = crate::agent::setup(self.ssh, &args).await.unwrap_or_else(|_| serde_json::json!({"error": t("연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요.")}));
+                let result = crate::agent::setup(self.ssh.as_ssh().ok_or(Error::NotReady)?, &args).await.unwrap_or_else(|_| serde_json::json!({"error": t("연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요.")}));
                 self.shared.update(|s| s.agent_setup = Some(result));
                 Ok(())
             }
@@ -2586,7 +2749,7 @@ impl Actor<'_> {
 mod tests {
     use super::*;
 
-    async fn stalled_control(window: u32) -> (crate::ssh::tests::Fixture, Ssh, Control) {
+    async fn stalled_control(window: u32) -> (crate::ssh::tests::Fixture, ssh::Ssh, Control) {
         let fixture = crate::ssh::tests::Fixture::new(window, 32, true, false).await;
         let ssh = fixture.connect().await;
         let stream = ssh.shell(Size::default()).await.unwrap();
@@ -2600,7 +2763,8 @@ mod tests {
             s.retry = RetryState::default();
         });
         let control = Control {
-            stream,
+            stream: stream.into(),
+            psmux: None,
             parser: Parser::default(),
             events: VecDeque::new(),
             shared: c.shared.clone(),
@@ -2610,6 +2774,7 @@ mod tests {
             ignoring_size: false,
             screens: BTreeMap::new(),
             capturing: None,
+            capture_live: None,
             dirty: false,
             paused: HashSet::new(),
             titles: Default::default(),

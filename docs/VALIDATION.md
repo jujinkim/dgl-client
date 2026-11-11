@@ -34,6 +34,11 @@ CI 성공은 서명·공개 릴리스·실기 인수 완료를 뜻하지 않습�
 
 ## 남은 한계
 
+- Linux 네이티브 빌드·AppImage 생성/실행·X11/Wayland 시작→Local 연결→입력→종료 인수는 미수행입니다.
+  [LINUX.md](LINUX.md)의 명령과 수동 workflow로 확인합니다. macOS의 Linux 전용 모듈 API 타입 검사는 네이티브 인수가 아닙니다.
+- psmux 프레임·프로세스 fixture는 세션 범위·전환·이름 변경·캡처/출력 순서를 검사합니다.
+  Windows psmux의 실제 ConPTY 화면·흐름·입력·클라이언트 종료·작업 유지와 DPAPI·GUI는 별도 사용자 인수입니다.
+
 - 실기 인수(macOS GUI·IME·Keychain·OS 알림, Windows MSVC 네이티브 빌드·DPAPI·GUI, Android 물리 기기·실제 키보드·네트워크 전환)는
   미수행입니다. 항목은 [TASKS.md](../TASKS.md)의 기능 인수, Windows 절차는 [WINDOWS.md](WINDOWS.md)를 따릅니다.
 - Android 성능·자원 계측 하네스(`ResourceScenario`·`ResourceInstrumentation`·`MigrationPresentationProbe`)는

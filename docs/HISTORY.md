@@ -243,6 +243,20 @@ API36에서 파일 동기화·일회성 파일 작업과 화면 이동을 선택
 외부 SSH 관련 기존 skip/ignore와 대화형 Keychain ignore는 통과로 계산하지 않았습니다.
 실제 클라우드 전송·Windows 네이티브 빌드·실기 검사는 수행하지 않았습니다.
 
+## 2026-11-11: Local·psmux·Linux 배포 경로
+
+데스크톱의 고정 Local 항목과 별도 기기별 최근 대상, 로컬 multiplexer 감지·설치 안내를 추가했습니다.
+Rust actor의 SSH 채널·로컬 자식 프로세스 전송 계층을 통합하고 tmux와 psmux의 세션·ID·캡처·흐름
+차이를 분리했습니다. Linux XDG·Secret Service·플랫폼 UI 경로와 고정 도구/런타임·체크섬을 사용하는
+Ubuntu 24.04 x86_64 AppImage 패키저·수동 CI를 추가했습니다.
+
+macOS에서 코어/UniFFI·데스크톱·JVM·Python·web 기본 검사, 격리 tmux Local 관리/입력/작업 유지/재연결,
+기존 SSH/tmux 인증·관리·입력·재접속 회귀와 psmux 프로세스 fixture를 확인했습니다.
+Linux 전용 UI/Secret Service/알림 코드는 macOS에서 별도 복사본으로 API 타입 검사를 수행했으며
+Linux 네이티브 빌드·AppImage 생성/실행·X11/Wayland 인수로 계산하지 않습니다.
+Windows psmux·MSVC·DPAPI·GUI 실기는 사용자 담당으로 남겼으며 skip/ignore는 통과로 계산하지 않았습니다.
+대시보드 등록은 로컬 JSON을 갱신하고 검증했습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.

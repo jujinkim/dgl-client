@@ -5,6 +5,7 @@
 | 목적 | 문서 |
 |---|---|
 | 제품 소개·슬로건·배포 상태 | [프로젝트 README](../README.md) |
+| Linux Local·Secret Service·AppImage | [Linux 안내](LINUX.md) |
 | 연결·재접속·tmux 조작 | [사용 안내](USAGE.md) |
 | 인증·개인키 가져오기 | [호스트 인증](HOST_AUTH.md) |
 | 세션·창 목록과 pane 표시 | [계층 표시](SESSION_HIERARCHY.md), [창 동기화](TMUX_WINDOW_SYNC.md) |

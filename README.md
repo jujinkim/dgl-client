@@ -22,6 +22,11 @@ DaGaLi는 SSH 호스트 관리와 tmux 세션 조회·조작·재접속을 하�
 - **모바일 입력:** xterm.js 터미널, 사용자 단축키 바, 여러 줄 텍스트 작성, 볼륨 키 매크로.
 - **선택 기능:** 호스트·설정 내보내기·가져오기와 파일 동기화, CLI 실행 메뉴, 에이전트 상태·알림.
 
+데스크톱 Hosts 맨 위의 **Local**은 SSH 인증 없이 현재 사용자의 tmux(macOS·Linux) 또는
+psmux(Windows) 세션을 엽니다. 앱 시작 시 자동 연결·생성하지 않으며 세션이 없으면 생성 화면을 사용합니다.
+Local은 이름 변경·삭제·정렬·호스트 동기화 대상에 포함되지 않습니다. 설치되지 않은 도구는 명령 복사·
+공식 설치 안내·다시 확인 화면에서 준비합니다. 앱은 설치를 자동 실행하지 않습니다.
+
 ## 시작하기
 
 1. 서버에 SSH와 tmux를 준비하고 앱에 호스트·사용자·인증 정보를 저장합니다.
@@ -49,10 +54,10 @@ pane 동기화 계약은 [tmux 창 동기화](docs/TMUX_WINDOW_SYNC.md)를 참�
 | Android 14–16 | Rust + Compose/xterm.js, 네 ABI APK | 에뮬레이터 검사 기록 있음. 실제 기기·키보드·네트워크 전환 인수는 남음 |
 | macOS ARM64 | Rust + GPUI/alacritty_terminal, 로컬 ad-hoc `.app` | 빌드·단위·SSH/tmux 검사. 실제 GUI·Keychain 인수는 남음 |
 | Windows x64 | Rust + GPUI/alacritty_terminal, MSVC 빌드·미서명 포터블 ZIP(우선)·선택적 Store MSIX·수동 CI | 네이티브 빌드·DPAPI·GUI 확인은 사용자 담당. Store 제출은 후속 |
-| Linux | 후속 대상 | 현재 앱 실행·패키징 경로 없음 |
+| Linux x86_64 | Rust + GPUI, Ubuntu 24.04 이상·X11/Wayland·AppImage | 빌드/패키징 경로 추가. 네이티브 빌드·실기 인수 대기([Linux 안내](docs/LINUX.md)) |
 | iOS/iPadOS | 미구현 | 이 저장소에 앱 소스·Swift/Xcode 빌드 타깃 없음 |
 
-앱 ID는 Android applicationId / macOS 번들 ID / Windows AUMID 모두 `kim.jujin.dglc`입니다.
+앱 ID는 Android applicationId / macOS 번들 ID / Windows AUMID / Linux desktop entry 모두 `kim.jujin.dglc`입니다.
 Kotlin 제품·테스트의 패키지와 소스 경로도 `kim.jujin.dglc`로 통일합니다.
 tmux Control Mode 지원 범위는 3.3–3.7이며 실제 서버 검사 기록은 3.3a·3.7c입니다.
 공개 배포용 서명·공증과 전체 플랫폼 인수는 완료되지 않았습니다. Windows는 미서명 포터블 ZIP을 먼저 배포하고, 후속 Store MSIX는 Microsoft Store가 서명합니다([Windows 안내](docs/WINDOWS.md)).
@@ -78,6 +83,7 @@ Windows는 `scripts/run_windows.cmd`를 더블클릭하거나 PowerShell에서 �
 | Android Debug | `androidApp/build/outputs/apk/debug/androidApp-debug.apk` |
 | Android Release AAB | `androidApp/build/outputs/bundle/release/androidApp-release.aab` |
 | macOS | `artifacts/rust-candidate/mac/DaGaLi.app` |
+| Linux AppImage | `artifacts/rust-candidate/linux/DaGaLi-<version>-x86_64.AppImage` |
 | Windows ZIP | `artifacts/rust-candidate/windows/dgl-rust-windows-x64.zip` |
 
 Android Debug APK는 위 원본 하나만 사용하며 검사·배포 스크립트도 별도 복사본을 만들지 않습니다.

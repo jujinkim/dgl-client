@@ -174,6 +174,7 @@ pub struct ServerWindow {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Server {
+    Local,
     /// The connection's host key fingerprint.
     Key(String),
     /// The lowercase hostname and port, before a host key is known.
@@ -186,9 +187,13 @@ impl ServerWindow {
         fingerprint: Option<&str>,
         window: Option<&str>,
     ) -> Option<Self> {
-        let server = match fingerprint.filter(|f| !f.is_empty()) {
-            Some(key) => Server::Key(key.to_owned()),
-            None => Server::Address(host.hostname.trim().to_ascii_lowercase(), host.port),
+        let server = if host.id == crate::local_host::ID {
+            Server::Local
+        } else {
+            match fingerprint.filter(|f| !f.is_empty()) {
+                Some(key) => Server::Key(key.to_owned()),
+                None => Server::Address(host.hostname.trim().to_ascii_lowercase(), host.port),
+            }
         };
         Some(Self {
             server,

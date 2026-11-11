@@ -91,7 +91,7 @@
   "개인키": "Private key",
   "개인키 파일 가져오기": "Import private key file",
   "개인키 파일 경로": "Private key file path",
-  "개인키 파일 선택": "Choose private key file",
+  "개인키 파일 선택": "Choose a private key file",
   "개인키 파일은 UTF-8 텍스트여야 합니다.": "The private key file must be UTF-8 text.",
   "개인키 파일은 최대 128 KiB까지 가져올 수 있습니다.": "Private key files must be no larger than 128 KiB.",
   "개인키 파일을 먼저 가져오세요": "Import a private key file first",
@@ -658,5 +658,12 @@
   "내보내기 실패. 파일 권한을 확인하고 연결 중인 동기화 파일과 다른 파일을 선택하세요.": "Export failed. Check file permissions and choose a file other than the connected sync file.",
   "설정을 저장하지 못했습니다. 가져오기를 적용하지 않았습니다.": "Could not save settings. The import was not applied.",
   "파일 연결 실패. 읽기·쓰기가 가능한 dgl-sync.json을 선택하세요.": "Could not connect the file. Choose a readable and writable dgl-sync.json.",
-  "파일 동기화 실패. 동기화 앱·파일 권한·파일 형식을 확인하세요. 변경 기록은 기기에 보존됩니다.": "File sync failed. Check the sync app, permissions, and file format. Change history is retained on this device."
+  "파일 동기화 실패. 동기화 앱·파일 권한·파일 형식을 확인하세요. 변경 기록은 기기에 보존됩니다.": "File sync failed. Check the sync app, permissions, and file format. Change history is retained on this device.",
+  "로컬 도구의 실행 권한을 확인하세요.": "Check execution permissions for the local tool.",
+  "지원하는 tmux 3.3–3.7 또는 psmux 3.4 이상이 필요합니다.": "Requires tmux 3.3–3.7 or psmux 3.4 or later.",
+  "Local을 사용하려면 tmux 또는 psmux를 설치하세요.": "Install tmux or psmux to use Local.",
+  "명령 복사": "Copy command",
+  "공식 안내 열기": "Open official guide",
+  "다시 확인": "Check again",
+  "ZIP을 풀고 psmux.exe 폴더를 PATH에 추가할 수도 있습니다. 설치 후 DGL을 다시 시작하세요.": "You can also extract the ZIP and add the psmux.exe folder to PATH. Restart DGL after installation."
 }
