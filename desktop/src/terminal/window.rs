@@ -2,8 +2,8 @@
 use super::font_size::TerminalFontSize;
 use super::*;
 use crate::native_tooltips::NativeTooltip;
+use dgl_core::model::Size;
 use dgl_core::{command::Operation, flow::OutputEvent, flow::PaneTarget, model::RemotePane};
-use dgl_core::{flow::OutputKind, model::Size};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -97,17 +97,7 @@ impl WindowTerminal {
         }
         let terminal = self.pane(&e.target.pane_id, cx);
         terminal.update(cx, |t, cx| {
-            match e.kind {
-                OutputKind::Resize => t
-                    .term
-                    .resize(GridSize(e.size.columns as usize, e.size.rows as usize)),
-                OutputKind::ResetBegin => t.begin_snapshot(&e.target.pane_id, &e.bytes),
-                OutputKind::ResetEnd => {
-                    t.parser.advance(&mut t.term, &e.bytes);
-                    t.snapshot_modes = None;
-                }
-                _ => t.parser.advance(&mut t.term, &e.bytes),
-            }
+            t.apply_output(&e, cx);
             cx.notify();
         });
     }

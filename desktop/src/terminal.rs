@@ -6,14 +6,19 @@ use alacritty_terminal::{
     grid::{Dimensions, Scroll},
     index::{Column, Line, Point as CellPoint, Side},
     selection::{Selection, SelectionType},
-    term::{Config, TermMode, cell::Flags},
+    term::{ClipboardType, Config, Osc52, TermMode, cell::Flags},
     vte::ansi::{Color, CursorShape, Processor},
 };
 use dgl_core::connection::{Action, Connection};
+use dgl_core::flow::{OutputEvent, OutputKind};
 use dgl_core::input::{Modifiers as KeyModifiers, TerminalShortcut};
 use dgl_core::tr;
 use gpui::{prelude::*, *};
-use std::{collections::HashSet, ops::Range, sync::Arc};
+use std::{
+    collections::HashSet,
+    ops::Range,
+    sync::{Arc, Mutex},
+};
 mod font_size;
 pub mod fonts;
 mod input;
@@ -27,20 +32,37 @@ pub use window::WindowTerminal;
 /// Emulator answers (DA, DSR, cursor position, OSC queries) go straight to the
 /// connection, never through `Terminal::send`: an idle screen answering a query must
 /// not claim the tmux window's size from the screen the user operates.
+///
+/// OSC 52 clipboard writes wait in `clipboard` until the output that carried them is
+/// applied: only live output may set the system clipboard (`Terminal::apply_output`).
 #[derive(Clone)]
-struct Listener(Arc<Connection>, Option<String>);
+struct Listener(Arc<Connection>, Option<String>, ClipboardSlot);
 impl EventListener for Listener {
     fn send_event(&self, event: Event) {
-        if let Event::PtyWrite(text) = event
-            && let Some(t) = self
-                .0
-                .target()
-                .filter(|t| self.1.as_ref().is_none_or(|id| id == &t.pane_id))
-        {
-            let _ = self.0.input(t, text.into_bytes());
+        match event {
+            Event::PtyWrite(text) => {
+                if let Some(t) = self
+                    .0
+                    .target()
+                    .filter(|t| self.1.as_ref().is_none_or(|id| id == &t.pane_id))
+                {
+                    let _ = self.0.input(t, text.into_bytes());
+                }
+            }
+            // Writes only: `Osc52::OnlyCopy` never lets the remote read the clipboard back.
+            Event::ClipboardStore(kind, text) if text.len() <= MAX_CLIPBOARD_STORE => {
+                if let Ok(mut slot) = self.2.lock() {
+                    *slot = Some((kind, text));
+                }
+            }
+            _ => {}
         }
     }
 }
+/// Largest OSC 52 text (decoded UTF-8 bytes) a remote program may put on the clipboard.
+const MAX_CLIPBOARD_STORE: usize = 1 << 20;
+/// The latest OSC 52 write parsed from the output being applied.
+type ClipboardSlot = Arc<Mutex<Option<(ClipboardType, String)>>>;
 /// How a completed request relates to this terminal's input.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputCompletion {
@@ -72,6 +94,7 @@ pub struct Terminal {
     pane_id: Option<String>,
     term: Term<Listener>,
     parser: Processor,
+    clipboard: ClipboardSlot,
     focus: FocusHandle,
     font_size: f32,
     /// Shared with the window so pane painting and the size requested from tmux agree.
@@ -128,18 +151,21 @@ impl Terminal {
     ) -> Self {
         let config = Config {
             scrolling_history: scrollback.clamp(100, 10000) as usize,
+            osc52: Osc52::OnlyCopy,
             ..Default::default()
         };
+        let clipboard = ClipboardSlot::default();
         let term = Term::new(
             config,
             &GridSize(80, 24),
-            Listener(connection.clone(), pane_id.clone()),
+            Listener(connection.clone(), pane_id.clone(), clipboard.clone()),
         );
         Self {
             connection,
             pane_id,
             term,
             parser: Processor::new(),
+            clipboard,
             focus: cx.focus_handle(),
             font_size: font_size.clamp(10, 28) as f32,
             face: fonts::TerminalFace::default(),
@@ -205,6 +231,36 @@ impl Terminal {
             *self.term.grid_mut() = grid;
         }
         self.displayed_pane = Some(pane.into());
+    }
+    /// Applies one pane output event. A program's OSC 52 copy reaches the system clipboard
+    /// only from live output: snapshots replay earlier screens, so their writes are stale.
+    fn apply_output(&mut self, e: &OutputEvent, cx: &App) {
+        match e.kind {
+            OutputKind::Resize => self
+                .term
+                .resize(GridSize(e.size.columns as usize, e.size.rows as usize)),
+            OutputKind::ResetBegin => self.begin_snapshot(&e.target.pane_id, &e.bytes),
+            OutputKind::ResetEnd => {
+                self.parser.advance(&mut self.term, &e.bytes);
+                self.snapshot_modes = None;
+            }
+            OutputKind::ResetChunk | OutputKind::Live => {
+                self.parser.advance(&mut self.term, &e.bytes)
+            }
+        }
+        let store = self.clipboard.lock().ok().and_then(|mut slot| slot.take());
+        if e.kind == OutputKind::Live
+            && let Some((kind, text)) = store
+        {
+            match kind {
+                ClipboardType::Clipboard => cx.write_to_clipboard(ClipboardItem::new_string(text)),
+                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+                ClipboardType::Selection => cx.write_to_primary(ClipboardItem::new_string(text)),
+                // Windows and macOS have no primary selection.
+                #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+                ClipboardType::Selection => {}
+            }
+        }
     }
     /// User input: keys, IME commits, pastes, shortcuts and pointer buttons/wheel.
     pub fn send(&mut self, bytes: Vec<u8>) {
@@ -921,7 +977,8 @@ mod tests {
     };
     use dgl_core::{
         connection::Connection,
-        model::{AuthKind, Credential, HostProfile},
+        flow::{Generation, OutputEvent, OutputKind, PaneTarget},
+        model::{AuthKind, Credential, HostProfile, Size},
     };
     use gpui::{AppContext, TestAppContext};
     #[test]
@@ -941,15 +998,8 @@ mod tests {
         cell.push_zerowidth('\u{301}');
         assert_eq!(super::glyph_text(&cell).as_ref(), "e\u{301}");
     }
-    #[gpui::test]
-    fn same_pane_snapshot_preserves_history(cx: &mut TestAppContext) {
-        // This runtime deliberately stays unpolled: an in-flight request cannot complete.
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let _enter = runtime.enter();
-        let host = HostProfile {
+    fn fixture_host() -> HostProfile {
+        HostProfile {
             id: "fixture".into(),
             alias: "fixture".into(),
             hostname: "127.0.0.1".into(),
@@ -961,8 +1011,97 @@ mod tests {
             last_connected: 0,
             last_session: None,
             last_pane: None,
+        }
+    }
+    #[gpui::test]
+    fn only_live_osc52_writes_reach_the_clipboard(cx: &mut TestAppContext) {
+        // This runtime deliberately stays unpolled: an in-flight request cannot complete.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _enter = runtime.enter();
+        let connection = Connection::start(fixture_host(), Credential::default(), None);
+        let terminal = cx.new(|cx| Terminal::new(connection.clone(), 14, 5000, cx));
+        let event = |kind, bytes: &[u8]| OutputEvent {
+            subscription: 1,
+            sequence: 1,
+            target: PaneTarget {
+                connection: 1,
+                pane_id: "%1".into(),
+                generation: Generation {
+                    connection: 1,
+                    pane: 1,
+                    size: 1,
+                },
+            },
+            kind,
+            size: Size::default(),
+            bytes: bytes.to_vec(),
         };
-        let connection = Connection::start(host, Credential::default(), None);
+        let apply = |cx: &mut TestAppContext, kind, bytes: &[u8]| {
+            let e = event(kind, bytes);
+            terminal.update(cx, |t, cx| t.apply_output(&e, cx));
+        };
+        let clipboard =
+            |cx: &mut TestAppContext| cx.read_from_clipboard().and_then(|item| item.text());
+        // "hello" with a BEL end, then "world" with an ST end split across two chunks.
+        apply(cx, OutputKind::Live, b"\x1b]52;c;aGVsbG8=\x07");
+        assert_eq!(clipboard(cx).as_deref(), Some("hello"));
+        apply(cx, OutputKind::Live, b"\x1b]52;c;d29y");
+        assert_eq!(clipboard(cx).as_deref(), Some("hello"));
+        apply(cx, OutputKind::Live, b"bGQ=\x1b\\");
+        assert_eq!(clipboard(cx).as_deref(), Some("world"));
+        // tmux DCS passthrough, as programs inside tmux wrap it; an empty target means 'c'.
+        apply(
+            cx,
+            OutputKind::Live,
+            b"\x1bPtmux;\x1b\x1b]52;c;dG11eA==\x07\x1b\\",
+        );
+        assert_eq!(clipboard(cx).as_deref(), Some("tmux"));
+        apply(cx, OutputKind::Live, b"\x1b]52;;ZW1wdHk=\x07");
+        assert_eq!(clipboard(cx).as_deref(), Some("empty"));
+        // Snapshot replays never write, and their stores are not delivered later.
+        for kind in [
+            OutputKind::ResetBegin,
+            OutputKind::ResetChunk,
+            OutputKind::ResetEnd,
+        ] {
+            apply(cx, kind.clone(), b"\x1b]52;c;c3RhbGU=\x07");
+            apply(cx, OutputKind::Live, b"plain output");
+            assert_eq!(clipboard(cx).as_deref(), Some("empty"), "{kind:?}");
+        }
+        // Reading the clipboard is refused, and oversized writes are dropped.
+        apply(cx, OutputKind::Live, b"\x1b]52;c;?\x07");
+        assert_eq!(clipboard(cx).as_deref(), Some("empty"));
+        // "YWFh" decodes to "aaa": the payload is over the limit.
+        let big = "YWFh".repeat((super::MAX_CLIPBOARD_STORE + 1).div_ceil(3));
+        apply(
+            cx,
+            OutputKind::Live,
+            format!("\x1b]52;c;{big}\x07").as_bytes(),
+        );
+        assert_eq!(clipboard(cx).as_deref(), Some("empty"));
+        #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+        {
+            apply(cx, OutputKind::Live, b"\x1b]52;p;cHJpbWFyeQ==\x07");
+            assert_eq!(clipboard(cx).as_deref(), Some("empty"));
+        }
+        terminal.update(cx, |t, _| {
+            assert!(t.clipboard.lock().unwrap().is_none());
+        });
+        connection.close();
+        runtime.block_on(connection.join());
+    }
+    #[gpui::test]
+    fn same_pane_snapshot_preserves_history(cx: &mut TestAppContext) {
+        // This runtime deliberately stays unpolled: an in-flight request cannot complete.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _enter = runtime.enter();
+        let connection = Connection::start(fixture_host(), Credential::default(), None);
         let terminal = cx.new(|cx| Terminal::new(connection.clone(), 14, 5000, cx));
         terminal.update(cx, |t, _| {
             t.term.resize(GridSize(80, 10));
