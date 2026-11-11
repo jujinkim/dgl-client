@@ -1318,6 +1318,24 @@ impl Desktop {
                 .min_h_0()
                 .overflow_hidden()
                 .child(terminal);
+            if waits_for_session(&state.phase) {
+                area = area.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .p_3()
+                        .child(
+                            div()
+                                .debug_selector(move || format!("select-session-hint-{id}"))
+                                .text_center()
+                                .text_color(rgb(p.muted))
+                                .child(t("tmux 세션을 선택하거나 만드세요.")),
+                        ),
+                );
+            }
             if state.retry_exhausted() {
                 let connection = tab.connection.clone();
                 area = area.child(
@@ -1905,5 +1923,35 @@ impl Desktop {
                 operation: DeleteOp::Remote(c.clone(), operation.clone()),
             });
         })
+    }
+}
+
+/// A connected tab without a tmux target asks for a session instead of showing a blank grid.
+fn waits_for_session(phase: &Phase) -> bool {
+    *phase == Phase::Selecting
+}
+
+#[cfg(test)]
+mod tests {
+    use super::waits_for_session;
+    use dgl_core::connection::Phase::*;
+
+    #[test]
+    fn only_session_selection_shows_the_session_hint() {
+        assert!(waits_for_session(&Selecting));
+        for phase in [
+            Closed,
+            Connecting,
+            TrustRequired,
+            Authenticating,
+            Restoring,
+            Ready,
+            Reconnecting,
+            MissingSession,
+            Failed,
+            Shell,
+        ] {
+            assert!(!waits_for_session(&phase), "{phase:?}");
+        }
     }
 }

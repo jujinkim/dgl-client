@@ -94,6 +94,10 @@ data class ConnectionStatus(
     }
     val showsConnectionProgress get() = phase == Phase.Connecting || phase == Phase.Authenticating ||
         phase == Phase.Reconnecting || (phase == Phase.Restoring && canStopRetrying)
+    /** Curtain states that explain themselves with [message] instead of the generic restore text. */
+    val presentationNotice get() = canRetryNow ||
+        phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired, Phase.Selecting)
+    val presentationMessage get() = if (presentationNotice) message else t("터미널 복원 중…")
 }
 class UnknownHostKey(val endpoint: String, val fingerprint: String) : Exception(t("호스트키 신뢰 확인 필요"))
 

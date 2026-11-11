@@ -298,8 +298,8 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     LaunchedEffect(terminal, preferences.fontSize, preferences.terminalFontFamily, preferences.scrollback, preferences.effectiveAndroidKeyboardMode) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
     val presenting = terminal.screenPending || status.presenting
-    // A reattachment keeps the tab's last frame; only failures still need the opaque curtain.
-    val presentationNotice = status.canRetryNow || status.phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired)
+    // A reattachment keeps the tab's last frame; failures and session selection still need the opaque curtain.
+    val presentationNotice = status.presentationNotice
     val previewing = presenting && terminal.presentationPreview && !presentationNotice
     var previewSlow by remember(terminal) { mutableStateOf(false) }
     LaunchedEffect(terminal, previewing) {
@@ -347,7 +347,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             }
         } else if (presenting) {
             Box(Modifier.fillMaxSize().background(Color(0xff11151b)), contentAlignment = Alignment.Center) {
-                Text(if (presentationNotice) status.message else t("터미널 복원 중…"), color = Color.White, modifier = Modifier.padding(24.dp))
+                Text(status.presentationMessage, color = Color.White, modifier = Modifier.padding(24.dp))
             }
         }
         status.recoveryMessage?.takeUnless { status.retryExhausted || presenting }?.let { message ->
