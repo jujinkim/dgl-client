@@ -105,6 +105,9 @@ pub struct Terminal {
     marked_target: Option<Option<(u64, u64, String, u64)>>,
     selection: Range<usize>,
     dragging: bool,
+    /// Text of the local selection when its drag ended. Programs redraw over a selection
+    /// (erase line/screen), which drops it; copy then still gets what the user selected.
+    selected_text: Option<String>,
     mouse_button: Option<MouseButton>,
     last_mouse: Option<(CellPoint, u8)>,
     scroll: ScrollAccumulator,
@@ -175,6 +178,7 @@ impl Terminal {
             marked_target: None,
             selection: 0..0,
             dragging: false,
+            selected_text: None,
             mouse_button: None,
             last_mouse: None,
             scroll: ScrollAccumulator::default(),
@@ -199,6 +203,7 @@ impl Terminal {
     fn begin_snapshot(&mut self, pane: &str, reset: &[u8]) {
         if self.displayed_pane.as_deref() != Some(pane) {
             self.snapshot_modes = None;
+            self.selected_text = None;
         } else if self.snapshot_modes.is_none() {
             self.snapshot_modes = Some(*self.term.mode());
         }
@@ -416,7 +421,13 @@ impl Terminal {
             return;
         }
         if crate::platform::app_shortcut_for(k) == Some(crate::platform::AppShortcut::Copy) {
-            if let Some(text) = self.term.selection_to_string() {
+            // The visible selection wins; a redraw may have erased it since the drag ended.
+            if let Some(text) = self
+                .term
+                .selection_to_string()
+                .filter(|t| !t.is_empty())
+                .or_else(|| self.selected_text.clone())
+            {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
             }
             cx.stop_propagation();
@@ -509,6 +520,8 @@ impl Terminal {
             cx.notify();
             return;
         }
+        // Any press here starts over: a new selection, or a click that clears it.
+        self.selected_text = None;
         if self.mouse_active(e.modifiers) {
             self.dragging = false;
             self.term.selection = None;
@@ -565,8 +578,9 @@ impl Terminal {
         }
     }
     fn mouse_up(&mut self, e: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
-        if e.button == MouseButton::Left {
+        if e.button == MouseButton::Left && self.dragging {
             self.dragging = false;
+            self.selected_text = self.term.selection_to_string().filter(|t| !t.is_empty());
         }
         if self.mouse_button == Some(e.button) {
             self.mouse_button = None;

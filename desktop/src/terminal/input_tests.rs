@@ -386,3 +386,45 @@ fn one_shot_modifiers_combine_consume_once_and_ignore_paste_mouse(cx: &mut TestA
         assert_eq!(t.modifiers, M::default());
     });
 }
+
+#[gpui::test]
+fn copy_keeps_a_shift_drag_selection_that_a_redraw_erased(cx: &mut TestAppContext) {
+    let (_runtime, terminal, cx) = setup(cx);
+    let copy = |cx: &mut VisualTestContext| {
+        let key = if cfg!(target_os = "macos") {
+            "cmd-c"
+        } else {
+            "ctrl-shift-c"
+        };
+        cx.simulate_event(gpui::KeyDownEvent {
+            keystroke: Keystroke::parse(key).unwrap(),
+            is_held: false,
+        });
+        cx.update(|_, cx| cx.read_from_clipboard())
+            .and_then(|item| item.text())
+    };
+    // A mouse-capturing program, as Claude Code's fullscreen UI is.
+    output(&terminal, cx, b"\x1b[?1000h\x1b[?1006hhello world");
+    let shifted = Modifiers {
+        shift: true,
+        ..Default::default()
+    };
+    cx.simulate_mouse_down(position(&terminal, cx, 0, 0), MouseButton::Left, shifted);
+    cx.simulate_mouse_move(position(&terminal, cx, 4, 0), MouseButton::Left, shifted);
+    cx.simulate_mouse_up(position(&terminal, cx, 4, 0), MouseButton::Left, shifted);
+    assert!(take_sent(&terminal, cx).is_empty());
+    // The program repaints the line: erasing it drops the local selection.
+    output(&terminal, cx, b"\r\x1b[2Kspinner");
+    assert!(terminal.read_with(cx, |t, _| t.term.selection.is_none()));
+    assert_eq!(copy(cx).as_deref(), Some("hello"));
+    // A visible selection is copied as shown.
+    cx.simulate_mouse_down(position(&terminal, cx, 0, 0), MouseButton::Left, shifted);
+    cx.simulate_mouse_move(position(&terminal, cx, 2, 0), MouseButton::Left, shifted);
+    cx.simulate_mouse_up(position(&terminal, cx, 2, 0), MouseButton::Left, shifted);
+    assert_eq!(copy(cx).as_deref(), Some("spi"));
+    // A click forgets the last selection, so a later copy keeps the clipboard as it was.
+    cx.simulate_mouse_down(position(&terminal, cx, 0, 0), MouseButton::Left, shifted);
+    cx.simulate_mouse_up(position(&terminal, cx, 0, 0), MouseButton::Left, shifted);
+    output(&terminal, cx, b"\r\x1b[2K");
+    assert_eq!(copy(cx).as_deref(), Some("spi"));
+}
