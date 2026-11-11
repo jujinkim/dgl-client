@@ -972,6 +972,75 @@ class AndroidMobileInputTest {
         }
     } }
 
+    @Test fun exportSyncPageExplainsExclusionsAndReturnsToSettingsAfterPickerCancellation() = runBlocking<Unit> { withLauncherDisplay {
+        suspend fun reveal(label: String) = withTimeout(5000) {
+            while (node(label)?.isVisibleToUser != true) {
+                val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }!!
+                scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); delay(100)
+            }
+        }
+        val client = Connection("export-sync")
+        val opened = java.util.Collections.synchronizedList(mutableListOf<android.content.Intent>())
+        val monitor = object : android.app.Instrumentation.ActivityMonitor() {
+            override fun onStartActivity(intent: android.content.Intent): android.app.Instrumentation.ActivityResult? {
+                if (intent.action !in listOf(android.content.Intent.ACTION_OPEN_DOCUMENT, android.content.Intent.ACTION_CREATE_DOCUMENT)) return null
+                opened += android.content.Intent(intent)
+                return android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null)
+            }
+        }
+        lateinit var app: AppModel; lateinit var previous: LocalState; lateinit var workspace: WorkspaceState
+        var oldConnections = emptyList<ClientConnection>(); var oldSelected: ClientConnection? = null
+        var stage = "launch"
+        instrumentation.addMonitor(monitor)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                scenario.onActivity {
+                    app = (it.application as DglApplication).connections().app
+                    previous = app.local.value; workspace = app.workspace.value
+                    oldConnections = app.connections.value; oldSelected = app.selected.value
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko")) }
+                    app.connections.value = listOf(client); app.selected.value = client; app.reconcileWorkspace()
+                }
+                withTimeout(5000) { while (client.surface == null) delay(20) }
+                stage = "open settings"
+                openConnectionMenu(); click("설정"); awaitNode("닫기")
+                stage = "find entry"
+                reveal("내보내기 및 동기화")
+                val entry = bounds(awaitNode("내보내기 및 동기화"))
+                assertNull(node("내보내기…"))
+                stage = "open detail"
+                click("내보내기 및 동기화")
+                awaitNode("호스트 정보와 공통 설정을 공유합니다. 비밀번호·개인키 등 민감한 정보는 내보내기와 동기화에 포함되지 않습니다.")
+                for ((index, label) in listOf("내보내기…", "가져오기…", "동기화 파일 연결…", "새 동기화 파일…").withIndex()) {
+                    stage = "picker $label"
+                    reveal(label); click(label)
+                    withTimeout(5000) { while (opened.size <= index || app.cloudSync!!.status.value.busy) delay(25) }
+                    val intent = opened[index]
+                    val persistent = intent.flags and android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION != 0
+                    assertEquals(index >= 2, persistent)
+                    assertEquals(if (index == 0 || index == 3) android.content.Intent.ACTION_CREATE_DOCUMENT else android.content.Intent.ACTION_OPEN_DOCUMENT, intent.action)
+                }
+                assertTrue(app.inputBlocked()); assertTrue(client.writes.isEmpty())
+                stage = "back to settings"
+                instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                awaitNode("닫기")
+                assertEquals(entry, bounds(awaitNode("내보내기 및 동기화")))
+                assertNull(node("내보내기…"))
+            } catch (failure: Throwable) {
+                fun dump(root: AccessibilityNodeInfo?): String = if (root == null) "" else
+                    "[${root.text}|${root.contentDescription}|${bounds(root)}]" +
+                        (0 until root.childCount).joinToString { dump(root.getChild(it)) }
+                throw AssertionError("Export sync stage=$stage; tree=" + dump(instrumentation.uiAutomation.rootInActiveWindow), failure)
+            } finally {
+                instrumentation.removeMonitor(monitor)
+                scenario.onActivity {
+                    app.connections.value = oldConnections; app.selected.value = oldSelected
+                    app.workspace.value = workspace; app.modify { previous }
+                }
+            }
+        }
+    } }
+
     @Test fun aboutAppShowsBuildVersionAndReturnsToSettingsWithoutInput() = runBlocking<Unit> { withLauncherDisplay {
         val client = Connection("about")
         val opened = java.util.Collections.synchronizedList(mutableListOf<String>())

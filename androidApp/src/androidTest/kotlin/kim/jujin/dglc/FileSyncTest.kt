@@ -19,6 +19,70 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class FileSyncTest {
+    @Test fun oneShotFilesPreviewMergeWithoutPersistentPermissionOrReplacingSync() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val resolver = context.contentResolver
+        val source = Uri.parse("content://${context.packageName}.test.sync/${UUID.randomUUID()}")
+        val linked = Uri.parse("content://${context.packageName}.test.sync/${UUID.randomUUID()}")
+        fun call(uri: Uri, method: String, data: String? = null, enabled: Boolean = false) = resolver.call(uri, method, uri.toString(), Bundle().apply { putString("data", data); putBoolean("enabled", enabled) })
+        val root = File(context.noBackupFilesDir, "transfer-test-${UUID.randomUUID()}")
+        val credentials = object : CredentialStore {
+            override fun read(reference: String): Credential? = null
+            override fun write(reference: String, credential: Credential) = Unit
+            override fun delete(reference: String) = Unit
+        }
+        val app = AppModel(LocalRepository(root), credentials, "test", RustKeyTools) { _, _, _, _ -> error("No network") }
+        val sync = RustFileSync(context, root, app)
+        suspend fun idle() = withTimeout(10_000) { sync.status.first { !it.busy } }
+        try {
+            call(linked, "write", """{"format":"dgl-sync","version":2,"dataset":"one-shot-test","changes":{}}"""); call(linked, "grant")
+            sync.connect(linked, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION, false); idle()
+            assertTrue(sync.status.value.connected)
+            val checkpoint = File(root, "cloud-sync.json").readText()
+            app.update(LocalState(hosts = listOf(HostProfile("shared", "incoming", "example.test", username = "user", credentialRef = "private-reference")), preferences = Preferences(theme = "dark")))
+            val grants = resolver.persistedUriPermissions.map { it.uri }.toSet()
+            sync.exportFile(source); idle()
+            assertEquals("내보내기 완료", sync.status.value.message)
+            val exported = call(source, "read")!!.getString("data")!!
+            assertFalse(exported.contains("private-reference"))
+            assertEquals(grants, resolver.persistedUriPermissions.map { it.uri }.toSet())
+            app.update(LocalState(hosts = listOf(HostProfile("local", "existing", "local.test", username = "user"))))
+            val before = app.local.value
+            sync.importFile(source); idle()
+            assertEquals(1, sync.status.value.pendingImportCount)
+            assertEquals(before, app.local.value)
+            sync.sync(); assertFalse(sync.status.value.busy)
+            sync.cancelImport(); assertNull(sync.status.value.pendingImportCount)
+            assertEquals(before, app.local.value)
+            val savedBefore = File(root, "settings.json").readText()
+            File(root, "settings.tmp").mkdir()
+            try {
+                sync.importFile(source); idle(); sync.confirmImport(); idle()
+                assertTrue(sync.status.value.message.contains("저장하지 못했습니다"))
+                assertEquals(before, app.local.value)
+                assertEquals(savedBefore, File(root, "settings.json").readText())
+            } finally { File(root, "settings.tmp").deleteRecursively() }
+            sync.importFile(source); idle(); sync.confirmImport(); idle()
+            assertEquals(setOf("local", "shared"), app.local.value.hosts.map { it.id }.toSet())
+            assertEquals("dark", app.local.value.preferences.theme)
+            assertEquals(exported, call(source, "read")!!.getString("data"))
+            assertEquals(checkpoint, File(root, "cloud-sync.json").readText())
+            assertEquals(grants, resolver.persistedUriPermissions.map { it.uri }.toSet())
+            val linkedBefore = call(linked, "read")!!.getString("data")
+            sync.exportFile(linked); idle()
+            assertTrue(sync.status.value.message.contains("실패"))
+            assertEquals(linkedBefore, call(linked, "read")!!.getString("data"))
+            val imported = app.local.value
+            call(source, "write", "invalid"); sync.importFile(source); idle()
+            assertNull(sync.status.value.pendingImportCount); assertEquals(imported, app.local.value)
+            call(source, "fail", enabled = true); sync.exportFile(source); idle()
+            assertTrue(sync.status.value.message.contains("실패"))
+            sync.sync(); idle(); assertTrue(sync.status.value.connected)
+        } finally {
+            sync.cancelImport(); sync.disconnect(); idle(); sync.close(); app.close()
+            call(source, "delete"); call(linked, "delete"); root.deleteRecursively()
+        }
+    }
     @Test fun persistedDocumentTransportMergesProtectsSecretsAndRetriesFailedWrites() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val uri = Uri.parse("content://${context.packageName}.test.sync/${UUID.randomUUID()}")

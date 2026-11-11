@@ -126,7 +126,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
     @Synchronized fun terminalFont(connection: ClientConnection): TerminalFontSize =
         resources(connection).run { font ?: TerminalFontSize(local.value.preferences.fontSize).also { font = it } }
     var cloudSync: CloudSyncController? = null
-    var chooseSyncFile: (Boolean) -> Unit = {}
+    var chooseSettingsFile: (SettingsFileAction) -> Unit = {}
     var languageChanged: (String) -> Unit = {}
     init {
         agentScope.launch {
@@ -294,7 +294,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             val owned = resources.values.mapNotNull { it.composer } to connections.value
             resources.clear(); connections.value = emptyList(); selected.value = null; visibleConnection = null; visibleConnections = emptySet()
             tabClients.clear(); reservations.clear(); inputBlocks.value = emptySet()
-            chooseSyncFile = {}; sendAgentNotification = {}; foreground = false
+            chooseSettingsFile = {}; sendAgentNotification = {}; foreground = false
             owned
         }
         drafts.forEach { it.close() }; cloudSync?.close(); clients.forEach { it.close() }

@@ -4,22 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::{fs::OpenOptions, io::Write, sync::mpsc, time::Instant};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum Provider {
-    GoogleDrive,
-    ICloudDrive,
-}
-impl Provider {
-    fn label(self) -> &'static str {
-        match self {
-            Self::GoogleDrive => "Google Drive",
-            Self::ICloudDrive => "iCloud Drive",
-        }
-    }
-}
 #[derive(Clone, Serialize, Deserialize)]
 struct Config {
-    provider: Provider,
     file: PathBuf,
     cache: Option<Cache>,
 }
@@ -32,8 +18,21 @@ pub struct CloudSync {
     conflicts: Vec<Conflict>,
     blocked: bool,
     selecting: bool,
+    transfer: Option<mpsc::Receiver<TransferResult>>,
+    pending_import: Option<(Vec<u8>, usize)>,
+}
+enum TransferResult {
+    Exported,
+    Imported(Vec<u8>, usize),
+    Failed(&'static str),
 }
 impl CloudSync {
+    fn busy(&self) -> bool {
+        self.receiver.is_some()
+            || self.selecting
+            || self.transfer.is_some()
+            || self.pending_import.is_some()
+    }
     pub fn load(path: &std::path::Path) -> Self {
         let (config, status) = match std::fs::read(path) {
             Ok(bytes) if bytes.len() <= sync::MAX_BYTES * 2 => {
@@ -56,6 +55,8 @@ impl CloudSync {
             conflicts: vec![],
             blocked: false,
             selecting: false,
+            transfer: None,
+            pending_import: None,
         }
     }
     pub fn block_invalid_local(&mut self) {
@@ -67,7 +68,7 @@ impl CloudSync {
 }
 fn read_file(path: &std::path::Path) -> std::result::Result<Vec<u8>, &'static str> {
     let file = std::fs::File::open(path).map_err(
-        |_| "파일을 열 수 없습니다. Drive 실행·오프라인 사용 설정·선택한 경로를 확인하세요.",
+        |_| "파일을 열 수 없습니다. 동기화 앱·오프라인 사용 설정·선택한 경로를 확인하세요.",
     )?;
     let mut bytes = vec![];
     file.take((sync::MAX_BYTES + 1) as u64)
@@ -77,6 +78,31 @@ fn read_file(path: &std::path::Path) -> std::result::Result<Vec<u8>, &'static st
         |_| "공유 파일이 비어 있거나 형식·버전이 올바르지 않습니다. 원본을 보존했습니다.",
     )?;
     Ok(bytes)
+}
+fn export_file(
+    path: &std::path::Path,
+    linked: Option<&std::path::Path>,
+    local: &LocalState,
+) -> std::result::Result<(), &'static str> {
+    if linked.is_some_and(|linked| {
+        path == linked
+            || path
+                .canonicalize()
+                .ok()
+                .zip(linked.canonicalize().ok())
+                .is_some_and(|(a, b)| a == b)
+    }) {
+        return Err("연결 중인 동기화 파일에는 내보낼 수 없습니다. 다른 파일을 선택하세요.");
+    }
+    let document = sync::export_settings(local).map_err(|_| "설정을 내보내지 못했습니다.")?;
+    sync::save_private(path, document.as_bytes())
+        .map_err(|_| "파일을 저장하지 못했습니다. 저장 위치와 권한을 확인하세요.")
+}
+fn read_import_file(path: &std::path::Path) -> std::result::Result<(Vec<u8>, usize), &'static str> {
+    let bytes = read_file(path)?;
+    let preview = sync::import_settings(&LocalState::default(), &bytes)
+        .map_err(|_| "가져오기 실패. 파일 형식·버전·크기·미해결 충돌을 확인하세요.")?;
+    Ok((bytes, preview.hosts.len()))
 }
 fn checkpoint(
     path: &std::path::Path,
@@ -110,7 +136,7 @@ fn exchange_file(
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(_) => {
-                return Err("선택한 폴더에 쓸 수 없습니다. Drive 폴더 권한을 확인하세요.");
+                return Err("선택한 폴더에 쓸 수 없습니다. 폴더 권한을 확인하세요.");
             }
         }
     }
@@ -148,14 +174,19 @@ impl Desktop {
         self.path.with_file_name("cloud-sync.json")
     }
     pub(super) fn tick_cloud_sync(&mut self, cx: &mut Context<Self>) {
-        if self.cloud_sync.blocked || self.cloud_sync.selecting {
+        self.tick_settings_transfer(cx);
+        if self.cloud_sync.blocked
+            || self.cloud_sync.selecting
+            || self.cloud_sync.transfer.is_some()
+            || self.cloud_sync.pending_import.is_some()
+        {
             return;
         }
         // Do not replace host forms while the user is editing them.
         if self
             .dialog
             .as_ref()
-            .is_some_and(|d| !matches!(d, Dialog::Settings))
+            .is_some_and(|d| !matches!(d, Dialog::Settings | Dialog::ExportSync))
         {
             return;
         }
@@ -177,36 +208,7 @@ impl Desktop {
                                 .map_err(|_| "동기화 병합 실패")?;
                                 config.cache = Some(out.cache);
                                 checkpoint(&self.sync_path(), &Some(config.clone()))?;
-                                if out.local != self.local {
-                                    out.local
-                                        .save(&self.path)
-                                        .map_err(|_| "받은 설정의 로컬 저장 실패")?;
-                                    let previous = self
-                                        .local
-                                        .preferences
-                                        .accent
-                                        .custom_color
-                                        .as_deref()
-                                        .unwrap_or("#2468C9");
-                                    if self.accent_input.read(cx).content.as_ref() == previous {
-                                        let next = out
-                                            .local
-                                            .preferences
-                                            .accent
-                                            .custom_color
-                                            .as_deref()
-                                            .unwrap_or("#2468C9");
-                                        self.accent_input
-                                            .update(cx, |i, cx| i.set_content(next, cx));
-                                    }
-                                    self.local = out.local;
-                                    self.reconcile_hosts();
-                                    for tab in &self.tabs {
-                                        tab.terminal.update(cx, |t, _| {
-                                            t.set_font(self.local.preferences.font_size)
-                                        });
-                                    }
-                                }
+                                self.apply_shared_settings(out.local, cx)?;
                                 if let Some(cache) = config.cache.as_mut() {
                                     cache.acknowledge(&self.local);
                                 }
@@ -217,7 +219,7 @@ impl Desktop {
                             })();
                             self.cloud_sync.status = match result {
                                 Ok(()) if self.cloud_sync.conflicts.is_empty() => {
-                                    "파일 반영 완료 · 클라우드 전송은 Drive 앱에서 확인하세요."
+                                    "파일 반영 완료 · 클라우드 전송은 동기화 앱에서 확인하세요."
                                         .into()
                                 }
                                 Ok(()) => "동시 수정된 항목을 아래에서 선택하세요.".into(),
@@ -255,7 +257,7 @@ impl Desktop {
         create: bool,
         cx: &mut Context<Self>,
     ) {
-        if self.cloud_sync.blocked || self.cloud_sync.receiver.is_some() {
+        if self.cloud_sync.blocked || self.cloud_sync.busy() {
             return;
         }
         let Some(config) = self.cloud_sync.config.clone() else {
@@ -272,8 +274,8 @@ impl Desktop {
         });
         cx.notify();
     }
-    fn select_cloud_folder(&mut self, provider: Provider, cx: &mut Context<Self>) {
-        if self.cloud_sync.receiver.is_some() || self.cloud_sync.selecting {
+    fn select_cloud_folder(&mut self, cx: &mut Context<Self>) {
+        if self.cloud_sync.busy() {
             return;
         }
         self.cloud_sync.selecting = true;
@@ -281,7 +283,7 @@ impl Desktop {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some(tr!("{0} 동기화 폴더 선택", provider.label()).into()),
+            prompt: Some(t("동기화 폴더 선택").into()),
         });
         cx.spawn(async move |view, cx| {
             let result = picker.await;
@@ -304,11 +306,7 @@ impl Desktop {
                     .as_ref()
                     .filter(|old| old.file == file)
                     .and_then(|old| old.cache.clone());
-                let config = Config {
-                    provider,
-                    file,
-                    cache,
-                };
+                let config = Config { file, cache };
                 // A provider switch starts a separate dataset; no old journal is
                 // copied into a different account/folder.
                 // Keep the previous checkpoint until the new file validates.
@@ -319,32 +317,208 @@ impl Desktop {
         })
         .detach();
     }
+    fn apply_shared_settings(
+        &mut self,
+        next: LocalState,
+        cx: &mut Context<Self>,
+    ) -> std::result::Result<(), &'static str> {
+        if next == self.local {
+            return Ok(());
+        }
+        next.save(&self.path)
+            .map_err(|_| "받은 설정의 로컬 저장 실패")?;
+        let previous = self
+            .local
+            .preferences
+            .accent
+            .custom_color
+            .as_deref()
+            .unwrap_or("#2468C9");
+        if self.accent_input.read(cx).content.as_ref() == previous {
+            let color = next
+                .preferences
+                .accent
+                .custom_color
+                .as_deref()
+                .unwrap_or("#2468C9");
+            self.accent_input
+                .update(cx, |i, cx| i.set_content(color, cx));
+        }
+        self.local = next;
+        self.reconcile_hosts();
+        for tab in &self.tabs {
+            tab.terminal
+                .update(cx, |t, _| t.set_font(self.local.preferences.font_size));
+        }
+        Ok(())
+    }
+    fn tick_settings_transfer(&mut self, cx: &mut Context<Self>) {
+        let Some(receiver) = &self.cloud_sync.transfer else {
+            return;
+        };
+        match receiver.try_recv() {
+            Ok(result) => {
+                self.cloud_sync.transfer = None;
+                match result {
+                    TransferResult::Exported => self.cloud_sync.status = "내보내기 완료".into(),
+                    TransferResult::Imported(bytes, count) => {
+                        if matches!(self.dialog, Some(Dialog::ExportSync)) {
+                            self.cloud_sync.pending_import = Some((bytes, count));
+                            self.cloud_sync.status = "가져올 파일을 확인하세요.".into();
+                        } else {
+                            self.cloud_sync.status = "가져오기를 취소했습니다.".into();
+                        }
+                    }
+                    TransferResult::Failed(message) => self.cloud_sync.status = message.into(),
+                }
+                cx.notify();
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.cloud_sync.transfer = None;
+                self.cloud_sync.status = "파일 작업이 중단되었습니다.".into();
+                cx.notify();
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+        }
+    }
+    fn select_settings_file(&mut self, export: bool, cx: &mut Context<Self>) {
+        if self.cloud_sync.busy() || self.cloud_sync.blocked {
+            return;
+        }
+        self.cloud_sync.selecting = true;
+        let directory = self.path.parent().unwrap_or(std::path::Path::new("."));
+        let save_picker =
+            export.then(|| cx.prompt_for_new_path(directory, Some("dgl-export.json")));
+        let open_picker = (!export).then(|| {
+            cx.prompt_for_paths(PathPromptOptions {
+                files: true,
+                directories: false,
+                multiple: false,
+                prompt: Some(t("가져올 설정 파일 선택").into()),
+            })
+        });
+        cx.spawn(async move |view, cx| {
+            let result = if let Some(picker) = save_picker {
+                picker.await.ok()
+            } else if let Some(picker) = open_picker {
+                picker
+                    .await
+                    .ok()
+                    .map(|result| result.map(|paths| paths.and_then(|p| p.into_iter().next())))
+            } else {
+                None
+            };
+            let _ = view.update(cx, |this, cx| {
+                this.cloud_sync.selecting = false;
+                cx.notify();
+                let path = match result {
+                    Some(Ok(Some(path))) => path,
+                    Some(Ok(None)) => return,
+                    _ => {
+                        this.cloud_sync.status = "파일 선택창을 열지 못했습니다.".into();
+                        return;
+                    }
+                };
+                let local = this.local.clone();
+                let linked = this.cloud_sync.config.as_ref().map(|c| c.file.clone());
+                let (sender, receiver) = mpsc::channel();
+                this.cloud_sync.transfer = Some(receiver);
+                this.cloud_sync.status = "파일 처리 중…".into();
+                this.runtime.spawn_blocking(move || {
+                    let result = if export {
+                        match export_file(&path, linked.as_deref(), &local) {
+                            Ok(()) => TransferResult::Exported,
+                            Err(e) => TransferResult::Failed(e),
+                        }
+                    } else {
+                        match read_import_file(&path) {
+                            Ok((bytes, count)) => TransferResult::Imported(bytes, count),
+                            Err(e) => TransferResult::Failed(e),
+                        }
+                    };
+                    let _ = sender.send(result);
+                });
+            });
+        })
+        .detach();
+    }
+    pub(super) fn cancel_import_preview(&mut self) {
+        if self.cloud_sync.pending_import.take().is_some() {
+            self.cloud_sync.status = "가져오기를 취소했습니다.".into();
+        }
+    }
+    fn confirm_settings_import(&mut self, cx: &mut Context<Self>) {
+        let Some((bytes, _)) = &self.cloud_sync.pending_import else {
+            return;
+        };
+        let result = sync::import_settings(&self.local, bytes)
+            .map_err(|_| "가져오기 실패. 파일 형식·버전·크기·미해결 충돌을 확인하세요.")
+            .and_then(|next| self.apply_shared_settings(next, cx));
+        self.cloud_sync.pending_import = None;
+        self.cloud_sync.status = match result {
+            Ok(()) => "가져오기 완료",
+            Err(e) => e,
+        }
+        .into();
+    }
+    pub(super) fn export_sync_settings(&self, cx: &mut Context<Self>) -> Div {
+        let mut body = div().flex().flex_col().gap_3()
+            .child(div().flex().items_center().gap_2()
+                .child(self.button("export-sync-back", t("뒤로"), cx, |s, _, _| s.settings_back()))
+                .child(div().text_xl().child(t("내보내기 및 동기화"))))
+            .child(t("호스트 정보와 공통 설정을 공유합니다. 비밀번호·개인키 등 민감한 정보는 내보내기와 동기화에 포함되지 않습니다."));
+        if !self.cloud_sync.busy() && !self.cloud_sync.blocked {
+            body = body.child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(
+                        self.button("export-settings", t("내보내기…"), cx, |s, _, cx| {
+                            s.select_settings_file(true, cx)
+                        }),
+                    )
+                    .child(
+                        self.button("import-settings", t("가져오기…"), cx, |s, _, cx| {
+                            s.select_settings_file(false, cx)
+                        }),
+                    ),
+            );
+        }
+        if let Some((_, count)) = &self.cloud_sync.pending_import {
+            body = body.child(div().id("import-preview").flex().flex_col().gap_2()
+                .child(tr!("호스트 {0}개를 가져옵니다. 기존 목록에 병합하고 공통 설정은 파일 값으로 갱신합니다.", count))
+                .child(t("파일에 없는 기존 호스트는 유지합니다. 연결 중인 동기화가 있으면 가져온 변경도 동기화됩니다."))
+                .child(self.button("confirm-import", t("가져오기"), cx, |s, _, cx| s.confirm_settings_import(cx)))
+                .child(self.button("cancel-import", t("취소"), cx, |s, _, _| {
+                    s.cloud_sync.pending_import = None;
+                    s.cloud_sync.status = "가져오기를 취소했습니다.".into();
+                })));
+        }
+        body.child(div().text_lg().child(t("파일 동기화")))
+            .child(t("Google Drive·iCloud Drive 등에서 동기화하는 폴더를 선택하세요. 실제 클라우드 전송은 해당 서비스의 앱이 처리합니다."))
+            .child(self.cloud_sync_settings(cx))
+    }
     pub(super) fn cloud_sync_settings(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         if self.cloud_sync.blocked {
             return div()
                 .id("cloud-sync-blocked")
                 .child(t(&self.cloud_sync.status).to_owned());
         }
-        let busy = self.cloud_sync.receiver.is_some() || self.cloud_sync.selecting;
+        let busy = self.cloud_sync.busy();
         let mut body = div().id("cloud-sync-settings").flex().flex_col().gap_2()
             .native_tooltip(t("테마·강조 색상 선택을 공유합니다. OS 실제 색상·비밀번호·개인키·신뢰 키·매크로·OS 알림·기기별 화면 배치는 공유하지 않습니다."))
             .child(t("동기화 폴더의 같은 dgl-sync.json을 선택하세요. 첫 연결 시 공통 설정을 적용하고 호스트를 병합합니다."));
         if !busy {
-            for provider in [Provider::GoogleDrive, Provider::ICloudDrive] {
-                body = body.child(self.button(
-                    format!("sync-{:?}", provider),
-                    tr!("{0} 폴더 선택…", provider.label()),
-                    cx,
-                    move |s, _, cx| s.select_cloud_folder(provider, cx),
-                ));
-            }
+            body = body.child(self.button(
+                "sync-folder",
+                t("동기화 폴더 선택…"),
+                cx,
+                |s, _, cx| s.select_cloud_folder(cx),
+            ));
         }
         if let Some(config) = &self.cloud_sync.config {
-            body = body.child(format!(
-                "{} · {}",
-                config.provider.label(),
-                config.file.display()
-            ));
+            body = body.child(config.file.display().to_string());
             if !busy {
                 body = body
                     .child(
@@ -391,7 +565,94 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        CloudSync, Config, Dialog, Document, Duration, LocalState, exchange_file, export_file,
+        read_file, read_import_file, sync,
+    };
+    #[gpui::test]
+    fn detail_page_sync_runs_and_failed_import_save_keeps_local_state(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (view, ui) = crate::ui_tests::setup(cx);
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(sync::FILE_NAME);
+        std::fs::write(&file, Document::default().encode().unwrap()).unwrap();
+        view.update(ui, |s, cx| {
+            s.dialog = Some(Dialog::ExportSync);
+            s.cloud_sync.config = Some(Config { file, cache: None });
+            s.tick_cloud_sync(cx);
+            assert!(
+                s.cloud_sync.receiver.is_some(),
+                "detail page must allow automatic synchronization"
+            );
+        });
+        // Complete the actual transport before exercising the independent import save.
+        for _ in 0..1000 {
+            let complete = view.update(ui, |s, cx| {
+                s.tick_cloud_sync(cx);
+                s.cloud_sync.receiver.is_none()
+            });
+            if complete {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        view.update(ui, |s, cx| {
+            assert!(s.cloud_sync.receiver.is_none());
+            let before = s.local.clone();
+            let mut next = before.clone();
+            next.preferences.theme = "light".into();
+            // Renaming a settings file onto an existing directory must fail atomically.
+            std::fs::remove_file(&s.path).ok();
+            std::fs::create_dir_all(&s.path).unwrap();
+            assert!(s.apply_shared_settings(next, cx).is_err());
+            assert_eq!(s.local, before);
+            std::fs::remove_dir(&s.path).unwrap();
+        });
+    }
+
+    #[::core::prelude::v1::test]
+    fn legacy_provider_checkpoints_preserve_connections_and_portable_files_do_not_replace_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let linked = dir.path().join(sync::FILE_NAME);
+        let checkpoint_path = dir.path().join("cloud-sync.json");
+        let local = LocalState::default();
+        let (config, original) = exchange_file(
+            Config {
+                file: linked.clone(),
+                cache: None,
+            },
+            local.clone(),
+            checkpoint_path.clone(),
+            vec![],
+            true,
+        )
+        .unwrap();
+        for provider in ["GoogleDrive", "ICloudDrive"] {
+            let mut legacy = serde_json::to_value(&config).unwrap();
+            legacy["provider"] = provider.into();
+            std::fs::write(&checkpoint_path, serde_json::to_vec(&Some(legacy)).unwrap()).unwrap();
+            let loaded = CloudSync::load(&checkpoint_path).config.unwrap();
+            assert_eq!(loaded.file, linked);
+            assert_eq!(
+                loaded.cache.unwrap().encode().unwrap(),
+                config.cache.as_ref().unwrap().encode().unwrap()
+            );
+        }
+        assert!(export_file(&linked, Some(&linked), &local).is_err());
+        assert_eq!(std::fs::read_to_string(&linked).unwrap(), original);
+        let exported = dir.path().join("dgl-export.json");
+        export_file(&exported, Some(&linked), &local).unwrap();
+        let (bytes, count) = read_import_file(&exported).unwrap();
+        assert_eq!(count, 0);
+        assert_eq!(sync::import_settings(&local, &bytes).unwrap(), local);
+        std::fs::write(&exported, b"invalid").unwrap();
+        assert!(read_import_file(&exported).is_err());
+        assert_eq!(std::fs::read(&exported).unwrap(), b"invalid");
+        assert!(read_import_file(&dir.path().join("missing.json")).is_err());
+        assert!(export_file(dir.path(), None, &local).is_err());
+        assert_eq!(std::fs::read_to_string(&linked).unwrap(), original);
+    }
     #[::core::prelude::v1::test]
     fn file_transport_preserves_identity_rejects_corruption_and_keeps_pending_changes() {
         let dir = std::env::temp_dir().join(format!("dgl-sync-test-{}", dgl_core::agent::now_ms()));
@@ -399,7 +660,6 @@ mod tests {
         let path = dir.join(sync::FILE_NAME);
         let checkpoint_path = dir.join("checkpoint.json");
         let config = Config {
-            provider: Provider::GoogleDrive,
             file: path.clone(),
             cache: None,
         };

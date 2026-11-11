@@ -613,7 +613,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     }, dismissButton = { BorderedButton(dismiss) { Text(t("취소")) } })
 }
 
-private enum class SettingsPage { Main, Shortcuts, About }
+private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
 
 @Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, initialPage: SettingsPage, dismiss: () -> Unit) {
     val local by model.local.collectAsState()
@@ -622,19 +622,21 @@ private enum class SettingsPage { Main, Shortcuts, About }
     var restoreFocus by remember { mutableStateOf(false) }
     val mainScroll = rememberScrollState()
     val shortcutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val syncFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val aboutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     var entryFocus by remember { mutableStateOf(shortcutFocus) }
-    val back = { if (page != SettingsPage.Main) { page = SettingsPage.Main; restoreFocus = true } else dismiss() }
+    val back = { if (page == SettingsPage.ExportSync) model.cloudSync?.cancelImport(); if (page != SettingsPage.Main) { page = SettingsPage.Main; restoreFocus = true } else dismiss() }
     LaunchedEffect(page) {
         if (page == SettingsPage.Main && restoreFocus) { withFrameNanos { }; entryFocus.requestFocus(); restoreFocus = false }
     }
     EditorDialog(mobileLayout, settingsLayout = true, onDismissRequest = back, title = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (page != SettingsPage.Main) BorderedButton(back) { Text(t("뒤로")) }
-            Text(when (page) { SettingsPage.Main -> t("설정"); SettingsPage.Shortcuts -> t("하단 단축키"); SettingsPage.About -> t("About app") })
+            Text(when (page) { SettingsPage.Main -> t("설정"); SettingsPage.Shortcuts -> t("하단 단축키"); SettingsPage.About -> t("About app"); SettingsPage.ExportSync -> t("내보내기 및 동기화") })
         }
     }, text = {
-        if (page == SettingsPage.About) AboutApp()
+        if (page == SettingsPage.ExportSync) Column(Modifier.verticalScroll(rememberScrollState())) { CloudSyncSettings(model) }
+        else if (page == SettingsPage.About) AboutApp()
         else if (page == SettingsPage.Shortcuts) TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
             model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
         } else Column(Modifier.verticalScroll(mainScroll), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -699,7 +701,10 @@ private enum class SettingsPage { Main, Shortcuts, About }
             }
             SettingsCard(t("연결"), t("백그라운드 연결과 배터리 사용을 관리합니다.")) { PlatformConnectionSettings(model) }
             SettingsCard(t("알림"), t("에이전트 알림과 OS 알림을 선택합니다.")) { AgentNotificationSettingsUi(model) }
-            SettingsCard(t("동기화"), t("기기 간 공통 설정과 호스트를 공유합니다.")) { CloudSyncSettings(model) }
+            BorderedButton({ entryFocus = syncFocus; page = SettingsPage.ExportSync },
+                modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(syncFocus)) {
+                Text(t("내보내기 및 동기화"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
+            }
             SettingsCard(t("보안·저장"), t("신뢰한 서버와 이 기기의 저장 위치를 확인합니다.")) {
                 Text(t("신뢰한 서버"), style = MaterialTheme.typography.titleSmall)
                 local.trust.forEach { (endpoint, fingerprint) ->

@@ -130,6 +130,7 @@ enum Dialog {
         operation: DeleteOp,
     },
     Settings,
+    ExportSync,
     Shortcuts,
     TerminalFont,
     About,
@@ -951,6 +952,7 @@ impl Render for Desktop {
                 Dialog::Prompt { input, .. } => ("prompt", vec![input.clone()]),
                 Dialog::Delete { .. } => ("delete", vec![]),
                 Dialog::Settings => ("settings", vec![]),
+                Dialog::ExportSync => ("export-sync", vec![]),
                 Dialog::Shortcuts => ("shortcuts", vec![]),
                 Dialog::TerminalFont => ("terminal-font", vec![]),
                 Dialog::About => ("about", vec![]),
@@ -985,7 +987,10 @@ impl Render for Desktop {
                     "cancel-dialog",
                     if matches!(
                         &dialog,
-                        Dialog::Shortcuts | Dialog::TerminalFont | Dialog::About
+                        Dialog::Shortcuts
+                            | Dialog::TerminalFont
+                            | Dialog::About
+                            | Dialog::ExportSync
                     ) {
                         t("뒤로")
                     } else if matches!(&dialog, Dialog::Compose(_)) {
@@ -1067,6 +1072,9 @@ impl Render for Desktop {
                     Dialog::Settings => {
                         body = body.child(self.settings_main(cx));
                     }
+                    Dialog::ExportSync => {
+                        body = body.child(self.export_sync_settings(cx));
+                    }
                     Dialog::Shortcuts => {
                         body = body.child(self.shortcut_settings(cx));
                     }
@@ -1098,6 +1106,7 @@ impl Render for Desktop {
                                         self.dialog,
                                         Some(
                                             Dialog::Settings
+                                                | Dialog::ExportSync
                                                 | Dialog::Shortcuts
                                                 | Dialog::TerminalFont
                                                 | Dialog::About

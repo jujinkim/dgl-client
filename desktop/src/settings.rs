@@ -217,8 +217,19 @@ impl Desktop {
             .settings_card("알림", "에이전트 알림과 OS 알림을 선택합니다.")
             .child(self.agent_settings(cx));
         let sync = self
-            .settings_card("동기화", "기기 간 공통 설정과 호스트를 공유합니다.")
-            .child(self.cloud_sync_settings(cx));
+            .button(
+                "export-sync",
+                (UiIcon::ChevronRight, t("내보내기 및 동기화")),
+                cx,
+                |s, _, _| {
+                    s.settings.main_offset = s.modal.scroll.offset();
+                    s.settings.entry = "export-sync";
+                    s.dialog = Some(Dialog::ExportSync);
+                },
+            )
+            .native_tooltip(t(
+                "호스트와 공통 설정을 파일로 저장하거나 기기 간 공유합니다.",
+            ));
         let mut security = self
             .settings_card("보안·저장", platform::SHORTCUT_HELP)
             .child(t("신뢰한 서버"));
@@ -257,8 +268,10 @@ impl Desktop {
             }))
     }
     pub(super) fn settings_back(&mut self) {
+        self.cancel_import_preview();
         self.settings.entry = match self.dialog {
             Some(Dialog::About) => "about-app",
+            Some(Dialog::ExportSync) => "export-sync",
             Some(Dialog::TerminalFont) => "terminal-font",
             _ => "edit-shortcuts",
         };

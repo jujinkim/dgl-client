@@ -2,6 +2,8 @@
 import re
 
 EXPECTED_ANDROID = {
+    'kim.jujin.dglc.AndroidMobileInputTest.exportSyncPageExplainsExclusionsAndReturnsToSettingsAfterPickerCancellation',
+    'kim.jujin.dglc.FileSyncTest.oneShotFilesPreviewMergeWithoutPersistentPermissionOrReplacingSync',
     'kim.jujin.dglc.AndroidMobileInputTest.alwaysVisibleKeyboardRespectsEditorsLifecycleAndActiveTerminal',
     'kim.jujin.dglc.AndroidOutputRecoveryTest.tabRebindAndWindowSwitchWaitForFreshVisiblePanes',
     'kim.jujin.dglc.AndroidMobileInputTest.aboutAppShowsBuildVersionAndReturnsToSettingsWithoutInput',

@@ -10,10 +10,14 @@ import kotlinx.serialization.Serializable
 data class CloudSyncStatus(
     val connected: Boolean = false, val busy: Boolean = false,
     val location: String = "", val message: String = "연결 안 됨",
+    val pendingImportCount: Int? = null,
     val conflicts: List<SyncConflict> = emptyList(),
 )
+enum class SettingsFileAction { Export, Import, OpenSync, CreateSync }
 interface CloudSyncController {
     val status: StateFlow<CloudSyncStatus>
+    fun confirmImport()
+    fun cancelImport()
     fun sync(resolution: SyncResolution? = null)
     fun disconnect()
     fun close()

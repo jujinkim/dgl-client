@@ -22,15 +22,22 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
     private lateinit var holder: AndroidConnectionRuntime
     private var notificationPermissionAsked = false
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    private val openSyncFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) result.data?.let { data -> data.data?.let { uri ->
-            (holder.app.cloudSync as? kim.jujin.dglc.RustFileSync)?.connect(uri, data.flags, false)
-        } }
-    }
-    private val createSyncFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) result.data?.let { data -> data.data?.let { uri ->
-            (holder.app.cloudSync as? kim.jujin.dglc.RustFileSync)?.connect(uri, data.flags, true)
-        } }
+    private val openSyncFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { fileResult(it, SettingsFileAction.OpenSync) }
+    private val createSyncFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { fileResult(it, SettingsFileAction.CreateSync) }
+    private val exportSettingsFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { fileResult(it, SettingsFileAction.Export) }
+    private val importSettingsFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { fileResult(it, SettingsFileAction.Import) }
+    private fun fileResult(result: androidx.activity.result.ActivityResult, action: SettingsFileAction) {
+        val sync = holder.app.cloudSync as? RustFileSync ?: return
+        sync.finishFileSelection()
+        if (result.resultCode != RESULT_OK) return
+        val data = result.data ?: return
+        val uri = data.data ?: return
+        when (action) {
+            SettingsFileAction.OpenSync -> sync.connect(uri, data.flags, false)
+            SettingsFileAction.CreateSync -> sync.connect(uri, data.flags, true)
+            SettingsFileAction.Export -> sync.exportFile(uri)
+            SettingsFileAction.Import -> sync.importFile(uri)
+        }
     }
     private fun openNotice(intent: Intent?) {
         intent?.getStringExtra(AgentNotifications.NOTICE)?.let { id ->
@@ -45,14 +52,27 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
         enableEdgeToEdge()
         holder = (application as DglApplication).connections()
         holder.app.languageChanged(holder.app.local.value.preferences.language)
-        holder.app.chooseSyncFile = { create ->
-            val intent = Intent(if (create) Intent.ACTION_CREATE_DOCUMENT else Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = if (create) "application/json" else "*/*"
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                if (create) putExtra(Intent.EXTRA_TITLE, "dgl-sync.json")
+        holder.app.chooseSettingsFile = { action ->
+            val sync = holder.app.cloudSync as? RustFileSync
+            if (sync?.beginFileSelection() == true) {
+                val create = action == SettingsFileAction.CreateSync || action == SettingsFileAction.Export
+                val intent = Intent(if (create) Intent.ACTION_CREATE_DOCUMENT else Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = if (create) "application/json" else "*/*"
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    if (action != SettingsFileAction.Import) addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    if (action == SettingsFileAction.OpenSync || action == SettingsFileAction.CreateSync) addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                    if (create) putExtra(Intent.EXTRA_TITLE, if (action == SettingsFileAction.Export) "dgl-export.json" else "dgl-sync.json")
+                }
+                try {
+                    when (action) {
+                        SettingsFileAction.OpenSync -> openSyncFile.launch(intent)
+                        SettingsFileAction.CreateSync -> createSyncFile.launch(intent)
+                        SettingsFileAction.Export -> exportSettingsFile.launch(intent)
+                        SettingsFileAction.Import -> importSettingsFile.launch(intent)
+                    }
+                } catch (_: Exception) { sync.finishFileSelection(failed = true) }
             }
-            if (create) createSyncFile.launch(intent) else openSyncFile.launch(intent)
         }
         openNotice(intent)
         setContent {
@@ -110,7 +130,7 @@ class MainActivity : ComponentActivity(), VolumeKeyHost {
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean = volumeKeys.dispatch(event) || super.dispatchKeyEvent(event)
     override fun onDestroy() {
-        if (::holder.isInitialized) holder.app.chooseSyncFile = {}
+        if (::holder.isInitialized) holder.app.chooseSettingsFile = {}
         volumeKeys.clear()
         if (::holder.isInitialized && isFinishing)
             (application as DglApplication).removeTask(holder)

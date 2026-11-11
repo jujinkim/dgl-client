@@ -112,6 +112,66 @@ fn app_title_tracks_selected_tab_group_remote_metadata_and_last_close(cx: &mut T
 }
 
 #[gpui::test]
+fn export_sync_is_a_second_settings_page_with_back_scroll_and_focus(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    let terminal = add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(ui);
+    assert!(ui.debug_bounds("export-settings").is_none());
+    let entry = ui.debug_bounds("export-sync").unwrap();
+    view.update(ui, |s, cx| {
+        let body = s.modal.scroll.bounds();
+        s.modal.scroll.set_offset(point(
+            px(0.),
+            -(entry.bottom() - body.bottom() + px(16.)).max(px(0.)),
+        ));
+        cx.notify();
+    });
+    redraw(ui);
+    let saved = view.read_with(ui, |s, _| s.modal.scroll.offset());
+    for back in ["export-sync-back", "cancel-dialog", "escape"] {
+        let entry = ui.debug_bounds("export-sync").unwrap().center();
+        ui.simulate_click(entry, Modifiers::default());
+        redraw(ui);
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::ExportSync)))
+        });
+        terminal.read_with(ui, |t, _| assert!(!t.enabled));
+        for control in ["export-settings", "import-settings", "sync-folder"] {
+            assert!(ui.debug_bounds(control).is_some(), "{control}");
+        }
+        assert!(ui.debug_bounds("sync-GoogleDrive").is_none());
+        assert!(ui.debug_bounds("sync-ICloudDrive").is_none());
+        let export = ui.debug_bounds("export-settings").unwrap().center();
+        ui.simulate_click(export, Modifiers::default());
+        redraw(ui);
+        assert!(ui.did_prompt_for_new_path());
+        ui.simulate_new_path_selection(|_| None);
+        redraw(ui);
+        assert!(ui.debug_bounds("export-settings").is_some());
+        if back == "escape" {
+            ui.simulate_keystrokes("escape");
+        } else {
+            let button = ui.debug_bounds(back).unwrap().center();
+            ui.simulate_click(button, Modifiers::default());
+        }
+        redraw(ui);
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::Settings)));
+            assert_eq!(s.modal.scroll.offset(), saved);
+        });
+        ui.update(|w, cx| {
+            view.update(cx, |s, cx| {
+                assert!(s.modal.button("export-sync", cx).is_focused(w))
+            })
+        });
+    }
+}
+
+#[gpui::test]
 fn about_app_returns_to_settings_scroll_and_entry_focus_and_blocks_terminal(
     cx: &mut TestAppContext,
 ) {

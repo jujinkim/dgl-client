@@ -206,6 +206,20 @@ pub fn exchange_sync(
     )
 }
 
+/// One-shot portable settings, using the same Rust allowlist as synchronization.
+#[uniffi::export]
+pub fn export_settings(local: String) -> Result<String, CoreError> {
+    let local = dgl_core::model::LocalState::decode(local.as_bytes())?;
+    Ok(dgl_core::sync::export_settings(&local)?)
+}
+
+#[uniffi::export]
+pub fn import_settings(local: String, document: String) -> Result<String, CoreError> {
+    let local = dgl_core::model::LocalState::decode(local.as_bytes())?;
+    let next = dgl_core::sync::import_settings(&local, document.as_bytes())?;
+    Ok(serde_json::to_string(&next).map_err(|_| invalid())?)
+}
+
 /// Mark only the settings successfully saved on this device as observed.
 #[uniffi::export]
 pub fn acknowledge_sync(cache: String, local: String) -> Result<String, CoreError> {
@@ -257,6 +271,18 @@ impl NativeAgentInbox {
 mod tests {
     use super::*;
 
+    #[test]
+    fn portable_settings_bindings_roundtrip_and_reject_invalid_files() {
+        let local = serde_json::to_string(&dgl_core::model::LocalState::default()).unwrap();
+        let file = export_settings(local.clone()).unwrap();
+        assert!(!file.contains("credentialRef"));
+        let restored = import_settings(local.clone(), file).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&restored).unwrap(),
+            serde_json::from_str::<serde_json::Value>(&local).unwrap()
+        );
+        assert!(import_settings(local, "invalid".into()).is_err());
+    }
     #[test]
     fn keyboard_encoder_matches_core_and_rejects_unsupported_compositions() {
         assert_eq!(

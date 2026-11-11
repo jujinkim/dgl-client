@@ -16,7 +16,8 @@ GPUI의 기존 창·작업 표시줄 아이콘 로더가 사용한다.
 원본·변환 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있으며 일반 Windows 빌드에는
 Pillow나 이미지 생성·변환 도구가 필요하지 않다. 네이티브 표시 검증은 사용자 확인 범위다.
 
-설정의 Google Drive·iCloud Drive 동기화는 설치된 Drive 앱의 로컬 폴더를 선택해
+설정 → 내보내기 및 동기화에서는 파일 내보내기·가져오기와 폴더 동기화를 제공한다.
+동기화는 Google Drive·iCloud Drive 등의 로컬 동기화 폴더를 하나의 선택 버튼으로 지정해
 `dgl-sync.json`을 읽고 쓰는 공통 파일 구현이다. OAuth·클라우드 SDK·추가 빌드 도구는
 필요하지 않다. Windows 실제 Drive 폴더 연동은 미검증이며 [사용 방법](CLOUD_SYNC.md)을 따른다.
 

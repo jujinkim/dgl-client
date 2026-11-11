@@ -356,6 +356,63 @@ impl Cache {
     }
 }
 
+/// Export only current shared values, with a new dataset and no historical revisions.
+pub fn export_settings(local: &LocalState) -> Result<String> {
+    local.validate()?;
+    let mut document = Document::default();
+    let device = identity();
+    for (key, value) in snapshot(local) {
+        document.add(&device, key, value, vec![])?;
+    }
+    document.encode()
+}
+
+/// One-shot merge: incoming values win, absent hosts and local-only state survive.
+/// Conflicted journals are rejected rather than choosing a revision implicitly.
+pub fn import_settings(local: &LocalState, bytes: &[u8]) -> Result<LocalState> {
+    local.validate()?;
+    let document = Document::decode(bytes)?;
+    let mut next = local.clone();
+    for (key, heads) in document.heads() {
+        let value = &document.changes[&heads[0]].value;
+        if heads.iter().any(|id| &document.changes[id].value != value) {
+            return Err(Error::InvalidArgument);
+        }
+        if !matches!(value, Value::Host(None)) {
+            apply_value(&mut next, &key, value)?;
+        }
+    }
+    next.validate()?;
+    Ok(next)
+}
+
+fn apply_value(next: &mut LocalState, key: &str, value: &Value) -> Result<()> {
+    match value {
+        Value::Host(host) => {
+            let id = key.strip_prefix("host/").ok_or(Error::InvalidArgument)?;
+            let index = next.hosts.iter().position(|h| h.id == id);
+            if let Some(h) = host {
+                let value = h.local(index.map(|i| &next.hosts[i]));
+                if let Some(i) = index {
+                    next.hosts[i] = value;
+                } else {
+                    next.hosts.push(value);
+                }
+            } else if let Some(i) = index {
+                next.hosts.remove(i);
+            }
+        }
+        Value::Theme(v) => next.preferences.theme = v.clone(),
+        Value::Accent(v) => next.preferences.accent = v.clone(),
+        Value::FontSize(v) => next.preferences.font_size = *v,
+        Value::Scrollback(v) => next.preferences.scrollback = *v,
+        Value::Questions(v) => next.preferences.agent_notifications.questions = *v,
+        Value::Responses(v) => next.preferences.agent_notifications.responses = *v,
+        Value::Errors(v) => next.preferences.agent_notifications.errors = *v,
+    }
+    Ok(())
+}
+
 /// Capture local changes against the previously observed state before learning any
 /// remote revisions. A device must durably retain the returned cache before writing
 /// the shared file. Re-exchange against the latest local state before applying.
@@ -460,29 +517,7 @@ pub fn exchange(
             });
             continue;
         }
-        match first {
-            Value::Host(host) => {
-                let id = key.strip_prefix("host/").ok_or(Error::InvalidArgument)?;
-                let index = next.hosts.iter().position(|h| h.id == id);
-                if let Some(h) = host {
-                    let value = h.local(index.map(|i| &next.hosts[i]));
-                    if let Some(i) = index {
-                        next.hosts[i] = value;
-                    } else {
-                        next.hosts.push(value);
-                    }
-                } else if let Some(i) = index {
-                    next.hosts.remove(i);
-                }
-            }
-            Value::Theme(v) => next.preferences.theme = v.clone(),
-            Value::Accent(v) => next.preferences.accent = v.clone(),
-            Value::FontSize(v) => next.preferences.font_size = *v,
-            Value::Scrollback(v) => next.preferences.scrollback = *v,
-            Value::Questions(v) => next.preferences.agent_notifications.questions = *v,
-            Value::Responses(v) => next.preferences.agent_notifications.responses = *v,
-            Value::Errors(v) => next.preferences.agent_notifications.errors = *v,
-        }
+        apply_value(&mut next, &key, first)?;
     }
     // Track the input, not the proposal: a failed local save must not look like an
     // edit on retry. Successful applications matching a head need no new revision.
@@ -557,6 +592,124 @@ mod tests {
         let doc = a.document.clone();
         (a, doc)
     }
+    #[test]
+    fn portable_export_roundtrip_uses_current_allowlist_without_history() {
+        let (a, _) = initial();
+        let mut local = a.local.clone();
+        local.hosts[0].credential_ref = "PRIVATE-CREDENTIAL".into();
+        local.hosts[0].last_session = Some("PRIVATE-SESSION".into());
+        local
+            .trust
+            .insert("PRIVATE-TRUST".into(), "PRIVATE-FINGERPRINT".into());
+        local.preferences.language = "ko".into();
+        local.preferences.terminal_font_family = "PRIVATE-FONT".into();
+        local.preferences.theme = "dark".into();
+        local.preferences.accent = Default::default();
+        let encoded = export_settings(&local).unwrap();
+        for secret in [
+            "PRIVATE-CREDENTIAL",
+            "PRIVATE-SESSION",
+            "PRIVATE-TRUST",
+            "PRIVATE-FINGERPRINT",
+            "PRIVATE-FONT",
+            "credentialRef",
+            "lastSession",
+            "language",
+            "terminalFontFamily",
+        ] {
+            assert!(!encoded.contains(secret), "{secret}");
+        }
+        let doc = Document::decode(encoded.as_bytes()).unwrap();
+        assert_ne!(doc.dataset, a.cache.document.dataset);
+        assert_eq!(doc.changes.len(), snapshot(&local).len());
+        assert!(doc.changes.values().all(|c| c.parents.is_empty()));
+        let restored = import_settings(&LocalState::default(), encoded.as_bytes()).unwrap();
+        assert_eq!(snapshot(&restored), snapshot(&local));
+        assert_ne!(
+            restored.hosts[0].credential_ref,
+            local.hosts[0].credential_ref
+        );
+        assert_eq!(restored.preferences.language, "system");
+        assert!(restored.trust.is_empty());
+        assert!(restored.preferences.terminal_font_family.is_empty());
+    }
+
+    #[test]
+    fn portable_import_merges_by_id_preserves_local_fields_and_invalidates_changed_targets() {
+        let mut local = LocalState::default();
+        local.hosts = vec![host("one"), host("local-only")];
+        local.hosts[0].credential_ref = "local-secret".into();
+        local.hosts[0].last_session = Some("session".into());
+        local
+            .trust
+            .insert("local-trust".into(), "fingerprint".into());
+        local.preferences.language = "ko".into();
+        let mut incoming = LocalState::default();
+        incoming.hosts = vec![host("one"), host("new")];
+        incoming.hosts[0].alias = "imported".into();
+        incoming.preferences.theme = "light".into();
+        let file = export_settings(&incoming).unwrap();
+        let merged = import_settings(&local, file.as_bytes()).unwrap();
+        assert_eq!(merged.hosts.len(), 3);
+        assert_eq!(merged.hosts[0].alias, "imported");
+        assert_eq!(merged.hosts[0].credential_ref, "local-secret");
+        assert_eq!(merged.hosts[0].last_session.as_deref(), Some("session"));
+        assert_eq!(merged.trust, local.trust);
+        assert_eq!(merged.preferences.language, "ko");
+        assert_eq!(merged.preferences.theme, "light");
+        assert_eq!(import_settings(&merged, file.as_bytes()).unwrap(), merged);
+        incoming.hosts[0].hostname = "different.test".into();
+        let changed =
+            import_settings(&merged, export_settings(&incoming).unwrap().as_bytes()).unwrap();
+        assert_ne!(changed.hosts[0].credential_ref, "local-secret");
+        assert!(changed.hosts[0].last_session.is_none());
+    }
+
+    #[test]
+    fn portable_import_ignores_deletions_and_rejects_invalid_or_conflicted_documents() {
+        let mut local = LocalState::default();
+        local.hosts.push(host("one"));
+        let mut document = Document::default();
+        document
+            .add("device", "host/one".into(), Value::Host(None), vec![])
+            .unwrap();
+        let file = document.encode().unwrap();
+        assert_eq!(import_settings(&local, file.as_bytes()).unwrap(), local);
+        document
+            .add("a", "theme".into(), Value::Theme("dark".into()), vec![])
+            .unwrap();
+        document
+            .add("b", "theme".into(), Value::Theme("light".into()), vec![])
+            .unwrap();
+        assert!(import_settings(&local, document.encode().unwrap().as_bytes()).is_err());
+        assert!(import_settings(&local, b"invalid").is_err());
+        assert!(import_settings(&local, &vec![b' '; MAX_BYTES + 1]).is_err());
+        let mut unsupported: serde_json::Value = serde_json::from_str(&file).unwrap();
+        unsupported["version"] = 99.into();
+        assert!(import_settings(&local, unsupported.to_string().as_bytes()).is_err());
+        let legacy = file.replace("\"version\":2", "\"version\":1");
+        assert_eq!(import_settings(&local, legacy.as_bytes()).unwrap(), local);
+    }
+
+    #[test]
+    fn portable_import_is_a_local_edit_for_an_existing_sync_connection() {
+        let (a, doc) = initial();
+        let mut incoming = a.local.clone();
+        incoming.hosts[0].alias = "imported".into();
+        let imported =
+            import_settings(&a.local, export_settings(&incoming).unwrap().as_bytes()).unwrap();
+        let updated = exchange(Some(a.cache), &imported, doc.as_bytes(), &[]).unwrap();
+        assert!(updated.conflicts.is_empty());
+        let other = exchange(
+            None,
+            &LocalState::default(),
+            updated.document.as_bytes(),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(other.local.hosts[0].alias, "imported");
+    }
+
     #[test]
     fn allowlist_and_credentials_stay_local() {
         let (a, doc) = initial();
