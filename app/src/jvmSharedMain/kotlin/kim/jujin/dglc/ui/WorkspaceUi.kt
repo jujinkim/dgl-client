@@ -56,6 +56,39 @@ import kim.jujin.dglc.core.*
     DisposableEffect(model, owner) { onDispose { model.blockInput(owner, false) } }
 }
 
+/** Title row shared by the wide sidebar's host and session sections so both read as peers. */
+@Composable internal fun WorkspaceSectionHeader(title: String, leading: @Composable RowScope.() -> Unit = {},
+    actions: @Composable RowScope.() -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        leading()
+        Text(title, Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleMedium,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        actions()
+    }
+}
+
+/**
+ * Lower half of the wide sidebar: a strong rule plus a tinted background split it from the host list,
+ * and the body scrolls on its own so neither half pushes the other off screen.
+ */
+@Composable internal fun WorkspaceSessionsSection(modifier: Modifier, actions: @Composable RowScope.() -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
+        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
+        WorkspaceSectionHeader(t("세션"), actions = actions)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), content = content)
+    }
+}
+
+/** Keeps the session half in place before any host is connected. */
+@Composable internal fun WorkspaceNavigationPlaceholder(modifier: Modifier) {
+    WorkspaceSessionsSection(modifier) {
+        Text(t("호스트에 연결하고 기존 tmux 세션을 선택하세요."), Modifier.padding(12.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
 @Composable internal fun WorkspaceNavigation(client: ClientConnection, preferences: Preferences, model: AppModel,
     modifier: Modifier, showAgents: (ClientConnection, String) -> Unit) {
     val status by client.status.collectAsState()
@@ -71,23 +104,18 @@ import kim.jujin.dglc.core.*
     WorkspaceInputBlock(model, owner, prompt != null || deletion != null)
     val enabled = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
     val generation = client.generation
-    Column(modifier) {
-        HorizontalDivider()
-        Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(t("세션"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            IconButton({ prompt = NamePrompt(t("세션 만들기")) { model.createSession(client, it) } }, enabled = enabled,
-                modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
-            IconButton(client::refresh, enabled = enabled && !refreshing,
-                modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { UiGlyph(UiIcons.refresh) }
-        }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            if (remote.sessions.isEmpty()) Text(t("세션 없음 · + 버튼으로 생성"), Modifier.padding(12.dp))
-            remote.hierarchyRows(preferences.showAllHierarchy).forEach { row -> key(row.key) {
-                HierarchyEntry(row, 0, client, remote, session, pane, expanded, enabled, notices,
-                    { showAgents(client, it) }, { prompt = it }, { title, action -> deletion = title to action },
-                    { s, w, p -> model.openSession(client, s, w, p, generation) })
-            } }
-        }
+    WorkspaceSessionsSection(modifier, actions = {
+        IconButton({ prompt = NamePrompt(t("세션 만들기")) { model.createSession(client, it) } }, enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
+        IconButton(client::refresh, enabled = enabled && !refreshing,
+            modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { UiGlyph(UiIcons.refresh) }
+    }) {
+        if (remote.sessions.isEmpty()) Text(t("세션 없음 · + 버튼으로 생성"), Modifier.padding(12.dp))
+        remote.hierarchyRows(preferences.showAllHierarchy).forEach { row -> key(row.key) {
+            HierarchyEntry(row, 0, client, remote, session, pane, expanded, enabled, notices,
+                { showAgents(client, it) }, { prompt = it }, { title, action -> deletion = title to action },
+                { s, w, p -> model.openSession(client, s, w, p, generation) })
+        } }
     }
     prompt?.let { p -> NameDialog(p.title, { if (client.generation == generation) p.accept(it); prompt = null }, { prompt = null }, p.initial) }
     deletion?.let { (title, action) -> ConfirmDialog(title, t("이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?"),

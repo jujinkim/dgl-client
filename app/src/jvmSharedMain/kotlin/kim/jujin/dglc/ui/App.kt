@@ -107,14 +107,14 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         background = Color(0xff1e1f22), surface = Color(0xff1e1f22), surfaceTint = Color.Transparent,
         onBackground = Color(0xffdadce0), onSurface = Color(0xffdadce0),
         surfaceVariant = Color(0xff25262a), onSurfaceVariant = Color(0xff9ca1aa), surfaceContainer = Color(0xff25262a), surfaceContainerLow = Color(0xff25262a), surfaceContainerHigh = Color(0xff25262a), surfaceContainerHighest = Color(0xff25262a), surfaceContainerLowest = Color(0xff1e1f22),
-        outlineVariant = Color(0xff3b3d42),
+        outline = Color(0xff73777f), outlineVariant = Color(0xff3b3d42),
     ) else lightColorScheme(
         primary = Color(0xff2468c9), secondary = Color(0xff2468c9),
         primaryContainer = Color(0xffdbe9ff), secondaryContainer = Color(0xffdbe9ff),
         background = Color(0xfff7f7f8), surface = Color(0xfff7f7f8), surfaceTint = Color.Transparent,
         onBackground = Color(0xff24262b), onSurface = Color(0xff24262b),
         surfaceVariant = Color(0xffeeeef0), onSurfaceVariant = Color(0xff626670), surfaceContainer = Color(0xffeeeef0), surfaceContainerLow = Color(0xffeeeef0), surfaceContainerHigh = Color(0xffeeeef0), surfaceContainerHighest = Color(0xffeeeef0), surfaceContainerLowest = Color.White,
-        outlineVariant = Color(0xffd7d9df),
+        outline = Color(0xff80848d), outlineVariant = Color(0xffd7d9df),
     )
     val systemAccent = PlatformAccentColor(dark)
     val raw = local.preferences.accent.resolve(dark, systemAccent)
@@ -186,15 +186,16 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                     Row(Modifier.fillMaxSize()) {
                         if (wide || selected == null || explorer) {
                             Column(if (wide) Modifier.width(272.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    if (workspaceMode) {
-                                        MobileAppIcon()
-                                        Spacer(Modifier.width(8.dp))
+                                if (wide) {
+                                    WorkspaceSectionHeader(t("호스트"), leading = { MobileAppIcon(); Spacer(Modifier.width(8.dp)) }) {
+                                        BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("+ 호스트")) }
                                     }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                } else Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(t("연결"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                     BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("+ 호스트")) }
                                 }
-                                LazyColumn(Modifier.weight(if (workspaceMode && navigationClient != null) .45f else 1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                                LazyColumn(Modifier.weight(if (wide) .45f else 1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                                     if (local.hosts.isEmpty()) item { Text(t("SSH 호스트를 추가하여 시작하세요.\n원격 서버에는 SSH와 tmux만 필요합니다."), Modifier.padding(12.dp)) }
                                     items(local.hosts.sortedWith(compareByDescending<HostProfile> { it.favorite }.thenByDescending { it.lastConnected }), key = { it.id }) { host ->
                                         Column(Modifier.fillMaxWidth()) {
@@ -223,9 +224,13 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                         }
                                     }
                                 }
-                                if (workspaceMode && navigationClient != null) WorkspaceNavigation(navigationClient, local.preferences, model, Modifier.weight(.55f)) { client, pane -> agentDetails = client to pane }
+                                if (wide) {
+                                    if (navigationClient != null) WorkspaceNavigation(navigationClient, local.preferences, model, Modifier.weight(.55f)) { client, pane -> agentDetails = client to pane }
+                                    else WorkspaceNavigationPlaceholder(Modifier.weight(.55f))
+                                }
                                 if (!workspaceMode) Text(model.storageDescription, Modifier.padding(12.dp), style = MaterialTheme.typography.labelSmall)
                             }
+                            if (wide) VerticalDivider(color = MaterialTheme.colorScheme.outline)
                         }
                         if (wide || (selected != null && !explorer)) {
                             Box(Modifier.weight(1f).fillMaxHeight()) {

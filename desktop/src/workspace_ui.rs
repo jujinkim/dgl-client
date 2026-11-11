@@ -181,21 +181,24 @@ impl Desktop {
             .border_color(rgb(p.line))
             .child(
                 div()
+                    .flex_shrink_0()
                     .px_3()
                     .py_2()
-                    .flex()
-                    .items_center()
-                    .child(div().flex_1().child(t("DaGaLi · 탐색기")))
-                    .child(self.button("add", UiIcon::Plus, cx, |s, _, cx| s.edit(None, cx))),
-            )
-            .child(
-                div()
-                    .px_3()
-                    .py_1()
-                    .text_xs()
+                    .border_b_1()
+                    .border_color(rgb(p.line))
+                    .text_sm()
                     .text_color(rgb(p.muted))
-                    .child(t("호스트")),
+                    .truncate()
+                    .child(t("DaGaLi · 탐색기")),
             );
+        let hosts_header = self.sidebar_section_header(
+            "hosts-header",
+            t("호스트"),
+            vec![
+                self.button("add", UiIcon::Plus, cx, |s, _, cx| s.edit(None, cx))
+                    .into_any_element(),
+            ],
+        );
         let mut hosts: Vec<_> = self
             .host_order
             .ids()
@@ -388,8 +391,29 @@ impl Desktop {
                 );
             }
         }
-        explorer = explorer.child(self.render_tree(cx));
-        sidebar = sidebar.child(explorer);
+        // Hosts and sessions are two stacked sections (about 45/55 of the space left
+        // under the title), each scrolling on its own so neither list pushes the other
+        // away. A strong divider and a different surface keep the boundary obvious.
+        sidebar = sidebar
+            .child(
+                div()
+                    .debug_selector(|| "host-section".into())
+                    .flex()
+                    .flex_col()
+                    .flex_shrink()
+                    .flex_basis(relative(0.45))
+                    .min_h_0()
+                    .child(hosts_header)
+                    .child(explorer),
+            )
+            .child(
+                div()
+                    .debug_selector(|| "sidebar-divider".into())
+                    .flex_shrink_0()
+                    .h(px(2.))
+                    .bg(rgb(p.control_border)),
+            )
+            .child(self.render_session_section(cx));
         let unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
         let layout = self.workspace.layout.clone();
         let workspace = self.render_layout(layout, vec![], preview, cx);
@@ -1559,55 +1583,109 @@ impl Desktop {
             .truncate()
             .child(text.into())
     }
-    fn render_tree(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(tab) = self.active_tab() else {
-            return div().into_any_element();
+    /// A sidebar section title with its actions on the right; hosts and sessions share it.
+    fn sidebar_section_header(
+        &self,
+        selector: &'static str,
+        title: &'static str,
+        actions: Vec<AnyElement>,
+    ) -> Div {
+        let p = self.palette;
+        div()
+            .debug_selector(move || selector.into())
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .gap_1()
+            .pl_3()
+            .pr_1()
+            .py_1()
+            .border_b_1()
+            .border_color(rgb(p.line))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_sm()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(p.fg))
+                    .child(title),
+            )
+            .children(actions)
+    }
+    /// The lower sidebar section: a fixed header and its own scrolling session tree.
+    fn render_session_section(&mut self, cx: &mut Context<Self>) -> Div {
+        let p = self.palette;
+        let active = self
+            .active_tab()
+            .map(|tab| (tab.connection.state(), tab.refresh.is_some()));
+        let browse = active
+            .as_ref()
+            .is_some_and(|(state, _)| state.browses_sessions());
+        let refreshing = active.as_ref().is_some_and(|(_, refreshing)| *refreshing);
+        let header = self.sidebar_section_header(
+            "sessions-header",
+            t("세션"),
+            vec![
+                self.button("new-session", UiIcon::Plus, cx, move |s, _, cx| {
+                    if browse {
+                        s.prompt(t("세션 만들기"), PromptOp::Session, cx);
+                    }
+                })
+                .when(!browse, |d| d.opacity(0.35))
+                .into_any_element(),
+                self.button("refresh-sessions", UiIcon::Refresh, cx, move |s, _, _| {
+                    if browse {
+                        s.refresh();
+                    }
+                })
+                .native_tooltip(t("세션 새로고침"))
+                .when(refreshing || !browse, |d| d.opacity(0.35))
+                .into_any_element(),
+            ],
+        );
+        let body = match active {
+            Some((state, _)) => self.render_tree_state(&state, cx),
+            None => div()
+                .debug_selector(|| "session-empty".into())
+                .px_3()
+                .py_2()
+                .text_xs()
+                .text_color(rgb(p.muted))
+                .child(t("호스트에 먼저 연결하세요."))
+                .into_any_element(),
         };
-        let state = tab.connection.state();
-        self.render_tree_state(&state, cx)
+        div()
+            .debug_selector(|| "session-section".into())
+            .flex()
+            .flex_col()
+            .flex_shrink()
+            .flex_basis(relative(0.55))
+            .min_h_0()
+            .bg(rgb(p.bg))
+            .child(header)
+            .child(
+                div()
+                    .id("session-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(body),
+            )
     }
     pub(super) fn render_tree_state(
         &mut self,
         state: &dgl_core::connection::State,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let p = self.palette;
-        let mut tree = div()
-            .debug_selector(|| "session-tree".into())
-            .mt_3()
-            .border_t_1()
-            .border_color(rgb(p.line));
+        let mut tree = div().debug_selector(|| "session-tree".into());
         let Some(tab) = self.active_tab() else {
             return tree.into_any_element();
         };
         let connection = tab.connection.clone();
         let tid = tab.id;
-        let refreshing = tab.refresh.is_some();
         let browse = state.browses_sessions();
-        tree = tree.child(
-            div()
-                .flex()
-                .items_center()
-                .px_2()
-                .child(div().flex_1().child(t("세션")))
-                .child(
-                    self.button("new-session", UiIcon::Plus, cx, move |s, _, cx| {
-                        if browse {
-                            s.prompt(t("세션 만들기"), PromptOp::Session, cx);
-                        }
-                    })
-                    .when(!browse, |d| d.opacity(0.35)),
-                )
-                .child(
-                    self.button("refresh-sessions", UiIcon::Refresh, cx, move |s, _, _| {
-                        if browse {
-                            s.refresh();
-                        }
-                    })
-                    .native_tooltip(t("세션 새로고침"))
-                    .when(refreshing || !browse, |d| d.opacity(0.35)),
-                ),
-        );
         // Keep cached rows at the same coordinates while the connection recovers.
         // The status bar already displays the phase; only an empty tree needs a hint.
         if !browse && state.remote.sessions.is_empty() {

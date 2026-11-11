@@ -73,6 +73,11 @@ mod tests {
                 assert_eq!(system.input, base.input);
                 assert_eq!(system.fg, base.fg);
                 assert_eq!(system.accent_fill, color);
+                // The sidebar divider must stay visible on both sidebar surfaces.
+                for bg in [system.panel, system.bg] {
+                    assert!(contrast(system.control_border, bg) >= 3.);
+                }
+                assert_ne!(system.bg, system.panel);
                 assert!(contrast(system.on_accent, system.accent_fill) >= 4.5);
                 for bg in [
                     system.bg,

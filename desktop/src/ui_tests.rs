@@ -1133,10 +1133,20 @@ fn notification_panel_anchors_resizes_scrolls_and_dismisses_without_background_a
     redraw(ui);
     assert!(view.read_with(ui, |s, _| s.dialog.is_none()));
     assert!(ui.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
-    // An outside click dismisses but cannot invoke a background control.
+    // An outside click dismisses but cannot invoke a background control. Widen the
+    // window first so the tall panel cannot cover the sidebar's host-add button.
+    ui.simulate_resize(gpui::size(px(1200.), px(600.)));
+    redraw(ui);
+    let bell = ui.debug_bounds("agent-notifications").unwrap();
     ui.simulate_click(bell.center(), Modifiers::default());
     redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.dialog.is_some()));
     let add = ui.debug_bounds("add").unwrap();
+    assert!(
+        !ui.debug_bounds("notification-panel")
+            .unwrap()
+            .contains(&add.center())
+    );
     ui.simulate_click(add.center(), Modifiers::default());
     redraw(ui);
     assert!(view.read_with(ui, |s, _| s.dialog.is_none()));
@@ -2854,4 +2864,51 @@ fn local_is_first_fixed_and_does_not_connect_on_app_start(cx: &mut TestAppContex
                 .any(|id| id == super::local_host::ID)
         );
     });
+}
+
+#[gpui::test]
+fn sidebar_stacks_hosts_over_sessions_with_independent_scrolling(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    ui.simulate_resize(gpui::size(px(1000.), px(700.)));
+    redraw(ui);
+    let sections = |ui: &mut VisualTestContext| {
+        [
+            "session-sidebar",
+            "host-section",
+            "sidebar-divider",
+            "session-section",
+        ]
+        .map(|id| ui.debug_bounds(id).unwrap())
+    };
+    let [sidebar, hosts, divider, sessions] = sections(ui);
+    // Without a connection the sessions section keeps its header and an empty hint.
+    let header = ui.debug_bounds("sessions-header").unwrap();
+    let empty = ui.debug_bounds("session-empty").unwrap();
+    assert!(header.top() >= sessions.top() && empty.top() >= header.bottom());
+    assert!(ui.debug_bounds("new-session").unwrap().top() >= sessions.top());
+    assert!(ui.debug_bounds("add").unwrap().bottom() <= hosts.top() + px(40.));
+    assert!(hosts.top() >= sidebar.top() && sessions.bottom() <= sidebar.bottom());
+    assert!(hosts.bottom() <= divider.top() && divider.bottom() <= sessions.top());
+    assert_eq!(divider.size.height, px(2.));
+    assert_eq!(divider.size.width, sidebar.size.width - px(1.));
+    let share = f32::from(hosts.size.height) / f32::from(hosts.size.height + sessions.size.height);
+    assert!((share - 0.45).abs() < 0.01, "hosts share {share}");
+    // A long host list scrolls inside its own section and never moves the sessions.
+    view.update(ui, |s, cx| {
+        s.local.hosts = (0..60)
+            .map(|i| ordered_host(&format!("h{i}"), None))
+            .collect();
+        s.reconcile_hosts();
+        cx.notify();
+    });
+    redraw(ui);
+    assert_eq!(sections(ui), [sidebar, hosts, divider, sessions]);
+    assert!(ui.debug_bounds("host-row-h59").unwrap().top() > hosts.bottom());
+    // A connected tab's tree renders inside the sessions section, under its header.
+    add_terminal(&view, ui);
+    redraw(ui);
+    assert_eq!(sections(ui), [sidebar, hosts, divider, sessions]);
+    let tree = ui.debug_bounds("session-tree").unwrap();
+    assert!(tree.top() >= header.bottom() && tree.left() >= sessions.left());
+    assert!(tree.right() <= sessions.right());
 }
