@@ -113,7 +113,7 @@ Gradle의 Rust 작업은 `scripts/build_rust_android.py`로 네 ABI를 빌드합
 Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나를 사용합니다.
 검사·배포 스크립트는 이 원본을 검증하고 APK 복사본을 만들지 않습니다. Release APK는
 서명 환경변수가 없으면 `androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`이며 미서명입니다.
-앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.1` / `101`입니다.
+앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.2` / `102`입니다.
 
 ### Google Play 내부 테스트 수동 배포
 
@@ -151,7 +151,7 @@ Google Play Console에 DGL 앱과 첫 AAB를 먼저 등록하고 Play App Signin
 
 ### 앱 버전 관리
 
-루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.1.1`입니다.
+루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.1.2`입니다.
 Rust 코어·데스크톱은 workspace 버전을 상속하고 표시에는 빌드 시 `CARGO_PKG_VERSION`을 사용합니다.
 Gradle은 같은 값을 Android `versionName`과 `app/build/generated/appVersion/`의 Kotlin `APP_VERSION`으로 생성합니다.
 생성 디렉터리는 Git에 추가하지 않습니다. macOS 번들 두 버전 필드·`build.json`과 Windows ZIP의
