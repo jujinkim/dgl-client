@@ -38,6 +38,7 @@ mod ui_glyph;
 mod ui_icons;
 #[cfg(test)]
 mod ui_tests;
+mod window_size;
 #[cfg(target_os = "windows")]
 mod windows_ime;
 mod workspace;
@@ -168,6 +169,7 @@ struct Desktop {
     resume: resume::ResumeDetector,
     size_focus: size_claim::FocusClaims,
     cloud_sync: cloud_sync::CloudSync,
+    window_size: window_size::Tracker,
 }
 impl Desktop {
     fn new(runtime: Arc<tokio::runtime::Runtime>, path: PathBuf, cx: &mut Context<Self>) -> Self {
@@ -237,6 +239,7 @@ impl Desktop {
             &local.preferences.terminal_font_family,
             cx.text_system(),
         ));
+        let window_size = window_size::Tracker::new(path.with_file_name("window.json"));
         let mut snackbar = SnackbarState::default();
         if let Some(error) = error {
             snackbar.show_snackbar_with_duration(error, SnackbarDuration::Long);
@@ -274,6 +277,7 @@ impl Desktop {
             resume: Default::default(),
             size_focus: Default::default(),
             cloud_sync,
+            window_size,
         }
     }
     /// Opt-in tmux buffer copying runs only while a DGL window is active, so a remote
@@ -1263,7 +1267,9 @@ fn main() {
             text_input::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
             cx.bind_keys([KeyBinding::new(platform::QUIT_KEY, Quit, None)]);
-            let bounds = Bounds::centered(None, size(px(1240.), px(800.)), cx);
+            let saved = window_size::WindowSize::load(&path.with_file_name("window.json"));
+            let display = cx.primary_display().map(|d| d.bounds().size);
+            let bounds = Bounds::centered(None, window_size::WindowSize::fit(saved, display), cx);
             cx.open_window(
                 WindowOptions {
                     app_id: Some("kim.jujin.dglc".into()),
@@ -1282,6 +1288,7 @@ fn main() {
                     cx.new(|cx| {
                         let mut desktop = Desktop::new(runtime, path, cx);
                         desktop.init_appearance(window, cx);
+                        desktop.watch_window_size(window, cx);
                         desktop
                     })
                 },

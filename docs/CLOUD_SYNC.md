@@ -72,7 +72,7 @@ Android 영속 URI 권한으로 재실행 뒤에도 같은 문서를 연다.
 | 질문·응답·오류에 대한 앱 내 알림 설정 | OS 알림 설정·권한, 볼륨 키·매크로, 화면 분할 배치 |
 |  | 신뢰한 SSH 호스트키·지문 |
 |  | Android 백그라운드 연결 유지(`keepConnectionsInBackground`, 기본 `true`) |
-|  | 데스크톱 호스트 순서(`host-order.json`)·연결 탭 |
+|  | 데스크톱 호스트 순서(`host-order.json`)·창 크기(`window.json`)·연결 탭 |
 |  | 데스크톱 tmux 버퍼 클립보드 복사(`desktopTmuxBufferClipboard`, 기본 `false`) |
 
 Rust 공통 코어가 허용된 필드만 직렬화한다. 기존 `settings.json`을 그대로 복사하지 않는다.
