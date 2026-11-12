@@ -2912,3 +2912,42 @@ fn sidebar_stacks_hosts_over_sessions_with_independent_scrolling(cx: &mut TestAp
     assert!(tree.top() >= header.bottom() && tree.left() >= sessions.left());
     assert!(tree.right() <= sessions.right());
 }
+
+#[gpui::test]
+fn tmux_buffer_clipboard_is_an_opt_in_saved_setting(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    assert!(view.read_with(ui, |s, _| {
+        !s.local.preferences.desktop_tmux_buffer_clipboard
+    }));
+    view.update(ui, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(ui);
+    for expected in [true, false] {
+        let entry = ui.debug_bounds("tmux-buffer-clipboard").unwrap();
+        view.update(ui, |s, cx| {
+            let body = s.modal.scroll.bounds();
+            let offset = s.modal.scroll.offset();
+            s.modal.scroll.set_offset(point(
+                px(0.),
+                offset.y - (entry.bottom() - body.bottom() + px(16.)).max(px(0.)),
+            ));
+            cx.notify();
+        });
+        redraw(ui);
+        let entry = ui.debug_bounds("tmux-buffer-clipboard").unwrap().center();
+        ui.simulate_click(entry, Modifiers::default());
+        redraw(ui);
+        let path = view.read_with(ui, |s, _| {
+            assert_eq!(s.local.preferences.desktop_tmux_buffer_clipboard, expected);
+            s.path.clone()
+        });
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            saved["preferences"]["desktopTmuxBufferClipboard"],
+            serde_json::Value::Bool(expected)
+        );
+    }
+}

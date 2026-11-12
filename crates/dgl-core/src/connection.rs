@@ -25,6 +25,8 @@ pub const MAX_RETRIES: u8 = 3;
 pub const CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 /// Matches tmux's own one-second subscription check.
 const METADATA_POLL: Duration = Duration::from_secs(1);
+/// Largest text a remote program may put on the local clipboard (OSC 52 or a tmux buffer).
+pub const MAX_CLIPBOARD_TEXT: usize = 1 << 20;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RetryState {
     pub attempt: u8,
@@ -298,6 +300,28 @@ struct TitleVisibility {
     revision: u64,
     last_start: Option<tokio::time::Instant>,
 }
+/// Opt-in copying of changed tmux paste buffers to the local clipboard. A new revision
+/// invalidates fetches and texts started under the old one.
+#[derive(Default)]
+struct PasteSync {
+    enabled: bool,
+    revision: u64,
+}
+/// Where a paste buffer fetch started: its text is published only if this still holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PasteScope {
+    revision: u64,
+    handle: u64,
+    connection: u64,
+}
+type PasteRequest = (PasteScope, Command);
+type PasteResult = (PasteScope, Result<(u32, Vec<u8>)>);
+/// The actor's side of `fetch_paste_buffers`: at most one fetch in flight.
+struct PasteLane<'a> {
+    requests: mpsc::Sender<PasteRequest>,
+    results: &'a mut mpsc::Receiver<PasteResult>,
+    busy: bool,
+}
 struct Shared {
     /// Copy-on-write snapshot: readers clone the `Arc`; an update copies only while a reader holds one.
     state: Mutex<Arc<State>>,
@@ -314,6 +338,9 @@ struct Shared {
     retry_request: AtomicU64,
     title_visibility: Mutex<TitleVisibility>,
     title_changed: Notify,
+    paste_sync: Mutex<PasteSync>,
+    /// The latest synced paste buffer text, until the platform takes it.
+    clipboard: Mutex<Option<String>>,
 }
 pub struct Connection {
     shared: Arc<Shared>,
@@ -363,6 +390,47 @@ impl Shared {
                 generation: s.generation.clone(),
             },
         })
+    }
+    fn paste_sync_enabled(&self) -> bool {
+        self.paste_sync.lock().unwrap().enabled
+    }
+    fn paste_scope(&self) -> Option<PasteScope> {
+        let sync = self.paste_sync.lock().unwrap();
+        if !sync.enabled {
+            return None;
+        }
+        let s = self.state.lock().unwrap();
+        (s.phase == Phase::Ready && !s.checking).then(|| PasteScope {
+            revision: sync.revision,
+            handle: s.handle,
+            connection: s.generation.connection,
+        })
+    }
+    /// A buffer fetch finished. Only a complete, valid text from the same connection
+    /// generation and setting revision is kept; every failure is dropped and not retried.
+    fn publish_paste(&self, scope: &PasteScope, result: Result<(u32, Vec<u8>)>) {
+        let Ok((0, bytes)) = result else {
+            return;
+        };
+        if bytes.is_empty() || bytes.len() > MAX_CLIPBOARD_TEXT {
+            return;
+        }
+        let Ok(text) = String::from_utf8(bytes) else {
+            return;
+        };
+        let sync = self.paste_sync.lock().unwrap();
+        if !sync.enabled || sync.revision != scope.revision {
+            return;
+        }
+        let s = self.state.lock().unwrap();
+        if s.phase != Phase::Ready
+            || s.checking
+            || s.handle != scope.handle
+            || s.generation.connection != scope.connection
+        {
+            return;
+        }
+        *self.clipboard.lock().unwrap() = Some(text);
     }
     fn apply_title(&self, scope: &crate::title::Scope, title: String) {
         // Serialize hiding with publication; a hide/return also invalidates old responses.
@@ -521,6 +589,8 @@ impl Connection {
             retry_request: AtomicU64::new(0),
             title_visibility: Mutex::new(TitleVisibility::default()),
             title_changed: Notify::new(),
+            paste_sync: Mutex::new(PasteSync::default()),
+            clipboard: Mutex::new(None),
         });
         let (tx, rx) = mpsc::channel(32);
         let (retry_tx, retry_rx) = mpsc::channel(32);
@@ -611,6 +681,25 @@ impl Connection {
             .checked_add(1)
             .expect("visibility revision exhausted");
         self.shared.title_changed.notify_one();
+    }
+    /// Opt-in and transient: while enabled, a tmux 3.4+ buffer change (`%paste-buffer-changed`)
+    /// is fetched outside the control stream and offered by `take_clipboard_text`.
+    /// Disabling drops pending and in-flight texts.
+    pub fn set_paste_buffer_sync_enabled(&self, enabled: bool) {
+        let mut sync = self.shared.paste_sync.lock().unwrap();
+        if sync.enabled == enabled {
+            return;
+        }
+        sync.enabled = enabled;
+        sync.revision = sync
+            .revision
+            .checked_add(1)
+            .expect("paste sync revision exhausted");
+        self.shared.clipboard.lock().unwrap().take();
+    }
+    /// The latest synced paste buffer text, at most `MAX_CLIPBOARD_TEXT` bytes of UTF-8.
+    pub fn take_clipboard_text(&self) -> Option<String> {
+        self.shared.clipboard.lock().unwrap().take()
     }
     fn submit(&self, kind: RequestKind) -> Result<u64> {
         if self.shared.cancel.load(Ordering::SeqCst) || self.shared.done.load(Ordering::SeqCst) {
@@ -949,6 +1038,10 @@ struct Control {
     paused: HashSet<String>,
     titles: crate::title::Updates,
     metadata: Option<MetadataPoll>,
+    /// The server sends `%paste-buffer-changed` (tmux 3.4+, not psmux).
+    paste_notifications: bool,
+    /// The latest changed paste buffer not fetched yet.
+    paste: Option<String>,
 }
 impl Control {
     async fn next(&mut self) -> Result<Event> {
@@ -999,6 +1092,15 @@ impl Control {
                     && let Some(pane) = arguments.split_whitespace().next()
                 {
                     self.paused.insert(pane.to_owned());
+                }
+                // Only record it: this runs inside `reply`, so a command here would take
+                // another command's response. The actor fetches it out of band.
+                if name == "%paste-buffer-changed"
+                    && self.paste_notifications
+                    && !arguments.contains(char::REPLACEMENT_CHARACTER)
+                    && self.shared.paste_sync_enabled()
+                {
+                    self.paste = Some(arguments);
                 }
                 if [
                     "%session-changed",
@@ -1621,6 +1723,9 @@ async fn attach(
         paused: HashSet::new(),
         titles: Default::default(),
         metadata: None,
+        paste_notifications: !ssh.psmux()
+            && crate::command::paste_buffer_notifications(ssh.version()),
+        paste: None,
     };
     c.titles
         .set_last_start(c.shared.title_visibility.lock().unwrap().last_start);
@@ -1835,10 +1940,18 @@ async fn run(
                 s.diagnostics = diagnostics;
             });
             let (checked_tx, mut checked_rx) = mpsc::channel(1);
+            let (paste_tx, paste_rx) = mpsc::channel(1);
+            let (pasted_tx, mut pasted_rx) = mpsc::channel(1);
+            let paste = PasteLane {
+                requests: paste_tx,
+                results: &mut pasted_rx,
+                busy: false,
+            };
             // The observer uses a separate exec channel and runs even if output delivery
             // is backpressured or no terminal is subscribed. Dropping this future cancels it.
             let result = tokio::select! {
-                result = connected(&ssh, shared.clone(), &mut rx, &mut checked_rx, tmux, &mut size, &mut remembered, reattach) => result,
+                result = connected(&ssh, shared.clone(), &mut rx, &mut checked_rx, tmux, &mut size, &mut remembered, reattach, paste) => result,
+                _ = fetch_paste_buffers(&ssh, paste_rx, pasted_tx) => unreachable!(),
                 result = check_connections(&ssh, shared.clone(), &mut check_rx, checked_tx) => result,
                 _ = observe_agents(&ssh, shared.clone(), tmux) => unreachable!(),
             };
@@ -1923,6 +2036,22 @@ async fn check_connections(
 /// How long a helper that never answered (no Python, a failed start) is left to the
 /// basic fallback. One that had answered is restarted on the next poll.
 const OBSERVER_RETRY: Duration = Duration::from_secs(30);
+/// Reads changed paste buffers on their own exec channel, beside the actor rather than in
+/// it: russh queues each channel's messages in one slot, so a channel left unread while
+/// the actor awaits a control reply would stall the whole session.
+async fn fetch_paste_buffers(
+    ssh: &Transport,
+    mut requests: mpsc::Receiver<PasteRequest>,
+    results: mpsc::Sender<PasteResult>,
+) {
+    while let Some((scope, command)) = requests.recv().await {
+        let result = ssh.execute_tmux_limited(&command, MAX_CLIPBOARD_TEXT).await;
+        if results.send((scope, result)).await.is_err() {
+            break;
+        }
+    }
+    std::future::pending().await
+}
 async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
     let Some(ssh) = ssh.as_ssh() else {
         return std::future::pending().await;
@@ -2223,6 +2352,7 @@ enum Incoming {
     Title,
     Metadata,
     Visibility,
+    Paste(PasteScope, Result<(u32, Vec<u8>)>),
 }
 /// One SSH connection serving requests in order until it fails or the client goes away.
 struct Actor<'a> {
@@ -2235,6 +2365,9 @@ struct Actor<'a> {
     backlog: VecDeque<Request>,
     /// An automatic reconnect: its attach must not take the window from the client in use.
     reattach: bool,
+    /// Paste buffers are read beside the actor (`fetch_paste_buffers`), so a slow or large
+    /// buffer neither delays input nor touches the control stream's framing.
+    paste: PasteLane<'a>,
 }
 async fn connected(
     ssh: &Transport,
@@ -2245,6 +2378,7 @@ async fn connected(
     size: &mut Size,
     remembered: &mut Option<String>,
     reattach: bool,
+    paste: PasteLane<'_>,
 ) -> Result<()> {
     let remote = if tmux {
         Remote::Tmux(None)
@@ -2259,6 +2393,7 @@ async fn connected(
         remembered,
         backlog: VecDeque::new(),
         reattach,
+        paste,
     };
     actor.start().await?;
     // A successfully restored connection gets a fresh budget for the next outage.
@@ -2271,6 +2406,10 @@ async fn connected(
             Incoming::Checked(check) => actor.checked(check).await?,
             Incoming::Shell(message) => actor.shell_output(message).await?,
             Incoming::Refresh | Incoming::Visibility => {}
+            Incoming::Paste(scope, result) => {
+                actor.paste.busy = false;
+                actor.shared.publish_paste(&scope, result);
+            }
             incoming @ (Incoming::Title | Incoming::Metadata | Incoming::Event(_)) => {
                 let Remote::Tmux(Some(c)) = &mut actor.remote else {
                     unreachable!("only an attached control client produces these")
@@ -2362,6 +2501,19 @@ impl Actor<'_> {
         }
         match &mut self.remote {
             Remote::Tmux(Some(c)) => {
+                // One fetch at a time; changes meanwhile coalesce to the latest name.
+                // While checking or not `Ready`, the name waits for the next turn.
+                if !self.paste.busy && c.paste.is_some() {
+                    if !self.shared.paste_sync_enabled() {
+                        c.paste = None;
+                    } else if let Some(scope) = self.shared.paste_scope()
+                        && let Some(name) = c.paste.take()
+                        && let Ok(command) = Command::save_buffer(&name)
+                    {
+                        self.paste.busy = self.paste.requests.try_send((scope, command)).is_ok();
+                    }
+                }
+                let pasted = &mut *self.paste.results;
                 c.titles.reconcile(self.shared.title_scope());
                 let title_deadline = c.titles.deadline();
                 let metadata_due = c.metadata.as_ref().map(|m| m.due);
@@ -2385,6 +2537,7 @@ impl Actor<'_> {
                             None => std::future::pending().await,
                         }
                     } => Incoming::Metadata,
+                    Some((scope, result)) = pasted.recv() => Incoming::Paste(scope, result),
                     _ = std::future::ready(()), if pending_refresh => Incoming::Refresh,
                 }
             }
@@ -2779,6 +2932,8 @@ mod tests {
             paused: HashSet::new(),
             titles: Default::default(),
             metadata: None,
+            paste_notifications: true,
+            paste: None,
         };
         (fixture, ssh, control)
     }
@@ -3081,6 +3236,130 @@ mod tests {
         assert_eq!(c.state().sequence, sequence);
         c.close();
         c.join().await;
+    }
+    #[tokio::test]
+    async fn paste_publication_needs_the_setting_its_scope_and_valid_text() {
+        let c = Connection::start(host(1), Credential::default(), None);
+        // Without a running actor, so only this test changes the state.
+        c.close();
+        c.join().await;
+        c.shared.update(|s| s.phase = Phase::Ready);
+        assert!(c.shared.paste_scope().is_none()); // disabled by default
+        c.set_paste_buffer_sync_enabled(true);
+        let scope = c.shared.paste_scope().unwrap();
+        for result in [
+            Err(Error::Network),
+            Err(Error::Protocol),
+            Ok((1, b"no buffer".to_vec())),
+            Ok((0, Vec::new())),
+            Ok((0, b"\xff\xfe".to_vec())),
+            Ok((0, vec![b'a'; MAX_CLIPBOARD_TEXT + 1])),
+        ] {
+            c.shared.publish_paste(&scope, result);
+            assert_eq!(c.take_clipboard_text(), None);
+        }
+        c.shared
+            .publish_paste(&scope, Ok((0, vec![b'a'; MAX_CLIPBOARD_TEXT])));
+        assert_eq!(
+            c.take_clipboard_text().map(|t| t.len()),
+            Some(MAX_CLIPBOARD_TEXT)
+        );
+        c.shared
+            .publish_paste(&scope, Ok((0, "한글\n".as_bytes().to_vec())));
+        assert_eq!(c.take_clipboard_text().as_deref(), Some("한글\n"));
+        assert_eq!(c.take_clipboard_text(), None);
+        // Turning it off drops a text not taken yet and any fetch started before.
+        c.shared.publish_paste(&scope, Ok((0, b"waiting".to_vec())));
+        c.set_paste_buffer_sync_enabled(false);
+        assert_eq!(c.take_clipboard_text(), None);
+        c.set_paste_buffer_sync_enabled(true);
+        c.shared
+            .publish_paste(&scope, Ok((0, b"old revision".to_vec())));
+        assert_eq!(c.take_clipboard_text(), None);
+        let fresh = c.shared.paste_scope().unwrap();
+        c.shared.update(|s| s.generation.connection += 1);
+        c.shared
+            .publish_paste(&fresh, Ok((0, b"old connection".to_vec())));
+        assert_eq!(c.take_clipboard_text(), None);
+        let fresh = c.shared.paste_scope().unwrap();
+        c.shared.update(|s| s.phase = Phase::Reconnecting);
+        assert!(c.shared.paste_scope().is_none());
+        c.shared
+            .publish_paste(&fresh, Ok((0, b"not ready".to_vec())));
+        assert_eq!(c.take_clipboard_text(), None);
+        // State stays free of clipboard text.
+        assert!(
+            !serde_json::to_string(&*c.state())
+                .unwrap()
+                .contains("clipboard")
+        );
+    }
+    #[tokio::test]
+    async fn paste_fetches_keep_draining_while_another_channel_is_awaited() {
+        // russh queues each channel's messages in one slot. An exec channel nobody reads
+        // would stall the session, so the actor's inline awaits (here: other exec channels,
+        // like a control reply) must not keep the fetch from being read.
+        let fixture = crate::ssh::tests::Fixture::new(32, 32, false, false).await;
+        let mut ssh = fixture.connect().await;
+        ssh.tmux = Some("/usr/bin/tmux".into());
+        let transport = Transport::Ssh(ssh);
+        let (requests, paste_rx) = mpsc::channel(1);
+        let (pasted_tx, mut pasted) = mpsc::channel(1);
+        let scope = PasteScope {
+            revision: 1,
+            handle: 1,
+            connection: 1,
+        };
+        let actor = async {
+            let command = Command::save_buffer("copied").unwrap();
+            requests.send((scope.clone(), command)).await.unwrap();
+            for _ in 0..3 {
+                let other = Command::save_buffer("other").unwrap();
+                assert_eq!(transport.execute_tmux(&other).await, Ok((127, Vec::new())));
+            }
+            pasted.recv().await.unwrap()
+        };
+        let (fetched, result) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::select! {
+                fetched = actor => fetched,
+                _ = fetch_paste_buffers(&transport, paste_rx, pasted_tx) => unreachable!(),
+            }
+        })
+        .await
+        .expect("the SSH session stalled");
+        assert_eq!(fetched, scope);
+        assert_eq!(result, Ok((127, Vec::new())));
+        if let Transport::Ssh(ssh) = transport {
+            ssh.close().await;
+        }
+    }
+    #[tokio::test]
+    async fn paste_notifications_are_recorded_only_when_supported_and_enabled() {
+        let (_fixture, _ssh, mut control) = stalled_control(32).await;
+        let changed = |name: &str| Event::Notification {
+            name: "%paste-buffer-changed".into(),
+            arguments: name.into(),
+        };
+        control.unsolicited(changed("off")).await.unwrap();
+        assert_eq!(control.paste, None);
+        control.shared.paste_sync.lock().unwrap().enabled = true;
+        control.unsolicited(changed("a b")).await.unwrap();
+        control.unsolicited(changed("buffer2")).await.unwrap();
+        assert_eq!(control.paste.as_deref(), Some("buffer2")); // the latest wins
+        control
+            .unsolicited(Event::Notification {
+                name: "%paste-buffer-deleted".into(),
+                arguments: "buffer2".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(control.paste.as_deref(), Some("buffer2"));
+        control.paste = None;
+        control.unsolicited(changed("bad \u{fffd}")).await.unwrap();
+        assert_eq!(control.paste, None);
+        control.paste_notifications = false;
+        control.unsolicited(changed("buffer3")).await.unwrap();
+        assert_eq!(control.paste, None);
     }
     // Yield to real loopback I/O without advancing the paused retry clock.
     async fn until(mut predicate: impl FnMut() -> bool) {

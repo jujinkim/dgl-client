@@ -149,6 +149,9 @@ impl Local {
         command
     }
     pub(crate) async fn execute_args(&self, args: &[String]) -> Result<(u32, Vec<u8>)> {
+        self.execute_args_limited(args, LIMIT).await
+    }
+    async fn execute_args_limited(&self, args: &[String], limit: usize) -> Result<(u32, Vec<u8>)> {
         let mut command = self.command(args);
         command
             .stdin(Stdio::null())
@@ -159,11 +162,11 @@ impl Local {
         let result = tokio::time::timeout(TIMEOUT, async {
             let mut out = Vec::new();
             (&mut stdout)
-                .take((LIMIT + 1) as u64)
+                .take((limit + 1) as u64)
                 .read_to_end(&mut out)
                 .await
                 .map_err(io_error)?;
-            if out.len() > LIMIT {
+            if out.len() > limit {
                 return Err(Error::Protocol);
             }
             let status = child.wait().await.map_err(io_error)?;
@@ -176,6 +179,18 @@ impl Local {
             let _ = child.wait().await;
         }
         result
+    }
+    pub(crate) async fn execute_tmux_limited(
+        &self,
+        command: &Command,
+        limit: usize,
+    ) -> Result<(u32, Vec<u8>)> {
+        if self.config.multiplexer != Multiplexer::Tmux {
+            return Err(Error::InvalidArgument);
+        }
+        let mut args = command.argv()?;
+        args.insert(0, "-u".into());
+        self.execute_args_limited(&args, limit).await
     }
     pub(crate) async fn execute(&self, command: &Command) -> Result<(u32, Vec<u8>)> {
         if self.config.multiplexer == Multiplexer::Psmux {

@@ -272,6 +272,20 @@ impl Command {
             shell_wire: format!("tmux {}", parts.join(" \\; ")),
         }
     }
+    /// Writes paste buffer `name` raw to stdout. Run outside control mode only
+    /// (`Transport::execute_tmux`): a control client cannot write to `-`, and an in-band
+    /// reply would carry the buffer's bytes unescaped into the control stream.
+    pub fn save_buffer(name: &str) -> Result<Self> {
+        // tmux's own argv parser would take a trailing semicolon as a command separator.
+        if name.is_empty() || name.ends_with(';') {
+            return Err(Error::InvalidArgument);
+        }
+        let wire = format!("save-buffer -b {} -", quote(name)?);
+        Ok(Self {
+            shell_wire: format!("tmux {wire}"),
+            wire,
+        })
+    }
     /// Parse our generated control grammar into argv, without involving a shell.
     pub fn argv(&self) -> Result<Vec<String>> {
         let mut args = argv(&self.wire)?;
@@ -305,6 +319,10 @@ fn tmux_minor(version: &str) -> Option<u8> {
         .unwrap_or(v);
     let (major, minor) = v.split_once('.')?;
     (major == "3").then(|| minor.parse().ok()).flatten()
+}
+/// `%paste-buffer-changed` exists from tmux 3.4.
+pub fn paste_buffer_notifications(version: &str) -> bool {
+    tmux_minor(version).is_some_and(|n| n >= 4)
 }
 pub fn supports_tmux(version: &str) -> bool {
     tmux_minor(version).is_some_and(|n| (3..=7).contains(&n))
@@ -349,4 +367,35 @@ pub(crate) fn argv(wire: &str) -> Result<Vec<String>> {
         args.push(word);
     }
     Ok(args)
+}
+
+#[cfg(test)]
+mod paste_buffer_tests {
+    use super::{Command, paste_buffer_notifications};
+
+    #[test]
+    fn save_buffer_quotes_names_and_rejects_unsafe_ones() {
+        let c = Command::save_buffer("a b'#{x};y").unwrap();
+        assert_eq!(c.wire, r"save-buffer -b 'a b'\''#{x};y' -");
+        assert_eq!(c.argv().unwrap(), ["save-buffer", "-b", "a b'#{x};y", "-"]);
+        assert_eq!(
+            c.shell_with_executable("/usr/bin/tmux").unwrap(),
+            r"'/usr/bin/tmux' -u save-buffer -b 'a b'\''#{x};y' -"
+        );
+        for name in ["", "x;", "a\nb", "\x1b", &"n".repeat(1025)] {
+            assert!(Command::save_buffer(name).is_err(), "{name:?}");
+        }
+    }
+
+    #[test]
+    fn paste_notifications_start_at_tmux_3_4() {
+        for (version, expected) in [
+            ("tmux 3.3a", false),
+            ("tmux 3.4", true),
+            ("tmux 3.7c", true),
+            ("", false),
+        ] {
+            assert_eq!(paste_buffer_notifications(version), expected, "{version}");
+        }
+    }
 }

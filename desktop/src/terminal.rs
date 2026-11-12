@@ -60,7 +60,7 @@ impl EventListener for Listener {
     }
 }
 /// Largest OSC 52 text (decoded UTF-8 bytes) a remote program may put on the clipboard.
-const MAX_CLIPBOARD_STORE: usize = 1 << 20;
+const MAX_CLIPBOARD_STORE: usize = dgl_core::connection::MAX_CLIPBOARD_TEXT;
 /// The latest OSC 52 write parsed from the output being applied.
 type ClipboardSlot = Arc<Mutex<Option<(ClipboardType, String)>>>;
 /// How a completed request relates to this terminal's input.

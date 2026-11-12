@@ -168,9 +168,31 @@ impl FocusClaims {
 /// hostname identifies it when the host key is known.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServerWindow {
+    server: TmuxServer,
+    window: String,
+}
+/// One tmux server: the machine and the user, who has a server of their own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TmuxServer {
     server: Server,
     username: String,
-    window: String,
+}
+impl TmuxServer {
+    /// `fingerprint` is the connection's known host key, if any.
+    pub fn new(host: &HostProfile, fingerprint: Option<&str>) -> Self {
+        let server = if host.id == crate::local_host::ID {
+            Server::Local
+        } else {
+            match fingerprint.filter(|f| !f.is_empty()) {
+                Some(key) => Server::Key(key.to_owned()),
+                None => Server::Address(host.hostname.trim().to_ascii_lowercase(), host.port),
+            }
+        };
+        Self {
+            server,
+            username: host.username.clone(),
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Server {
@@ -187,17 +209,8 @@ impl ServerWindow {
         fingerprint: Option<&str>,
         window: Option<&str>,
     ) -> Option<Self> {
-        let server = if host.id == crate::local_host::ID {
-            Server::Local
-        } else {
-            match fingerprint.filter(|f| !f.is_empty()) {
-                Some(key) => Server::Key(key.to_owned()),
-                None => Server::Address(host.hostname.trim().to_ascii_lowercase(), host.port),
-            }
-        };
         Some(Self {
-            server,
-            username: host.username.clone(),
+            server: TmuxServer::new(host, fingerprint),
             window: window?.to_owned(),
         })
     }

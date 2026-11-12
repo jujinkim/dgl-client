@@ -81,6 +81,18 @@ impl Transport {
             Self::Local(l) => l.execute(command).await,
         }
     }
+    /// Like `execute_tmux`, but output over `limit` bytes stops the command with
+    /// `Error::Protocol`. Not for psmux.
+    pub async fn execute_tmux_limited(
+        &self,
+        command: &Command,
+        limit: usize,
+    ) -> Result<(u32, Vec<u8>)> {
+        match self {
+            Self::Ssh(s) => s.execute_tmux_limited(command, limit).await,
+            Self::Local(l) => l.execute_tmux_limited(command, limit).await,
+        }
+    }
     pub async fn control(&self, session: &str, ignore: bool) -> Result<Stream> {
         match self {
             Self::Ssh(s) => s.control(session, ignore).await.map(Stream::Ssh),

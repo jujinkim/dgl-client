@@ -5,6 +5,7 @@ use dgl_core::{
     local::LocalConfig,
 };
 use std::{sync::Arc, time::Duration};
+static NEXT_SOCKET: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 struct Fixture {
     config: LocalConfig,
 }
@@ -17,7 +18,12 @@ impl Fixture {
                 executable: executable.into(),
                 arguments: vec![
                     "-L".into(),
-                    format!("dgl-local-test-{}", std::process::id()),
+                    // One server per test: the tests run in parallel.
+                    format!(
+                        "dgl-local-test-{}-{}",
+                        std::process::id(),
+                        NEXT_SOCKET.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    ),
                     "-f".into(),
                     "/dev/null".into(),
                 ],
@@ -221,5 +227,62 @@ async fn isolated_local_inventory_management_input_detach_and_reconnect() {
     action(&restored, Operation::KillPane { target }).await;
     restored.close();
     restored.join().await;
+    reader.abort();
+}
+/// The next synced buffer text, or `None` once `wait` passes without one.
+async fn clipboard(c: &Connection, wait: Duration) -> Option<String> {
+    let deadline = tokio::time::Instant::now() + wait;
+    while tokio::time::Instant::now() < deadline {
+        if let Some(text) = c.take_clipboard_text() {
+            return Some(text);
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    None
+}
+#[tokio::test]
+#[ignore = "requires explicit DGL_LOCAL_TMUX; uses a private socket and never the user's server"]
+async fn isolated_local_paste_buffers_reach_the_clipboard_only_when_enabled() {
+    let fixture = Fixture::new();
+    let c = Connection::start_local(fixture.config.clone());
+    until(&c, || c.state().phase == Phase::Selecting).await;
+    action(
+        &c,
+        Operation::NewSession {
+            name: "paste".into(),
+        },
+    )
+    .await;
+    let session = c.state().remote.sessions[0].id.clone();
+    let reader = drain(&c);
+    c.action(Action::SelectSession { id: session }).unwrap();
+    until(&c, || c.state().phase == Phase::Ready).await;
+    let quiet = Duration::from_millis(500);
+    let wait = Duration::from_secs(10);
+    // Off by default: a changed buffer is not even read.
+    fixture.external(&["set-buffer", "-b", "before", "not copied"]);
+    assert_eq!(clipboard(&c, quiet).await, None);
+    c.set_paste_buffer_sync_enabled(true);
+    // Named buffers with shell and format syntax, and tmux's automatic names.
+    let text = "한글 \t'#{pane_id}' $(x)\nline\n";
+    fixture.external(&["set-buffer", "-b", "a b'#{x}", text]);
+    assert_eq!(clipboard(&c, wait).await.as_deref(), Some(text));
+    fixture.external(&["set-buffer", "automatic"]);
+    assert_eq!(clipboard(&c, wait).await.as_deref(), Some("automatic"));
+    // Bytes that are not text are dropped; the control stream is unaffected.
+    let file = std::env::temp_dir().join(format!("dgl-paste-{}.bin", std::process::id()));
+    std::fs::write(&file, b"%end 1 1 1\n\xff\xfe\0binary").unwrap();
+    fixture.external(&["load-buffer", "-b", "binary", file.to_str().unwrap()]);
+    let _ = std::fs::remove_file(&file);
+    assert_eq!(clipboard(&c, quiet).await, None);
+    assert_eq!(c.state().phase, Phase::Ready);
+    fixture.external(&["set-buffer", "-b", "after", "still synced"]);
+    assert_eq!(clipboard(&c, wait).await.as_deref(), Some("still synced"));
+    // Turning it off drops later changes.
+    c.set_paste_buffer_sync_enabled(false);
+    fixture.external(&["set-buffer", "-b", "off", "not copied"]);
+    assert_eq!(clipboard(&c, quiet).await, None);
+    c.close();
+    c.join().await;
     reader.abort();
 }

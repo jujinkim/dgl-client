@@ -32,6 +32,8 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val terminalFontFamily: String = "",
     /** Desktop idle pacing (system/always/off); unused on Android, kept for the shared settings format. */
     val desktopPowerSaving: String = "system",
+    /** Desktop opt-in tmux paste buffer to clipboard copy; unused on Android, kept for the shared settings format. */
+    val desktopTmuxBufferClipboard: Boolean = false,
     val mobilePaneToolbarVisible: Boolean = true,
     val mobileShortcutBarTwoRows: Boolean = true,
     val androidKeyboardMode: String = "auto",

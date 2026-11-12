@@ -670,7 +670,8 @@
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
           "terminalFontFamily": "",
-          "desktopPowerSaving": "system"
+          "desktopPowerSaving": "system",
+          "desktopTmuxBufferClipboard": false
         }
       }
     },
@@ -736,7 +737,8 @@
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
           "terminalFontFamily": "",
-          "desktopPowerSaving": "system"
+          "desktopPowerSaving": "system",
+          "desktopTmuxBufferClipboard": false
         }
       }
     },
@@ -801,7 +803,8 @@
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
           "terminalFontFamily": "",
-          "desktopPowerSaving": "system"
+          "desktopPowerSaving": "system",
+          "desktopTmuxBufferClipboard": false
         }
       }
     },
@@ -933,7 +936,8 @@
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
           "terminalFontFamily": "",
-          "desktopPowerSaving": "system"
+          "desktopPowerSaving": "system",
+          "desktopTmuxBufferClipboard": false
         }
       }
     },
@@ -1023,7 +1027,8 @@
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
           "terminalFontFamily": "",
-          "desktopPowerSaving": "system"
+          "desktopPowerSaving": "system",
+          "desktopTmuxBufferClipboard": false
         }
       }
     },
@@ -1136,7 +1141,8 @@
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
           "terminalFontFamily": "",
-          "desktopPowerSaving": "system"
+          "desktopPowerSaving": "system",
+          "desktopTmuxBufferClipboard": false
         }
       }
     },
@@ -1182,7 +1188,8 @@
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
           "terminalFontFamily": "",
-          "desktopPowerSaving": "system"
+          "desktopPowerSaving": "system",
+          "desktopTmuxBufferClipboard": false
         }
       }
     },
@@ -1247,7 +1254,8 @@
           "androidKeyboardMode": "auto",
           "androidKeyboardAlwaysVisible": false,
           "terminalFontFamily": "",
-          "desktopPowerSaving": "system"
+          "desktopPowerSaving": "system",
+          "desktopTmuxBufferClipboard": false
         }
       }
     }

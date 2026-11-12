@@ -735,6 +735,7 @@ mod tests {
         local.preferences.android_keyboard_always_visible = true;
         local.preferences.terminal_font_family = "PRIVATE-FONT".into();
         local.preferences.desktop_power_saving = "always".into();
+        local.preferences.desktop_tmux_buffer_clipboard = true;
         let out = exchange(Some(a.cache), &local, doc.as_bytes(), &[]).unwrap();
         for value in [
             "SECRET-REFERENCE",
@@ -752,6 +753,7 @@ mod tests {
             "terminalFontFamily",
             "PRIVATE-FONT",
             "desktopPowerSaving",
+            "desktopTmuxBufferClipboard",
             "privateKey",
             "password",
         ] {
@@ -775,6 +777,7 @@ mod tests {
         assert!(!other.local.preferences.android_keyboard_always_visible);
         assert_eq!(other.local.preferences.terminal_font_family, "");
         assert_eq!(other.local.preferences.desktop_power_saving, "system");
+        assert!(!other.local.preferences.desktop_tmux_buffer_clipboard);
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {

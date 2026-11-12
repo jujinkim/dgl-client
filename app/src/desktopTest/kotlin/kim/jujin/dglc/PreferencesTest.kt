@@ -108,7 +108,8 @@ class PreferencesTest {
             assertFalse(legacy.preferences.showAllHierarchy)
             assertEquals("", legacy.preferences.terminalFontFamily)
             assertEquals("system", legacy.preferences.desktopPowerSaving)
-            val state = legacy.copy(preferences = legacy.preferences.copy(keepConnectionsInBackground = false, showAllHierarchy = true, terminalFontFamily = "JetBrains Mono", desktopPowerSaving = "off", volumeKeysEnabled = true, smoothTerminalTransitions = true, mobilePaneToolbarVisible = false, mobileShortcutBarTwoRows = false,
+            assertFalse(legacy.preferences.desktopTmuxBufferClipboard)
+            val state = legacy.copy(preferences = legacy.preferences.copy(keepConnectionsInBackground = false, showAllHierarchy = true, terminalFontFamily = "JetBrains Mono", desktopPowerSaving = "off", desktopTmuxBufferClipboard = true, volumeKeysEnabled = true, smoothTerminalTransitions = true, mobilePaneToolbarVisible = false, mobileShortcutBarTwoRows = false,
                 volumeUp = VolumeBinding(VolumeAction.Macro, List(65536) { MacroStep.Key(TerminalKey.Enter) }),
                 volumeDown = VolumeBinding(VolumeAction.Macro, listOf(MacroStep.Text("한".repeat(21845)), MacroStep.Key(TerminalKey.Enter)))))
             LocalRepository(directory).save(state)

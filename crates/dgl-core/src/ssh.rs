@@ -173,6 +173,9 @@ impl Ssh {
         let _ = self.socket.0.shutdown(std::net::Shutdown::Both);
     }
     pub async fn execute(&self, command: &str) -> Result<(u32, Vec<u8>)> {
+        self.execute_limited(command, 4 * 1024 * 1024).await
+    }
+    async fn execute_limited(&self, command: &str, limit: usize) -> Result<(u32, Vec<u8>)> {
         tokio::time::timeout(Duration::from_secs(15), async {
             let mut channel = self.process(command).await?;
             let mut out = Vec::new();
@@ -180,7 +183,9 @@ impl Ssh {
             while let Some(m) = channel.wait().await {
                 match m {
                     ChannelMsg::Data { data } => {
-                        if out.len() + data.len() > 4 * 1024 * 1024 {
+                        if out.len() + data.len() > limit {
+                            // Stop the remote command instead of receiving the rest.
+                            let _ = channel.close().await;
                             return Err(Error::Protocol);
                         }
                         out.extend_from_slice(&data);
@@ -193,6 +198,13 @@ impl Ssh {
         })
         .await
         .map_err(|_| Error::Network)?
+    }
+    pub async fn execute_tmux_limited(&self, c: &Command, limit: usize) -> Result<(u32, Vec<u8>)> {
+        self.execute_limited(
+            &c.shell_with_executable(self.tmux.as_deref().ok_or(Error::NotReady)?)?,
+            limit,
+        )
+        .await
     }
     pub async fn execute_tmux(&self, c: &Command) -> Result<(u32, Vec<u8>)> {
         self.execute(&c.shell_with_executable(self.tmux.as_deref().ok_or(Error::NotReady)?)?)

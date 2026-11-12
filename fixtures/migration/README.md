@@ -45,3 +45,5 @@ The local `androidKeyboardAlwaysVisible` preference defaults to `false`. Enablin
 The local `terminalFontFamily` preference defaults to `""` (platform default monospace). It names an installed family on this device only, is excluded from cloud sync, and falls back to the default when the family is missing. Old fixture sources stay unchanged and their encoded expectations include the new default.
 
 The local `desktopPowerSaving` preference defaults to `system` (follow the OS power saving mode). `always` and `off` override it on the desktop; unknown strings are preserved and behave as `system`. Android ignores it. It is excluded from cloud sync, and old fixture sources stay unchanged while their encoded expectations include the default.
+
+The local `desktopTmuxBufferClipboard` preference defaults to `false`. When it is `true`, the desktop copies changed tmux paste buffers to the local clipboard. Android ignores it. It is excluded from cloud sync, and encoded expectations include the default.

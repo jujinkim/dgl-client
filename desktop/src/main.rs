@@ -276,6 +276,33 @@ impl Desktop {
             cloud_sync,
         }
     }
+    /// Opt-in tmux buffer copying runs only while a DGL window is active, so a remote
+    /// program cannot replace the clipboard while the user works elsewhere.
+    fn sync_paste_buffers(&self, foreground: bool, cx: &mut Context<Self>) {
+        let enabled = foreground && self.local.preferences.desktop_tmux_buffer_clipboard;
+        // Every control client of a server sees each buffer change. One ready tab per
+        // server reads it, so a late duplicate cannot replace a newer clipboard.
+        let mut servers = Vec::new();
+        for tab in &self.tabs {
+            let state = tab.connection.state();
+            let server = size_claim::TmuxServer::new(&tab.host, state.fingerprint.as_deref());
+            let owner = enabled && state.phase == Phase::Ready && !servers.contains(&server);
+            if owner {
+                servers.push(server);
+            }
+            tab.connection.set_paste_buffer_sync_enabled(owner);
+            // OSC 52 may already have written the same copy.
+            if let Some(text) = tab.connection.take_clipboard_text()
+                && cx
+                    .read_from_clipboard()
+                    .and_then(|item| item.text())
+                    .as_deref()
+                    != Some(text.as_str())
+            {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            }
+        }
+    }
     fn sync_title_updates(&self, foreground: bool) {
         for tab in &self.tabs {
             tab.connection.set_title_updates_enabled(
@@ -313,6 +340,7 @@ impl Desktop {
                 .unwrap_or(false)
         });
         self.sync_title_updates(foreground);
+        self.sync_paste_buffers(foreground, cx);
         let resumed = self.resume.update(foreground, SystemTime::now());
         // Waking from sleep while active is a focus event: the user is back here.
         if self

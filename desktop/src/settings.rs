@@ -144,6 +144,28 @@ impl Desktop {
                     ))
                     .child(tr!("스크롤백: {0}줄", self.local.preferences.scrollback)),
             )
+            .child(
+                self.button(
+                    "tmux-buffer-clipboard",
+                    (
+                        if self.local.preferences.desktop_tmux_buffer_clipboard {
+                            UiIcon::CheckboxChecked
+                        } else {
+                            UiIcon::Checkbox
+                        },
+                        t("tmux 버퍼를 클립보드에 복사"),
+                    ),
+                    cx,
+                    |s, _, _| {
+                        s.local.preferences.desktop_tmux_buffer_clipboard =
+                            !s.local.preferences.desktop_tmux_buffer_clipboard;
+                        s.save();
+                    },
+                )
+                .native_tooltip(t(
+                    "tmux 3.4 이상에서 복사 모드 등으로 버퍼가 바뀌면 1 MiB 이하 텍스트를 이 기기의 클립보드에 씁니다. 같은 tmux 서버의 다른 세션·사용자 버퍼도 포함하며, DGL 창이 활성일 때만 씁니다. 이 기기에만 저장합니다.",
+                )),
+            )
             .child(self.button(
                 "edit-shortcuts",
                 (
