@@ -239,7 +239,7 @@
     helpers.style.setProperty('--dgl-input-height', `${height}px`);
   };
   api.syncInputPosition = syncInputPosition;
-  term.onRender?.(() => { api.refreshContent(); syncInputPosition(); resize(); });
+  term.onRender?.(() => { api.refreshContent(); syncInputPosition(); resize(); api.refreshSelection?.(); });
   term.onScroll?.(() => { api.refreshContent(); resize(); });
   host.addEventListener('compositionstart', syncInputPosition, true);
   host.addEventListener('compositionupdate', syncInputPosition);
@@ -611,6 +611,60 @@
     return { left: single ? bounds.left + start % columns * width : bounds.left, top: bounds.top + top * height,
       right: single ? bounds.left + (end % columns + 1) * width : bounds.right, bottom: bounds.top + (bottom + 1) * height };
   };
+  // Client CSS px where the native handles attach: below the first cell's left edge and the
+  // last cell's right edge, with that row's top and bottom. A row off screen has no handle.
+  const handlePoints = ([start, end]) => {
+    const bounds = screenBounds(), buffer = term.buffer?.active;
+    if (!(bounds?.width > 0 && bounds?.height > 0) || !buffer || !term.cols || !term.rows) return { start: null, end: null };
+    const columns = term.cols, width = bounds.width / columns, height = bounds.height / term.rows;
+    const point = (offset, after) => {
+      const row = Math.floor(offset / columns) - buffer.viewportY;
+      if (row < 0 || row >= term.rows) return null;
+      return { x: bounds.left + (offset % columns + (after ? 1 : 0)) * width, top: bounds.top + row * height, bottom: bounds.top + (row + 1) * height };
+    };
+    return { start: point(start, false), end: point(end, true) };
+  };
+  // The native menu for the finished selection, or null once none of its rows is visible.
+  // `adjusted` marks a handle move, which native confirms with a haptic tick.
+  let shownMenu = null;
+  const showMenu = (range, adjusted = false) => {
+    const rect = rangeRect(range);
+    if (!rect) { api.clearSelection(true); return; }
+    // Copy keeps xterm's text; `lineBreaks` offers a copy without its line breaks as well.
+    const message = { type: 'selection', pane, state: 'menu', target: pane === active ? inputTarget : null,
+      url: leadingLink(rangeText(range)), lineBreaks: /[\r\n]/.test(term.getSelection?.() ?? ''), ...rect, handles: handlePoints(range) };
+    const key = JSON.stringify(message);
+    if (key === shownMenu) return;
+    shownMenu = key;
+    send(adjusted ? { ...message, adjusted: true } : message);
+  };
+  // A native handle drag: the point the handle carries, in client CSS px. A start handle takes
+  // the nearest cell boundary as its new first cell, an end handle as the cell after its last,
+  // whole wide characters only. Handles never cross, so at least one cell stays selected.
+  api.adjustSelection = (edge, x, y) => {
+    if (!picked || selectionOwner !== api || !selectionAllowed() || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const bounds = screenBounds(), buffer = term.buffer?.active, columns = term.cols;
+    if (!(bounds?.width > 0 && bounds?.height > 0) || !buffer || !columns || !term.rows) return;
+    const row = Math.max(0, Math.min(term.rows - 1, Math.floor((y - bounds.top) / (bounds.height / term.rows))));
+    const boundary = Math.max(0, Math.min(columns, Math.round((x - bounds.left) / (bounds.width / columns))));
+    const base = (buffer.viewportY + row) * columns;
+    let [start, end] = picked;
+    if (edge === 'start') {
+      let cell = base + Math.min(boundary, columns - 1);
+      if (cellWidth(cell) === 0 && cell % columns > 0) --cell;
+      start = Math.min(cell, end % columns > 0 && cellWidth(end) === 0 ? end - 1 : end);
+    } else if (edge === 'end') {
+      let cell = base + Math.max(boundary, 1) - 1;
+      if (cellWidth(cell) === 2 && cell % columns < columns - 1) ++cell;
+      end = Math.max(cell, cellWidth(start) === 2 && start % columns < columns - 1 ? start + 1 : start);
+    } else return;
+    if (start === picked[0] && end === picked[1]) return;
+    picked = [start, end];
+    selectRange(picked);
+    showMenu(picked, true);
+  };
+  // Output and layout changes move the selected cells; keep the menu and handles on them.
+  api.refreshSelection = () => { if (picked && selectionOwner === api) showMenu(picked); };
   const cancelPress = () => {
     if (press && typeof clearTimeout === 'function') clearTimeout(press.timer);
     press = null;
@@ -619,7 +673,7 @@
     cancelPress();
     if (selectionOwner === api) selectionOwner = null;
     if (!picking && !picked) return;
-    picking = null; picked = null;
+    picking = null; picked = null; shownMenu = null;
     term.clearSelection?.();
     if (notify) send({ type: 'selection', pane, state: 'cleared' });
   };
@@ -654,11 +708,7 @@
   const finishPick = () => {
     const range = picking.range;
     picking = null; picked = range;
-    const rect = rangeRect(range);
-    if (!rect) { api.clearSelection(true); return; }
-    // Copy keeps xterm's text; `lineBreaks` offers a copy without its line breaks as well.
-    send({ type: 'selection', pane, state: 'menu', target: pane === active ? inputTarget : null,
-      url: leadingLink(rangeText(range)), lineBreaks: /[\r\n]/.test(term.getSelection?.() ?? ''), ...rect });
+    showMenu(range);
   };
   api.cancelTouchScroll = () => {
     api.clearSelection(true);
@@ -848,6 +898,7 @@
   window.selectedText = () => selectionOwner?.selectedText() ?? null;
   // Native already closed its menu; only touch-originated clears report back.
   window.clearSelection = () => clearTextSelection(false);
+  window.adjustSelection = (edge, x, y) => selectionOwner?.adjustSelection(edge, x, y);
   window.sendShortcut = (...args) => focused().sendShortcut(...args);
   window.setInputEnabled = value => { enabled = value === true; if (!enabled) { cancelTouchScroll(); cancelBoundaryDrag(); } };
   window.setScrollAssist = (mode, cliPanes) => {
@@ -955,6 +1006,7 @@
   }
   function alignViewport() {
     if (canvas.style) canvas.style.transform = panelRange() > 0 ? `translateY(${-panelOffset}px)` : '';
+    selectionOwner?.refreshSelection();
     if (!panelBar) return;
     const range = panelRange(), visible = viewport?.visibleHeight || 0;
     panelBar.style.display = range > 0 && !viewportDetached ? 'block' : 'none';

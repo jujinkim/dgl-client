@@ -43,6 +43,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clipToBounds
@@ -376,7 +384,10 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         TerminalSelectionPopup(client, entry, selection, overlay, terminalBounds, menuScope, allowed && status.acceptsInput)
 }
 
-/** The selection menu above the terminal. Every action, an outside tap and Back clear the selection. */
+/**
+ * The selection menu above the terminal, with a handle at each visible end. Every action, an
+ * outside tap and Back clear the selection. Dragging a handle hides the menu until it lifts.
+ */
 @Composable private fun TerminalSelectionPopup(client: ClientConnection, entry: TerminalEntry, selection: TerminalSelection,
     overlay: CliMenuOverlay, terminalBounds: Rect, scope: CoroutineScope, inputAllowed: Boolean) {
     val context = LocalContext.current
@@ -401,8 +412,48 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         Rect(left.coerceIn(terminalBounds.left, terminalBounds.right), top.coerceIn(terminalBounds.top, terminalBounds.bottom),
             right.coerceIn(terminalBounds.left, terminalBounds.right), bottom.coerceIn(terminalBounds.top, terminalBounds.bottom))
     }
-    RegisterCliMenuOverlay(overlay, anchor, dismiss, CliMenuPlacement.AroundCenter) {
-        TerminalSelectionMenu(selection.url,
+    var adjusting by remember { mutableStateOf(false) }
+    val current by rememberUpdatedState(selection)
+    val bounds by rememberUpdatedState(terminalBounds)
+    val handleColor = LocalAccentFill.current.first
+    val touch = with(LocalDensity.current) { SelectionHandleTouch.toPx() }
+    RegisterCliMenuOverlay(overlay, anchor, dismiss, CliMenuPlacement.AroundCenter, decoration = { origin ->
+        for (start in listOf(true, false)) key(start) {
+            val handle = if (start) selection.start else selection.end
+            if (handle != null) {
+                val layout = remember { arrayOfNulls<LayoutCoordinates>(1) }
+                val label = t(if (start) "terminal.selection_start_handle" else "terminal.selection_end_handle")
+                // The drop hangs below the row, toward the text; its box extends away from it.
+                Box(Modifier.offset { IntOffset((bounds.left + handle.x - origin.x - if (start) touch else 0f).roundToInt(),
+                        (bounds.top + handle.bottom - origin.y).roundToInt()) }
+                    .onGloballyPositioned { layout[0] = it }
+                    .semantics { contentDescription = label }
+                    .pointerInput(start) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            val coordinates = layout[0] ?: return@awaitEachGesture
+                            val from = coordinates.localToWindow(down.position)
+                            // The handle carries the middle of its row, so the finger never covers the text.
+                            val point = (if (start) current.start else current.end) ?: return@awaitEachGesture
+                            val anchored = androidx.compose.ui.geometry.Offset(point.x, (point.top + point.bottom) / 2)
+                            adjusting = true
+                            try {
+                                while (true) {
+                                    val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                                    change.consume()
+                                    if (!change.pressed) break
+                                    // Window coordinates: the box itself follows the handle as it moves.
+                                    val moved = anchored + (coordinates.localToWindow(change.position) - from)
+                                    terminal.adjustSelection(start, moved.x, moved.y)
+                                }
+                            } finally { adjusting = false }
+                        }
+                    }) { TerminalSelectionHandleMark(start, handleColor) }
+            }
+        }
+    }) {
+        if (!adjusting) TerminalSelectionMenu(selection.url,
             paste = pasteTarget?.let { target -> {
                 dismiss()
                 val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
@@ -637,8 +688,19 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                             val left = px("left", view.width); val right = px("right", view.width)
                             val top = px("top", view.height); val bottom = px("bottom", view.height)
                             val url = if (json.isNull("url")) null else terminalWebLink(json.getString("url"))
+                            fun handle(name: String): TerminalSelectionHandle? {
+                                val point = json.optJSONObject("handles")?.optJSONObject(name) ?: return null
+                                fun at(key: String, limit: Int): Float {
+                                    val value = point.getDouble(key)
+                                    require(value.isFinite())
+                                    return (value * density).toFloat().coerceIn(0f, limit.toFloat())
+                                }
+                                val rowTop = at("top", view.height); val rowBottom = at("bottom", view.height)
+                                return TerminalSelectionHandle(at("x", view.width), minOf(rowTop, rowBottom), maxOf(rowTop, rowBottom))
+                            }
                             selection(TerminalSelection(pane, target(), url, Rect(minOf(left, right), minOf(top, bottom), maxOf(left, right), maxOf(top, bottom)),
-                                lineBreaks = json.optBoolean("lineBreaks")))
+                                lineBreaks = json.optBoolean("lineBreaks"), start = handle("start"), end = handle("end")))
+                            if (json.optBoolean("adjusted")) view.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE)
                         }
                         "cleared" -> selection(null)
                     }
@@ -769,6 +831,12 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             result.complete(runCatching { org.json.JSONTokener(raw ?: "null").nextValue() as? String }.getOrNull())
         }
         withTimeoutOrNull(15_000) { result.await() }
+    }
+    /** Moves the selection's [start] or end handle to [x], [y] terminal-view pixels; the bridge reports the new menu. */
+    fun adjustSelection(start: Boolean, x: Float, y: Float) {
+        if (closed || !ready.isCompleted || !x.isFinite() || !y.isFinite()) return
+        val density = view.resources.displayMetrics.density
+        view.evaluateJavascript("window.adjustSelection('${if (start) "start" else "end"}',${x / density},${y / density})", null)
     }
     /** Native closed the selection menu; the bridge does not report this clear back. */
     fun clearSelection() {

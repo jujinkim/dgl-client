@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -16,8 +17,9 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 internal class CliMenuOverlay {
+    /** [decoration] draws over the outside-tap layer, below the menu, with the overlay's window origin. */
     class Entry(val anchor: () -> Rect, val dismiss: () -> Unit, val content: @Composable () -> Unit,
-        val placement: CliMenuPlacement = CliMenuPlacement.AboveEnd)
+        val placement: CliMenuPlacement = CliMenuPlacement.AboveEnd, val decoration: (@Composable (Offset) -> Unit)? = null)
     var entry by mutableStateOf<Entry?>(null)
 }
 
@@ -65,12 +67,18 @@ internal val LocalCliMenuOverlay = staticCompositionLocalOf<CliMenuOverlay?> { n
                             entry.dismiss()
                         }
                     })
+                    // Its own pointer input wins over the outside-tap layer where it is hit.
+                    entry.decoration?.takeIf { bounds != Rect.Zero }?.let { decoration ->
+                        Box(Modifier.matchParentSize()) { decoration(bounds.topLeft) }
+                    }
                     Layout(content = entry.content, modifier = Modifier.fillMaxSize()
                         .onGloballyPositioned { bounds = it.boundsInWindow() }) { measurables, constraints ->
                         val anchor = entry.anchor().translate(-bounds.left, -bounds.top)
                         val maxHeight = if (entry.placement == CliMenuPlacement.AboveEnd)
                             anchor.top.roundToInt().coerceIn(0, constraints.maxHeight) else constraints.maxHeight
-                        val menu = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0, maxHeight = maxHeight))
+                        // The content may hide the menu, e.g. while a selection handle moves.
+                        val measurable = measurables.singleOrNull() ?: return@Layout layout(constraints.maxWidth, constraints.maxHeight) {}
+                        val menu = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0, maxHeight = maxHeight))
                         val position = cliMenuPosition(entry.placement, anchor, IntSize(menu.width, menu.height),
                             constraints.maxWidth, constraints.maxHeight, 8.dp.roundToPx())
                         layout(constraints.maxWidth, constraints.maxHeight) {
@@ -85,12 +93,16 @@ internal val LocalCliMenuOverlay = staticCompositionLocalOf<CliMenuOverlay?> { n
 }
 
 @Composable internal fun RegisterCliMenuOverlay(overlay: CliMenuOverlay, anchor: Rect, dismiss: () -> Unit,
-    placement: CliMenuPlacement = CliMenuPlacement.AboveEnd, content: @Composable () -> Unit) {
+    placement: CliMenuPlacement = CliMenuPlacement.AboveEnd, decoration: (@Composable (Offset) -> Unit)? = null,
+    content: @Composable () -> Unit) {
     val currentAnchor by rememberUpdatedState(anchor)
     val currentDismiss by rememberUpdatedState(dismiss)
     val currentContent by rememberUpdatedState(content)
-    DisposableEffect(overlay, placement) {
-        val entry = CliMenuOverlay.Entry({ currentAnchor }, { currentDismiss() }, { currentContent() }, placement)
+    val currentDecoration by rememberUpdatedState(decoration)
+    val decorated = decoration != null
+    DisposableEffect(overlay, placement, decorated) {
+        val entry = CliMenuOverlay.Entry({ currentAnchor }, { currentDismiss() }, { currentContent() }, placement,
+            if (decorated) { origin -> currentDecoration?.invoke(origin) } else null)
         overlay.entry = entry
         onDispose { if (overlay.entry === entry) overlay.entry = null }
     }

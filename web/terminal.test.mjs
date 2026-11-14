@@ -1212,6 +1212,9 @@ test('horizontal drags and non-touch pointers stay outside vertical wheel handli
 });
 
 const selectionMessages = r => r.messages.filter(message => message.type === 'selection');
+// Native handle points for 20 CSS px rows: x and the visible row of the first and last cell.
+const handles = (startX, startRow, endX, endRow) => ({
+  start: { x: startX, top: startRow * 20, bottom: startRow * 20 + 20 }, end: { x: endX, top: endRow * 20, bottom: endRow * 20 + 20 } });
 
 test('long press selects a word or a wrapped link and opens the menu without remote input', () => {
   const r = touchRenderer({ lines: [
@@ -1224,7 +1227,7 @@ test('long press selects a word or a wrapped link and opens the menu without rem
   assert.deepEqual(r.messages, [{ type: 'selection', pane: 'shell', state: 'start' }]);
   r.pointer('pointerup', 75, 10);
   assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one', url: null, lineBreaks: false,
-    left: 50, top: 0, right: 160, bottom: 20 });
+    left: 50, top: 0, right: 160, bottom: 20, handles: handles(50, 0, 160, 0) });
   for (const type of ['mousedown', 'mouseup', 'click']) assert.equal(r.pointer(type, 75, 10).stopped, true);
   assert.equal(r.window.selectedText(), 'hello-world');
   // A tap outside a native menu only dismisses the selection.
@@ -1239,11 +1242,67 @@ test('long press selects a word or a wrapped link and opens the menu without rem
   r.longPress(35, 50); r.pointer('pointerup', 35, 50);
   assert.deepEqual(t.selection, { column: 60, row: 51, length: 30 });
   assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one',
-    url: 'https://example.com/path?q=(1)', lineBreaks: false, left: 0, top: 20, right: 800, bottom: 60 });
+    url: 'https://example.com/path?q=(1)', lineBreaks: false, left: 0, top: 20, right: 800, bottom: 60, handles: handles(600, 1, 100, 2) });
   assert.equal(r.window.selectedText(), 'https://example.com/path?q=(1)');
   r.messages.length = 0;
   r.window.clearSelection();
   assert.equal(t.selection, null); assert.deepEqual(r.messages, [], 'native clears are not echoed');
+  assert.equal(t.focuses, 0); assert.deepEqual(t.scrolls, []);
+});
+
+test('native handles move either end of a finished selection without crossing and follow the rows', () => {
+  const r = touchRenderer({ lines: ['echo hello-world done', 'next row text', 'ab 한글 cd'] }), t = r.terminals[0];
+  r.longPress(75, 10); r.pointer('pointerup', 75, 10);
+  assert.deepEqual(t.selection, { column: 5, row: 50, length: 11 });
+  const last = () => { const m = r.messages.at(-1); r.messages.length = 0; return m; };
+  last();
+  // The end handle takes the nearest cell boundary as the cell after the selection.
+  r.window.adjustSelection('end', 212, 10);
+  assert.deepEqual(t.selection, { column: 5, row: 50, length: 16 });
+  const moved = last();
+  assert.equal(moved.adjusted, true);
+  assert.deepEqual(moved.handles, handles(50, 0, 210, 0));
+  assert.deepEqual([moved.left, moved.right], [50, 210]);
+  assert.equal(r.window.selectedText(), 'hello-world done');
+  r.window.adjustSelection('start', 3, 10);
+  assert.deepEqual(t.selection, { column: 0, row: 50, length: 21 });
+  last();
+  r.window.adjustSelection('start', 4, 14);
+  assert.deepEqual(r.messages, [], 'the same cells report nothing');
+  // Handles never cross: one cell stays selected.
+  r.window.adjustSelection('start', 790, 10);
+  assert.deepEqual(t.selection, { column: 20, row: 50, length: 1 });
+  last();
+  r.window.adjustSelection('end', -50, 10);
+  assert.deepEqual(r.messages, []);
+  // Into the next row; the menu spans both rows.
+  r.window.adjustSelection('end', 100, 30);
+  assert.deepEqual(t.selection, { column: 20, row: 50, length: 70 });
+  assert.deepEqual(last().handles, handles(200, 0, 100, 1));
+  assert.equal(r.window.selectedText(), 'e\nnext row t');
+  // A wide character stays whole at either end.
+  r.window.adjustSelection('end', 100, 50);
+  r.window.adjustSelection('start', 40, 50);
+  assert.deepEqual(t.selection, { column: 3, row: 52, length: 7 }, 'the right half of 한 starts at its left half');
+  r.window.adjustSelection('end', 50, 50);
+  assert.deepEqual(t.selection, { column: 3, row: 52, length: 2 });
+  r.window.adjustSelection('end', 60, 50);
+  assert.deepEqual(t.selection, { column: 3, row: 52, length: 4 }, 'ending inside 글 takes all of it');
+  r.window.adjustSelection('start', 'x', 50); r.window.adjustSelection('middle', 10, 10);
+  assert.deepEqual(t.selection, { column: 3, row: 52, length: 4 });
+  last();
+
+  // Output that scrolls the rows moves the menu and handles, then clears once they leave.
+  t.buffer.active.viewportY = 51; t.render();
+  const scrolled = last();
+  assert.equal(scrolled.adjusted, undefined);
+  assert.deepEqual(scrolled.handles, handles(30, 1, 70, 1));
+  t.render();
+  assert.deepEqual(r.messages, [], 'an unchanged render reports nothing');
+  t.buffer.active.viewportY = 80; t.render();
+  assert.deepEqual(last(), { type: 'selection', pane: 'shell', state: 'cleared' });
+  r.window.adjustSelection('end', 100, 10);
+  assert.equal(t.selection, null); assert.deepEqual(r.messages, []);
   assert.equal(t.focuses, 0); assert.deepEqual(t.scrolls, []);
 });
 
@@ -1262,7 +1321,7 @@ test('long press tolerates small movement, keeps wide characters whole and drags
   assert.deepEqual(t.selection, { column: 0, row: 50, length: 9 }, 'a wide character right half extends to its start');
   r.pointer('pointerup', 15, 10);
   assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one', url: null, lineBreaks: false,
-    left: 0, top: 0, right: 90, bottom: 20 });
+    left: 0, top: 0, right: 90, bottom: 20, handles: handles(0, 0, 90, 0) });
   assert.equal(r.window.selectedText(), '한글 단어');
   assert.deepEqual(t.scrolls, []); assert.deepEqual(r.messages.filter(m => m.type !== 'selection'), []);
 });
@@ -1305,7 +1364,7 @@ test('mouse-reporting and inactive panes select locally without wheel, pointer o
   r.messages.length = 0;
   r.longPress(15, 10, right); r.pointer('pointerup', 15, 10, right);
   assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: '%2', state: 'menu', target: null, url: null, lineBreaks: false,
-    left: 0, top: 0, right: 30, bottom: 20 });
+    left: 0, top: 0, right: 30, bottom: 20, handles: handles(0, 0, 30, 0) });
   assert.equal(r.messages.some(m => m.type === 'focus'), false);
   r.messages.length = 0;
   r.pointer('pointerdown', 15, 10, left); r.pointer('pointerup', 15, 10, left);
@@ -1379,7 +1438,7 @@ test('a long word broken by a real line break selects across rows and reports th
   assert.deepEqual(t.selection, { column: 2, row: 50, length: 104 });
   const url = 'https://example.com/' + 'a'.repeat(58) + tail;
   assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one',
-    url, lineBreaks: true, left: 0, top: 0, right: 800, bottom: 40 });
+    url, lineBreaks: true, left: 0, top: 0, right: 800, bottom: 40, handles: handles(20, 0, 260, 1) });
   assert.equal(r.window.selectedText(), `https://example.com/${'a'.repeat(58)}\n  ${tail}`, 'copy keeps the line break');
   r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
   r.longPress(25, 10); r.pointer('pointerup', 25, 10);
@@ -1409,7 +1468,7 @@ test('a long word broken a few cells before the edge still continues on the next
   assert.deepEqual(t.selection, { column: 6, row: 50, length: 92 });
   const url = 'https://example.com/' + 'a'.repeat(50) + 'b'.repeat(10) + '?q=end';
   assert.deepEqual(r.messages.at(-1), { type: 'selection', pane: 'shell', state: 'menu', target: 'one',
-    url, lineBreaks: true, left: 0, top: 0, right: 800, bottom: 40 });
+    url, lineBreaks: true, left: 0, top: 0, right: 800, bottom: 40, handles: handles(60, 0, 180, 1) });
   r.pointer('pointerdown', 0, 0); r.pointer('pointerup', 0, 0);
   r.longPress(105, 30); r.pointer('pointerup', 105, 30);
   assert.deepEqual(t.selection, { column: 6, row: 50, length: 92 }, 'the continuation selects the same link');

@@ -1,6 +1,8 @@
 package kim.jujin.dglc.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,9 +36,29 @@ import kim.jujin.dglc.core.t
  * A finished long-press selection in one pane. [target] is the bridge's input target when that
  * pane was the input pane, [url] a validated leading http(s) link, [bounds] the selection's
  * visible rows in terminal-view pixels, and [lineBreaks] whether its copied text has line breaks.
+ * [start] and [end] attach the drag handles; null while that end's row is off screen.
  */
 data class TerminalSelection(val pane: String, val target: String?, val url: String?, val bounds: Rect,
-    val lineBreaks: Boolean = false)
+    val lineBreaks: Boolean = false, val start: TerminalSelectionHandle? = null, val end: TerminalSelectionHandle? = null)
+
+/** Where a handle attaches in terminal-view pixels: the selection edge [x] and that row's [top] and [bottom]. */
+data class TerminalSelectionHandle(val x: Float, val top: Float, val bottom: Float)
+
+/** Handle drop size and its touch target, which extends away from the text. */
+internal val SelectionHandleSize = 22.dp
+internal val SelectionHandleTouch = 44.dp
+
+/**
+ * A text selection handle: a drop whose point touches the selection edge, toward the text.
+ * Placed in a [SelectionHandleTouch] box whose top corner at that edge is the attachment point.
+ */
+@Composable internal fun TerminalSelectionHandleMark(start: Boolean, color: Color) {
+    val shape = if (start) RoundedCornerShape(topStartPercent = 50, topEndPercent = 0, bottomEndPercent = 50, bottomStartPercent = 50)
+        else RoundedCornerShape(topStartPercent = 0, topEndPercent = 50, bottomEndPercent = 50, bottomStartPercent = 50)
+    Box(Modifier.size(SelectionHandleTouch), contentAlignment = if (start) Alignment.TopEnd else Alignment.TopStart) {
+        Box(Modifier.size(SelectionHandleSize).background(color, shape))
+    }
+}
 
 /**
  * Copy, paste and link actions for a terminal selection. It never takes focus, so the terminal
