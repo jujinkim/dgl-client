@@ -75,6 +75,9 @@ struct Tab {
     terminal: Entity<Terminal>,
     last_sequence: u64,
     session: Option<String>,
+    /// The tmux session name shown beside the host badge.
+    session_name: Option<String>,
+    /// The active window name and pane title shown on the tab's first line.
     session_title: Option<String>,
     pending_target: Option<session_tabs::PendingTarget>,
     created_session: Option<session_tabs::CreatedSession>,

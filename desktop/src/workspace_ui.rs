@@ -1039,12 +1039,34 @@ impl Desktop {
                                 .truncate()
                                 .text_size(px(14.))
                                 .line_height(px(18.))
-                                .child(hierarchy::tab_title(&tab.title())),
+                                .child(hierarchy::tab_title(&tab.heading())),
                         )
                         .child(
-                            self.info_badge(hierarchy::display_text(&tab.host.alias))
-                                .debug_selector(move || format!("tab-host-{tab_id}"))
-                                .max_w(px(120.)),
+                            div()
+                                .w_full()
+                                .min_w_0()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(
+                                    self.info_badge(hierarchy::display_text(&tab.host.alias))
+                                        .debug_selector(move || format!("tab-host-{tab_id}"))
+                                        .flex_shrink_0()
+                                        .max_w(px(120.)),
+                                )
+                                // Without a session title the first line already shows the name.
+                                .when(tab.session_heading().is_some(), |d| {
+                                    d.child(
+                                        div()
+                                            .debug_selector(move || format!("tab-session-{tab_id}"))
+                                            .min_w_0()
+                                            .truncate()
+                                            .text_color(rgb(p.muted))
+                                            .text_size(px(11.))
+                                            .line_height(px(14.))
+                                            .child(hierarchy::tab_title(&tab.name())),
+                                    )
+                                }),
                         )
                         .native_tooltip(label.clone())
                         .cursor_move()

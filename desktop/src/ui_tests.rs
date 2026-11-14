@@ -46,7 +46,7 @@ fn app_title_tracks_selected_tab_group_remote_metadata_and_last_close(cx: &mut T
     add_terminal(&view, ui);
     view.update(ui, |s, cx| {
         s.tabs[0].session = Some("$1".into());
-        s.tabs[0].session_title = Some("첫 세션 · 전체 제목".into());
+        s.tabs[0].set_session_parts(("첫 세션".into(), "전체 제목".into()));
         cx.notify();
     });
     redraw(ui);
@@ -56,7 +56,7 @@ fn app_title_tracks_selected_tab_group_remote_metadata_and_last_close(cx: &mut T
     add_terminal(&view, ui);
     view.update(ui, |s, cx| {
         s.tabs[1].session = Some("$2".into());
-        s.tabs[1].session_title = Some("두 번째 세션".into());
+        s.tabs[1].set_session_parts(("두 번째 세션".into(), String::new()));
         cx.notify();
     });
     redraw(ui);
@@ -1552,6 +1552,7 @@ fn add_terminal_at_port(
             terminal: terminal.clone(),
             last_sequence: 0,
             session: None,
+            session_name: None,
             session_title: None,
             pending_target: None,
             created_session: None,
@@ -2200,7 +2201,7 @@ fn split_emoji_buttons_stay_at_right_of_overflowing_tab_bar(cx: &mut TestAppCont
     view.update(cx, |s, _| {
         s.tabs[0].host.alias = "긴 호스트 이름".repeat(8);
         s.tabs[0].session = Some("$long-title".into());
-        s.tabs[0].session_title = Some("한".repeat(20) + " 제목 뒷부분");
+        s.tabs[0].set_session_parts(("긴 세션 이름".repeat(4), "한".repeat(20) + " 제목 뒷부분"));
     });
     cx.simulate_resize(gpui::size(px(640.), px(480.)));
     redraw(cx);
@@ -2210,7 +2211,28 @@ fn split_emoji_buttons_stay_at_right_of_overflowing_tab_bar(cx: &mut TestAppCont
     assert!(title.bottom() <= badge.top());
     assert!(title.top() >= header.top() && badge.bottom() <= header.bottom());
     assert!(badge.size.width <= px(120.));
-    assert!(view.read_with(cx, |s, _| s.tabs[0].label().ends_with("제목 뒷부분")));
+    // The session name sits in small type to the right of the host badge, below the title.
+    let name = cx.debug_bounds("tab-session-1").unwrap();
+    assert!(name.left() >= badge.right());
+    assert!(title.bottom() <= name.top() && name.bottom() <= header.bottom());
+    assert!(name.size.height < title.size.height);
+    view.read_with(cx, |s, _| {
+        assert_eq!(s.tabs[0].heading(), "한".repeat(20) + " 제목 뒷부분");
+        assert!(!s.tabs[0].heading().contains("긴 세션 이름"));
+        assert!(s.tabs[0].label().ends_with("제목 뒷부분"));
+    });
+    // Without a session title the name moves to the first line and is not repeated.
+    view.update(cx, |s, cx| {
+        s.tabs[0].set_session_parts(("이름만".into(), String::new()));
+        cx.notify();
+    });
+    redraw(cx);
+    // gpui keeps stale debug bounds across frames, so check the condition the row renders from.
+    view.read_with(cx, |s, _| {
+        assert_eq!(s.tabs[0].heading(), "이름만");
+        assert_eq!(s.tabs[0].session_heading(), None);
+        assert_eq!(s.tabs[0].title(), "이름만");
+    });
     let tools = cx.debug_bounds("group-tools-1").unwrap();
     let horizontal = cx.debug_bounds("split-1-Horizontal").unwrap();
     let vertical = cx.debug_bounds("split-1-Vertical").unwrap();

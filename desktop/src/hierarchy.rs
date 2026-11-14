@@ -94,13 +94,16 @@ pub fn session_name(state: &RemoteState, id: &str) -> String {
         .map(|s| named(&s.name, t("hierarchy.unnamed_session")))
         .unwrap_or_else(|| display_text(id))
 }
-pub fn session_tab_title(state: &RemoteState, session: &RemoteSession) -> String {
+/// A tab's session name and its title: the active window name and pane title, minus repeats.
+/// The title is empty when neither adds anything beyond the name.
+pub fn session_tab_parts(state: &RemoteState, session: &RemoteSession) -> (String, String) {
     let window = state
         .windows
         .iter()
         .find(|w| w.session == session.id && w.active);
     let pane = window.and_then(|w| state.panes.iter().find(|p| p.window == w.id && p.active));
-    let mut parts = vec![named(&session.name, t("hierarchy.unnamed_session"))];
+    let name = named(&session.name, t("hierarchy.unnamed_session"));
+    let mut parts: Vec<String> = Vec::new();
     for text in [
         window.map(|w| w.name.as_str()),
         pane.map(|p| p.title.as_str()),
@@ -109,11 +112,11 @@ pub fn session_tab_title(state: &RemoteState, session: &RemoteSession) -> String
     .flatten()
     {
         let text = display_text(text);
-        if !text.is_empty() && !parts.contains(&text) {
+        if !text.is_empty() && text != name && !parts.contains(&text) {
             parts.push(text);
         }
     }
-    parts.join(" · ")
+    (name, parts.join(" · "))
 }
 pub fn window_label(state: &RemoteState, window: &RemoteWindow) -> Label {
     let count = state.panes.iter().filter(|p| p.window == window.id).count();
@@ -323,7 +326,19 @@ mod tests {
         state.windows[1].active = false;
         state.panes[1].active = false;
         state.panes[3].active = false;
+        let session_tab_title = |state: &RemoteState, session: &RemoteSession| {
+            let (name, title) = session_tab_parts(state, session);
+            [name, title]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ")
+        };
         let title = |state: &RemoteState| session_tab_title(state, &state.sessions[0]);
+        assert_eq!(
+            session_tab_parts(&state, &state.sessions[0]),
+            ("개발".into(), "편집 · 작업".into())
+        );
         assert_eq!(title(&state), "개발 · 편집 · 작업");
         state.panes[2].title = "Hidden".into();
         state.panes[4].title = "Other session".into();

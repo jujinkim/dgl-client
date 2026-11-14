@@ -107,17 +107,39 @@ impl Tab {
             .iter()
             .find(|s| Some(&s.id) == self.session.as_ref())
         {
-            self.session_title = Some(hierarchy::session_tab_title(&state.remote, session));
+            self.set_session_parts(hierarchy::session_tab_parts(&state.remote, session));
         }
+    }
+    pub(super) fn set_session_parts(&mut self, (name, title): (String, String)) {
+        self.session_name = Some(name);
+        self.session_title = Some(title);
     }
     pub(super) fn label(&self) -> String {
         let alias = hierarchy::display_text(&self.host.alias);
         format!("{alias} · {}", self.title())
     }
-    pub(super) fn title(&self) -> String {
+    /// The session name, its ID before metadata arrives, or the selection prompt.
+    pub(super) fn name(&self) -> String {
         match self.session.as_deref() {
-            Some(id) => hierarchy::display_text(self.session_title.as_deref().unwrap_or(id)),
+            Some(id) => hierarchy::display_text(self.session_name.as_deref().unwrap_or(id)),
             None => t("common.select_session").into(),
+        }
+    }
+    /// The session's window and pane title; empty when it has none beyond the name.
+    pub(super) fn session_heading(&self) -> Option<String> {
+        self.session.as_ref()?;
+        let title = hierarchy::display_text(self.session_title.as_deref()?);
+        (!title.is_empty()).then_some(title)
+    }
+    /// The tab's first line: the session title, or the name when there is no title.
+    pub(super) fn heading(&self) -> String {
+        self.session_heading().unwrap_or_else(|| self.name())
+    }
+    /// The full title for the window title bar and tooltips: name, then session title.
+    pub(super) fn title(&self) -> String {
+        match self.session_heading() {
+            Some(title) => format!("{} · {title}", self.name()),
+            None => self.name(),
         }
     }
 }
@@ -204,6 +226,7 @@ impl Desktop {
             connection,
             terminal,
             session,
+            session_name: None,
             session_title: None,
             pending_target: None,
             created_session: None,
@@ -394,7 +417,7 @@ impl Desktop {
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id)
             && let Some(remote) = state.remote.sessions.iter().find(|s| s.id == session)
         {
-            tab.session_title = Some(hierarchy::session_tab_title(&state.remote, remote));
+            tab.set_session_parts(hierarchy::session_tab_parts(&state.remote, remote));
         }
         self.activate_tab(id);
         Some(id)
