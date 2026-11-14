@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LOCALES = ROOT / "locales"
 # Order shown in language pickers. Every language has the same keys as BASE.
-LANGUAGES = ["ko", "en"]
+LANGUAGES = ["ko", "en", "ja"]
 BASE = "en"
 RUST = ROOT / "crates/dgl-core/src/i18n_catalog.rs"
 KOTLIN = ROOT / "app/src/commonMain/kotlin/kim/jujin/dglc/core/UiCatalog.kt"

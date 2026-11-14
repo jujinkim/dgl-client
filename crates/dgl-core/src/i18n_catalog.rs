@@ -4,4 +4,5 @@ pub(crate) const BASE: &str = "en";
 pub(crate) const LOCALES: &[(&str, &str)] = &[
     ("ko", include_str!("../../../locales/ko.json")),
     ("en", include_str!("../../../locales/en.json")),
+    ("ja", include_str!("../../../locales/ja.json")),
 ];

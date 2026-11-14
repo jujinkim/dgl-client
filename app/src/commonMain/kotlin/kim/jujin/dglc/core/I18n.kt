@@ -15,6 +15,7 @@ class UiLanguage private constructor(val code: String) {
         fun of(code: String): UiLanguage? = all.firstOrNull { it.code == code }
         val Korean: UiLanguage = of("ko")!!
         val English: UiLanguage = of("en")!!
+        val Japanese: UiLanguage = of("ja")!!
         val base: UiLanguage = of(UiCatalog.BASE)!!
 
         /** Explicit supported preferences win; anything else follows the system locale, then the base language. */

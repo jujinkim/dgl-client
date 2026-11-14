@@ -29,6 +29,9 @@ impl Language {
     pub fn english() -> Self {
         Self::known("en")
     }
+    pub fn japanese() -> Self {
+        Self::known("ja")
+    }
     pub fn base() -> Self {
         Self::known(catalog::BASE)
     }
@@ -139,14 +142,19 @@ mod tests {
             assert_eq!(Language::resolve("ko", tag), korean);
         }
         assert_eq!(Language::resolve("future-language", "ko-KR"), korean);
+        for tag in ["ja", "ja-JP", "ja_JP.UTF-8"] {
+            assert_eq!(Language::resolve("system", tag), Language::japanese());
+        }
+        assert_eq!(Language::resolve("ja", "ko-KR"), Language::japanese());
         assert_eq!(Language::base(), english);
     }
     #[test]
     fn every_language_is_listed_with_its_own_name() {
         let codes: Vec<_> = Language::all().map(Language::code).collect();
-        assert!(codes.contains(&"ko") && codes.contains(&"en"));
+        assert_eq!(codes, ["ko", "en", "ja"]);
         assert_eq!(Language::korean().native_name(), "한국어");
         assert_eq!(Language::english().native_name(), "English");
+        assert_eq!(Language::japanese().native_name(), "日本語");
         for language in Language::all() {
             assert_eq!(Language::from_code(language.code()), Some(language));
         }
@@ -200,6 +208,13 @@ mod tests {
                 std::slice::from_ref(&name)
             ),
             format!("{name} 삭제")
+        );
+        assert_eq!(
+            interpolate(
+                text_in(Language::japanese(), key),
+                std::slice::from_ref(&name)
+            ),
+            format!("{name} を削除")
         );
         assert_eq!(
             interpolate("{1} / {0} / {1}", &["a".into(), name.clone()]),

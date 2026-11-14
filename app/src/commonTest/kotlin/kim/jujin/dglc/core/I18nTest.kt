@@ -13,12 +13,15 @@ class I18nTest {
             assertEquals(UiLanguage.Korean, UiLanguage.resolve("ko", tag))
         }
         assertEquals(UiLanguage.Korean, UiLanguage.resolve("future-language", "ko-KR"))
+        for (tag in listOf("ja", "ja-JP", "ja_JP.UTF-8")) assertEquals(UiLanguage.Japanese, UiLanguage.resolve("system", tag))
+        assertEquals(UiLanguage.Japanese, UiLanguage.resolve("ja", "ko-KR"))
         assertEquals(UiLanguage.English, UiLanguage.base)
     }
     @Test fun everyLanguageIsListedWithItsOwnNameAndSharesKeys() {
-        assertEquals(UiCatalog.languages, UiLanguage.all.map { it.code })
+        assertEquals(listOf("ko", "en", "ja"), UiLanguage.all.map { it.code })
         assertEquals("한국어", UiLanguage.Korean.nativeName)
         assertEquals("English", UiLanguage.English.nativeName)
+        assertEquals("日本語", UiLanguage.Japanese.nativeName)
         val base = UiCatalog.messages(UiCatalog.BASE)!!
         for (language in UiLanguage.all) {
             assertSame(language, UiLanguage.of(language.code))
@@ -33,6 +36,7 @@ class I18nTest {
         val name = "한글 {1} \$HOME 😀"
         assertEquals("Delete $name", interpolate(textIn(UiLanguage.English, "common.delete_named"), listOf(name)))
         assertEquals("$name 삭제", interpolate(textIn(UiLanguage.Korean, "common.delete_named"), listOf(name)))
+        assertEquals("$name を削除", interpolate(textIn(UiLanguage.Japanese, "common.delete_named"), listOf(name)))
         assertEquals("$name / a / $name", interpolate("{1} / {0} / {1}", listOf("a", name)))
     }
     @Test fun switchingLanguageRefreshesLabelsAndKeepsInputLiteral() {
