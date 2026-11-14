@@ -1,6 +1,12 @@
 //! psmux version contract is independent of tmux's supported releases.
-pub fn supported(version: &str) -> bool {
-    let Some(version) = version.trim().strip_prefix("psmux ") else {
+/// `psmux -V` prints a tmux-compatibility line before its own, e.g.
+/// `tmux 3.4.0` then `psmux 3.4.0 (20aa1d7 2026-10-13)`.
+pub fn supported(output: &str) -> bool {
+    let Some(version) = output
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("psmux "))
+        .and_then(|v| v.split_whitespace().next())
+    else {
         return false;
     };
     let parts: Vec<_> = version.trim_start_matches('v').split('.').collect();
@@ -212,12 +218,16 @@ mod tests {
     #[test]
     fn version_is_not_a_tmux_version_and_rejects_unverified_protocols() {
         assert!(supported("psmux 3.4.0"));
+        assert!(supported("tmux 3.4.0\r\npsmux 3.4.0 (20aa1d7 2026-10-13)\r\n"));
+        assert!(supported("psmux 3.5.1 (abc1234 2026-11-01)\n"));
         for value in [
             "tmux 3.7c",
             "psmux 3.3.9",
             "psmux 4.0.0",
             "psmux 3.4",
             "psmux 3.4.x",
+            "tmux 3.4.0",
+            "tmux 3.4.0\npsmux 3.3.9 (abc1234 2026-01-01)",
         ] {
             assert!(!supported(value));
         }

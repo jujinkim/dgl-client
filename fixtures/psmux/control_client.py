@@ -15,7 +15,8 @@ log(args)
 def target():
     return args[args.index('-t') + 1] if '-t' in args else '$1'
 if args == ['-V']:
-    print('psmux 3.4.0')
+    print('tmux 3.4.0')
+    print('psmux 3.4.0 (20aa1d7 2026-10-13)')
 elif args == ['list-commands']:
     print('capture-pane refresh-client send-keys list-sessions')
 elif args[0] == 'list-sessions':
