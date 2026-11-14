@@ -13,7 +13,7 @@ object RetryPolicy {
     }
 }
 class ClientFailure(val kind: Failure, val safeMessage: String, val diagnosticCode: String? = null) : Exception(safeMessage)
-class ChangedHostKey : Exception(t("저장된 호스트키와 다릅니다. 연결을 차단했습니다."))
+class ChangedHostKey : Exception(t("connection.host_key_mismatch"))
 
 interface SshTransport {
     val tmuxDiagnostics: TmuxDiagnostics get() = TmuxDiagnostics()

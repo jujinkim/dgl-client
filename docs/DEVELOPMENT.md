@@ -81,12 +81,22 @@ Android 일반 오류의 `notice` 대화상자는 별도 경로입니다.
 
 ### UI 번역
 
-`locales/en.json`은 한국어 원문 키와 영어 번역의 공통 목록입니다. 문구와 번호 자리표시자(`{0}` 등)를
-추가·수정한 뒤 `python3 scripts/generate_locales.py`로 Kotlin 목록을 갱신합니다.
-Rust는 같은 JSON을 바이너리에 포함합니다. `--check`는 누락된 키·번역·자리표시자와 생성 파일 일치를 검사합니다.
-표시 문구는 `t`, 인수가 있는 문구는 `tr!`(Rust)/`tr`(Kotlin)를 사용하며 완성된 사용자 문자열에 번역을 적용하지 않습니다.
-언어 선택은 `preferences.language`의 `system|ko|en`이며 예전 설정과 알 수 없는 값은 `system`으로 해석합니다.
-tmux 명령·에러 코드·원격 터미널 바이트는 언어와 무관하게 유지합니다.
+UI 문구는 `locales/<언어>.json`의 `{"영역.의미": "문구"}` 목록이며 Rust·Kotlin이 함께 씁니다.
+`en.json`이 전체 키의 기준이고, 나머지 언어도 같은 키를 모두 가져야 합니다.
+키는 `host.invalid_port`처럼 소문자·숫자·`_`를 점으로 구분하고, 첫 부분은 화면 영역(`host`, `sync`, `workspace`,
+여러 화면이 함께 쓰면 `common`)입니다. 각 파일의 `language.name`은 언어 선택 화면에 쓰는 자기 언어 이름입니다.
+
+표시 문구는 `t("키")`, 번호 자리표시자(`{0}` 등)가 있는 문구는 `tr!`(Rust)/`tr`(Kotlin)를 사용합니다.
+상태 문구를 저장했다가 화면에서 번역할 때도 키를 저장합니다. 완성된 사용자 문자열에는 번역을 적용하지 않습니다.
+찾는 순서는 선택 언어 → 영어 → 키 자체입니다. 엔진 단독 검사에서는 `configure` 전 기본값이 한국어입니다.
+
+문구를 추가·수정한 뒤 `python3 scripts/generate_locales.py`로 `crates/dgl-core/src/i18n_catalog.rs`와
+`app/src/commonMain/kotlin/kim/jujin/dglc/core/UiCatalog.kt`를 다시 생성합니다. `--check`는 키 형식·정렬,
+언어별 키 누락·추가·빈 문구·자리표시자, 소스의 없는 키와 쓰지 않는 키, 생성 파일 일치를 검사합니다.
+언어를 추가할 때는 `locales/<코드>.json`을 만들고 생성기의 `LANGUAGES`에 코드를 넣은 뒤 생성기를 실행합니다.
+
+언어 선택은 `preferences.language`의 `system` 또는 지원 언어 코드입니다. 예전 설정과 알 수 없는 값은 `system`으로 해석하고,
+시스템 언어가 지원 목록에 없으면 영어를 씁니다. tmux 명령·에러 코드·원격 터미널 바이트는 언어와 무관하게 유지합니다.
 
 ### UI 아이콘
 

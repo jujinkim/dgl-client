@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 // Keep app-owned source copy until rendering, so existing status follows language changes.
 data class CloudSyncStatus(
     val connected: Boolean = false, val busy: Boolean = false,
-    val location: String = "", val message: String = "연결 안 됨",
+    val location: String = "", val message: String = "common.disconnected",
     val pendingImportCount: Int? = null,
     val conflicts: List<SyncConflict> = emptyList(),
 )

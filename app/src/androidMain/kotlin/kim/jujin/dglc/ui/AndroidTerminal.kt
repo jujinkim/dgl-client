@@ -271,7 +271,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             terminal.view.setOnTouchListener(null)
             terminal.view.onFocusChangeListener = null
             focus.request = {}; focus.keyboard = {}; focus.shortcut = {}; focus.imeVisible = false
-            focus.preparePaste = { _ -> error(t("터미널이 닫혔습니다.")) }
+            focus.preparePaste = { _ -> error(t("terminal.closed")) }
         }
     }
     DisposableEffect(terminal) {
@@ -329,8 +329,8 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             },
                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).height(28.dp)
                     .focusProperties { canFocus = false }.semantics {
-                        contentDescription = t("세션 글자 크기 초기화")
-                        stateDescription = tr("현재 글자 크기: {0}", size)
+                        contentDescription = t("terminal.reset_session_font_size")
+                        stateDescription = tr("terminal.current_font_size", size)
                     }, shape = androidx.compose.foundation.shape.CircleShape) {
                 Row(Modifier.padding(horizontal = 10.dp).clearAndSetSemantics {},
                     horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -342,7 +342,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
         }
         if (previewing) {
             if (previewSlow) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .25f)), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(28.dp).semantics { contentDescription = t("터미널 복원 중…") },
+                CircularProgressIndicator(Modifier.size(28.dp).semantics { contentDescription = t("terminal.restoring") },
                     color = Color.White, strokeWidth = 3.dp)
             }
         } else if (presenting) {
@@ -375,7 +375,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     fun copySelection(transform: (String) -> String) = scope.launch {
         val text = terminal.selectedText()?.let(transform)
         dismiss()
-        if (text.isNullOrEmpty()) notice(t("복사할 텍스트가 없습니다.")) else clip(text)
+        if (text.isNullOrEmpty()) notice(t("terminal.nothing_to_copy")) else clip(text)
     }
     // Paste only reaches the pane that was the input target when the menu opened.
     val pasteTarget = remember(selection) {
@@ -404,7 +404,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                 dismiss()
                 if (url != null) try {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
-                } catch (_: ActivityNotFoundException) { notice(t("링크를 열 수 있는 앱이 없습니다.")) }
+                } catch (_: ActivityNotFoundException) { notice(t("terminal.no_link_handler")) }
             },
             copyLink = { selection.url?.let(::clip); dismiss() })
     }
@@ -722,11 +722,11 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     suspend fun preparePaste(text: String): ByteArray = withTimeout(15_000) {
         ready.await()
         withContext(Dispatchers.Main.immediate) {
-            check(!closed) { t("터미널이 닫혔습니다.") }
+            check(!closed) { t("terminal.closed") }
             val result = CompletableDeferred<ByteArray>()
             view.evaluateJavascript("window.preparePaste(${JSONObject.quote(text)})") { raw ->
                 runCatching {
-                    check(raw != null && raw != "null") { t("입력은 붙여넣기 제어 문자를 포함하여 UTF-8 64 KiB 이하여야 합니다.") }
+                    check(raw != null && raw != "null") { t("input.too_large_with_paste") }
                     org.json.JSONTokener(raw).nextValue().let { it as String }.toByteArray(Charsets.UTF_8)
                 }.fold({ result.complete(it) }, { result.completeExceptionally(it) })
             }
@@ -853,10 +853,10 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                 val bytes = it.readNBytes(131073)
                 require(bytes.size in 32..131072)
                 onKey(bytes.toString(Charsets.UTF_8))
-            } ?: onError(t("파일을 열 수 없습니다."))
-        } catch (_: Exception) { onError(t("개인키를 읽지 못했습니다. 최대 크기는 128 KiB입니다.")) }
+            } ?: onError(t("terminal.file_open_failed"))
+        } catch (_: Exception) { onError(t("host.key_file_read_failed_size")) }
     }
-    BorderedButton({ launcher.launch(arrayOf("*/*")) }) { Text(t("개인키 파일 가져오기")) }
+    BorderedButton({ launcher.launch(arrayOf("*/*")) }) { Text(t("host.import_private_key_file")) }
 }
 @Composable actual fun rememberPublicKeyCopier(): (String) -> Unit {
     val context = LocalContext.current.applicationContext

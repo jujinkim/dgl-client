@@ -49,7 +49,7 @@ class PreferencesTest {
             assertEquals("Disconnected", t(status.message))
             I18n.configure("ko", "en")
             assertEquals("연결 안 됨", t(status.message))
-        } finally { I18n.configure(if (previous == UiLanguage.Korean) "ko" else "en", "") }
+        } finally { I18n.configure(previous.code, "") }
         val directory = Files.createTempDirectory("dgl-language-").toFile()
         try {
             directory.resolve("settings.json").writeText("""{"preferences":{"fontSize":19}}""")

@@ -160,14 +160,14 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                 val client = selected
                                 val actions = buildList<Pair<String, () -> Unit>> {
                                     if (client != null) {
-                                        add(t(if (local.preferences.mobilePaneToolbarVisible) "패널 도구 접기" else "패널 도구 펼치기") to {
+                                        add(t(if (local.preferences.mobilePaneToolbarVisible) "input.collapse_pane_tools" else "input.expand_pane_tools") to {
                                             model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
                                         })
                                         addAll(hostConnectionActions(client, model))
                                     }
-                                    add(t("설정") to { settings = SettingsPage.Main })
+                                    add(t("common.settings") to { settings = SettingsPage.Main })
                                 }
-                                MobileHeaderMenu(client?.let { tr("현재 호스트 {0} 연결 메뉴", it.host.alias) } ?: t("기타 메뉴"), actions)
+                                MobileHeaderMenu(client?.let { tr("mobile.connection_menu", it.host.alias) } ?: t("common.more_options"), actions)
                             }
                         }, notification = {
                             MobileNotificationButton(agentNotices.count { !it.read }, {
@@ -187,37 +187,37 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                         if (wide || selected == null || explorer) {
                             Column(if (wide) Modifier.width(272.dp).fillMaxHeight() else Modifier.fillMaxSize()) {
                                 if (wide) {
-                                    WorkspaceSectionHeader(t("호스트"), leading = { MobileAppIcon(); Spacer(Modifier.width(8.dp)) }) {
-                                        BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("+ 호스트")) }
+                                    WorkspaceSectionHeader(t("common.hosts"), leading = { MobileAppIcon(); Spacer(Modifier.width(8.dp)) }) {
+                                        BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("host.add_short")) }
                                     }
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 } else Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(t("연결"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                                    BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("+ 호스트")) }
+                                    Text(t("settings.connection"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                    BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("host.add_short")) }
                                 }
                                 LazyColumn(Modifier.weight(if (wide) .45f else 1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                                    if (local.hosts.isEmpty()) item { Text(t("SSH 호스트를 추가하여 시작하세요.\n원격 서버에는 SSH와 tmux만 필요합니다."), Modifier.padding(12.dp)) }
+                                    if (local.hosts.isEmpty()) item { Text(t("host.empty_state"), Modifier.padding(12.dp)) }
                                     items(local.hosts.sortedWith(compareByDescending<HostProfile> { it.favorite }.thenByDescending { it.lastConnected }), key = { it.id }) { host ->
                                         Column(Modifier.fillMaxWidth()) {
                                             Column(Modifier.padding(12.dp)) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    if (host.favorite) Icon(UiIcons.star, t("즐겨찾기"), Modifier.size(20.dp))
+                                                    if (host.favorite) Icon(UiIcons.star, t("host.favorite"), Modifier.size(20.dp))
                                                     Text(host.alias, style = MaterialTheme.typography.titleMedium)
                                                 }
                                                 Text("${host.username}@${host.hostname}:${host.port}", style = MaterialTheme.typography.bodySmall)
-                                                if (host.lastConnected != 0L) Text(t("최근 연결: ") + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
+                                                if (host.lastConnected != 0L) Text(t("host.last_connected") + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     BorderedButton({
                                                         try {
                                                             if (model.credentials.read(host.credentialRef) == null) {
                                                                 model.hostEditing = true
                                                                 edit = host
-                                                                error = t("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요.")
+                                                                error = t("host.credentials_hint")
                                                             } else { model.open(host); explorer = false }
-                                                        } catch (_: Exception) { error = t("보호 저장소를 열지 못했습니다.") }
-                                                    }) { Text(t("연결")) }
+                                                        } catch (_: Exception) { error = t("app.secure_storage_open_failed") }
+                                                    }) { Text(t("settings.connection")) }
                                                     Spacer(Modifier.weight(1f))
-                                                    TreeMenu(tr("{0} 메뉴", host.alias), listOf(t("편집") to { model.hostEditing = true; edit = host }, t("에이전트 상태 연동") to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = t("호스트에 먼저 연결하세요.") } }, t("삭제…") to { model.hostEditing = true; deletion = host }))
+                                                    TreeMenu(tr("common.menu_for", host.alias), listOf(t("common.edit") to { model.hostEditing = true; edit = host }, t("agent.integration") to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = t("workspace.connect_host_first") } }, t("workspace.delete_ellipsis") to { model.hostEditing = true; deletion = host }))
                                                 }
                                             }
                                             HorizontalDivider()
@@ -249,9 +249,9 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                 }
                                 else Column(Modifier.align(Alignment.Center).padding(24.dp)) {
                                     Text("Keep the CLI.", style = MaterialTheme.typography.headlineMedium)
-                                    Text(t("세션은 서버에, 작업은 그대로."), style = MaterialTheme.typography.bodyLarge)
+                                    Text(t("app.tagline"), style = MaterialTheme.typography.bodyLarge)
                                     Spacer(Modifier.height(12.dp))
-                                    Text(t("호스트에 연결하고 기존 tmux 세션을 선택하세요."))
+                                    Text(t("workspace.connect_hint"))
                                 }
                             }
                         }
@@ -267,24 +267,24 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                     }, status?.message?.takeIf { status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) }).filter { it.isNotEmpty() }.distinct().joinToString(" · "),
                         Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                     selected?.let { HostConnectionMenu(it, model) }
-                    BorderedButton({ notifications = true }) { Text(tr("알림 {0}", agentNotices.count { !it.read })) }
-                    BorderedButton({ settings = SettingsPage.Main }) { Text(t("설정")) }
+                    BorderedButton({ notifications = true }) { Text(tr("mobile.notifications_count", agentNotices.count { !it.read })) }
+                    BorderedButton({ settings = SettingsPage.Main }) { Text(t("common.settings")) }
                 }
             }
         if (selected == null || explorer || settings != null || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
         agentDetails?.let { (client, pane) -> AgentDetails(client, model, pane) { agentDetails = null } }
         if (notifications && !mobileLayout) AgentNotifications(model) { notifications = false }
-        agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ model.agentNavigationError.value = null }) { Text(t("닫기")) } }) }
+        agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ model.agentNavigationError.value = null }) { Text(t("common.close")) } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
         settings?.let { SettingsDialog(model, mobileLayout, it) { settings = null } }
-        deletion?.let { host -> ConfirmDialog(t("호스트 삭제"), tr("{0}의 로컬 설정과 저장된 자격 증명을 삭제합니다.", host.alias), {
+        deletion?.let { host -> ConfirmDialog(t("host.delete"), tr("host.delete_confirm", host.alias), {
             try {
                 model.credentials.delete(host.credentialRef)
                 model.update(local.copy(hosts = local.hosts.filter { it.id != host.id }))
                 deletion = null
-            } catch (_: Exception) { error = t("자격 증명을 삭제하지 못했습니다.") }
+            } catch (_: Exception) { error = t("host.delete_credentials_failed") }
         }, { deletion = null }) }
-        error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text(t("오류")) }, text = { Text(message) }, confirmButton = { BorderedButton({ error = null }) { Text(t("닫기")) } }) }
+        error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text(t("common.error")) }, text = { Text(message) }, confirmButton = { BorderedButton({ error = null }) { Text(t("common.close")) } }) }
           }
           }
         }
@@ -355,14 +355,14 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     val navigationContent: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(t("세션"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                TextButton({ namePrompt = NamePrompt(t("세션 만들기")) { model.createSession(client, it) } }, enabled = canBrowse, modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
-                TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), tooltip = { PlainTooltip { Text(t("세션 새로고침")) } }, state = rememberTooltipState()) {
-                    IconButton({ client.refresh() }, enabled = canBrowse && !refreshing, modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { UiGlyph(UiIcons.refresh) }
+                Text(t("common.sessions"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                TextButton({ namePrompt = NamePrompt(t("workspace.create_session")) { model.createSession(client, it) } }, enabled = canBrowse, modifier = Modifier.semantics { contentDescription = t("workspace.create_session") }) { UiGlyph(UiIcons.plus) }
+                TooltipBox(positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(), tooltip = { PlainTooltip { Text(t("workspace.refresh_sessions")) } }, state = rememberTooltipState()) {
+                    IconButton({ client.refresh() }, enabled = canBrowse && !refreshing, modifier = Modifier.semantics { contentDescription = t("workspace.refresh_sessions") }) { UiGlyph(UiIcons.refresh) }
                 }
             }
-            if (status.phase == Phase.Shell) Text(t("일반 SSH · tmux 목록 확인 불가"), Modifier.padding(16.dp))
-            else if (remote.sessions.isEmpty()) Text(if (canBrowse) t("세션 없음 · + 버튼으로 생성") else t("목록 대기 중"), Modifier.padding(16.dp))
+            if (status.phase == Phase.Shell) Text(t("workspace.plain_ssh_no_tmux_list"), Modifier.padding(16.dp))
+            else if (remote.sessions.isEmpty()) Text(if (canBrowse) t("workspace.no_sessions_create_one") else t("workspace.waiting_list"), Modifier.padding(16.dp))
             hierarchy.forEach { row ->
                 key(row.key) { HierarchyEntry(row, 0, client, remote, session, pane, expanded, canBrowse, agentNotices, showAgents,
                     { namePrompt = it }, { title, action -> deletion = title to action },
@@ -381,18 +381,18 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             }
         }
         if (mobileLayout && preferences.mobilePaneToolbarVisible) TmuxPaneToolbar(client, { terminalFocus.request() }) { target ->
-            deletion = tr("패널 {0}", remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: t("제목 미확인")) to { client.manage(TmuxCommand.killPane(target)) }
+            deletion = tr("common.pane_number", remote.panes.firstOrNull { it.id == target }?.treeLabel()?.title ?: t("workspace.title_unknown")) to { client.manage(TmuxCommand.killPane(target)) }
         }
         if (!status.retryExhausted && (status.canRetryNow || status.canStopRetrying)) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (status.canRetryNow) BorderedButton({ client.retryNow() }) { Text(t("새로고침 재시도")) }
-                if (status.canStopRetrying) BorderedButton({ client.stopRetrying() }) { Text(t("재시도 정지")) }
+                if (status.canRetryNow) BorderedButton({ client.retryNow() }) { Text(t("workspace.retry_refresh")) }
+                if (status.canStopRetrying) BorderedButton({ client.stopRetrying() }) { Text(t("workspace.stop_retrying")) }
             }
         }
         Box(Modifier.fillMaxWidth().height(4.dp)) {
             if (status.showsConnectionProgress) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        if (currentPane?.mode?.isNotBlank() == true) Text(tr("tmux {0} · 아래 터미널은 일반 패널 출력입니다. 로컬 스크롤·선택을 사용할 수 있습니다.", currentPane.mode), Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
+        if (currentPane?.mode?.isNotBlank() == true) Text(tr("workspace.tmux_scroll_note", currentPane.mode), Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall)
         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xff11151b))) {
             CompositionLocalProvider(LocalTerminalFocus provides terminalFocus) {
                 PlatformTerminal(client, preferences, Modifier.fillMaxSize())
@@ -401,9 +401,9 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                 Surface(Modifier.align(Alignment.Center).padding(12.dp), shape = MaterialTheme.shapes.medium,
                     color = MaterialTheme.colorScheme.surfaceContainer) {
                     Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(t("재접속 실패"), style = MaterialTheme.typography.titleMedium)
+                        Text(t("workspace.reconnection_failed"), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
-                        Button({ client.retryNow() }) { Text(t("다시 재접속 시도")) }
+                        Button({ client.retryNow() }) { Text(t("workspace.try_reconnecting_again")) }
                     }
                 }
             }
@@ -423,35 +423,35 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         // A weighted child needs a finite height before the sheet computes its anchors.
         // Keep the return action visible when the keyboard or landscape reduces the space.
         Column(Modifier.fillMaxWidth().heightIn(max = 600.dp)) {
-            Text(t("tmux 세션 · 창"), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
+            Text(t("workspace.tmux_sessions_windows"), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
             navigationContent(Modifier.weight(1f, fill = false))
-            BorderedButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text(t("터미널로 돌아가기")) }
+            BorderedButton({ navigation = false }, modifier = Modifier.fillMaxWidth()) { Text(t("mobile.return_to_terminal")) }
         }
     }
     trust?.let { request ->
-        AlertDialog(onDismissRequest = { client.trustRequest.value = null; client.disconnect() }, title = { Text(t("처음 연결하는 서버")) },
-            text = { Column { Text(request.endpoint); Spacer(Modifier.height(8.dp)); SelectionContainer { Text(request.fingerprint) }; Spacer(Modifier.height(8.dp)); Text(t("서버 관리자에게 받은 SHA-256 지문과 일치하는지 확인하세요.")) } },
-            confirmButton = { BorderedButton({ client.trust() }) { Text(t("신뢰하고 연결")) } }, dismissButton = { BorderedButton({ client.trustRequest.value = null; client.disconnect() }) { Text(t("취소")) } })
+        AlertDialog(onDismissRequest = { client.trustRequest.value = null; client.disconnect() }, title = { Text(t("host.first_connection")) },
+            text = { Column { Text(request.endpoint); Spacer(Modifier.height(8.dp)); SelectionContainer { Text(request.fingerprint) }; Spacer(Modifier.height(8.dp)); Text(t("host.compare_fingerprint")) } },
+            confirmButton = { BorderedButton({ client.trust() }) { Text(t("host.trust_and_connect")) } }, dismissButton = { BorderedButton({ client.trustRequest.value = null; client.disconnect() }) { Text(t("common.cancel")) } })
     }
     namePrompt?.let { p -> NameDialog(p.title, { p.accept(it); namePrompt = null }, { namePrompt = null }, p.initial) }
     if (tmuxDetails && status.phase == Phase.Shell) tmuxProblem?.let {
         TmuxFailureDialog(client.host, it) { tmuxDetails = false }
     }
-    deletion?.let { (target, action) -> ConfirmDialog(tr("{0} 삭제", target), t("이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?"), { action(); deletion = null }, { deletion = null }) }
-    notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ client.notice.value = null }) { Text(t("닫기")) } }) }
+    deletion?.let { (target, action) -> ConfirmDialog(tr("common.delete_named", target), t("workspace.delete_remote_confirm"), { action(); deletion = null }, { deletion = null }) }
+    notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ client.notice.value = null }) { Text(t("common.close")) } }) }
 }
 
 @Composable private fun hostConnectionActions(client: ClientConnection, model: AppModel): List<Pair<String, () -> Unit>> {
     val status by client.status.collectAsState()
     val hostId = client.host.id
     return buildList {
-        if (!status.canRetryNow) add(t("재접속") to { model.reconnectSelected(client, hostId) })
-        add(t("연결 종료") to { model.disconnectSelected(client, hostId) })
+        if (!status.canRetryNow) add(t("workspace.reconnect") to { model.reconnectSelected(client, hostId) })
+        add(t("common.disconnect") to { model.disconnectSelected(client, hostId) })
     }
 }
 
 @Composable private fun HostConnectionMenu(client: ClientConnection, model: AppModel) {
-    TreeMenu(tr("현재 호스트 {0} 연결 메뉴", client.host.alias), hostConnectionActions(client, model))
+    TreeMenu(tr("mobile.connection_menu", client.host.alias), hostConnectionActions(client, model))
 }
 
 @Composable internal fun HierarchyEntry(row: HierarchyRow, depth: Int, client: ClientConnection, remote: RemoteState,
@@ -460,23 +460,23 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     selectTarget: (String, String?, String?) -> Unit = client::selectTarget) {
     val actions = buildList<Pair<String, () -> Unit>> {
         if (row.kind == TreeKind.Session) {
-            add(t("창 만들기…") to { prompt(NamePrompt(t("창 만들기")) { client.manage(TmuxCommand.newWindow(row.session, it)) }) })
-            add(t("세션 이름 변경…") to { prompt(NamePrompt(t("세션 이름 변경"), remote.sessions.firstOrNull { it.id == row.session }?.name.orEmpty()) {
+            add(t("workspace.create_window_ellipsis") to { prompt(NamePrompt(t("workspace.create_window")) { client.manage(TmuxCommand.newWindow(row.session, it)) }) })
+            add(t("workspace.rename_session_ellipsis") to { prompt(NamePrompt(t("workspace.rename_session"), remote.sessions.firstOrNull { it.id == row.session }?.name.orEmpty()) {
                 client.manage(TmuxCommand.renameSession(row.session, it)) }) })
-            add(t("세션 삭제…") to { delete(tr("세션 {0}", row.label.title)) { client.manage(TmuxCommand.killSession(row.session)) } })
+            add(t("workspace.delete_session") to { delete(tr("common.session_number", row.label.title)) { client.manage(TmuxCommand.killSession(row.session)) } })
         }
         if (row.kind != TreeKind.Pane) row.window?.let { w ->
-            add(t("창 이름 변경…") to { prompt(NamePrompt(t("창 이름 변경"), remote.windows.firstOrNull { it.id == w }?.name.orEmpty()) {
+            add(t("workspace.rename_window_ellipsis") to { prompt(NamePrompt(t("workspace.rename_window"), remote.windows.firstOrNull { it.id == w }?.name.orEmpty()) {
                 client.manage(TmuxCommand.renameWindow(w, it)) }) })
-            add(t("창 삭제…") to { delete(t("창")) { client.manage(TmuxCommand.killWindow(w)) } })
+            add(t("workspace.delete_window") to { delete(t("common.window")) { client.manage(TmuxCommand.killWindow(w)) } })
         }
         remote.panes.firstOrNull { it.window == row.window && it.active }?.id?.let { p ->
-            listOf(true to t("패널 좌우 나누기"), false to t("패널 상하 나누기")).forEach { (horizontal, label) ->
+            listOf(true to t("workspace.split_pane_horizontally"), false to t("workspace.split_pane_vertically")).forEach { (horizontal, label) ->
                 add(label to { client.selectTarget(row.session, row.window, p); client.manage(TmuxCommand.split(p, horizontal)) })
             }
-            add(t("패널 제목 변경…") to { prompt(NamePrompt(t("패널 제목 변경"), remote.panes.firstOrNull { it.id == p }?.title.orEmpty()) {
+            add(t("workspace.rename_pane_ellipsis") to { prompt(NamePrompt(t("workspace.rename_pane"), remote.panes.firstOrNull { it.id == p }?.title.orEmpty()) {
                 client.manage(TmuxCommand.renamePane(p, it)) }) })
-            add(t("패널 삭제…") to { delete(tr("패널 {0}", row.label.title)) { client.manage(TmuxCommand.killPane(p)) } })
+            add(t("workspace.delete_pane") to { delete(tr("common.pane_number", row.label.title)) { client.manage(TmuxCommand.killPane(p)) } })
         }
     }
     TreeRow(row.label, depth, row.selected(remote, session, pane), if (row.children.isEmpty()) null else expanded[row.key] == true,
@@ -534,8 +534,8 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                 }
             }
         }
-        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("{0} {1}", label.fullText, if (expanded) t("접기") else t("펼치기")) }) { UiGlyph(if (expanded) UiIcons.chevronDown else UiIcons.chevronRight) }
-        TreeMenu(tr("{0} 메뉴", label.fullText), actions, enabled)
+        if (expanded != null) IconButton(toggle, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("common.label_state", label.fullText, if (expanded) t("common.collapse") else t("common.expand")) }) { UiGlyph(if (expanded) UiIcons.chevronDown else UiIcons.chevronRight) }
+        TreeMenu(tr("common.menu_for", label.fullText), actions, enabled)
         status()
     }
 }
@@ -554,43 +554,43 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     var generatedPublic by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val copyPublicKey = rememberPublicKeyCopier()
-    EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text(if (original == null) t("SSH 호스트 추가") else t("호스트 편집")) }, text = {
+    EditorDialog(mobileLayout, onDismissRequest = dismiss, title = { Text(if (original == null) t("host.add") else t("host.edit")) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            OutlinedTextField(alias, { alias = it }, label = { Text(t("별칭")) }, singleLine = true)
-            OutlinedTextField(hostname, { hostname = it }, label = { Text(t("호스트 / IP")) }, singleLine = true)
+            OutlinedTextField(alias, { alias = it }, label = { Text(t("host.alias")) }, singleLine = true)
+            OutlinedTextField(hostname, { hostname = it }, label = { Text(t("host.host_ip")) }, singleLine = true)
             Row {
-                OutlinedTextField(port, { port = it }, label = { Text(t("포트")) }, singleLine = true, modifier = Modifier.width(90.dp))
+                OutlinedTextField(port, { port = it }, label = { Text(t("host.port")) }, singleLine = true, modifier = Modifier.width(90.dp))
                 Spacer(Modifier.width(8.dp))
-                OutlinedTextField(username, { username = it }, label = { Text(t("사용자 이름")) }, singleLine = true)
+                OutlinedTextField(username, { username = it }, label = { Text(t("host.username")) }, singleLine = true)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) { AccentCheckbox(favorite, { favorite = it }); Text(t("즐겨찾기")) }
-            Row { FilterChip(auth == AuthKind.Password, { auth = AuthKind.Password }, label = { Text(t("비밀번호")) }); Spacer(Modifier.width(8.dp)); FilterChip(auth == AuthKind.PrivateKey, { auth = AuthKind.PrivateKey }, label = { Text(t("개인키")) }) }
+            Row(verticalAlignment = Alignment.CenterVertically) { AccentCheckbox(favorite, { favorite = it }); Text(t("host.favorite")) }
+            Row { FilterChip(auth == AuthKind.Password, { auth = AuthKind.Password }, label = { Text(t("host.password")) }); Spacer(Modifier.width(8.dp)); FilterChip(auth == AuthKind.PrivateKey, { auth = AuthKind.PrivateKey }, label = { Text(t("host.private_key")) }) }
             val passwordTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation()
             val showPasswordControl: @Composable () -> Unit = {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(showPassword, role = Role.Checkbox, onValueChange = { showPassword = it }), verticalAlignment = Alignment.CenterVertically) {
                     AccentCheckbox(showPassword, onCheckedChange = null, modifier = Modifier.padding(12.dp))
-                    Text(t("비밀번호 표시"))
+                    Text(t("host.show_password"))
                 }
             }
             if (auth == AuthKind.Password) {
-                OutlinedTextField(password, { password = it }, label = { Text(if (original == null) t("비밀번호") else t("새 비밀번호 (비우면 기존 유지)")) }, visualTransformation = passwordTransformation, singleLine = true)
+                OutlinedTextField(password, { password = it }, label = { Text(if (original == null) t("host.password") else t("host.new_password_hint")) }, visualTransformation = passwordTransformation, singleLine = true)
                 showPasswordControl()
             }
             else {
                 ImportKeyButton({ privateKey = it; generatedPublic = null }, { error = it })
-                Text(if (privateKey.isEmpty()) t("Ed25519 / RSA · 암호화 키 지원") else t("개인키를 가져왔습니다."), style = MaterialTheme.typography.labelSmall)
-                OutlinedTextField(passphrase, { passphrase = it }, label = { Text(t("키 암호")) }, visualTransformation = passwordTransformation, singleLine = true)
+                Text(if (privateKey.isEmpty()) t("host.supported_key_types") else t("host.private_key_imported"), style = MaterialTheme.typography.labelSmall)
+                OutlinedTextField(passphrase, { passphrase = it }, label = { Text(t("host.passphrase")) }, visualTransformation = passwordTransformation, singleLine = true)
                 showPasswordControl()
-                BorderedButton({ try { val generated = model.keys.ed25519(); privateKey = generated.credential.privateKey; passphrase = ""; generatedPublic = generated.publicKey } catch (_: Exception) { error = t("키 생성 실패") } }) { Text(t("Ed25519 키 생성")) }
+                BorderedButton({ try { val generated = model.keys.ed25519(); privateKey = generated.credential.privateKey; passphrase = ""; generatedPublic = generated.publicKey } catch (_: Exception) { error = t("host.key_generation_failed") } }) { Text(t("host.generate_ed25519_key")) }
                 if (privateKey.isNotEmpty() || original?.auth == AuthKind.PrivateKey) {
-                    Text(t("공개키를 서버의 authorized_keys에 등록하세요."))
+                    Text(t("host.public_key_hint"))
                     BorderedButton({
                         try {
                             val credential = if (privateKey.isNotEmpty()) Credential(privateKey = privateKey, passphrase = passphrase)
                                 else requireNotNull(model.credentials.read(original!!.credentialRef)).let { if (passphrase.isNotEmpty()) Credential(it.password, it.privateKey, passphrase) else it }
                             copyPublicKey(generatedPublic ?: model.keys.publicKey(credential))
-                        } catch (_: Exception) { error = t("공개키를 읽지 못했습니다. 개인키와 키 암호 또는 보호 저장소를 확인하세요.") }
-                    }) { Text(t("공개키 복사")) }
+                        } catch (_: Exception) { error = t("host.public_key_read_failed") }
+                    }) { Text(t("host.copy_public_key")) }
                 }
             }
             Text(model.storageDescription, style = MaterialTheme.typography.labelSmall)
@@ -612,10 +612,10 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                 }
                 model.update(model.local.value.copy(hosts = model.local.value.hosts.filter { it.id != id } + profile))
                 dismiss()
-            } catch (_: IllegalArgumentException) { error = t("필수 입력과 포트(1–65535), 자격 증명을 확인하세요.") }
-            catch (_: Exception) { error = t("보호 저장소에 저장하지 못했습니다. 저장을 중단했습니다.") }
-        }) { Text(t("저장")) }
-    }, dismissButton = { BorderedButton(dismiss) { Text(t("취소")) } })
+            } catch (_: IllegalArgumentException) { error = t("host.check_required_fields") }
+            catch (_: Exception) { error = t("app.secure_storage_save_failed") }
+        }) { Text(t("common.save")) }
+    }, dismissButton = { BorderedButton(dismiss) { Text(t("common.cancel")) } })
 }
 
 private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
@@ -636,8 +636,8 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
     }
     EditorDialog(mobileLayout, settingsLayout = true, onDismissRequest = back, title = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (page != SettingsPage.Main) BorderedButton(back) { Text(t("뒤로")) }
-            Text(when (page) { SettingsPage.Main -> t("설정"); SettingsPage.Shortcuts -> t("하단 단축키"); SettingsPage.About -> t("About app"); SettingsPage.ExportSync -> t("내보내기 및 동기화") })
+            if (page != SettingsPage.Main) BorderedButton(back) { Text(t("common.back")) }
+            Text(when (page) { SettingsPage.Main -> t("common.settings"); SettingsPage.Shortcuts -> t("settings.bottom_shortcuts"); SettingsPage.About -> t("settings.about"); SettingsPage.ExportSync -> t("sync.export_and_sync") })
         }
     }, text = {
         if (page == SettingsPage.ExportSync) Column(Modifier.verticalScroll(rememberScrollState())) { CloudSyncSettings(model) }
@@ -645,85 +645,85 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
         else if (page == SettingsPage.Shortcuts) TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
             model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
         } else Column(Modifier.verticalScroll(mainScroll), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsCard(t("화면·언어"), t("앱의 언어와 모양을 선택합니다.")) {
-                Text(t("언어"), style = MaterialTheme.typography.titleSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("system" to t("시스템"), "ko" to "한국어", "en" to "English").forEach { (value, label) ->
-                        val choice = local.preferences.language.takeIf { it == "ko" || it == "en" } ?: "system"
+            SettingsCard(t("settings.appearance_language"), t("settings.appearance_description")) {
+                Text(t("settings.language"), style = MaterialTheme.typography.titleSmall)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    (listOf("system" to t("common.system")) + UiLanguage.all.map { it.code to it.nativeName }).forEach { (value, label) ->
+                        val choice = UiLanguage.of(local.preferences.language)?.code ?: "system"
                         FilterChip(choice == value, { model.modify { it.copy(preferences = it.preferences.copy(language = value)) } }, label = { Text(label) })
                     }
                 }
-                Text(t("테마"), style = MaterialTheme.typography.titleSmall)
+                Text(t("settings.theme"), style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("system" to t("시스템"), "light" to t("밝게"), "dark" to t("어둡게")).forEach { (value, label) ->
+                    listOf("system" to t("common.system"), "light" to t("settings.theme_light"), "dark" to t("settings.theme_dark")).forEach { (value, label) ->
                         FilterChip(local.preferences.theme == value, { model.modify { it.copy(preferences = it.preferences.copy(theme = value)) } }, label = { Text(label) })
                     }
                 }
                 AccentSettingsUi(local.preferences.accent) { accent -> model.modify { it.copy(preferences = it.preferences.copy(accent = accent)) } }
             }
-            SettingsCard(t("터미널·입력"), t("터미널 글자와 입력 도구를 조정합니다.")) {
+            SettingsCard(t("settings.terminal_input"), t("settings.terminal_input_description")) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("터미널 글자 크기: {0}", local.preferences.fontSize), Modifier.weight(1f))
+                    Text(tr("settings.terminal_font_size", local.preferences.fontSize), Modifier.weight(1f))
                     Spacer(Modifier.width(8.dp))
-                    BorderedButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize - 1).coerceAtLeast(10))) } }) { Text(t("작게")) }
+                    BorderedButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize - 1).coerceAtLeast(10))) } }) { Text(t("settings.smaller")) }
                     Spacer(Modifier.width(8.dp))
-                    BorderedButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize + 1).coerceAtMost(28))) } }) { Text(t("크게")) }
+                    BorderedButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize + 1).coerceAtMost(28))) } }) { Text(t("settings.larger")) }
                 }
                 PlatformTerminalFontSettings(local.preferences.terminalFontFamily) { family ->
                     model.modify { it.copy(preferences = it.preferences.copy(terminalFontFamily = family)) }
                 }
-                Text(tr("스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
+                Text(tr("settings.scrollback_description", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
                 BorderedButton({ entryFocus = shortcutFocus; page = SettingsPage.Shortcuts }, modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(shortcutFocus)) {
-                    Text(t("하단 단축키"), Modifier.weight(1f)); Text(tr("{0}개 · 순서 및 표시 편집", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
+                    Text(t("settings.bottom_shortcuts"), Modifier.weight(1f)); Text(tr("settings.shortcuts_count_edit", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
                 }
-                SettingsSwitch(t("키보드 항상 보이기"), local.preferences.androidKeyboardAlwaysVisible) { enabled ->
+                SettingsSwitch(t("launcher.always_show_keyboard"), local.preferences.androidKeyboardAlwaysVisible) { enabled ->
                     model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = enabled)) }
                 }
-                Text(t("터미널에서 키보드를 유지하고 크기를 키보드 위 영역에 맞춥니다. 끄면 이전 크기 설정으로 돌아갑니다."), style = MaterialTheme.typography.bodySmall)
-                Text(t("키보드가 열릴 때"), style = MaterialTheme.typography.titleSmall)
+                Text(t("settings.keyboard_always_description"), style = MaterialTheme.typography.bodySmall)
+                Text(t("settings.keyboard_when_opens"), style = MaterialTheme.typography.titleSmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("auto" to t("자동"), "pan" to t("위로 이동"), "resize" to t("리사이즈")).forEach { (value, label) ->
+                    listOf("auto" to t("settings.keyboard_automatic"), "pan" to t("common.move_up"), "resize" to t("settings.keyboard_resize")).forEach { (value, label) ->
                         FilterChip(local.preferences.effectiveAndroidKeyboardMode == value,
                             { model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardMode = value)) } },
                             enabled = !local.preferences.androidKeyboardAlwaysVisible, label = { Text(label) })
                     }
                 }
                 Text(t(when (local.preferences.effectiveAndroidKeyboardMode) {
-                    "pan" -> "터미널 크기를 유지하고, 가려지는 내용만 위로 이동합니다."
-                    "resize" -> "키보드 위 영역에 맞춰 터미널 행 수를 변경합니다. 실행 중인 앱이 다시 배치될 수 있습니다."
-                    else -> "짧은 출력은 리사이즈하고, 긴 출력과 전체 화면 앱은 위로 이동합니다."
+                    "pan" -> "settings.keyboard_pan_description"
+                    "resize" -> "settings.keyboard_resize_description"
+                    else -> "settings.keyboard_automatic_description"
                 }), style = MaterialTheme.typography.bodySmall)
-                SettingsSwitch(t("하단 단축키 두 줄로 표시"), local.preferences.mobileShortcutBarTwoRows) { enabled ->
+                SettingsSwitch(t("settings.bottom_shortcuts_two_rows"), local.preferences.mobileShortcutBarTwoRows) { enabled ->
                     model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = enabled)) }
                 }
-                Text(t("너비 840dp 미만의 좁은 화면에 적용합니다."), style = MaterialTheme.typography.bodySmall)
+                Text(t("settings.narrow_screen_note"), style = MaterialTheme.typography.bodySmall)
                 PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
             }
-            SettingsCard(t("작업 공간"), t("계층 표시와 화면 전환을 선택합니다.")) {
-                SettingsSwitch(t("단일 창도 표시"), local.preferences.showAllHierarchy) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) } }
-                SettingsSwitch(t("부드러운 터미널 화면 전환"), local.preferences.smoothTerminalTransitions) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) } }
-                Text(t("재접속 시 크기·페이드·블러 효과 적용"), style = MaterialTheme.typography.bodySmall)
+            SettingsCard(t("settings.workspace"), t("settings.workspace_description")) {
+                SettingsSwitch(t("settings.show_single_windows_too"), local.preferences.showAllHierarchy) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) } }
+                SettingsSwitch(t("settings.smooth_transitions"), local.preferences.smoothTerminalTransitions) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) } }
+                Text(t("settings.smooth_transitions_description"), style = MaterialTheme.typography.bodySmall)
             }
-            SettingsCard(t("연결"), t("백그라운드 연결과 배터리 사용을 관리합니다.")) { PlatformConnectionSettings(model) }
-            SettingsCard(t("알림"), t("에이전트 알림과 OS 알림을 선택합니다.")) { AgentNotificationSettingsUi(model) }
+            SettingsCard(t("settings.connection"), t("settings.connection_description")) { PlatformConnectionSettings(model) }
+            SettingsCard(t("common.notifications"), t("settings.notifications_description")) { AgentNotificationSettingsUi(model) }
             BorderedButton({ entryFocus = syncFocus; page = SettingsPage.ExportSync },
                 modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(syncFocus)) {
-                Text(t("내보내기 및 동기화"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
+                Text(t("sync.export_and_sync"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
             }
-            SettingsCard(t("보안·저장"), t("신뢰한 서버와 이 기기의 저장 위치를 확인합니다.")) {
-                Text(t("신뢰한 서버"), style = MaterialTheme.typography.titleSmall)
+            SettingsCard(t("settings.security_storage"), t("settings.security_description")) {
+                Text(t("settings.trusted_servers"), style = MaterialTheme.typography.titleSmall)
                 local.trust.forEach { (endpoint, fingerprint) ->
-                    Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; BorderedButton({ forget = endpoint }) { Text(t("신뢰 키 삭제")) } }
+                    Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; BorderedButton({ forget = endpoint }) { Text(t("settings.remove_trusted_key")) } }
                 }
                 Text(model.storageDescription, style = MaterialTheme.typography.bodySmall)
             }
             BorderedButton({ entryFocus = aboutFocus; page = SettingsPage.About },
                 modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(aboutFocus)) {
-                Text(t("About app"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
+                Text(t("settings.about"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
             }
         }
-    }, confirmButton = { BorderedButton(back) { Text(t(if (page != SettingsPage.Main) "뒤로" else "닫기")) } })
-    forget?.let { endpoint -> ConfirmDialog(t("신뢰 키 삭제"), tr("{0} 키를 삭제합니다. 다음 연결에서 지문을 다시 확인해야 합니다.", endpoint), { model.modify { it.copy(trust = it.trust - endpoint) }; forget = null }, { forget = null }) }
+    }, confirmButton = { BorderedButton(back) { Text(t(if (page != SettingsPage.Main) "common.back" else "common.close")) } })
+    forget?.let { endpoint -> ConfirmDialog(t("settings.remove_trusted_key"), tr("settings.remove_trust_confirm", endpoint), { model.modify { it.copy(trust = it.trust - endpoint) }; forget = null }, { forget = null }) }
 }
 
 @Composable private fun AboutApp() {
@@ -733,9 +733,9 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
         Image(AppIcon, contentDescription = "DaGaLi", modifier = Modifier.size(80.dp)
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)))
         Text("DaGaLi", style = MaterialTheme.typography.headlineMedium)
-        Text(tr("버전 {0}", APP_VERSION), style = MaterialTheme.typography.bodyLarge)
+        Text(tr("settings.about_version", APP_VERSION), style = MaterialTheme.typography.bodyLarge)
         Text("Reconnect less. Resume more.", style = MaterialTheme.typography.bodyLarge)
-        listOf(t("앱 사이트") to "https://ddal.ggak.life", t("GitHub 저장소") to "https://github.com/jujinkim/dgl-client").forEach { (label, url) ->
+        listOf(t("settings.about_website") to "https://ddal.ggak.life", t("settings.about_github") to "https://github.com/jujinkim/dgl-client").forEach { (label, url) ->
             BorderedButton({ uri.openUri(url) }) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(label); Text(url, style = MaterialTheme.typography.bodySmall)
@@ -757,11 +757,11 @@ internal class NamePrompt(val title: String, val initial: String = "", val accep
     // The current name starts selected: typing replaces it, moving the cursor edits it.
     var field by remember { mutableStateOf(initial.take(128).let { TextFieldValue(it, TextRange(0, it.length)) }) }
     val value = field.text
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { OutlinedTextField(field, { field = it.copy(text = it.text.take(128)) }, label = { Text(t("이름")) }, singleLine = true) },
-        confirmButton = { BorderedButton({ accept(value) }, enabled = value.isNotBlank() && value.none { it == '.' || it == ':' || it.code < 32 }) { Text(t("확인")) } }, dismissButton = { BorderedButton(dismiss) { Text(t("취소")) } })
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { OutlinedTextField(field, { field = it.copy(text = it.text.take(128)) }, label = { Text(t("common.name")) }, singleLine = true) },
+        confirmButton = { BorderedButton({ accept(value) }, enabled = value.isNotBlank() && value.none { it == '.' || it == ':' || it.code < 32 }) { Text(t("common.ok")) } }, dismissButton = { BorderedButton(dismiss) { Text(t("common.cancel")) } })
 }
 @Composable internal fun ConfirmDialog(title: String, message: String, accept: () -> Unit, dismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(message) }, confirmButton = { BorderedButton(accept) { Text(t("삭제")) } }, dismissButton = { BorderedButton(dismiss) { Text(t("취소")) } })
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { Text(message) }, confirmButton = { BorderedButton(accept) { Text(t("common.delete")) } }, dismissButton = { BorderedButton(dismiss) { Text(t("common.cancel")) } })
 }
 
 @Composable private fun EditorDialog(

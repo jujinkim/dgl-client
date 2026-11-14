@@ -99,10 +99,10 @@ impl Composer {
         }
         let result = (|| {
             if text.is_empty() {
-                return Err(t("입력할 텍스트를 작성하세요.").into());
+                return Err(t("input.empty_text").into());
             }
             if text.len() > 65536 {
-                return Err(t("입력은 UTF-8 64 KiB 이하여야 합니다.").into());
+                return Err(t("input.too_large").into());
             }
             let destination = self
                 .target
@@ -113,9 +113,7 @@ impl Composer {
                             .as_ref()
                             .is_some_and(|current| destination.matches(current))
                 })
-                .ok_or(t(
-                    "연결·세션·패널이 변경되어 전송을 취소했습니다. 초안을 확인한 뒤 다시 여세요.",
-                ))?;
+                .ok_or(t("input.send_cancelled_target_changed_draft_kept"))?;
             send(&destination.target, text)
         })();
         match result {
@@ -147,7 +145,7 @@ impl Composer {
                 .error
                 .as_ref()
                 .map(ToString::to_string)
-                .unwrap_or_else(|| t("전송 결과를 확인하지 못했습니다").into())
+                .unwrap_or_else(|| t("input.send_unconfirmed").into())
         };
         self.pending = None;
         let error = if sent && matches!(pending, Pending::Text { enter: true, .. }) {
@@ -161,7 +159,7 @@ impl Composer {
                             .as_ref()
                             .is_some_and(|original| original.matches(current))
                 })
-                .ok_or_else(|| t("연결·세션·패널이 변경되어 입력을 취소했습니다.").to_string())
+                .ok_or_else(|| t("input.cancelled_target_changed").to_string())
                 .and_then(|destination| {
                     let bytes = dgl_core::input::TerminalKey::Enter
                         .encode(dgl_core::input::Modifiers::default(), false)
@@ -180,10 +178,7 @@ impl Composer {
         } else if matches!(pending, Pending::Enter { .. }) {
             Some(Self::enter_error(failure()))
         } else {
-            Some(tr!(
-                "전송 실패: {0}. 초안은 유지되며 자동 재전송하지 않습니다.",
-                failure()
-            ))
+            Some(tr!("input.send_failed_no_resend", failure()))
         };
         self.input.update(cx, |input, cx| {
             input.read_only = false;
@@ -207,10 +202,7 @@ impl Composer {
     }
 
     fn enter_error(error: String) -> String {
-        tr!(
-            "텍스트는 전송되었지만 Enter 전송에 실패했습니다: {0}. 초안은 유지되며 자동 재전송하지 않습니다.",
-            error
-        )
+        tr!("input.enter_failed_after_text", error)
     }
 }
 
@@ -285,7 +277,7 @@ impl Desktop {
                 crate::cadence::wake();
                 tab.connection
                     .input(target.clone(), bytes)
-                    .map_err(|e| tr!("전송 실패: {0}. 초안은 유지됩니다.", e))
+                    .map_err(|e| tr!("input.send_failed_draft_kept", e))
             },
         );
         composer.input.update(cx, |input, cx| {
@@ -305,7 +297,7 @@ impl Desktop {
             let name = composer
                 .session(state.session.as_deref())
                 .map(|s| hierarchy::session_name(&state.remote, s))
-                .unwrap_or_else(|| t("세션 선택").into());
+                .unwrap_or_else(|| t("common.select_session").into());
             format!("{} · {name}", hierarchy::display_text(&tab.host.alias))
         });
         let count = char_count(&composer.input.read(cx).content);
@@ -322,8 +314,8 @@ impl Desktop {
                         div()
                             .id("composer-title")
                             .text_xl()
-                            .child(t("텍스트 작성"))
-                            .native_tooltip(t("Enter는 줄바꿈 · 전송 버튼으로 보내기")),
+                            .child(t("input.compose_text"))
+                            .native_tooltip(t("input.enter_hint")),
                     )
                     .when_some(session, |d, session| {
                         d.child(
@@ -334,7 +326,7 @@ impl Desktop {
                                 .overflow_hidden()
                                 .text_ellipsis()
                                 .whitespace_nowrap()
-                                .child(tr!("입력 세션: {0}", session)),
+                                .child(tr!("input.target_session", session)),
                         )
                     }),
             )
@@ -351,7 +343,7 @@ impl Desktop {
                             .justify_end()
                             .text_xs()
                             .text_color(rgb(palette.muted))
-                            .child(tr!("글자 수: {0}", count)),
+                            .child(tr!("input.character_count", count)),
                     ),
             )
             .child(
@@ -393,7 +385,7 @@ impl Desktop {
                 .child(
                     div()
                         .debug_selector(|| "composer-enter-label".into())
-                        .child(t("Enter 함께 보내기")),
+                        .child(t("input.send_with_enter")),
                 )
                 .when(pending, |d| d.opacity(0.35).cursor_default()),
             )

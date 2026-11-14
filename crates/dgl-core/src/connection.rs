@@ -174,20 +174,13 @@ impl State {
     }
     pub fn retry_message(&self) -> Option<String> {
         if self.retry.stopped {
-            Some(t("재시도 정지 · 접속 정보 유지 중").into())
+            Some(t("connection.retry_stopped").into())
         } else if self.phase == Phase::Failed && self.error == Some(Error::Network) {
-            Some(t("자동 재시도 3회 종료 · 접속 정보 유지 중").into())
+            Some(t("connection.retry_exhausted").into())
         } else if let Some(seconds) = self.retry.wait_seconds {
-            Some(tr!(
-                "자동 재시도 대기 · {0}/3회 완료 · 대기 간격 {1}초",
-                self.retry.attempt,
-                seconds
-            ))
+            Some(tr!("connection.retry_waiting", self.retry.attempt, seconds))
         } else if self.phase == Phase::Reconnecting {
-            Some(tr!(
-                "연결 재시도 중 · 자동 재시도 {0}/3회",
-                self.retry.attempt
-            ))
+            Some(tr!("connection.retry_reconnecting", self.retry.attempt))
         } else {
             None
         }
@@ -2699,7 +2692,11 @@ impl Actor<'_> {
                 if let Some(token) = token {
                     args.extend(["--token", token]);
                 }
-                let result = crate::agent::setup(self.ssh.as_ssh().ok_or(Error::NotReady)?, &args).await.unwrap_or_else(|_| serde_json::json!({"error": t("연동 검사 실패: Python 3·tmux·CLI 설치 및 연결을 확인하세요.")}));
+                let result = crate::agent::setup(self.ssh.as_ssh().ok_or(Error::NotReady)?, &args)
+                    .await
+                    .unwrap_or_else(
+                        |_| serde_json::json!({"error": t("agent.error.integration_check_failed")}),
+                    );
                 self.shared.update(|s| s.agent_setup = Some(result));
                 Ok(())
             }

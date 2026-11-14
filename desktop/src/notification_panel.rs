@@ -13,22 +13,55 @@ impl Desktop {
         let panel = div()
             .id("notification-panel")
             .debug_selector(|| "notification-panel".into())
-            .w(px(WIDTH.min((f32::from(viewport.width) - 2. * MARGIN).max(0.))))
+            .w(px(
+                WIDTH.min((f32::from(viewport.width) - 2. * MARGIN).max(0.))
+            ))
             .max_h(px((f32::from(viewport.height) - 60.).max(0.)))
-            .flex().flex_col().min_h_0()
-            .p_3().gap_2()
+            .flex()
+            .flex_col()
+            .min_h_0()
+            .p_3()
+            .gap_2()
             .bg(rgb(self.palette.panel))
-            .border_1().border_color(rgb(self.palette.line)).rounded_lg().shadow_lg()
-            .on_mouse_down(MouseButton::Left, |_, w, cx| { w.prevent_default(); cx.stop_propagation(); })
+            .border_1()
+            .border_color(rgb(self.palette.line))
+            .rounded_lg()
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, w, cx| {
+                w.prevent_default();
+                cx.stop_propagation();
+            })
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-            .child(div().flex().items_center().flex_shrink_0()
-                .child(div().id("notification-title").text_lg().flex_1().child(t("알림"))
-                    .native_tooltip(t("이번 실행 중 최대 100건. 읽음은 질문 응답·승인 처리를 뜻하지 않습니다.")))
-                .child(self.button("close-notifications", t("닫기"), cx, |s, _, cx| s.dismiss_dialog(cx))))
-            .child(div().id("notification-list").debug_selector(|| "notification-list".into())
-                .min_h_0().overflow_y_scroll().track_scroll(&self.modal.scroll)
-                .child(self.recent_agents(cx)));
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .flex_shrink_0()
+                    .child(
+                        div()
+                            .id("notification-title")
+                            .text_lg()
+                            .flex_1()
+                            .child(t("common.notifications"))
+                            .native_tooltip(t("notification.recent_limit_note")),
+                    )
+                    .child(self.button(
+                        "close-notifications",
+                        t("common.close"),
+                        cx,
+                        |s, _, cx| s.dismiss_dialog(cx),
+                    )),
+            )
+            .child(
+                div()
+                    .id("notification-list")
+                    .debug_selector(|| "notification-list".into())
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.modal.scroll)
+                    .child(self.recent_agents(cx)),
+            );
         div()
             .id("notification-overlay")
             .debug_selector(|| "notification-overlay".into())

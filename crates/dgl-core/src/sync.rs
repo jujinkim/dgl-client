@@ -104,23 +104,23 @@ impl Value {
                 h.port,
                 h.auth,
                 if h.favorite {
-                    t(" · 즐겨찾기")
+                    t("sync.field_favorite_suffix")
                 } else {
                     ""
                 }
             ),
-            Self::Host(None) => t("호스트 삭제").into(),
-            Self::Theme(v) => tr!("테마: {0}", v),
+            Self::Host(None) => t("host.delete").into(),
+            Self::Theme(v) => tr!("sync.field_theme", v),
             Self::Accent(v) => tr!(
-                "강조 색상: {0} {1}",
+                "sync.field_accent_color",
                 v.mode,
                 v.custom_color.as_deref().unwrap_or("")
             ),
-            Self::FontSize(v) => tr!("글자 크기: {0}", v),
-            Self::Scrollback(v) => tr!("스크롤백: {0}", v),
-            Self::Questions(v) => tr!("질문 알림: {0}", v),
-            Self::Responses(v) => tr!("응답 알림: {0}", v),
-            Self::Errors(v) => tr!("오류 알림: {0}", v),
+            Self::FontSize(v) => tr!("sync.field_font_size", v),
+            Self::Scrollback(v) => tr!("sync.field_scrollback", v),
+            Self::Questions(v) => tr!("sync.field_question_notifications", v),
+            Self::Responses(v) => tr!("sync.field_response_notifications", v),
+            Self::Errors(v) => tr!("sync.field_error_notifications", v),
         }
     }
 }

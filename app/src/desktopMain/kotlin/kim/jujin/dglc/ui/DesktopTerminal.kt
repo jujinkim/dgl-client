@@ -90,7 +90,7 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
             onKey(file.readText(Charsets.UTF_8))
         } catch (_: Exception) { onError("개인키 파일을 읽지 못했습니다. 최대 크기는 128 KiB입니다.") }
         dialog.dispose()
-    }) { Text("개인키 파일 가져오기") }
+    }) { Text(t("host.import_private_key_file")) }
 }
 
 @Composable actual fun rememberPublicKeyCopier(): (String) -> Unit =

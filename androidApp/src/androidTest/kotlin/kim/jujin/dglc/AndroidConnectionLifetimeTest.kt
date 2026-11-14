@@ -113,7 +113,7 @@ class AndroidConnectionLifetimeTest {
                     restored()
                     observing.cancelAndJoin()
                     assertTrue("A healthy return dims immediately while checking: $resumeStates", resumeStates.any {
-                        it.checking && it.recoveryMessage == t("연결 확인 중…") && !it.acceptsInput
+                        it.checking && it.recoveryMessage == t("connection.checking_connection") && !it.acceptsInput
                     })
                     assertTrue("A healthy return needs no SSH reconnect or retry controls: $resumeStates", resumeStates.none {
                         it.showsConnectionProgress || it.canRetryNow || it.canStopRetrying

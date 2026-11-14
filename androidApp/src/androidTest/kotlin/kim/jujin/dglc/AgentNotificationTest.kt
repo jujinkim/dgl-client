@@ -88,7 +88,7 @@ class AgentNotificationTest {
                 while (!delivered && System.currentTimeMillis() < clickDeadline) {
                     scenario.onActivity { activity ->
                         val model = (activity.application as DglApplication).connections().app
-                        delivered = model.agentNavigationError.value == t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.")
+                        delivered = model.agentNavigationError.value == t("agent.target_closed_cannot_navigate")
                         assertTrue(model.connections.value.isEmpty())
                     }
                     if (!delivered) Thread.sleep(50)

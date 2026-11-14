@@ -22,10 +22,10 @@ class SessionTitleCache {
             sessionId = session; sessionName = null; fullTitle = null
         }
         remote.sessions.firstOrNull { it.id == session }?.let {
-            sessionName = named(it.name, t("이름 없는 세션"))
+            sessionName = named(it.name, t("hierarchy.unnamed_session"))
             fullTitle = remote.sessionTabTitle(it)
         }
-        return (if (sessionOnly) sessionName else fullTitle) ?: session ?: t("연결 선택")
+        return (if (sessionOnly) sessionName else fullTitle) ?: session ?: t("hierarchy.select_connection")
     }
 }
 fun displayTreeText(value: String): String = value.map { c ->
@@ -40,20 +40,20 @@ private fun RemoteState.liveSubtitle(name: String, fallback: String, window: Rem
 fun RemoteState.sessionLabel(session: RemoteSession): TreeLabel {
     val children = windows.filter { it.session == session.id }
     val count = panes.count { p -> children.any { it.id == p.window } }
-    return TreeLabel(named(session.name, t("이름 없는 세션")), tr("창 {0}개 · 패널 {1}개", children.size, count),
-        liveSubtitle(session.name, t("이름 없는 세션"), children.firstOrNull { it.active }))
+    return TreeLabel(named(session.name, t("hierarchy.unnamed_session")), tr("hierarchy.windows_panes", children.size, count),
+        liveSubtitle(session.name, t("hierarchy.unnamed_session"), children.firstOrNull { it.active }))
 }
 fun RemoteState.sessionTabTitle(session: RemoteSession): String {
     val window = windows.firstOrNull { it.session == session.id && it.active }
     val pane = window?.let { w -> panes.firstOrNull { it.window == w.id && it.active } }
-    return (listOf(named(session.name, t("이름 없는 세션"))) + listOfNotNull(window?.name, pane?.title).map(::displayTreeText))
+    return (listOf(named(session.name, t("hierarchy.unnamed_session"))) + listOfNotNull(window?.name, pane?.title).map(::displayTreeText))
         .filter { it.isNotEmpty() }.distinct().joinToString(" · ")
 }
-fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(named(window.name, t("이름 없는 창")),
-    tr("창 {0} · 패널 {1}개", window.index, panes.count { it.window == window.id }),
-    liveSubtitle(window.name, t("이름 없는 창"), window))
+fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(named(window.name, t("hierarchy.unnamed_window")),
+    tr("hierarchy.window_panes", window.index, panes.count { it.window == window.id }),
+    liveSubtitle(window.name, t("hierarchy.unnamed_window"), window))
 fun RemotePane.treeLabel(): TreeLabel {
-    val command = named(command, t("프로세스 미확인"))
+    val command = named(command, t("hierarchy.process_unknown"))
     val mode = displayTreeText(mode).let { if (it.isEmpty()) "" else " · $it" }
     return TreeLabel(named(title, command), "$command · ${width}×${height}$mode")
 }
@@ -76,23 +76,23 @@ fun RemoteState.hierarchyRows(showAll: Boolean): List<HierarchyRow> = sessions.m
         val w = children.single()
         HierarchyRow(TreeKind.Session, s.id, s.id, w.window, null,
             sessionLabel(s).let { label -> label.copy(
-                subtitle = listOf("${windows.single().index}: ${named(windows.single().name, t("이름 없는 창"))}", label.subtitle.takeUnless { it == named(windows.single().name, t("이름 없는 창")) }.orEmpty()).filter { it.isNotEmpty() }.joinToString(" · "),
-                detail = tr("패널 {0}개", panes.count { it.window == w.window })) }, emptyList())
+                subtitle = listOf("${windows.single().index}: ${named(windows.single().name, t("hierarchy.unnamed_window"))}", label.subtitle.takeUnless { it == named(windows.single().name, t("hierarchy.unnamed_window")) }.orEmpty()).filter { it.isNotEmpty() }.joinToString(" · "),
+                detail = tr("hierarchy.panes", panes.count { it.window == w.window })) }, emptyList())
     } else HierarchyRow(TreeKind.Session, s.id, s.id, null, null, sessionLabel(s), children)
 }
 
 fun Phase.displayLabel(): String = when (this) {
-    Phase.Disconnected -> t("연결 안 됨"); Phase.Connecting -> t("연결 중"); Phase.TrustRequired -> t("호스트키 확인"); Phase.Authenticating -> t("인증 중")
-    Phase.Selecting -> t("세션 선택"); Phase.Restoring -> t("터미널 복원 중"); Phase.Ready -> t("연결됨"); Phase.Reconnecting -> t("재접속 중")
-    Phase.MissingSession -> t("이전 세션 없음"); Phase.Failed -> t("연결 실패"); Phase.Shell -> t("연결됨 · 일반 SSH")
+    Phase.Disconnected -> t("common.disconnected"); Phase.Connecting -> t("hierarchy.connecting"); Phase.TrustRequired -> t("hierarchy.verify_host_key"); Phase.Authenticating -> t("hierarchy.authenticating")
+    Phase.Selecting -> t("common.select_session"); Phase.Restoring -> t("hierarchy.restoring_terminal"); Phase.Ready -> t("hierarchy.connected"); Phase.Reconnecting -> t("hierarchy.reconnecting")
+    Phase.MissingSession -> t("hierarchy.previous_session_missing"); Phase.Failed -> t("hierarchy.connection_failed"); Phase.Shell -> t("hierarchy.connected_plain_ssh")
 }
 /** The tmux session name shown where input is aimed; the stable ID stays the identity. */
 fun RemoteState.sessionName(session: String): String =
-    sessions.firstOrNull { it.id == session }?.let { named(it.name, t("이름 없는 세션")) } ?: displayTreeText(session)
+    sessions.firstOrNull { it.id == session }?.let { named(it.name, t("hierarchy.unnamed_session")) } ?: displayTreeText(session)
 fun RemoteState.targetLabel(session: String?, pane: String?): String = buildList {
-    sessions.firstOrNull { it.id == session }?.let { add(named(it.name, t("이름 없는 세션"))) }
+    sessions.firstOrNull { it.id == session }?.let { add(named(it.name, t("hierarchy.unnamed_session"))) }
     panes.firstOrNull { it.id == pane }?.let { p ->
-        windows.firstOrNull { it.id == p.window && it.session == session }?.let { add(named(it.name, t("이름 없는 창"))) }
+        windows.firstOrNull { it.id == p.window && it.session == session }?.let { add(named(it.name, t("hierarchy.unnamed_window"))) }
         add(p.treeLabel().title)
     }
 }.joinToString(" · ")

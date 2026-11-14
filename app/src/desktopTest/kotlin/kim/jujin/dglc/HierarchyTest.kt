@@ -13,7 +13,7 @@ class HierarchyTest {
             assertEquals("work", remote.sessionName("$1"))
             assertEquals("이름 없는 세션", remote.sessionName("$2"))
             assertEquals("$3", remote.sessionName("$3"))
-        } finally { I18n.configure(if (previous == UiLanguage.Korean) "ko" else "en", "") }
+        } finally { I18n.configure(previous.code, "") }
         assertEquals(0, graphemeCount(""))
         assertEquals(7, graphemeCount("한글\n초안 😀"))
         assertEquals(2, graphemeCount("👨‍👩‍👧e\u0301"))
@@ -161,7 +161,7 @@ class HierarchyTest {
                 assertEquals("Error", snapshot.panelState("%2", "first", notices, 1001).kind)
                 assertNull(snapshot.panelState("%3", "first", notices, 1001).kind)
             }
-        } finally { I18n.configure(if (previous == UiLanguage.Korean) "ko" else "en", "") }
+        } finally { I18n.configure(previous.code, "") }
 
     }
 

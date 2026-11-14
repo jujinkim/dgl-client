@@ -36,11 +36,11 @@ pub fn select(
         dialog.SetOptions(
             dialog.GetOptions()? | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM,
         )?;
-        let title: Vec<u16> = dgl_core::i18n::t("개인키 파일 선택")
+        let title: Vec<u16> = dgl_core::i18n::t("host.choose_private_key_file")
             .encode_utf16()
             .chain(Some(0))
             .collect();
-        let prompt: Vec<u16> = dgl_core::i18n::t("가져오기")
+        let prompt: Vec<u16> = dgl_core::i18n::t("common.import")
             .encode_utf16()
             .chain(Some(0))
             .collect();

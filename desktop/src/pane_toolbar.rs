@@ -44,7 +44,7 @@ impl Desktop {
         self.group_focus(group, window, cx);
         if let Operation::KillPane { target } = &operation {
             self.dialog = Some(Dialog::Delete {
-                title: tr!("tmux 패널 {0} 닫기", target),
+                title: tr!("pane.close_named", target),
                 operation: DeleteOp::Remote(connection, operation),
             });
         } else {
@@ -60,72 +60,76 @@ impl Desktop {
         let categories = [
             (
                 "split",
-                t("패널 분할"),
+                t("pane.split"),
                 &[
                     (
                         UiIcon::SplitHorizontal,
-                        t("tmux 패널 좌우 분할"),
+                        t("pane.split_horizontally"),
                         PaneAction::Split(true),
                     ),
                     (
                         UiIcon::SplitVertical,
-                        t("tmux 패널 상하 분할"),
+                        t("pane.split_vertically"),
                         PaneAction::Split(false),
                     ),
                 ][..],
             ),
             (
                 "focus",
-                t("이동"),
+                t("pane.navigate"),
                 &[
                     (
                         UiIcon::ArrowLeft,
-                        t("왼쪽 패널로 이동"),
+                        t("pane.focus_pane_left"),
                         PaneAction::Focus('L'),
                     ),
                     (
                         UiIcon::ArrowRight,
-                        t("오른쪽 패널로 이동"),
+                        t("pane.focus_pane_right"),
                         PaneAction::Focus('R'),
                     ),
-                    (UiIcon::ArrowUp, t("위 패널로 이동"), PaneAction::Focus('U')),
+                    (
+                        UiIcon::ArrowUp,
+                        t("pane.focus_pane_above"),
+                        PaneAction::Focus('U'),
+                    ),
                     (
                         UiIcon::ArrowDown,
-                        t("아래 패널로 이동"),
+                        t("pane.focus_pane_below"),
                         PaneAction::Focus('D'),
                     ),
                 ][..],
             ),
             (
                 "resize",
-                t("크기 조절"),
+                t("pane.resize"),
                 &[
                     (
                         UiIcon::ArrowLeft,
-                        t("패널 경계를 왼쪽으로 3셀"),
+                        t("pane.resize_left"),
                         PaneAction::Resize('L'),
                     ),
                     (
                         UiIcon::ArrowRight,
-                        t("패널 경계를 오른쪽으로 3셀"),
+                        t("pane.resize_right"),
                         PaneAction::Resize('R'),
                     ),
                     (
                         UiIcon::ArrowUp,
-                        t("패널 경계를 위로 3셀"),
+                        t("pane.resize_up"),
                         PaneAction::Resize('U'),
                     ),
                     (
                         UiIcon::ArrowDown,
-                        t("패널 경계를 아래로 3셀"),
+                        t("pane.resize_down"),
                         PaneAction::Resize('D'),
                     ),
                 ][..],
             ),
             (
                 "close",
-                t("닫기"),
-                &[(UiIcon::Close, t("현재 tmux 패널 닫기"), PaneAction::Close)][..],
+                t("common.close"),
+                &[(UiIcon::Close, t("pane.close_current"), PaneAction::Close)][..],
             ),
         ];
         let mut toolbar = div()

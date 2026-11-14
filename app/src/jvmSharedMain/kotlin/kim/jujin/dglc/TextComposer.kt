@@ -24,21 +24,21 @@ fun inputTargetIdentity(raw: String): String {
  */
 suspend fun pasteTerminalText(client: ClientConnection, destination: InputTarget?, current: () -> Boolean, text: String,
     preparePaste: suspend (String) -> ByteArray): String? {
-    if (text.isEmpty()) return t("클립보드에 붙여넣을 텍스트가 없습니다.")
-    if (text.encodeToByteArray().size > TerminalInput.MAX_BYTES) return t("입력은 UTF-8 64 KiB 이하여야 합니다.")
+    if (text.isEmpty()) return t("input.clipboard_empty")
+    if (text.encodeToByteArray().size > TerminalInput.MAX_BYTES) return t("input.too_large")
     fun matches() = destination != null && current() && destination == client.captureInputTarget()
-    val changed = t("연결·세션·패널이 변경되어 붙여넣기를 취소했습니다.")
+    val changed = t("input.paste_cancelled_target_changed")
     if (!matches()) return changed
     return try {
         val bytes = preparePaste(text)
         when {
-            bytes.isEmpty() || bytes.size > TerminalInput.MAX_BYTES -> t("입력은 붙여넣기 제어 문자를 포함하여 UTF-8 64 KiB 이하여야 합니다.")
+            bytes.isEmpty() || bytes.size > TerminalInput.MAX_BYTES -> t("input.too_large_with_paste")
             !matches() -> changed
             else -> client.sendInput(destination!!, bytes).error
         }
-    } catch (_: TimeoutCancellationException) { t("터미널 입력 준비 시간이 초과되었습니다.") }
+    } catch (_: TimeoutCancellationException) { t("input.prepare_timeout") }
     catch (cancelled: CancellationException) { throw cancelled }
-    catch (cause: Exception) { cause.message ?: t("전송 결과를 확인하지 못했습니다") }
+    catch (cause: Exception) { cause.message ?: t("input.send_unconfirmed") }
 }
 
 /** Connection-owned, memory only. Neither saved-state Bundles nor settings contain drafts. */
@@ -64,32 +64,32 @@ class TextComposer(private val client: ClientConnection, parent: CoroutineScope)
     @Synchronized fun send(current: () -> Boolean, preparePaste: suspend (String) -> ByteArray) {
         if (sending.value || !opened.value) return
         val text = value.value.text
-        if (text.isEmpty()) { error.value = t("입력할 텍스트를 작성하세요."); return }
-        if (text.encodeToByteArray().size > TerminalInput.MAX_BYTES) { error.value = t("입력은 UTF-8 64 KiB 이하여야 합니다."); return }
+        if (text.isEmpty()) { error.value = t("input.empty_text"); return }
+        if (text.encodeToByteArray().size > TerminalInput.MAX_BYTES) { error.value = t("input.too_large"); return }
         val destination = target
         fun matches() = destination != null && current() && destination == client.captureInputTarget()
-        if (!matches()) { error.value = t("연결·세션·패널이 변경되어 전송을 취소했습니다. 초안을 확인한 뒤 다시 여세요."); return }
+        if (!matches()) { error.value = t("input.send_cancelled_target_changed_draft_kept"); return }
         sending.value = true
         val enter = includeEnter.value
         scope.launch {
             var textSent = false
             fun failure(message: String) = if (textSent && enter) tr(
-                "텍스트는 전송되었지만 Enter 전송에 실패했습니다: {0}. 초안은 유지되며 자동 재전송하지 않습니다.", message
+                "input.enter_failed_after_text", message
             ) else message
             try {
                 val bytes = preparePaste(text)
-                require(bytes.isNotEmpty() && bytes.size <= TerminalInput.MAX_BYTES) { t("입력은 붙여넣기 제어 문자를 포함하여 UTF-8 64 KiB 이하여야 합니다.") }
+                require(bytes.isNotEmpty() && bytes.size <= TerminalInput.MAX_BYTES) { t("input.too_large_with_paste") }
                 if (!matches()) {
-                    error.value = t("연결·세션·패널이 변경되어 전송을 취소했습니다. 초안은 유지됩니다.")
+                    error.value = t("input.send_cancelled_target_changed")
                 } else {
                     val result = client.sendInput(destination!!, bytes)
                     error.value = result.error
                     if (result.error != null) return@launch
                     textSent = true
                     if (enter) {
-                        check(matches()) { t("연결·세션·패널이 변경되어 입력을 취소했습니다.") }
+                        check(matches()) { t("input.cancelled_target_changed") }
                         val key = checkNotNull(client.encodeKeyboard("enter", null, TerminalModifiers(), false)) {
-                            t("이 연결은 Enter 키 전송을 지원하지 않습니다.")
+                            t("input.enter_unsupported")
                         }
                         val entered = client.sendInput(destination, key)
                         if (entered.error != null) {
@@ -99,9 +99,9 @@ class TextComposer(private val client: ClientConnection, parent: CoroutineScope)
                     }
                     value.value = TextFieldValue(); includeEnter.value = false; opened.value = false
                 }
-            } catch (_: TimeoutCancellationException) { error.value = failure(t("터미널 입력 준비 시간이 초과되었습니다. 초안은 유지됩니다.")) }
+            } catch (_: TimeoutCancellationException) { error.value = failure(t("input.prepare_timeout_draft_kept")) }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (cause: Exception) { error.value = failure(cause.message ?: t("전송 결과를 확인하지 못했습니다. 초안은 유지되며 자동 재전송하지 않습니다.")) }
+            catch (cause: Exception) { error.value = failure(cause.message ?: t("input.send_unconfirmed_draft_kept")) }
             finally { sending.value = false }
         }
     }

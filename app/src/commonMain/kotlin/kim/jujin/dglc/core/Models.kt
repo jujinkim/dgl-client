@@ -72,7 +72,7 @@ enum class Phase { Disconnected, Connecting, TrustRequired, Authenticating, Sele
 enum class Failure { Network, Authentication, HostKey, Protocol, MissingSession, Storage }
 data class ConnectionStatus(
     val phase: Phase = Phase.Disconnected,
-    val message: String = t("연결 안 됨"),
+    val message: String = t("common.disconnected"),
     val attempt: Int = 0,
     val canRetryNow: Boolean = false,
     val canStopRetrying: Boolean = false,
@@ -88,10 +88,10 @@ data class ConnectionStatus(
     val acceptsInput get() = !checking && !recovering && !presenting && (phase == Phase.Ready || phase == Phase.Shell || (phase == Phase.Restoring && resizing && !canStopRetrying))
     val acceptsPointer get() = acceptsInput && !resizing
     val recoveryMessage get() = when {
-        checking && !showsConnectionProgress -> t("연결 확인 중…")
+        checking && !showsConnectionProgress -> t("connection.checking_connection")
         recovering -> if (phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired) ||
-            (canRetryNow && !showsConnectionProgress)) message else t("연결 복구 중…")
-        checking -> t("연결 확인 중…")
+            (canRetryNow && !showsConnectionProgress)) message else t("connection.recovering_connection")
+        checking -> t("connection.checking_connection")
         else -> null
     }
     val showsConnectionProgress get() = phase == Phase.Connecting || phase == Phase.Authenticating ||
@@ -99,9 +99,9 @@ data class ConnectionStatus(
     /** Curtain states that explain themselves with [message] instead of the generic restore text. */
     val presentationNotice get() = canRetryNow ||
         phase in setOf(Phase.Failed, Phase.MissingSession, Phase.TrustRequired, Phase.Selecting)
-    val presentationMessage get() = if (presentationNotice) message else t("터미널 복원 중…")
+    val presentationMessage get() = if (presentationNotice) message else t("terminal.restoring")
 }
-class UnknownHostKey(val endpoint: String, val fingerprint: String) : Exception(t("호스트키 신뢰 확인 필요"))
+class UnknownHostKey(val endpoint: String, val fingerprint: String) : Exception(t("connection.host_key_trust_verification_required"))
 
 interface CredentialStore {
     fun read(reference: String): Credential?

@@ -44,7 +44,7 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
             MobileAppIcon()
             Spacer(Modifier.width(4.dp))
             IconButton(toggleHosts, enabled = hostName != null, modifier = Modifier.size(48.dp)
-                .semantics { contentDescription = t(if (showingHosts) "터미널" else "호스트") }) {
+                .semantics { contentDescription = t(if (showingHosts) "common.terminal" else "common.hosts") }) {
                 Icon(if (showingHosts) UiIcons.terminal else UiIcons.hosts, null, Modifier.size(20.dp))
             }
             Spacer(Modifier.weight(1f))
@@ -53,12 +53,12 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
         }
         Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 12.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(buildAnnotatedString {
-                withStyle(SpanStyle(color = colors.onSurfaceVariant, fontSize = 12.sp)) { append(tr("현재 호스트: {0}", "")) }
+                withStyle(SpanStyle(color = colors.onSurfaceVariant, fontSize = 12.sp)) { append(tr("mobile.current_host", "")) }
                 withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(hostName?.let(::displayTreeText) ?: "—") }
             }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.width(8.dp))
             BorderedButton(openTmux, enabled = hostName != null, modifier = Modifier
-                .semantics { contentDescription = t("tmux 관리") }, contentPadding = PaddingValues(horizontal = 10.dp)) {
+                .semantics { contentDescription = t("mobile.manage_tmux") }, contentPadding = PaddingValues(horizontal = 10.dp)) {
                 Text("tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.clearAndSetSemantics {})
                 Spacer(Modifier.width(4.dp))
                 Icon(UiIcons.chevronDown, null, Modifier.size(14.dp))
@@ -110,7 +110,7 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
     }
     CompositionLocalProvider(LocalViewConfiguration provides compactConfiguration) {
     LazyRow(state = state, modifier = Modifier.fillMaxWidth().height(36.dp).onSizeChanged { viewportWidth = it.width }
-        .semantics { contentDescription = t("열린 연결 탭") }, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        .semantics { contentDescription = t("mobile.open_connection_tabs") }, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         // Workspace IDs are Bundle-safe and remain stable across duplicate hosts and tab switches.
         // The positional fallback covers the first frame before App reconciles new connections.
         items(connections, key = { model?.tabId(it) ?: connections.indexOf(it) }) { client ->
@@ -124,7 +124,7 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
                     style = MaterialTheme.typography.labelMedium,
                     color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                 Box(Modifier.size(30.dp).clickable(role = Role.Button, onClick = { close(client) })
-                    .semantics { contentDescription = tr("{0} 닫기", title) }, contentAlignment = Alignment.Center) {
+                    .semantics { contentDescription = tr("common.close_named", title) }, contentAlignment = Alignment.Center) {
                     UiGlyph(UiIcons.close, Modifier.clearAndSetSemantics {})
                 }
             }
@@ -136,7 +136,7 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
 @Composable internal fun MobileNotificationButton(unread: Int, open: () -> Unit, popup: @Composable (Rect) -> Unit) {
     var anchor by remember { mutableStateOf(Rect.Zero) }
     Box(Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }) {
-        IconButton(open, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("알림 {0}", unread) }) {
+        IconButton(open, modifier = Modifier.size(48.dp).semantics { contentDescription = tr("mobile.notifications_count", unread) }) {
             Box(Modifier.size(20.dp)) {
                 Icon(UiIcons.bell, null, Modifier.fillMaxSize())
                 if (unread > 0) Box(Modifier.align(Alignment.TopEnd).size(6.dp)
@@ -168,24 +168,24 @@ internal class NotificationPopupPosition(private val available: IntRect, private
     DisposableEffect(Unit) { onDispose { restoreFocus() } }
     Popup(popupPositionProvider = remember(bounds, margin) { NotificationPopupPosition(bounds, margin) }, onDismissRequest = dismiss,
         properties = imePreservingPopupProperties()) {
-        Surface(Modifier.width(width).heightIn(max = height).semantics { paneTitle = t("알림") }, shadowElevation = 8.dp,
+        Surface(Modifier.width(width).heightIn(max = height).semantics { paneTitle = t("common.notifications") }, shadowElevation = 8.dp,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
             Column {
                 Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("최근 알림 · {0} 읽지 않음", notices.count { !it.read }), Modifier.weight(1f),
+                    Text(tr("agent.recent_notifications_unread", notices.count { !it.read }), Modifier.weight(1f),
                         style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    BorderedButton(dismiss) { Text(t("닫기")) }
+                    BorderedButton(dismiss) { Text(t("common.close")) }
                 }
                 HorizontalDivider()
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f, fill = false)) {
-                    if (notices.isEmpty()) item { Text(t("수신한 알림이 없습니다."), Modifier.padding(12.dp)) }
+                    if (notices.isEmpty()) item { Text(t("agent.no_notifications_received"), Modifier.padding(12.dp)) }
                     items(notices, key = { it.id }) { notice ->
                         Column(Modifier.fillMaxWidth().clickable { model.openAgentNotice(notice.id); dismiss() }
-                            .semantics(mergeDescendants = true) { stateDescription = t(if (notice.read) "읽음" else "읽지 않음") }
+                            .semantics(mergeDescendants = true) { stateDescription = t(if (notice.read) "common.read" else "common.unread") }
                             .padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(agentName(notice.event.agent), style = MaterialTheme.typography.titleSmall)
-                                Text(t(if (notice.read) "읽음" else "읽지 않음"), style = MaterialTheme.typography.labelSmall)
+                                Text(t(if (notice.read) "common.read" else "common.unread"), style = MaterialTheme.typography.labelSmall)
                             }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 UiGlyph(agentIcon(notice.event.kind))

@@ -82,7 +82,7 @@ impl TextInput {
     }
 
     pub fn multiline(cx: &mut Context<Self>) -> Self {
-        let mut input = Self::new("", "전송할 텍스트", false, cx);
+        let mut input = Self::new("", "input.text_send", false, cx);
         input.multiline = Some(Multiline::default());
         input
     }

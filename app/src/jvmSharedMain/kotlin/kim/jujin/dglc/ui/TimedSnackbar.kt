@@ -28,7 +28,7 @@ import kim.jujin.dglc.core.t
     Column(modifier.widthIn(max = 480.dp).padding(8.dp)) {
         Snackbar(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface, action = {
-            BorderedButton({ state.dismiss(displayed.id) }) { Text(t("닫기")) }
+            BorderedButton({ state.dismiss(displayed.id) }) { Text(t("common.close")) }
         }) { Text(displayed.message, style = MaterialTheme.typography.bodySmall) }
         remaining?.let { fraction ->
             val color = MaterialTheme.colorScheme.onSurface

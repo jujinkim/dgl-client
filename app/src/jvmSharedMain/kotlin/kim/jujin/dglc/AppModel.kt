@@ -111,7 +111,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         selected.value = tabClient(next.activeTab)
         claimFocusedSizes()
         if (previous.root != next.root) runCatching { repository.workspace.save(next.root) }.onFailure {
-            backgroundConnectionError.value = t("작업 공간 배치를 저장하지 못했습니다.")
+            backgroundConnectionError.value = t("app.workspace_layout_save_failed")
         }
     }
     @Synchronized fun selectConnection(client: ClientConnection) {
@@ -155,7 +155,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             c.agentEndpoint == n.endpoint && c.status.value.phase == Phase.Ready && c.agents.value.current(System.currentTimeMillis()) &&
                 c.agents.value.server == n.event.server && c.agents.value.observations.any { it.run == n.event.run && it.pane == n.event.pane }
         } }
-        if (notice == null || client == null) { agentNavigationError.value = t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다."); return }
+        if (notice == null || client == null) { agentNavigationError.value = t("agent.target_closed_cannot_navigate"); return }
         navigateNotice(client, notice.event.session, notice.event.window, notice.event.pane)
         agentNavigation.value += 1
     }
@@ -165,7 +165,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             !snapshot.current(System.currentTimeMillis()) || snapshot.observations.none {
                 it.run == observation.run && it.pane == observation.pane && it.session == observation.session && it.window == observation.window
             }) {
-            agentNavigationError.value = t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다.")
+            agentNavigationError.value = t("agent.target_closed_cannot_navigate")
             return
         }
         navigateNotice(client, observation.session, observation.window, observation.pane)

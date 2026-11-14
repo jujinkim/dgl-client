@@ -227,7 +227,9 @@ mod tests {
     #[test]
     fn version_is_not_a_tmux_version_and_rejects_unverified_protocols() {
         assert!(supported("psmux 3.4.0"));
-        assert!(supported("tmux 3.4.0\r\npsmux 3.4.0 (20aa1d7 2026-10-13)\r\n"));
+        assert!(supported(
+            "tmux 3.4.0\r\npsmux 3.4.0 (20aa1d7 2026-10-13)\r\n"
+        ));
         assert!(supported("psmux 3.5.1 (abc1234 2026-11-01)\n"));
         for value in [
             "tmux 3.7c",

@@ -75,7 +75,7 @@ import kim.jujin.dglc.core.*
     content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
         HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
-        WorkspaceSectionHeader(t("세션"), actions = actions)
+        WorkspaceSectionHeader(t("common.sessions"), actions = actions)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), content = content)
     }
@@ -84,7 +84,7 @@ import kim.jujin.dglc.core.*
 /** Keeps the session half in place before any host is connected. */
 @Composable internal fun WorkspaceNavigationPlaceholder(modifier: Modifier) {
     WorkspaceSessionsSection(modifier) {
-        Text(t("호스트에 연결하고 기존 tmux 세션을 선택하세요."), Modifier.padding(12.dp),
+        Text(t("workspace.connect_hint"), Modifier.padding(12.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
     }
 }
@@ -105,12 +105,12 @@ import kim.jujin.dglc.core.*
     val enabled = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
     val generation = client.generation
     WorkspaceSessionsSection(modifier, actions = {
-        IconButton({ prompt = NamePrompt(t("세션 만들기")) { model.createSession(client, it) } }, enabled = enabled,
-            modifier = Modifier.semantics { contentDescription = t("세션 만들기") }) { UiGlyph(UiIcons.plus) }
+        IconButton({ prompt = NamePrompt(t("workspace.create_session")) { model.createSession(client, it) } }, enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = t("workspace.create_session") }) { UiGlyph(UiIcons.plus) }
         IconButton(client::refresh, enabled = enabled && !refreshing,
-            modifier = Modifier.semantics { contentDescription = t("세션 새로고침") }) { UiGlyph(UiIcons.refresh) }
+            modifier = Modifier.semantics { contentDescription = t("workspace.refresh_sessions") }) { UiGlyph(UiIcons.refresh) }
     }) {
-        if (remote.sessions.isEmpty()) Text(t("세션 없음 · + 버튼으로 생성"), Modifier.padding(12.dp))
+        if (remote.sessions.isEmpty()) Text(t("workspace.no_sessions_create_one"), Modifier.padding(12.dp))
         remote.hierarchyRows(preferences.showAllHierarchy).forEach { row -> key(row.key) {
             HierarchyEntry(row, 0, client, remote, session, pane, expanded, enabled, notices,
                 { showAgents(client, it) }, { prompt = it }, { title, action -> deletion = title to action },
@@ -118,7 +118,7 @@ import kim.jujin.dglc.core.*
         } }
     }
     prompt?.let { p -> NameDialog(p.title, { if (client.generation == generation) p.accept(it); prompt = null }, { prompt = null }, p.initial) }
-    deletion?.let { (title, action) -> ConfirmDialog(title, t("이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?"),
+    deletion?.let { (title, action) -> ConfirmDialog(title, t("workspace.delete_remote_confirm"),
         { if (client.generation == generation) action(); deletion = null }, { deletion = null }) }
 }
 
@@ -151,7 +151,7 @@ private data class TabDrag(val tab: String, val position: Offset)
             val logical = constraints.maxHeight + occlusion.getBottom(this)
             val child = measurable.measure(constraints.copy(minHeight = logical, maxHeight = logical))
             layout(child.width, constraints.maxHeight) { child.place(0, 0) }
-        }.semantics { contentDescription = t("분할 작업 공간") }) {
+        }.semantics { contentDescription = t("workspace.split_workspace") }) {
             val width = maxWidth.value; val height = maxHeight.value
             val logicalHeight = height
             var origin by remember { mutableStateOf(Offset.Zero) }
@@ -208,7 +208,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                         layout(child.width, child.height) { child.place(visible.x.dp.roundToPx(), visible.y.dp.roundToPx()) }
                     }
                         .border(if (active) 2.dp else 1.dp, if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
-                        .semantics { contentDescription = tr("터미널 그룹 {0}", workspace.root.leaves().indexOfFirst { it.id == groupId } + 1); selected = active }) {
+                        .semantics { contentDescription = tr("workspace.terminal_group", workspace.root.leaves().indexOfFirst { it.id == groupId } + 1); selected = active }) {
                         Row(Modifier.fillMaxWidth().height(48.dp).background(MaterialTheme.colorScheme.surfaceContainer), verticalAlignment = Alignment.CenterVertically) {
                             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
                                 group.tabs.forEach { tab -> key(tab) { model.tabClient(tab)?.let { client ->
@@ -225,27 +225,27 @@ private data class TabDrag(val tab: String, val position: Offset)
                                             .semantics { contentDescription = title; selected = group.selected == tab }) {
                                             ConnectionTitle(client, draggable = true)
                                         }
-                                        TreeMenu(tr("{0} 탭 메뉴", title), buildList {
-                                            add(t("탭 닫기") to { model.removeConnection(client) })
+                                        TreeMenu(tr("workspace.tab_menu", title), buildList {
+                                            add(t("workspace.close_tab") to { model.removeConnection(client) })
                                             val index = group.tabs.indexOf(tab)
-                                            if (index > 0) add(t("탭 앞으로") to { model.changeWorkspace { it.move(tab, groupId, index - 1) } })
-                                            if (index < group.tabs.lastIndex) add(t("탭 뒤로") to { model.changeWorkspace { it.move(tab, groupId, index + 1) } })
+                                            if (index > 0) add(t("workspace.move_tab_earlier") to { model.changeWorkspace { it.move(tab, groupId, index - 1) } })
+                                            if (index < group.tabs.lastIndex) add(t("workspace.move_tab_later") to { model.changeWorkspace { it.move(tab, groupId, index + 1) } })
                                             workspace.root.leaves().filter { it.id != groupId }.forEach { leaf ->
-                                                add(tr("그룹 {0}으로 이동", workspace.root.leaves().indexOf(leaf) + 1) to { model.changeWorkspace { it.move(tab, leaf.id) } })
+                                                add(tr("workspace.move_to_group", workspace.root.leaves().indexOf(leaf) + 1) to { model.changeWorkspace { it.move(tab, leaf.id) } })
                                             }
                                         })
                                     }
                                 } } }
                             }
-                            listOf(SplitAxis.Horizontal to t("앱 화면 좌우 분할"), SplitAxis.Vertical to t("앱 화면 상하 분할")).forEach { (axis, label) ->
+                            listOf(SplitAxis.Horizontal to t("workspace.split_app_left_right"), SplitAxis.Vertical to t("workspace.split_app_top_bottom")).forEach { (axis, label) ->
                                 IconButton({ model.changeWorkspace { it.split(groupId, axis, width, logicalHeight) } },
                                     enabled = workspace.split(groupId, axis, width, logicalHeight) != workspace,
                                     modifier = Modifier.size(48.dp).semantics { contentDescription = label }) {
                                     UiGlyph(if (axis == SplitAxis.Horizontal) UiIcons.splitHorizontal else UiIcons.splitVertical)
                                 }
                             }
-                            TreeMenu(t("앱 화면 분할 메뉴"), buildList {
-                                if (workspace.groups.size > 1) add(t("인접 그룹과 합치기") to { model.changeWorkspace { it.merge(groupId) } })
+                            TreeMenu(t("workspace.app_split_menu"), buildList {
+                                if (workspace.groups.size > 1) add(t("workspace.merge_adjacent") to { model.changeWorkspace { it.merge(groupId) } })
                             }, enabled = workspace.groups.size > 1)
                         }
                         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -259,7 +259,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                                     }
                                 }
                             } else Box(Modifier.fillMaxSize().clickable { model.changeWorkspace { it.activate(groupId) } }, contentAlignment = Alignment.Center) {
-                                Text(t("호스트나 세션을 선택하여 여기에 연결하세요."), Modifier.padding(16.dp))
+                                Text(t("workspace.drop_hint"), Modifier.padding(16.dp))
                             }
                         }
                     }
@@ -281,7 +281,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                             (if (horizontal) visibleRect.height.dp else 48.dp).roundToPx()))
                         layout(child.width, child.height) { child.place(vx.dp.roundToPx(), vy.dp.roundToPx()) }
                     }
-                        .semantics { contentDescription = t("분할 경계 조절") }
+                        .semantics { contentDescription = t("workspace.resize_split_boundary") }
                         .pointerInput(id, width, height, workspace.root) {
                             detectDragGestures(onDragStart = { original = workspace; delta = 0f }, onDragCancel = { preview = null },
                                 onDragEnd = { preview?.let { value -> model.changeWorkspace {
@@ -306,7 +306,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                     }
                     Box(Modifier.offset { IntOffset((p.x * density).toInt(), (p.y * density).toInt()) }.size(p.width.dp, p.height.dp)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = .18f)).border(2.dp, MaterialTheme.colorScheme.primary)
-                        .semantics { contentDescription = t("탭 배치 미리보기") })
+                        .semantics { contentDescription = t("workspace.tab_placement_preview") })
                 } }
             }
         }
@@ -327,7 +327,7 @@ private data class TabDrag(val tab: String, val position: Offset)
     val allowed = { blocks.isEmpty() && model.selected.value === client && !model.inputBlocked() }
     PlatformInputRegistration(client, preferences, allowed)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(t("tmux 패널 도구"), Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.labelSmall)
+        Text(t("pane.tools"), Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.labelSmall)
         PaneToolbarToggle(preferences.mobilePaneToolbarVisible) {
             model.modify { it.copy(preferences = it.preferences.copy(mobilePaneToolbarVisible = !it.preferences.mobilePaneToolbarVisible)) }
         }
@@ -341,7 +341,7 @@ private data class TabDrag(val tab: String, val position: Offset)
         TextInputDialog(composer, focus, { model.selected.value === client && !model.inputBlocked(owner) }, status.acceptsInput,
             composerSession(client, composer))
     }
-    deleting?.let { pane -> ConfirmDialog(t("현재 tmux 패널 닫기"), t("이 대상의 원격 프로세스가 종료됩니다. 삭제할까요?"),
+    deleting?.let { pane -> ConfirmDialog(t("pane.close_current"), t("workspace.delete_remote_confirm"),
         { client.manage(TmuxCommand.killPane(pane)); deleting = null }, { deleting = null }) }
 }
 

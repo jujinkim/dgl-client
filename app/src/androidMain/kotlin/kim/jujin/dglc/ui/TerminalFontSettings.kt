@@ -19,31 +19,31 @@ import kim.jujin.dglc.core.*
     LaunchedEffect(Unit) { fonts = try { AndroidTerminalFonts.installed() } catch (_: Exception) { emptyList() } }
     val installed = fonts?.firstOrNull { it.family == family }
     val missing = family.isNotEmpty() && fonts != null && installed == null
-    val default = tr("기본 ({0})", "monospace")
+    val default = tr("font.default", "monospace")
     val label = when {
         family.isEmpty() -> default
-        missing -> tr("{0} 없음 · 기본 글꼴 사용", family)
+        missing -> tr("font.missing_using_default", family)
         else -> family
     }
     BorderedButton({ choosing = true }, Modifier.fillMaxWidth()) {
-        Text(tr("터미널 글꼴: {0}", label), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
+        Text(tr("font.terminal_font_value", label), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
     }
     if (!choosing) return
     val choose = { value: String -> select(value); choosing = false }
-    AlertDialog(onDismissRequest = { choosing = false }, title = { Text(t("터미널 글꼴")) }, text = {
+    AlertDialog(onDismissRequest = { choosing = false }, title = { Text(t("font.terminal_font")) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(t("이 기기에 설치된 고정폭 글꼴만 표시합니다. 동기화하지 않습니다."), style = MaterialTheme.typography.bodySmall)
+            Text(t("font.description"), style = MaterialTheme.typography.bodySmall)
             val list = fonts
-            if (list == null) Text(t("글꼴 목록을 불러오는 중…"))
+            if (list == null) Text(t("font.loading_fonts"))
             else LazyColumn(Modifier.heightIn(max = 360.dp)) {
                 item { FontChoice(default, family.isEmpty() || missing, FontFamily.Monospace) { choose("") } }
                 items(list, key = { it.family }) { font ->
                     FontChoice(font.family, font.family == family, remember(font) { FontFamily(font.typeface) }) { choose(font.family) }
                 }
-                if (list.isEmpty()) item { Text(t("다른 고정폭 글꼴을 찾지 못했습니다."), style = MaterialTheme.typography.bodySmall) }
+                if (list.isEmpty()) item { Text(t("font.none_found"), style = MaterialTheme.typography.bodySmall) }
             }
         }
-    }, confirmButton = { BorderedButton({ choosing = false }) { Text(t("닫기")) } })
+    }, confirmButton = { BorderedButton({ choosing = false }) { Text(t("common.close")) } })
 }
 
 /** Each family previews itself, so the choice shows the glyphs it will paint. */

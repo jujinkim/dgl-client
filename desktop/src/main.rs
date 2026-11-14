@@ -177,10 +177,7 @@ impl Desktop {
             Ok(s) => (s, None),
             Err(e) => (
                 LocalState::default(),
-                Some(tr!(
-                    "설정을 읽지 못했습니다: {0}. 원본 파일을 보존했습니다.",
-                    e
-                )),
+                Some(tr!("app.settings_read_failed", e)),
             ),
         };
         cx.spawn(async move |view, cx| {
@@ -415,10 +412,13 @@ impl Desktop {
                                     && let Err(e) =
                                         tab.connection.action(Action::Manage { operation })
                                 {
-                                    self.snackbar.show_snackbar(tr!("요청 실패: {0}", e));
+                                    self.snackbar
+                                        .show_snackbar(tr!("connection.request_failed", e));
                                 }
                             }
-                            Err(e) => self.snackbar.show_snackbar(tr!("대상 선택 실패: {0}", e)),
+                            Err(e) => self
+                                .snackbar
+                                .show_snackbar(tr!("app.target_select_failed", e)),
                         }
                     } else if session_tabs::PendingTarget::waits_for(&state.phase) {
                         tab.pending_target = Some(target);
@@ -437,7 +437,8 @@ impl Desktop {
                             .recent_local
                             .save(&self.path.with_file_name("local-session.json"))
                         {
-                            self.snackbar.show_snackbar(tr!("설정 저장 실패: {0}", e));
+                            self.snackbar
+                                .show_snackbar(tr!("app.settings_save_failed", e));
                         }
                     }
                 }
@@ -515,7 +516,7 @@ impl Desktop {
                         tab.terminal.update(cx, |t, _| t.reject_input(e));
                     } else {
                         self.snackbar.show_snackbar_with_duration(
-                            tr!("요청 실패: {0}", e),
+                            tr!("connection.request_failed", e),
                             SnackbarDuration::Normal,
                         );
                     }
@@ -555,7 +556,7 @@ impl Desktop {
         if changed {
             if save_hosts && let Err(e) = self.local.save(&self.path) {
                 self.snackbar.show_snackbar_with_duration(
-                    tr!("설정 저장 실패: {0}", e),
+                    tr!("app.settings_save_failed", e),
                     SnackbarDuration::Long,
                 );
             }
@@ -569,7 +570,7 @@ impl Desktop {
             Ok(()) => true,
             Err(e) => {
                 self.snackbar.show_snackbar_with_duration(
-                    tr!("설정을 저장하지 못했습니다: {0}", e),
+                    tr!("app.settings_save_failed", e),
                     SnackbarDuration::Long,
                 );
                 false
@@ -602,10 +603,8 @@ impl Desktop {
         }
         if matches!(storage::read_optional(&host.credential_ref), Ok(None)) {
             self.edit(Some(host.clone()), cx);
-            self.snackbar.show_snackbar_with_duration(
-                t("이 기기에서 사용할 비밀번호 또는 개인키를 등록하세요."),
-                SnackbarDuration::Long,
-            );
+            self.snackbar
+                .show_snackbar_with_duration(t("host.credentials_hint"), SnackbarDuration::Long);
             cx.notify();
             return None;
         }
@@ -624,12 +623,11 @@ impl Desktop {
         result
             .inspect_err(|e| {
                 let message = match e {
-                    storage::TrustError::Mismatch => t(
-                        "신뢰한 호스트키 기록이 보호 저장소와 일치하지 않아 연결을 차단했습니다. 설정 > 보안·저장에서 이 서버의 신뢰를 삭제한 뒤 지문을 다시 확인하세요.",
-                    )
-                    .to_string(),
+                    storage::TrustError::Mismatch => {
+                        t("connection.trust_record_mismatch").to_string()
+                    }
                     storage::TrustError::Storage(e) => {
-                        tr!("보호 저장소를 열지 못했습니다: {0}", e)
+                        tr!("app.secure_storage_open_failed_detail", e)
                     }
                 };
                 self.snackbar
@@ -693,8 +691,10 @@ impl Desktop {
             .layout
             .save(&self.path.with_file_name("workspace-layout.json"))
         {
-            self.snackbar
-                .show_snackbar_with_duration(tr!("배치 저장 실패: {0}", e), SnackbarDuration::Long);
+            self.snackbar.show_snackbar_with_duration(
+                tr!("app.layout_save_failed", e),
+                SnackbarDuration::Long,
+            );
         }
     }
     fn refresh(&mut self) {
@@ -704,7 +704,7 @@ impl Desktop {
         {
             match tab.connection.action(Action::Refresh) {
                 Ok(request) => tab.refresh = Some(request),
-                Err(e) => self.snackbar.show_snackbar(tr!("조회 실패: {0}", e)),
+                Err(e) => self.snackbar.show_snackbar(tr!("app.fetch_failed", e)),
             }
         }
     }
@@ -716,13 +716,14 @@ impl Desktop {
                 title: title.into(),
                 connection: tab.connection.clone(),
                 operation,
-                input: cx.new(|cx| TextInput::selected(&current, t("이름"), cx)),
+                input: cx.new(|cx| TextInput::selected(&current, t("common.name"), cx)),
             });
         }
     }
     fn submit(&mut self, connection: &Arc<Connection>, action: Action) {
         if let Err(e) = connection.action(action) {
-            self.snackbar.show_snackbar(tr!("요청 실패: {0}", e));
+            self.snackbar
+                .show_snackbar(tr!("connection.request_failed", e));
         }
     }
     fn confirm(&mut self) {
@@ -743,7 +744,7 @@ impl Desktop {
                 }
             };
             if let Err(e) = result {
-                self.snackbar.show_snackbar(tr!("삭제 실패: {0}", e))
+                self.snackbar.show_snackbar(tr!("app.delete_failed", e))
             } else {
                 self.dialog = None;
             }
@@ -923,9 +924,7 @@ impl Desktop {
                     ));
                 }
             }
-            Err(e) => self
-                .snackbar
-                .show_snackbar(tr!("이름을 확인하세요: {0}", e)),
+            Err(e) => self.snackbar.show_snackbar(tr!("app.check_name", e)),
         }
     }
 
@@ -1046,11 +1045,11 @@ impl Render for Desktop {
                             | Dialog::About
                             | Dialog::ExportSync
                     ) {
-                        t("뒤로")
+                        t("common.back")
                     } else if matches!(&dialog, Dialog::Compose(_)) {
-                        t("취소")
+                        t("common.cancel")
                     } else {
-                        t("취소 / 닫기")
+                        t("common.cancel_close")
                     },
                     cx,
                     |s, _, cx| s.dismiss_dialog(cx),
@@ -1060,7 +1059,7 @@ impl Render for Desktop {
                         body = body.child(self.render_host_dialog(dialog, cx));
                         footer = footer.child(self.button(
                             "save-host",
-                            t("저장"),
+                            t("common.save"),
                             cx,
                             |s, _, cx| s.save_host(cx),
                         ));
@@ -1077,7 +1076,7 @@ impl Render for Desktop {
                         let _ = (connection, operation);
                         footer = footer.child(self.button(
                             "accept-name",
-                            t("확인"),
+                            t("common.ok"),
                             cx,
                             |s, _, cx| s.accept_name(cx),
                         ));
@@ -1085,16 +1084,14 @@ impl Render for Desktop {
 
                     Dialog::Delete { title, operation } => {
                         let warning = match operation {
-                            DeleteOp::Host(_) => {
-                                t("저장된 연결 정보를 삭제합니다. 원격 작업은 유지됩니다.")
-                            }
-                            DeleteOp::Remote(..) => t("삭제하면 해당 원격 프로세스가 종료됩니다."),
-                            DeleteOp::Trust(_) => t("다음 연결 시 서버 키를 다시 확인해야 합니다."),
+                            DeleteOp::Host(_) => t("app.delete_host_note"),
+                            DeleteOp::Remote(..) => t("app.delete_remote_note"),
+                            DeleteOp::Trust(_) => t("settings.trust_removed_note"),
                         };
                         body = body.child(div().text_xl().child(title)).child(warning);
                         footer = footer.child(self.button(
                             "confirm-delete",
-                            t("삭제"),
+                            t("common.delete"),
                             cx,
                             |s, _, _| s.confirm(),
                         ));
@@ -1113,9 +1110,9 @@ impl Render for Desktop {
                             self.button(
                                 "send-composer",
                                 if composer.pending.is_some() {
-                                    t("전송 중…")
+                                    t("input.sending")
                                 } else {
-                                    t("전송")
+                                    t("input.send")
                                 },
                                 cx,
                                 |s, _, cx| s.send_composer(cx),
@@ -1209,7 +1206,7 @@ impl Render for Desktop {
                             .child(div().flex_1().child(snackbar.request.message))
                             .child(self.button(
                                 "dismiss-error",
-                                t("닫기"),
+                                t("common.close"),
                                 cx,
                                 move |s, _, _| s.snackbar.dismiss(id),
                             )),

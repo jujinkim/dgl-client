@@ -28,40 +28,40 @@ import kim.jujin.dglc.core.TmuxCommand
         }
     }
     Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
-        Column(Modifier.fillMaxWidth().semantics { contentDescription = t("tmux 패널 도구") }) {
+        Column(Modifier.fillMaxWidth().semantics { contentDescription = t("pane.tools") }) {
             HorizontalDivider()
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    PaneToolCategory(t("패널 분할")) {
-                        PaneToolButton(UiIcons.splitHorizontal, t("tmux 패널 좌우 분할"), enabled) { manage { TmuxCommand.split(it, true) } }
-                        PaneToolButton(UiIcons.splitVertical, t("tmux 패널 상하 분할"), enabled) { manage { TmuxCommand.split(it, false) } }
+                    PaneToolCategory(t("pane.split")) {
+                        PaneToolButton(UiIcons.splitHorizontal, t("pane.split_horizontally"), enabled) { manage { TmuxCommand.split(it, true) } }
+                        PaneToolButton(UiIcons.splitVertical, t("pane.split_vertically"), enabled) { manage { TmuxCommand.split(it, false) } }
                     }
                     VerticalDivider(Modifier.height(56.dp))
-                    PaneToolCategory(t("이동")) {
+                    PaneToolCategory(t("pane.navigate")) {
                         listOf(
-                            Triple(UiIcons.arrowLeft, 'L', t("왼쪽 패널로 이동")),
-                            Triple(UiIcons.arrowRight, 'R', t("오른쪽 패널로 이동")),
-                            Triple(UiIcons.arrowUp, 'U', t("위 패널로 이동")),
-                            Triple(UiIcons.arrowDown, 'D', t("아래 패널로 이동")),
+                            Triple(UiIcons.arrowLeft, 'L', t("pane.focus_pane_left")),
+                            Triple(UiIcons.arrowRight, 'R', t("pane.focus_pane_right")),
+                            Triple(UiIcons.arrowUp, 'U', t("pane.focus_pane_above")),
+                            Triple(UiIcons.arrowDown, 'D', t("pane.focus_pane_below")),
                         ).forEach { (icon, direction, description) ->
                             PaneToolButton(icon, description, enabled) { manage { TmuxCommand.focusPane(it, direction) } }
                         }
                     }
                     VerticalDivider(Modifier.height(56.dp))
-                    PaneToolCategory(t("크기 조절")) {
+                    PaneToolCategory(t("pane.resize")) {
                         listOf(
-                            Triple(UiIcons.arrowLeft, 'L', t("패널 경계를 왼쪽으로 3셀")),
-                            Triple(UiIcons.arrowRight, 'R', t("패널 경계를 오른쪽으로 3셀")),
-                            Triple(UiIcons.arrowUp, 'U', t("패널 경계를 위로 3셀")),
-                            Triple(UiIcons.arrowDown, 'D', t("패널 경계를 아래로 3셀")),
+                            Triple(UiIcons.arrowLeft, 'L', t("pane.resize_left")),
+                            Triple(UiIcons.arrowRight, 'R', t("pane.resize_right")),
+                            Triple(UiIcons.arrowUp, 'U', t("pane.resize_up")),
+                            Triple(UiIcons.arrowDown, 'D', t("pane.resize_down")),
                         ).forEach { (icon, direction, description) ->
                             PaneToolButton(icon, description, enabled) { manage { TmuxCommand.resizePane(it, direction) } }
                         }
                     }
                 }
                 VerticalDivider(Modifier.height(56.dp))
-                PaneToolCategory(t("닫기")) {
-                    PaneToolButton(UiIcons.close, t("현재 tmux 패널 닫기"), enabled) {
+                PaneToolCategory(t("common.close")) {
+                    PaneToolButton(UiIcons.close, t("pane.close_current"), enabled) {
                         if (client.status.value.phase == Phase.Ready) client.pane.value?.let(closePane)
                     }
                 }

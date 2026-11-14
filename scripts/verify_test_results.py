@@ -60,6 +60,8 @@ TESTS = {
     'InputRejectionsTest': ['nativeCodesDistinguishPreparationQueueAndChangedTargets',
                             'repeatedRejectionsCoalesceWithinEachRecoveryCycle'],
     'core.I18nTest': ['systemLanguageOverridesAndUnsupportedFallback',
+                      'everyLanguageIsListedWithItsOwnNameAndSharesKeys',
+                      'unknownKeysAndFinishedTextPassThrough',
                       'translationsReorderArgumentsWithoutInterpretingUserData',
                       'switchingLanguageRefreshesLabelsAndKeepsInputLiteral'],
     'AgentNavigationTest': ['detailsSelectTheConnectionAndRejectARecreatedPane'],

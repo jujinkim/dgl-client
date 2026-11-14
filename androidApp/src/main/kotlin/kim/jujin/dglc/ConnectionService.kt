@@ -35,17 +35,17 @@ class ConnectionService : Service() {
     fun refreshNotification() {
         if (expectedStop) return
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, t("SSH 연결 유지"), NotificationManager.IMPORTANCE_LOW))
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, t("connection.service_title"), NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, 1, Intent(this, ConnectionService::class.java).setAction(STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(t("SSH 연결 유지")).setContentText(t("홈 이동·화면 잠금 중에도 연결을 유지합니다."))
+            .setContentTitle(t("connection.service_title")).setContentText(t("connection.service_description"))
             .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open)
-            .addAction(Notification.Action.Builder(null, t("앱 열기"), open).build())
-            .addAction(Notification.Action.Builder(null, t("모든 연결 종료"), stop).build()).build()
+            .addAction(Notification.Action.Builder(null, t("connection.open_app"), open).build())
+            .addAction(Notification.Action.Builder(null, t("connection.disconnect_all"), stop).build()).build()
         startForeground(NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         promoted = true
     }

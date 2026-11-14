@@ -117,7 +117,7 @@ impl Tab {
     pub(super) fn title(&self) -> String {
         match self.session.as_deref() {
             Some(id) => hierarchy::display_text(self.session_title.as_deref().unwrap_or(id)),
-            None => t("세션 선택").into(),
+            None => t("common.select_session").into(),
         }
     }
 }
@@ -136,7 +136,7 @@ impl Desktop {
             .save(&self.path.with_file_name("host-order.json"))
         {
             self.snackbar.show_snackbar_with_duration(
-                tr!("호스트 순서 저장 실패: {0}", e),
+                tr!("app.host_order_save_failed", e),
                 SnackbarDuration::Long,
             );
         }
@@ -319,7 +319,8 @@ impl Desktop {
                 };
                 if target_state.browses_sessions() {
                     if let Err(e) = tab.connection.action(target.action()) {
-                        self.snackbar.show_snackbar(tr!("대상 선택 실패: {0}", e));
+                        self.snackbar
+                            .show_snackbar(tr!("app.target_select_failed", e));
                     }
                 } else if PendingTarget::waits_for(&target_state.phase) {
                     tab.pending_target = Some(target);
@@ -360,7 +361,8 @@ impl Desktop {
                     window,
                     pane,
                 }) {
-                    self.snackbar.show_snackbar(tr!("대상 선택 실패: {0}", e));
+                    self.snackbar
+                        .show_snackbar(tr!("app.target_select_failed", e));
                 }
             }
         }

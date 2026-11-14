@@ -48,9 +48,9 @@ impl Desktop {
         let mode = self.local.preferences.accent.mode.clone();
         let mut modes = div().flex().gap_2();
         for (value, label) in [
-            ("system", t("시스템")),
-            ("default", t("DaGaLi 기본")),
-            ("custom", t("사용자 지정")),
+            ("system", t("common.system")),
+            ("default", t("accent.dagali_default")),
+            ("custom", t("accent.custom")),
         ] {
             let selected = mode == value;
             modes = modes.child(
@@ -89,7 +89,7 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_2()
-            .child(t("강조 색상"))
+            .child(t("accent.accent_color"))
             .child(modes);
         // The input stays in the modal focus ring in every mode.
         result = result.child(presets).child(
@@ -117,14 +117,14 @@ impl Desktop {
                         .border_color(rgb(p.line))
                         .bg(rgb(raw.unwrap_or(p.bg))),
                 )
-                .child(self.button("apply-accent", t("적용"), cx, |s, _, cx| {
-                    s.apply_accent(cx)
-                })),
+                .child(
+                    self.button("apply-accent", t("accent.apply"), cx, |s, _, cx| {
+                        s.apply_accent(cx)
+                    }),
+                ),
         );
         if invalid || self.accent_error {
-            result = result.child(t(
-                "#RRGGBB 형식의 색상을 입력하세요. 기존 색상은 유지됩니다.",
-            ));
+            result = result.child(t("accent.invalid_hex"));
         }
         result
     }

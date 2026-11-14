@@ -78,7 +78,7 @@ class AndroidConnectionRuntime(private val application: DglApplication) {
         if (!expected && lifetime.serviceRequested) { lifetime.serviceFailed(); maintenanceFailed() }
     }
     fun maintenanceFailed() {
-        app.backgroundConnectionError.value = t("백그라운드 연결 유지를 시작하지 못했습니다. 앱을 열어 두고 배터리 설정을 확인하세요.")
+        app.backgroundConnectionError.value = t("connection.background_start_failed")
     }
     fun serviceFailed() { lifetime.serviceFailed(); maintenanceFailed() }
     fun removeTask() { lifetime.taskRemoved() }

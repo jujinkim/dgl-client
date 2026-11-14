@@ -1,4 +1,5 @@
 use super::*;
+use dgl_core::i18n::Language;
 use dgl_core::input::{TerminalShortcut, move_shortcut};
 use terminal::fonts::TerminalFace;
 
@@ -43,13 +44,12 @@ impl Desktop {
             )
     }
     pub(super) fn settings_main(&mut self, cx: &mut Context<Self>) -> Div {
-        let choice = match self.local.preferences.language.as_str() {
-            "ko" => "ko",
-            "en" => "en",
-            _ => "system",
-        };
+        let choice =
+            Language::from_code(&self.local.preferences.language).map_or("system", Language::code);
         let mut languages = div().flex().flex_wrap().gap_2();
-        for (value, label) in [("system", t("시스템")), ("ko", "한국어"), ("en", "English")] {
+        let options = std::iter::once(("system", t("common.system")))
+            .chain(Language::all().map(|language| (language.code(), language.native_name())));
+        for (value, label) in options {
             languages = languages.child(self.button(
                 format!("language-{value}"),
                 (
@@ -66,9 +66,9 @@ impl Desktop {
         }
         let mut themes = div().flex().flex_wrap().gap_2();
         for (value, label) in [
-            ("system", t("시스템")),
-            ("light", t("밝게")),
-            ("dark", t("어둡게")),
+            ("system", t("common.system")),
+            ("light", t("settings.theme_light")),
+            ("dark", t("settings.theme_dark")),
         ] {
             let selected = self.local.preferences.theme == value;
             themes = themes.child(self.button(
@@ -86,10 +86,13 @@ impl Desktop {
             ));
         }
         let appearance = self
-            .settings_card("화면·언어", "앱의 언어와 모양을 선택합니다.")
-            .child(t("언어"))
+            .settings_card(
+                "settings.appearance_language",
+                "settings.appearance_description",
+            )
+            .child(t("settings.language"))
             .child(languages)
-            .child(t("테마"))
+            .child(t("settings.theme"))
             .child(themes)
             .child(self.accent_settings(cx));
         let mut font = div()
@@ -97,10 +100,10 @@ impl Desktop {
             .items_center()
             .gap_2()
             .child(div().flex_1().child(tr!(
-                "터미널 글자 크기: {0}",
+                "settings.terminal_font_size",
                 self.local.preferences.font_size
             )));
-        for (delta, label) in [(-1, t("작게")), (1, t("크게"))] {
+        for (delta, label) in [(-1, t("settings.smaller")), (1, t("settings.larger"))] {
             font = font.child(self.button(
                 format!("font-size-{delta}"),
                 label,
@@ -121,16 +124,22 @@ impl Desktop {
         let family = if !face.selected.is_empty() {
             face.family.to_string()
         } else if stored.is_empty() {
-            tr!("기본 ({0})", platform::TERMINAL_FONT)
+            tr!("font.default", platform::TERMINAL_FONT)
         } else {
-            tr!("{0} 없음 · 기본 글꼴 사용", stored)
+            tr!("font.missing_using_default", stored)
         };
         let terminal = self
-            .settings_card("터미널·입력", "터미널 글자와 입력 도구를 조정합니다.")
+            .settings_card(
+                "settings.terminal_input",
+                "settings.terminal_input_description",
+            )
             .child(font)
             .child(self.button(
                 "terminal-font",
-                (UiIcon::ChevronRight, tr!("터미널 글꼴: {0}", family)),
+                (
+                    UiIcon::ChevronRight,
+                    tr!("font.terminal_font_value", family),
+                ),
                 cx,
                 |s, _, cx| s.open_terminal_fonts(cx),
             ))
@@ -139,10 +148,13 @@ impl Desktop {
                     .id("scrollback-setting")
                     .text_xs()
                     .native_tooltip(tr!(
-                        "스크롤백: {0}줄 · 터미널에서 스크롤·선택·복사",
+                        "settings.scrollback_description",
                         self.local.preferences.scrollback
                     ))
-                    .child(tr!("스크롤백: {0}줄", self.local.preferences.scrollback)),
+                    .child(tr!(
+                        "settings.scrollback_lines",
+                        self.local.preferences.scrollback
+                    )),
             )
             .child(
                 self.button(
@@ -153,7 +165,7 @@ impl Desktop {
                         } else {
                             UiIcon::Checkbox
                         },
-                        t("tmux 버퍼를 클립보드에 복사"),
+                        t("settings.copy_tmux_buffers"),
                     ),
                     cx,
                     |s, _, _| {
@@ -162,16 +174,14 @@ impl Desktop {
                         s.save();
                     },
                 )
-                .native_tooltip(t(
-                    "tmux 3.4 이상에서 복사 모드 등으로 버퍼가 바뀌면 1 MiB 이하 텍스트를 이 기기의 클립보드에 씁니다. 같은 tmux 서버의 다른 세션·사용자 버퍼도 포함하며, DGL 창이 활성일 때만 씁니다. 이 기기에만 저장합니다.",
-                )),
+                .native_tooltip(t("settings.copy_tmux_buffers_description")),
             )
             .child(self.button(
                 "edit-shortcuts",
                 (
                     UiIcon::ChevronRight,
                     tr!(
-                        "하단 단축키 · {0}개 · 순서 및 표시 편집",
+                        "settings.bottom_shortcuts_summary",
                         self.local.preferences.terminal_shortcuts.len()
                     ),
                 ),
@@ -186,9 +196,15 @@ impl Desktop {
             crate::power::Mode::from_preference(&self.local.preferences.desktop_power_saving);
         let mut power = div().flex().flex_wrap().gap_2();
         for (mode, label) in [
-            (crate::power::Mode::System, t("OS 저전력 모드 따름")),
-            (crate::power::Mode::Always, t("항상 절전")),
-            (crate::power::Mode::Off, t("사용 안 함")),
+            (
+                crate::power::Mode::System,
+                t("settings.power_saving_follow_os"),
+            ),
+            (
+                crate::power::Mode::Always,
+                t("settings.power_saving_always"),
+            ),
+            (crate::power::Mode::Off, t("settings.power_saving_off")),
         ] {
             power = power.child(self.button(
                 format!("power-saving-{}", mode.preference()),
@@ -208,7 +224,7 @@ impl Desktop {
             ));
         }
         let workspace = self
-            .settings_card("작업 공간", "계층 표시와 화면 전환을 선택합니다.")
+            .settings_card("settings.workspace", "settings.workspace_description")
             .child(self.button(
                 "show-all-hierarchy",
                 (
@@ -217,7 +233,7 @@ impl Desktop {
                     } else {
                         UiIcon::Checkbox
                     },
-                    t("단일 창도 표시"),
+                    t("settings.show_single_windows_too"),
                 ),
                 cx,
                 |s, _, _| {
@@ -229,19 +245,17 @@ impl Desktop {
             .child(
                 div()
                     .id("power-saving-title")
-                    .native_tooltip(t(
-                        "절전 중에는 한가할 때 화면 확인 간격을 늘립니다. 입력·출력 중 반응 속도는 그대로입니다. 이 기기에만 저장합니다.",
-                    ))
-                    .child(t("절전 주기")),
+                    .native_tooltip(t("settings.power_saving_description"))
+                    .child(t("settings.power_saving_pacing")),
             )
             .child(power);
         let alerts = self
-            .settings_card("알림", "에이전트 알림과 OS 알림을 선택합니다.")
+            .settings_card("common.notifications", "settings.notifications_description")
             .child(self.agent_settings(cx));
         let sync = self
             .button(
                 "export-sync",
-                (UiIcon::ChevronRight, t("내보내기 및 동기화")),
+                (UiIcon::ChevronRight, t("sync.export_and_sync")),
                 cx,
                 |s, _, _| {
                     s.settings.main_offset = s.modal.scroll.offset();
@@ -249,23 +263,21 @@ impl Desktop {
                     s.dialog = Some(Dialog::ExportSync);
                 },
             )
-            .native_tooltip(t(
-                "호스트와 공통 설정을 파일로 저장하거나 기기 간 공유합니다.",
-            ));
+            .native_tooltip(t("settings.sync_description"));
         let mut security = self
-            .settings_card("보안·저장", platform::SHORTCUT_HELP)
-            .child(t("신뢰한 서버"));
+            .settings_card("settings.security_storage", platform::SHORTCUT_HELP)
+            .child(t("settings.trusted_servers"));
         for (endpoint, fingerprint) in &self.local.trust {
             let e = endpoint.clone();
             security = security
                 .child(format!("{endpoint}\n{fingerprint}"))
                 .child(self.button(
                     format!("forget-{endpoint}"),
-                    t("신뢰 삭제…"),
+                    t("settings.remove_trust"),
                     cx,
                     move |s, _, _| {
                         s.dialog = Some(Dialog::Delete {
-                            title: tr!("{0} 신뢰 삭제", e),
+                            title: tr!("settings.remove_trust_named", e),
                             operation: DeleteOp::Trust(e.clone()),
                         });
                     },
@@ -276,18 +288,20 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_4()
-            .child(div().text_xl().child(t("설정")))
+            .child(div().text_xl().child(t("common.settings")))
             .child(appearance)
             .child(terminal)
             .child(workspace)
             .child(alerts)
             .child(sync)
             .child(security)
-            .child(self.button("about-app", t("About app"), cx, |s, _, _| {
-                s.settings.main_offset = s.modal.scroll.offset();
-                s.settings.entry = "about-app";
-                s.dialog = Some(Dialog::About);
-            }))
+            .child(
+                self.button("about-app", t("settings.about"), cx, |s, _, _| {
+                    s.settings.main_offset = s.modal.scroll.offset();
+                    s.settings.entry = "about-app";
+                    s.dialog = Some(Dialog::About);
+                }),
+            )
     }
     pub(super) fn settings_back(&mut self) {
         self.cancel_import_preview();
@@ -361,20 +375,22 @@ impl Desktop {
                 div()
                     .id("shortcut-settings-title")
                     .text_xl()
-                    .child(t("하단 단축키"))
+                    .child(t("settings.bottom_shortcuts"))
                     .native_tooltip(format!(
                         "{}\n{}",
-                        t("핸들을 끌어 순서를 바꾸세요. 변경은 놓을 때 저장됩니다."),
-                        t("Ctrl·Shift·Alt는 다음 키 입력에 한 번 적용됩니다.")
+                        t("shortcut.drag_hint"),
+                        t("shortcut.modifiers_once")
                     )),
             )
-            .child(self.button("shortcuts-back", t("뒤로"), cx, |s, _, _| {
-                s.settings_back()
-            }))
-            .child(div().text_lg().child(t("사용 중인 단축키")));
+            .child(
+                self.button("shortcuts-back", t("common.back"), cx, |s, _, _| {
+                    s.settings_back()
+                }),
+            )
+            .child(div().text_lg().child(t("shortcut.active")));
         let keys = &self.local.preferences.terminal_shortcuts;
         if keys.is_empty() {
-            active = active.child(t("사용 중인 단축키가 없습니다."));
+            active = active.child(t("shortcut.none_active"));
         }
         for (index, &key) in keys.iter().enumerate() {
             let view = cx.entity();
@@ -507,7 +523,7 @@ impl Desktop {
                     )
                     .child(self.button(
                         format!("shortcut-setting-{}", key.label()),
-                        t("제외"),
+                        t("shortcut.exclude"),
                         cx,
                         move |s, _, _| {
                             if s.settings.dragging.is_some() {
@@ -530,7 +546,7 @@ impl Desktop {
                     }),
             );
         }
-        active = active.child(div().mt_4().text_lg().child(t("제외된 단축키")));
+        active = active.child(div().mt_4().text_lg().child(t("shortcut.excluded")));
         for key in TerminalShortcut::all()
             .into_iter()
             .filter(|k| !keys.contains(k))
@@ -542,7 +558,7 @@ impl Desktop {
                     .child(div().flex_1().child(key.label()))
                     .child(self.button(
                         format!("shortcut-setting-{}", key.label()),
-                        t("추가"),
+                        t("common.add"),
                         cx,
                         move |s, _, _| {
                             if s.settings.dragging.is_some() {
@@ -554,18 +570,15 @@ impl Desktop {
                     )),
             );
         }
-        active.child(self.button(
-            "reset-shortcuts",
-            t("단축키 기본값 복원"),
-            cx,
-            |s, _, _| {
+        active.child(
+            self.button("reset-shortcuts", t("shortcut.reset"), cx, |s, _, _| {
                 if s.settings.dragging.is_some() {
                     return;
                 }
                 s.local.preferences.terminal_shortcuts = TerminalShortcut::defaults();
                 s.save();
-            },
-        ))
+            }),
+        )
     }
 }
 impl Desktop {
@@ -597,7 +610,7 @@ impl Desktop {
         let face = TerminalFace::resolve(family, cx.text_system());
         if !family.is_empty() && face.selected.is_empty() {
             self.snackbar.show_snackbar_with_duration(
-                tr!("{0} 글꼴을 불러오지 못해 기본 글꼴을 사용합니다.", family),
+                tr!("font.load_failed_using_default", family),
                 SnackbarDuration::Short,
             );
         }
@@ -615,13 +628,13 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_2()
-            .child(div().text_xl().child(t("터미널 글꼴")))
-            .child(self.button("terminal-font-back", t("뒤로"), cx, |s, _, _| {
-                s.settings_back()
-            }))
-            .child(div().text_xs().child(t(
-                "이 기기에 설치된 고정폭 글꼴만 표시합니다. 동기화하지 않습니다.",
-            )))
+            .child(div().text_xl().child(t("font.terminal_font")))
+            .child(
+                self.button("terminal-font-back", t("common.back"), cx, |s, _, _| {
+                    s.settings_back()
+                }),
+            )
+            .child(div().text_xs().child(t("font.description")))
             .child(
                 div()
                     .id("terminal-font-preview")
@@ -636,7 +649,7 @@ impl Desktop {
                     .child("$ ls -la ~/src  0O 1lI {}[]() 한글"),
             );
         let Some(fonts) = &self.settings.fonts else {
-            return page.child(t("글꼴 목록을 불러오는 중…"));
+            return page.child(t("font.loading_fonts"));
         };
         let option =
             |id: String, label: String, selected: bool, family: String, cx: &mut Context<Self>| {
@@ -656,7 +669,7 @@ impl Desktop {
             };
         page = page.child(option(
             "terminal-font-default".into(),
-            tr!("기본 ({0})", platform::TERMINAL_FONT),
+            tr!("font.default", platform::TERMINAL_FONT),
             face.selected.is_empty(),
             String::new(),
             cx,
@@ -667,11 +680,7 @@ impl Desktop {
             .filter(|f| f.as_str() != platform::TERMINAL_FONT)
             .collect();
         if installed.is_empty() {
-            page = page.child(
-                div()
-                    .text_xs()
-                    .child(t("다른 고정폭 글꼴을 찾지 못했습니다.")),
-            );
+            page = page.child(div().text_xs().child(t("font.none_found")));
         }
         for family in installed {
             page = page.child(option(

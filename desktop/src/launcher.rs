@@ -196,7 +196,7 @@ impl Desktop {
         .items_center()
         .justify_center()
         .text_size(px(20.))
-        .native_tooltip(t("CLI 실행 메뉴"))
+        .native_tooltip(t("launcher.cli_launch_menu"))
     }
     pub fn render_launcher(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         self.launcher.opened.as_ref()?;
@@ -229,11 +229,11 @@ impl Desktop {
                 .border_color(rgb(p.line))
                 .text_size(px(13.))
                 .text_color(rgb(p.fg))
-                .child(tr!("이 패널에서 {0} 실행 중", agent.label()))
+                .child(tr!("launcher.running_in_pane", agent.label()))
                 .child(
                     div()
                         .text_color(rgb(p.muted))
-                        .child(t("다른 패널에서 실행하세요")),
+                        .child(t("launcher.launch_another_pane")),
                 );
             notice.style().align_self = Some(gpui::AlignSelf::Stretch);
             menu = menu.child(notice);
@@ -295,11 +295,11 @@ impl Desktop {
                     ))
                     .children(label)
                     .native_tooltip(tr!(
-                        "{0} {1} 실행{2}",
+                        "launcher.launch_variant",
                         service,
                         suffix,
                         if experimental {
-                            t(" · 실험 지원")
+                            t("launcher.experimental_suffix")
                         } else {
                             ""
                         }
@@ -332,7 +332,7 @@ impl Desktop {
                     .size(px(18.))
                     .text_color(rgb(p.fg)),
             )
-            .child(t("단축키 설정"))
+            .child(t("shortcut.settings"))
             .on_click(cx.listener(|s, _, window, cx| {
                 s.dismiss_launcher(window, cx);
                 s.menu = None;

@@ -3,6 +3,7 @@ use super::{
 };
 use crate::ui_tests::{redraw, setup};
 use crate::{AuthKind, Credential, Desktop, Dialog, LocalState, TextInput, ssh};
+use dgl_core::i18n::t;
 use gpui::{Entity, Focusable, Modifiers, TestAppContext, VisualTestContext, px, size};
 
 fn fields(view: &Entity<Desktop>, cx: &mut VisualTestContext) -> Vec<Entity<TextInput>> {
@@ -48,7 +49,7 @@ fn key_import_cancel_errors_and_corrected_save(cx: &mut TestAppContext) {
     let (view, cx) = setup(cx);
     let fields = valid_form(&view, cx);
     save_without_credentials(&view, cx);
-    assert_eq!(feedback(&view, cx).auth_error, Some(MISSING_KEY));
+    assert_eq!(feedback(&view, cx).auth_error, Some(t(MISSING_KEY)));
     assert!(view.read_with(cx, |s, _| s.snackbar.is_none() && s.local.hosts.is_empty()));
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("한글 개인키");
@@ -71,7 +72,7 @@ fn key_import_cancel_errors_and_corrected_save(cx: &mut TestAppContext) {
             .contains("한글 개인키")
     );
     save_without_credentials(&view, cx);
-    assert_eq!(feedback(&view, cx).auth_error, Some(INVALID_KEY));
+    assert_eq!(feedback(&view, cx).auth_error, Some(t(INVALID_KEY)));
     let before = feedback(&view, cx);
     view.update(cx, |s, cx| {
         if let Some(Dialog::Host { feedback, .. }) = &mut s.dialog {
@@ -110,7 +111,7 @@ fn key_import_cancel_errors_and_corrected_save(cx: &mut TestAppContext) {
     });
     assert!(feedback(&view, cx).auth_error.is_none());
     save_without_credentials(&view, cx);
-    assert_eq!(feedback(&view, cx).auth_error, Some(INVALID_KEY));
+    assert_eq!(feedback(&view, cx).auth_error, Some(t(INVALID_KEY)));
     fields[PASSPHRASE].update(cx, |i, cx| i.set_content("synthetic passphrase", cx));
     let mut written = None;
     view.update(cx, |s, cx| {
@@ -219,11 +220,11 @@ fn encrypted_key_validation_and_existing_credential_preservation() {
         .to_string();
     assert_eq!(
         credential(Credential::default(), true, &encrypted, "", "").unwrap_err(),
-        INVALID_KEY
+        t(INVALID_KEY)
     );
     assert_eq!(
         credential(Credential::default(), true, &encrypted, "", "wrong").unwrap_err(),
-        INVALID_KEY
+        t(INVALID_KEY)
     );
     let saved = credential(
         Credential::default(),

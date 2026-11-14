@@ -75,14 +75,14 @@ pub fn session_label(state: &RemoteState, session: &RemoteSession) -> Label {
         .filter(|p| windows.iter().any(|w| w.id == p.window))
         .count();
     Label {
-        title: named(&session.name, t("이름 없는 세션")),
+        title: named(&session.name, t("hierarchy.unnamed_session")),
         subtitle: live_subtitle(
             state,
             &session.name,
-            t("이름 없는 세션"),
+            t("hierarchy.unnamed_session"),
             windows.iter().find(|w| w.active).copied(),
         ),
-        detail: tr!("창 {0}개 · 패널 {1}개", windows.len(), panes),
+        detail: tr!("hierarchy.windows_panes", windows.len(), panes),
     }
 }
 /// The tmux session name shown where input is aimed; the stable ID stays the identity.
@@ -91,7 +91,7 @@ pub fn session_name(state: &RemoteState, id: &str) -> String {
         .sessions
         .iter()
         .find(|s| s.id == id)
-        .map(|s| named(&s.name, t("이름 없는 세션")))
+        .map(|s| named(&s.name, t("hierarchy.unnamed_session")))
         .unwrap_or_else(|| display_text(id))
 }
 pub fn session_tab_title(state: &RemoteState, session: &RemoteSession) -> String {
@@ -100,7 +100,7 @@ pub fn session_tab_title(state: &RemoteState, session: &RemoteSession) -> String
         .iter()
         .find(|w| w.session == session.id && w.active);
     let pane = window.and_then(|w| state.panes.iter().find(|p| p.window == w.id && p.active));
-    let mut parts = vec![named(&session.name, t("이름 없는 세션"))];
+    let mut parts = vec![named(&session.name, t("hierarchy.unnamed_session"))];
     for text in [
         window.map(|w| w.name.as_str()),
         pane.map(|p| p.title.as_str()),
@@ -118,13 +118,18 @@ pub fn session_tab_title(state: &RemoteState, session: &RemoteSession) -> String
 pub fn window_label(state: &RemoteState, window: &RemoteWindow) -> Label {
     let count = state.panes.iter().filter(|p| p.window == window.id).count();
     Label {
-        title: named(&window.name, t("이름 없는 창")),
-        subtitle: live_subtitle(state, &window.name, t("이름 없는 창"), Some(window)),
-        detail: tr!("창 {0} · 패널 {1}개", window.index, count),
+        title: named(&window.name, t("hierarchy.unnamed_window")),
+        subtitle: live_subtitle(
+            state,
+            &window.name,
+            t("hierarchy.unnamed_window"),
+            Some(window),
+        ),
+        detail: tr!("hierarchy.window_panes", window.index, count),
     }
 }
 pub fn pane_label(pane: &RemotePane) -> Label {
-    let command = named(&pane.command, t("프로세스 미확인"));
+    let command = named(&pane.command, t("hierarchy.process_unknown"));
     let mode = display_text(&pane.mode);
     Label {
         title: named(&pane.title, &command),
@@ -204,14 +209,14 @@ pub fn rows(state: &RemoteState, show_all: bool) -> Vec<Row> {
                 let window = row.children.remove(0);
                 row.window = window.window;
                 row.pane = None;
-                if row.label.subtitle == named(&windows[0].name, t("이름 없는 창")) {
+                if row.label.subtitle == named(&windows[0].name, t("hierarchy.unnamed_window")) {
                     row.label.subtitle.clear();
                 }
                 row.label.subtitle = [
                     format!(
                         "{}: {}",
                         windows[0].index,
-                        named(&windows[0].name, t("이름 없는 창")),
+                        named(&windows[0].name, t("hierarchy.unnamed_window")),
                     ),
                     row.label.subtitle,
                 ]
@@ -220,7 +225,7 @@ pub fn rows(state: &RemoteState, show_all: bool) -> Vec<Row> {
                 .collect::<Vec<_>>()
                 .join(" · ");
                 row.label.detail = tr!(
-                    "패널 {0}개",
+                    "hierarchy.panes",
                     state
                         .panes
                         .iter()
@@ -235,17 +240,17 @@ pub fn rows(state: &RemoteState, show_all: bool) -> Vec<Row> {
 }
 pub fn phase_label(phase: &Phase) -> &'static str {
     match phase {
-        Phase::Closed => t("연결 안 됨"),
-        Phase::Connecting => t("연결 중"),
-        Phase::TrustRequired => t("호스트키 확인"),
-        Phase::Authenticating => t("인증 중"),
-        Phase::Selecting => t("세션 선택"),
-        Phase::Restoring => t("터미널 복원 중"),
-        Phase::Ready => t("연결됨"),
-        Phase::Reconnecting => t("재접속 중"),
-        Phase::MissingSession => t("이전 세션 없음"),
-        Phase::Failed => t("연결 실패"),
-        Phase::Shell => t("연결됨 · 일반 SSH"),
+        Phase::Closed => t("common.disconnected"),
+        Phase::Connecting => t("hierarchy.connecting"),
+        Phase::TrustRequired => t("hierarchy.verify_host_key"),
+        Phase::Authenticating => t("hierarchy.authenticating"),
+        Phase::Selecting => t("common.select_session"),
+        Phase::Restoring => t("hierarchy.restoring_terminal"),
+        Phase::Ready => t("hierarchy.connected"),
+        Phase::Reconnecting => t("hierarchy.reconnecting"),
+        Phase::MissingSession => t("hierarchy.previous_session_missing"),
+        Phase::Failed => t("hierarchy.connection_failed"),
+        Phase::Shell => t("hierarchy.connected_plain_ssh"),
     }
 }
 pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&str>) -> String {
@@ -255,7 +260,7 @@ pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&st
         .iter()
         .find(|s| Some(s.id.as_str()) == session)
     {
-        parts.push(named(&s.name, t("이름 없는 세션")));
+        parts.push(named(&s.name, t("hierarchy.unnamed_session")));
     }
     if let Some(p) = state.panes.iter().find(|p| Some(p.id.as_str()) == pane) {
         if let Some(w) = state
@@ -263,7 +268,7 @@ pub fn target_label(state: &RemoteState, session: Option<&str>, pane: Option<&st
             .iter()
             .find(|w| w.id == p.window && Some(w.session.as_str()) == session)
         {
-            parts.push(named(&w.name, t("이름 없는 창")));
+            parts.push(named(&w.name, t("hierarchy.unnamed_window")));
         }
         parts.push(pane_label(p).title);
     }
@@ -292,7 +297,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(session_name(&state, "$1"), "work");
-        assert_eq!(session_name(&state, "$2"), t("이름 없는 세션"));
+        assert_eq!(session_name(&state, "$2"), t("hierarchy.unnamed_session"));
         assert_eq!(session_name(&state, "$3"), "$3");
     }
     #[test]

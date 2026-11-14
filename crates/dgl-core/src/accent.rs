@@ -69,14 +69,14 @@ impl AccentSettings {
     }
 }
 pub const PRESETS: [(&str, &str); 8] = [
-    ("파랑", "#2468C9"),
-    ("보라", "#8056D9"),
-    ("분홍", "#D84F99"),
-    ("빨강", "#D63D45"),
-    ("주황", "#E57B25"),
-    ("노랑", "#E6BB24"),
-    ("초록", "#329654"),
-    ("청록", "#21999D"),
+    ("accent.blue", "#2468C9"),
+    ("accent.purple", "#8056D9"),
+    ("accent.pink", "#D84F99"),
+    ("accent.red", "#D63D45"),
+    ("accent.orange", "#E57B25"),
+    ("accent.yellow", "#E6BB24"),
+    ("accent.green", "#329654"),
+    ("accent.teal", "#21999D"),
 ];
 pub fn blend(color: u32, background: u32, amount: f64) -> u32 {
     [16, 8, 0].into_iter().fold(0, |out, shift| {

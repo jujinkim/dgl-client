@@ -16,7 +16,7 @@ pub fn select(directory: Option<PathBuf>, window: &Window, cx: &App) -> Task<Sel
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some(dgl_core::i18n::t("개인키 파일 선택").into()),
+            prompt: Some(dgl_core::i18n::t("host.choose_private_key_file").into()),
         });
         return cx.foreground_executor().spawn(async move {
             receiver

@@ -45,7 +45,7 @@ data class TerminalSelection(val pane: String, val target: String?, val url: Str
  */
 @Composable internal fun TerminalSelectionMenu(url: String?, paste: (() -> Unit)?, pasteEnabled: Boolean,
     copy: () -> Unit, copyWithoutLineBreaks: (() -> Unit)?, openLink: () -> Unit, copyLink: () -> Unit) {
-    Surface(modifier = Modifier.semantics { paneTitle = t("터미널 선택 메뉴") }, shadowElevation = 8.dp,
+    Surface(modifier = Modifier.semantics { paneTitle = t("terminal.selection_menu") }, shadowElevation = 8.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Column(Modifier.widthIn(min = 160.dp, max = 320.dp).width(IntrinsicSize.Max).focusProperties { canFocus = false }) {
             if (url != null) {
@@ -53,12 +53,12 @@ data class TerminalSelection(val pane: String, val target: String?, val url: Str
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 HorizontalDivider()
             }
-            if (copyWithoutLineBreaks == null) SelectionAction(t("복사"), copy)
+            if (copyWithoutLineBreaks == null) SelectionAction(t("terminal.copy"), copy)
             else CopyActions(copy, copyWithoutLineBreaks)
-            if (paste != null) SelectionAction(t("붙여넣기"), paste, pasteEnabled)
+            if (paste != null) SelectionAction(t("common.paste"), paste, pasteEnabled)
             if (url != null) {
-                SelectionAction(t("링크 열기"), openLink)
-                SelectionAction(t("링크 복사"), copyLink)
+                SelectionAction(t("terminal.open_link"), openLink)
+                SelectionAction(t("terminal.copy_link"), copyLink)
             }
         }
     }
@@ -78,14 +78,14 @@ data class TerminalSelection(val pane: String, val target: String?, val url: Str
  * for both, the second copy becomes its own row below.
  */
 @Composable private fun CopyActions(copy: () -> Unit, copyWithoutLineBreaks: () -> Unit) {
-    val label = t("줄바꿈 없이 복사")
+    val label = t("terminal.copy_without_line_breaks")
     Layout(content = {
-        SelectionAction(t("복사"), copy)
+        SelectionAction(t("terminal.copy"), copy)
         Box(Modifier.height(48.dp).focusProperties { canFocus = false }
             .clickable(role = Role.Button, onClick = copyWithoutLineBreaks)
             .semantics { contentDescription = label }.padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center) {
-            Text(t("줄바꿈 없이"), style = MaterialTheme.typography.labelMedium, maxLines = 1,
+            Text(t("terminal.no_line_breaks"), style = MaterialTheme.typography.labelMedium, maxLines = 1,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
                     .padding(horizontal = 10.dp, vertical = 4.dp))

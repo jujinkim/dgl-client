@@ -59,12 +59,12 @@ impl Kind {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Question => t("질문이 발생했습니다"),
-            Self::Approval => t("승인 요청이 발생했습니다"),
-            Self::Response => t("응답 종료 신호를 받았습니다"),
-            Self::Error => t("명시적 오류를 받았습니다"),
-            Self::Activity => t("작업 사건을 받았습니다"),
-            Self::Ended => t("실행 종료/중단 신호를 받았습니다"),
+            Self::Question => t("agent.question_reported"),
+            Self::Approval => t("agent.approval_request_reported"),
+            Self::Response => t("agent.response_end_signal_received"),
+            Self::Error => t("agent.explicit_error_reported"),
+            Self::Activity => t("agent.activity_event_received"),
+            Self::Ended => t("agent.run_ended_interrupted"),
         }
     }
 }
@@ -164,7 +164,7 @@ impl Snapshot {
             .collect::<Vec<_>>()
             .join(" · ");
         if observations.is_empty() {
-            return t("터미널 · 상태 미확인").into();
+            return t("agent.terminal_status_unknown").into();
         }
         let last = observations
             .iter()
@@ -172,7 +172,7 @@ impl Snapshot {
             .filter(|e| e.kind != Kind::Ended)
             .min_by_key(|e| e.kind.priority());
         if !self.current(now) || last.is_none() {
-            return tr!("{0} · 상태 미확인", agents);
+            return tr!("agent.name_status_unknown", agents);
         }
         let last = last.unwrap();
         let count = observations
@@ -252,27 +252,23 @@ pub async fn setup(ssh: &Ssh, args: &[&str]) -> Result<serde_json::Value> {
 }
 fn limitations(agent: &str) -> &'static str {
     match agent {
-        "Codex" => {
-            t("질문·일반 오류는 수집하지 않습니다. /hooks 신뢰 검토와 실제 수신은 별도입니다.")
-        }
-        "Agy" => t(
-            "승인은 ask_permission만 수집하며 일반 권한 팝업은 감지하지 않습니다. 새 실행의 SessionStart가 필요합니다.",
-        ),
-        "Grok" => t("idle_prompt와 task_complete는 응답 종료 알림으로 수집하지 않습니다."),
+        "Codex" => t("agent.limit.questions_not_collected"),
+        "Agy" => t("agent.limit.approval_ask_permission"),
+        "Grok" => t("agent.limit.idle_prompt_not_collected"),
         _ => "",
     }
 }
 /// The helper reports codes; the wording and its translations stay in the app.
 fn localize_setup(mut value: serde_json::Value) -> serde_json::Value {
     if value.get("error").is_some() {
-        value["error"] = t("연동 조회/설정 실패: Python·tmux·CLI 버전·설정 형식 또는 외부 변경을 확인한 뒤 다시 검사하세요.").into();
+        value["error"] = t("agent.error.integration_failed").into();
     }
     if let Some(configs) = value.get_mut("configs").and_then(|v| v.as_array_mut()) {
         for c in configs.iter_mut().filter(|c| c.is_object()) {
             let limitations = limitations(c["agent"].as_str().unwrap_or(""));
             c["limitations"] = limitations.into();
             if c["error"].as_str().is_some_and(|e| !e.is_empty()) {
-                c["error"] = t("설정 형식·경로 또는 CLI 버전 조회 실패 · 설치 제외").into();
+                c["error"] = t("agent.error.config_unreadable").into();
             }
         }
     }

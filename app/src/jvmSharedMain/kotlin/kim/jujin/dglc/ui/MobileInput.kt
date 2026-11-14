@@ -30,8 +30,8 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
 
 @Composable internal fun PaneToolbarToggle(visible: Boolean, toggle: () -> Unit) {
     IconToggleButton(checked = visible, onCheckedChange = { toggle() }, modifier = Modifier.semantics {
-        contentDescription = if (visible) t("패널 도구 접기") else t("패널 도구 펼치기")
-        stateDescription = if (visible) t("펼침") else t("접힘")
+        contentDescription = if (visible) t("input.collapse_pane_tools") else t("input.expand_pane_tools")
+        stateDescription = if (visible) t("input.expanded") else t("input.collapsed")
     }) {
         val color = if (visible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
         UiGlyph(UiIcons.splitHorizontal, tint = color)
@@ -46,7 +46,7 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
 @Composable internal fun composerSession(client: ClientConnection, composer: TextComposer): String {
     val remote by client.remote.collectAsState()
     val session by client.session.collectAsState()
-    val target = (composer.targetSession ?: session)?.let(remote::sessionName) ?: t("세션 선택")
+    val target = (composer.targetSession ?: session)?.let(remote::sessionName) ?: t("common.select_session")
     return "${displayTreeText(client.host.alias)} · $target"
 }
 
@@ -70,24 +70,24 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
                 Row(modifier.toggleable(enter, enabled = !sending, role = Role.Checkbox,
                     onValueChange = { composer.includeEnter.value = it }), verticalAlignment = Alignment.CenterVertically) {
                     AccentCheckbox(enter, null, enabled = !sending, modifier = if (compact) Modifier.size(32.dp) else Modifier)
-                    Text(t("Enter 함께 보내기"), fontSize = if (compact) 12.sp else 14.sp, maxLines = 1)
+                    Text(t("input.send_with_enter"), fontSize = if (compact) 12.sp else 14.sp, maxLines = 1)
                 }
             }
             Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                 Column(Modifier.heightIn(max = minOf(maxHeight, 420.dp)).padding(if (compact) 4.dp else 16.dp),
                     verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 8.dp)) {
-                    if (!compact) Text(t("텍스트 작성"), style = MaterialTheme.typography.titleLarge)
+                    if (!compact) Text(t("input.compose_text"), style = MaterialTheme.typography.titleLarge)
                     val sessionLabel: @Composable (Modifier) -> Unit = { modifier ->
-                        Text(tr("입력 세션: {0}", session), modifier, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Text(tr("input.target_session", session), modifier, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = if (compact) 11.sp else 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                     val count: @Composable () -> Unit = {
-                        Text(tr("글자 수: {0}", graphemeCount(value.text)), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Text(tr("input.character_count", graphemeCount(value.text)), color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = if (compact) 11.sp else 12.sp, maxLines = 1)
                     }
                     if (!compact) sessionLabel(Modifier.fillMaxWidth())
                     val field = Modifier.weight(1f, fill = false).fillMaxWidth().focusRequester(requester)
-                        .semantics { contentDescription = t("전송할 텍스트") }
+                        .semantics { contentDescription = t("input.text_send") }
                     // Keep one editor/input session when rotation or IME insets change the layout.
                     BasicTextField(value, composer::edit, readOnly = sending,
                         modifier = field.border(1.dp, MaterialTheme.colorScheme.primary).padding(if (compact) 4.dp else 12.dp),
@@ -98,7 +98,7 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
                         if (compact) sessionLabel(Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
                         count()
                     }
-                    if (!compact) Text(t("Enter는 줄바꿈 · 전송 버튼으로 보내기"), fontSize = 12.sp)
+                    if (!compact) Text(t("input.enter_hint"), fontSize = 12.sp)
                     if (!compact) option(Modifier.fillMaxWidth())
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
                         maxLines = if (compact) 1 else 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
@@ -107,10 +107,10 @@ internal expect fun mobileInputDialogProperties(): DialogProperties
                             if (compact) option(Modifier.weight(1f))
                             val button = if (compact) Modifier.height(32.dp) else Modifier
                             val padding = if (compact) PaddingValues(horizontal = 8.dp, vertical = 2.dp) else ButtonDefaults.TextButtonContentPadding
-                            BorderedButton(composer::dismiss, modifier = button, contentPadding = padding) { Text(t("취소")) }
+                            BorderedButton(composer::dismiss, modifier = button, contentPadding = padding) { Text(t("common.cancel")) }
                             Spacer(Modifier.width(8.dp))
                             BorderedButton({ composer.send(current, focus.preparePaste) }, enabled = !sending && value.text.isNotEmpty() && ready,
-                                modifier = button, contentPadding = padding) { Text(if (sending) t("전송 중…") else t("전송")) }
+                                modifier = button, contentPadding = padding) { Text(if (sending) t("input.sending") else t("input.send")) }
                         }
                     }
                 }

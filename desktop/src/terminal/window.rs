@@ -155,7 +155,7 @@ impl WindowTerminal {
         }
         self.rejection_shown = true;
         self.notice = Some(SnackbarRequest::new(
-            tr!("입력을 보내지 못했습니다: {0}", error),
+            tr!("terminal.send_failed", error),
             SnackbarDuration::Short,
         ));
     }
@@ -222,19 +222,17 @@ impl WindowTerminal {
         text: &str,
         cx: &App,
     ) -> Result<Vec<u8>, String> {
-        let pane = self.panes.get(&target.pane_id).ok_or(dgl_core::i18n::t(
-            "현재 패널의 입력 모드를 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
-        ))?;
+        let pane = self
+            .panes
+            .get(&target.pane_id)
+            .ok_or(dgl_core::i18n::t("terminal.input_mode_unknown"))?;
         let bracketed = pane
             .read(cx)
             .input_modes()
             .contains(TermMode::BRACKETED_PASTE);
         let bytes = input::paste_bytes(text, bracketed);
         if bytes.is_empty() || bytes.len() > 65536 {
-            return Err(dgl_core::i18n::t(
-                "입력은 붙여넣기 제어 문자를 포함하여 UTF-8 64 KiB 이하여야 합니다.",
-            )
-            .into());
+            return Err(dgl_core::i18n::t("input.too_large_with_paste").into());
         }
         Ok(bytes)
     }
@@ -555,7 +553,7 @@ impl Render for WindowTerminal {
                         .child(crate::ui_icons::UiIcon::FontSize.render(0xdce1e8))
                         .child(self.font.effective().to_string())
                         .child(crate::ui_icons::UiIcon::Refresh.render(0xdce1e8))
-                        .native_tooltip(dgl_core::i18n::t("세션 글자 크기 초기화"))
+                        .native_tooltip(dgl_core::i18n::t("terminal.reset_session_font_size"))
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.font.reset();

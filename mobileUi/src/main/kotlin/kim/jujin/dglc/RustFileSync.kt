@@ -48,11 +48,11 @@ class RustFileSync(context: Context, private val directory: File, private val mo
     @Synchronized fun finishFileSelection(failed: Boolean = false) {
         if (!selecting) return
         selecting = false
-        status.update { it.copy(busy = false, message = if (failed) "파일 선택창을 열지 못했습니다." else it.message) }
+        status.update { it.copy(busy = false, message = if (failed) "sync.file_picker_failed" else it.message) }
     }
     @Synchronized fun exportFile(uri: Uri) {
         if (unavailable()) return
-        status.update { it.copy(busy = true, message = "파일 처리 중…") }
+        status.update { it.copy(busy = true, message = "sync.processing_file") }
         scope.launch { mutex.withLock {
             try {
                 require(uri.scheme == "content")
@@ -63,8 +63,8 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                     android.provider.DocumentsContract.isDocumentUri(contextForDocuments, linked) &&
                     android.provider.DocumentsContract.getDocumentId(uri) == android.provider.DocumentsContract.getDocumentId(linked))))
                 write(uri, exportSettings(encoded(model.local.value)))
-                status.update { it.copy(message = "내보내기 완료") }
-            } catch (_: Exception) { status.update { it.copy(message = "내보내기 실패. 파일 권한을 확인하고 연결 중인 동기화 파일과 다른 파일을 선택하세요.") } }
+                status.update { it.copy(message = "sync.export_complete") }
+            } catch (_: Exception) { status.update { it.copy(message = "sync.export_failed") } }
             finally { status.update { it.copy(busy = false) } }
         } }
     }
@@ -72,7 +72,7 @@ class RustFileSync(context: Context, private val directory: File, private val mo
         if (unavailable()) return
         val generation = importGeneration
         importing = true
-        status.update { it.copy(busy = true, message = "파일 처리 중…") }
+        status.update { it.copy(busy = true, message = "sync.processing_file") }
         scope.launch { mutex.withLock {
             try {
                 require(uri.scheme == "content")
@@ -81,12 +81,12 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 synchronized(this@RustFileSync) {
                     if (generation == importGeneration) {
                         pendingImport = document
-                        status.update { it.copy(pendingImportCount = preview.hosts.size, message = "가져올 파일을 확인하세요.") }
+                        status.update { it.copy(pendingImportCount = preview.hosts.size, message = "sync.import_review") }
                     }
                 }
             } catch (_: Exception) {
                 synchronized(this@RustFileSync) {
-                    if (generation == importGeneration) status.update { it.copy(message = "가져오기 실패. 파일 형식·버전·크기·미해결 충돌을 확인하세요.") }
+                    if (generation == importGeneration) status.update { it.copy(message = "sync.import_failed") }
                 }
             } finally { importing = false; status.update { it.copy(busy = false) } }
         } }
@@ -98,8 +98,8 @@ class RustFileSync(context: Context, private val directory: File, private val mo
         scope.launch { mutex.withLock {
             try {
                 model.modify { current -> json.decodeFromString<LocalState>(importSettings(encoded(current), document)) }
-                status.update { it.copy(message = "가져오기 완료") }
-            } catch (_: Exception) { status.update { it.copy(message = "설정을 저장하지 못했습니다. 가져오기를 적용하지 않았습니다.") } }
+                status.update { it.copy(message = "sync.import_complete") }
+            } catch (_: Exception) { status.update { it.copy(message = "sync.import_save_failed") } }
             finally {
                 pendingImport = null
                 status.update { it.copy(busy = false, pendingImportCount = null) }
@@ -110,7 +110,7 @@ class RustFileSync(context: Context, private val directory: File, private val mo
         importGeneration++
         val canceled = pendingImport != null || importing
         pendingImport = null
-        status.update { it.copy(pendingImportCount = null, message = if (canceled) "가져오기를 취소했습니다." else it.message) }
+        status.update { it.copy(pendingImportCount = null, message = if (canceled) "sync.import_canceled" else it.message) }
     }
     override val status = MutableStateFlow(CloudSyncStatus())
 
@@ -122,8 +122,8 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 require(checkpoint.length() <= MAX_BYTES * 2)
                 config = json.decodeFromString<Config?>(checkpoint.readText())
             }
-            status.value = CloudSyncStatus(connected = config != null, location = config?.name.orEmpty(), message = if (config == null) "연결 안 됨" else "연결한 파일 확인 대기")
-        } catch (_: Exception) { status.value = CloudSyncStatus(message = "연결 정보를 읽지 못했습니다. 파일을 다시 선택하세요.") }
+            status.value = CloudSyncStatus(connected = config != null, location = config?.name.orEmpty(), message = if (config == null) "common.disconnected" else "sync.waiting_check")
+        } catch (_: Exception) { status.value = CloudSyncStatus(message = "sync.connection_read_failed_reselect_file") }
         scope.launch {
             while (isActive) {
                 delay(15_000)
@@ -156,7 +156,7 @@ class RustFileSync(context: Context, private val directory: File, private val mo
 
     @Synchronized fun connect(uri: Uri, flags: Int, create: Boolean) {
         if (unavailable()) return
-        status.update { it.copy(busy = true, message = "파일 연결 중…") }
+        status.update { it.copy(busy = true, message = "sync.connecting_file") }
         scope.launch { mutex.withLock {
             var granted = false
             try {
@@ -179,16 +179,16 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 synchronize(null)
             } catch (_: Exception) {
                 if (granted && config?.uri != uri.toString()) release(uri)
-                status.update { it.copy(connected = config != null, location = config?.name.orEmpty(), message = "파일 연결 실패. 읽기·쓰기가 가능한 dgl-sync.json을 선택하세요.") }
+                status.update { it.copy(connected = config != null, location = config?.name.orEmpty(), message = "sync.connect_failed") }
             } finally { status.update { it.copy(busy = false) } }
         } }
     }
     @Synchronized override fun sync(resolution: SyncResolution?) {
         if (unavailable() || config == null || model.hostEditing) return
-        status.update { it.copy(busy = true, message = "파일 확인 중…") }
+        status.update { it.copy(busy = true, message = "sync.checking_file") }
         scope.launch { mutex.withLock {
             try { synchronize(resolution) }
-            catch (_: Exception) { status.update { it.copy(message = "파일 동기화 실패. 동기화 앱·파일 권한·파일 형식을 확인하세요. 변경 기록은 기기에 보존됩니다.") } }
+            catch (_: Exception) { status.update { it.copy(message = "sync.sync_failed") } }
             finally { status.update { it.copy(busy = false) } }
         } }
     }
@@ -204,7 +204,7 @@ class RustFileSync(context: Context, private val directory: File, private val mo
             if (read(uri) != before) return@repeat
             if (out.document != before) write(uri, out.document)
             if (model.hostEditing) {
-                status.update { it.copy(message = "호스트 편집이 끝나면 받은 변경을 적용합니다.") }
+                status.update { it.copy(message = "sync.pending_until_edit_done") }
                 return
             }
             // Include local edits made during provider I/O and preserve local-only
@@ -214,7 +214,7 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 val final = exchange(requireNotNull(config), current, out.document, null)
                 save(requireNotNull(config).copy(cache = final.cache))
                 status.value = status.value.copy(conflicts = final.conflicts,
-                    message = if (final.conflicts.isEmpty()) "파일 반영 완료 · 클라우드 전송은 동기화 앱에서 확인하세요." else "동시 수정된 항목을 아래에서 선택하세요.")
+                    message = if (final.conflicts.isEmpty()) "sync.file_updated" else "sync.conflicts_hint")
                 applied = final.local
                 final.local
             }
@@ -233,8 +233,8 @@ class RustFileSync(context: Context, private val directory: File, private val mo
                 val previous = config
                 save(null)
                 previous?.let { release(Uri.parse(it.uri)) }
-                status.value = CloudSyncStatus(message = "연결 해제됨 · 공유 파일은 유지됩니다.")
-            } catch (_: Exception) { status.update { it.copy(busy = false, message = "연결 해제 정보를 저장하지 못했습니다.") } }
+                status.value = CloudSyncStatus(message = "sync.disconnected_file_kept")
+            } catch (_: Exception) { status.update { it.copy(busy = false, message = "sync.disconnect_save_failed") } }
         } }
     }
     override fun close() { scope.cancel() }

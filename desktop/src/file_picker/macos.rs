@@ -33,8 +33,8 @@ extern "C" fn complete(context: *mut c_void, path: *const c_char) {
 /// Called on GPUI's UI thread; AppKit presents asynchronously and completes `sender`.
 pub fn select(directory: Option<PathBuf>, sender: Sender<Selection>) {
     let directory = directory.and_then(|path| CString::new(path.as_os_str().as_bytes()).ok());
-    let title = CString::new(dgl_core::i18n::t("개인키 파일 선택")).unwrap();
-    let prompt = CString::new(dgl_core::i18n::t("가져오기")).unwrap();
+    let title = CString::new(dgl_core::i18n::t("host.choose_private_key_file")).unwrap();
+    let prompt = CString::new(dgl_core::i18n::t("common.import")).unwrap();
     unsafe {
         dgl_select_private_key(
             directory.as_ref().map_or(std::ptr::null(), |s| s.as_ptr()),

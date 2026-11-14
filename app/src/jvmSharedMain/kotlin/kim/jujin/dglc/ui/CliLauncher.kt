@@ -88,7 +88,7 @@ internal class TerminalFocus {
     var request: () -> Unit = {}
     var keyboard: () -> Unit = {}
     var imeVisible by mutableStateOf(false)
-    var preparePaste: suspend (String) -> ByteArray = { _ -> error(t("터미널이 아직 준비되지 않았습니다.")) }
+    var preparePaste: suspend (String) -> ByteArray = { _ -> error(t("launcher.terminal_not_ready")) }
     var inputAllowed: () -> Boolean = { true }
     // Keyboard ownership survives connection recovery; it never authorizes remote input.
     var keyboardAllowed: () -> Boolean = { true }
@@ -135,21 +135,21 @@ private object AboveLauncher : PopupPositionProvider {
     } }
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (mobile) 0.dp else LocalMinimumInteractiveComponentSize.current,
         LocalViewConfiguration provides if (mobile) compactConfiguration else viewConfiguration) {
-        Row(Modifier.fillMaxWidth().semantics { contentDescription = t("터미널 입력 도구") }
+        Row(Modifier.fillMaxWidth().semantics { contentDescription = t("launcher.terminal_input_tools") }
             .padding(horizontal = 4.dp, vertical = if (compact) 3.dp else if (mobile) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val keyboardButton: @Composable () -> Unit = {
                 TerminalToolButton({ terminalFocus.keyboard() }, enabled = available && !keyboardAlwaysVisible,
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).semantics {
-                        contentDescription = if (keyboardAlwaysVisible) t("키보드 항상 보이기") else if (imeVisible) t("키보드 닫기") else t("키보드 열기")
-                        stateDescription = if (keyboardAlwaysVisible) t("항상 표시") else if (imeVisible) t("표시됨") else t("숨김")
+                        contentDescription = if (keyboardAlwaysVisible) t("launcher.always_show_keyboard") else if (imeVisible) t("launcher.hide_keyboard") else t("launcher.show_keyboard")
+                        stateDescription = if (keyboardAlwaysVisible) t("launcher.always_visible") else if (imeVisible) t("launcher.visible") else t("launcher.hidden")
                     }) { KeyboardIcon() }
             }
             val mobileTools: @Composable () -> Unit = {
                 keyboardButton()
                 TerminalToolButton(openComposer, enabled = available,
-                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("텍스트 작성 열기") },
+                    modifier = Modifier.size(buttonHeight).semantics { contentDescription = t("launcher.open_text_composer") },
                     contentPadding = PaddingValues(0.dp)) { UiGlyph(UiIcons.compose, Modifier.size(18.dp)) }
             }
             if (mobile) {
@@ -167,7 +167,7 @@ private object AboveLauncher : PopupPositionProvider {
                 }, enabled = available && status.acceptsInput,
                     containerColor = if (modifiers?.active(shortcut) == true) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                     modifier = modifier.height(buttonHeight).widthIn(min = if (mobile) 46.dp else 58.dp).semantics {
-                        if (shortcut.key == null) stateDescription = t(if (modifiers?.active(shortcut) == true) "켜짐" else "꺼짐")
+                        if (shortcut.key == null) stateDescription = t(if (modifiers?.active(shortcut) == true) "common.on" else "common.off")
                     },
                     contentPadding = PaddingValues(horizontal = if (mobile) 8.dp else 10.dp)) {
                     Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
@@ -192,13 +192,13 @@ private object AboveLauncher : PopupPositionProvider {
                 TerminalToolButton(onClick = { request = if (request == null) CliLaunchRequest(client) else null },
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.size(buttonHeight).focusProperties { canFocus = overlay == null }
-                        .semantics { contentDescription = t("CLI 실행 메뉴") }) { UiGlyph(UiIcons.more, Modifier.size(if (mobile) 18.dp else 20.dp)) }
+                        .semantics { contentDescription = t("launcher.cli_launch_menu") }) { UiGlyph(UiIcons.more, Modifier.size(if (mobile) 18.dp else 20.dp)) }
                 val opened = request
                 if (opened != null) {
                     val menuContent: @Composable () -> Unit = {
                         val menuFocus = remember { FocusRequester() }
                         LaunchedEffect(Unit) { if (overlay == null) menuFocus.requestFocus() }
-                        Surface(modifier = Modifier.semantics { paneTitle = t("CLI 실행 메뉴") }, shadowElevation = 8.dp,
+                        Surface(modifier = Modifier.semantics { paneTitle = t("launcher.cli_launch_menu") }, shadowElevation = 8.dp,
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                             val menuKeys = if (overlay == null) Modifier.onPreviewKeyEvent {
                                 if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { dismiss(); true } else false
@@ -215,8 +215,8 @@ private object AboveLauncher : PopupPositionProvider {
                                 if (runningCli != null) {
                                     Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}
                                         .padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                        Text(tr("이 패널에서 {0} 실행 중", agentName(runningCli)), style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                                        Text(t("다른 패널에서 실행하세요"), style = MaterialTheme.typography.bodySmall,
+                                        Text(tr("launcher.running_in_pane", agentName(runningCli)), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                        Text(t("launcher.launch_another_pane"), style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                     }
                                     HorizontalDivider()
@@ -236,7 +236,7 @@ private object AboveLauncher : PopupPositionProvider {
                                 }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Icon(UiIcons.settings, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Text(t("단축키 설정"), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                    Text(t("shortcut.settings"), style = MaterialTheme.typography.labelLarge, maxLines = 1)
                                 }
                             }
                         }
@@ -276,10 +276,10 @@ private object AboveLauncher : PopupPositionProvider {
 }
 
 @Composable private fun LauncherRow(service: String, icon: ImageVector, enabled: Boolean, normal: () -> Unit, bypass: () -> Unit, experimental: Boolean = false) {
-    val support = if (experimental) t(" · 실험 지원") else ""
+    val support = if (experimental) t("launcher.experimental_suffix") else ""
     Row(Modifier.height(48.dp)) {
-        LauncherItem(service, tr("{0} 실행{1}", service, support), icon, enabled, Modifier.widthIn(min = 48.dp), normal)
-        LauncherItem(null, tr("{0} Bypass 실행{1}", service, support), LauncherIcons.bolt, enabled, Modifier.width(48.dp), bypass)
+        LauncherItem(service, tr("launcher.launch", service, support), icon, enabled, Modifier.widthIn(min = 48.dp), normal)
+        LauncherItem(null, tr("launcher.launch_bypass", service, support), LauncherIcons.bolt, enabled, Modifier.width(48.dp), bypass)
     }
 }
 

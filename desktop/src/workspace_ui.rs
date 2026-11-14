@@ -189,11 +189,11 @@ impl Desktop {
                     .text_sm()
                     .text_color(rgb(p.muted))
                     .truncate()
-                    .child(t("DaGaLi · 탐색기")),
+                    .child(t("workspace.explorer_title")),
             );
         let hosts_header = self.sidebar_section_header(
             "hosts-header",
-            t("호스트"),
+            t("common.hosts"),
             vec![
                 self.button("add", UiIcon::Plus, cx, |s, _, cx| s.edit(None, cx))
                     .into_any_element(),
@@ -343,7 +343,7 @@ impl Desktop {
                         .child(self.host_connection_controls(&host.id, cx))
                         .child(self.button(
                             format!("edit-{id}"),
-                            t("편집"),
+                            t("common.edit"),
                             cx,
                             move |s, _, cx| {
                                 s.menu = None;
@@ -352,7 +352,7 @@ impl Desktop {
                         ))
                         .child(self.button(
                             format!("agent-setup-{id}"),
-                            t("에이전트 상태 연동"),
+                            t("agent.integration"),
                             cx,
                             move |s, _, _| {
                                 s.menu = None;
@@ -370,7 +370,7 @@ impl Desktop {
                                     ));
                                 } else {
                                     s.snackbar.show_snackbar_with_duration(
-                                        t("호스트에 먼저 연결하세요."),
+                                        t("workspace.connect_host_first"),
                                         SnackbarDuration::Short,
                                     );
                                 }
@@ -378,12 +378,12 @@ impl Desktop {
                         ))
                         .child(self.button(
                             format!("delete-{id}"),
-                            t("삭제…"),
+                            t("workspace.delete_ellipsis"),
                             cx,
                             move |s, _, _| {
                                 s.menu = None;
                                 s.dialog = Some(Dialog::Delete {
-                                    title: tr!("호스트 {0} 삭제", delete.alias),
+                                    title: tr!("workspace.delete_host_named", delete.alias),
                                     operation: DeleteOp::Host(delete.clone()),
                                 });
                             },
@@ -436,7 +436,7 @@ impl Desktop {
                 .join(" · ")
                     + &state.error.map(|e| format!(" · {e}")).unwrap_or_default()
             })
-            .unwrap_or_else(|| t("빈 그룹 · 왼쪽 호스트를 선택하여 연결").into());
+            .unwrap_or_else(|| t("workspace.empty_group").into());
         let status_host = self
             .active_tab()
             .map(|tab| hierarchy::display_text(&tab.host.alias));
@@ -557,7 +557,9 @@ impl Desktop {
                 }
                 use platform::AppShortcut::*;
                 match platform::app_shortcut_for(&e.keystroke) {
-                    Some(NewSession) => s.prompt(t("세션 만들기"), PromptOp::Session, cx),
+                    Some(NewSession) => {
+                        s.prompt(t("workspace.create_session"), PromptOp::Session, cx)
+                    }
                     Some(NewHost) => s.edit(None, cx),
                     Some(CloseTab) => {
                         if let Some(id) = s.workspace.selected() {
@@ -668,7 +670,7 @@ impl Desktop {
                                         .child(
                                             self.input_button(
                                                 "open-composer",
-                                                t("텍스트 작성"),
+                                                t("input.compose_text"),
                                                 cx,
                                                 |s, _, cx| s.open_composer(cx),
                                             )
@@ -754,7 +756,7 @@ impl Desktop {
                                         .items_center()
                                         .justify_center()
                                         .gap_1()
-                                        .native_tooltip(t("알림"))
+                                        .native_tooltip(t("common.notifications"))
                                         .child(
                                             div()
                                                 .debug_selector(|| "notification-icon".into())
@@ -795,7 +797,7 @@ impl Desktop {
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .native_tooltip(t("설정")),
+                                        .native_tooltip(t("common.settings")),
                                     ),
                             ),
                     ),
@@ -1079,16 +1081,20 @@ impl Desktop {
                     s.save_layout();
                     s.group_focus(s.workspace.active, w, cx);
                 })
-                .native_tooltip(t("그룹 합치기")),
+                .native_tooltip(t("workspace.merge_groups")),
             );
         }
         for (axis, label, description) in [
             (
                 Axis::Horizontal,
                 UiIcon::SplitHorizontal,
-                t("화면 좌우 분할"),
+                t("workspace.split_screen_horizontally"),
             ),
-            (Axis::Vertical, UiIcon::SplitVertical, t("화면 상하 분할")),
+            (
+                Axis::Vertical,
+                UiIcon::SplitVertical,
+                t("workspace.split_screen_vertically"),
+            ),
         ] {
             let enabled = self.workspace.can_split(id, axis, width, height);
             tools = tools.child(
@@ -1156,7 +1162,10 @@ impl Desktop {
         for tab_id in ids {
             if self.menu.as_deref() == Some(&format!("tab-menu-{tab_id}")) {
                 let mut menu = div().flex().flex_wrap().gap_1().text_xs();
-                for (delta, label) in [(-1i32, t("왼쪽으로")), (1, t("오른쪽으로"))] {
+                for (delta, label) in [
+                    (-1i32, t("workspace.move_left")),
+                    (1, t("workspace.move_right")),
+                ] {
                     menu = menu.child(self.button(
                         format!("reorder-{tab_id}-{delta}"),
                         label,
@@ -1183,7 +1192,7 @@ impl Desktop {
                 {
                     menu = menu.child(self.button(
                         format!("move-{tab_id}-{dest}"),
-                        tr!("그룹 {0}로 이동", dest),
+                        tr!("workspace.move_to_group", dest),
                         cx,
                         move |s, w, cx| {
                             s.workspace.move_tab(tab_id, dest, None);
@@ -1212,12 +1221,12 @@ impl Desktop {
                 let (install, url) = local_host::installation();
                 let message = match state.error {
                     Some(dgl_core::Error::LocalToolPermission) => {
-                        t("로컬 도구의 실행 권한을 확인하세요.")
+                        t("workspace.local_permission_hint")
                     }
                     Some(dgl_core::Error::LocalToolUnsupported) => {
-                        t("지원하는 tmux 3.3–3.7 또는 psmux 3.4 이상이 필요합니다.")
+                        t("workspace.local_requirements")
                     }
-                    _ => t("Local을 사용하려면 tmux 또는 psmux를 설치하세요."),
+                    _ => t("workspace.local_install_hint"),
                 };
                 let mut panel = div()
                     .id("local-installation")
@@ -1229,7 +1238,7 @@ impl Desktop {
                 if let Some(command) = install {
                     panel = panel.child(command).child(self.button(
                         "copy-local-install",
-                        t("명령 복사"),
+                        t("workspace.local_copy_command"),
                         cx,
                         move |_, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(command.into()))
@@ -1237,18 +1246,18 @@ impl Desktop {
                     ));
                 }
                 if cfg!(target_os = "windows") {
-                    panel = panel.child(t("ZIP을 풀고 psmux.exe 폴더를 PATH에 추가할 수도 있습니다. 설치 후 DGL을 다시 시작하세요."));
+                    panel = panel.child(t("workspace.local_psmux_zip_hint"));
                 }
                 panel = panel
                     .child(self.button(
                         "open-local-guide",
-                        t("공식 안내 열기"),
+                        t("workspace.local_open_guide"),
                         cx,
                         move |_, _, cx| cx.open_url(url),
                     ))
                     .child(self.button(
                         "recheck-local-tool",
-                        t("다시 확인"),
+                        t("workspace.local_check_again"),
                         cx,
                         move |s, _, cx| {
                             s.workspace.active = id;
@@ -1269,7 +1278,7 @@ impl Desktop {
                         .text_xs()
                         .child(self.button(
                             format!("retry-now-{id}"),
-                            t("새로고침 재시도"),
+                            t("workspace.retry_refresh"),
                             cx,
                             move |s, _, _| {
                                 s.submit(&retry_connection, Action::RetryNow);
@@ -1278,7 +1287,7 @@ impl Desktop {
                 if state.reconnecting() {
                     retry_controls = retry_controls.child(self.button(
                         format!("stop-retry-{id}"),
-                        t("재시도 정지"),
+                        t("workspace.stop_retrying"),
                         cx,
                         move |s, _, _| {
                             s.submit(&stop_connection, Action::StopRetrying);
@@ -1289,17 +1298,13 @@ impl Desktop {
                     div()
                         .p_2()
                         .text_xs()
-                        .child(
-                            state
-                                .retry_message()
-                                .unwrap_or_else(|| {
-                                    if tab.host.id == local_host::ID {
-                                        t("Local 연결 중…").into()
-                                    } else {
-                                        t("SSH 연결 중…").into()
-                                    }
-                                }),
-                        )
+                        .child(state.retry_message().unwrap_or_else(|| {
+                            if tab.host.id == local_host::ID {
+                                t("workspace.local_connecting").into()
+                            } else {
+                                t("workspace.connecting_ssh").into()
+                            }
+                        }))
                         .child(retry_controls),
                 );
             }
@@ -1308,13 +1313,13 @@ impl Desktop {
                 let fingerprint = state.fingerprint.clone().unwrap_or_default();
                 body = body
                     .child(div().p_3().child(tr!(
-                        "처음 연결하는 서버 · {0}\n{1}\n관리자에게 받은 SHA-256 지문과 비교하세요.",
+                        "workspace.first_connection_prompt",
                         host.endpoint(),
                         fingerprint
                     )))
                     .child(self.button(
                         format!("trust-{id}"),
-                        t("지문 확인 후 신뢰"),
+                        t("workspace.trust_after_verify"),
                         cx,
                         move |s, _, cx| {
                             let endpoint = host.endpoint();
@@ -1327,7 +1332,7 @@ impl Desktop {
                                 },
                             ) {
                                 s.snackbar.show_snackbar_with_duration(
-                                    tr!("호스트키 저장 실패: {0}", e),
+                                    tr!("workspace.host_key_save_failed", e),
                                     SnackbarDuration::Long,
                                 );
                                 return;
@@ -1362,7 +1367,7 @@ impl Desktop {
                                 .debug_selector(move || format!("select-session-hint-{id}"))
                                 .text_center()
                                 .text_color(rgb(p.muted))
-                                .child(t("tmux 세션을 선택하거나 만드세요.")),
+                                .child(t("workspace.select_or_create_session")),
                         ),
                 );
             }
@@ -1388,11 +1393,11 @@ impl Desktop {
                                 .rounded_md()
                                 .bg(rgb(p.panel))
                                 .text_color(rgb(p.fg))
-                                .child(t("재접속 실패"))
+                                .child(t("workspace.reconnection_failed"))
                                 .child(
                                     self.button(
                                         format!("retry-center-{id}"),
-                                        t("다시 재접속 시도"),
+                                        t("workspace.try_reconnecting_again"),
                                         cx,
                                         move |s, _, _| {
                                             s.submit(&connection, Action::RetryNow);
@@ -1418,8 +1423,8 @@ impl Desktop {
                     .justify_center()
                     .items_center()
                     .text_color(rgb(p.muted))
-                    .child(tr!("그룹 {0}", id))
-                    .child(t("호스트를 연결하거나 탭을 끌어오세요."))
+                    .child(tr!("workspace.group", id))
+                    .child(t("workspace.empty_group_hint"))
                     .on_click(cx.listener(move |s, _, w, cx| s.group_focus(id, w, cx)))
                     .on_drop(cx.listener(move |s, tab: &DragTab, w, cx| {
                         s.workspace.move_tab(tab.id, id, None);
@@ -1433,11 +1438,11 @@ impl Desktop {
             let mut preview_width = width - 2.;
             let mut preview_height = height - 2.;
             let label = match target.edge {
-                Some(DockEdge::Left) => t("왼쪽으로 분할"),
-                Some(DockEdge::Right) => t("오른쪽으로 분할"),
-                Some(DockEdge::Top) => t("위로 분할"),
-                Some(DockEdge::Bottom) => t("아래로 분할"),
-                None => t("이 그룹으로 이동"),
+                Some(DockEdge::Left) => t("workspace.split_left"),
+                Some(DockEdge::Right) => t("workspace.split_right"),
+                Some(DockEdge::Top) => t("workspace.split_above"),
+                Some(DockEdge::Bottom) => t("workspace.split_below"),
+                None => t("workspace.move_to_this_group"),
             };
             if let Some(edge) = target.edge {
                 match edge.axis() {
@@ -1485,7 +1490,7 @@ impl Desktop {
             if !tab.connection.state().can_retry_now() {
                 controls = controls.child(self.button(
                     "host-reconnect",
-                    t("재접속"),
+                    t("workspace.reconnect"),
                     cx,
                     move |s, _, cx| {
                         if s.matches_selected_connection(&retry_host, tid, handle)
@@ -1500,7 +1505,7 @@ impl Desktop {
             }
             controls = controls.child(self.button(
                 "host-disconnect",
-                t("연결 종료"),
+                t("common.disconnect"),
                 cx,
                 move |s, _, _| {
                     if s.matches_selected_connection(&host_id, tid, handle) {
@@ -1632,11 +1637,11 @@ impl Desktop {
         let refreshing = active.as_ref().is_some_and(|(_, refreshing)| *refreshing);
         let header = self.sidebar_section_header(
             "sessions-header",
-            t("세션"),
+            t("common.sessions"),
             vec![
                 self.button("new-session", UiIcon::Plus, cx, move |s, _, cx| {
                     if browse {
-                        s.prompt(t("세션 만들기"), PromptOp::Session, cx);
+                        s.prompt(t("workspace.create_session"), PromptOp::Session, cx);
                     }
                 })
                 .when(!browse, |d| d.opacity(0.35))
@@ -1646,7 +1651,7 @@ impl Desktop {
                         s.refresh();
                     }
                 })
-                .native_tooltip(t("세션 새로고침"))
+                .native_tooltip(t("workspace.refresh_sessions"))
                 .when(refreshing || !browse, |d| d.opacity(0.35))
                 .into_any_element(),
             ],
@@ -1659,7 +1664,7 @@ impl Desktop {
                 .py_2()
                 .text_xs()
                 .text_color(rgb(p.muted))
-                .child(t("호스트에 먼저 연결하세요."))
+                .child(t("workspace.connect_host_first"))
                 .into_any_element(),
         };
         div()
@@ -1700,7 +1705,10 @@ impl Desktop {
                     .debug_selector(|| "session-list-waiting".into())
                     .px_3()
                     .text_xs()
-                    .child(tr!("{0} · 목록 대기", hierarchy::phase_label(&state.phase))),
+                    .child(tr!(
+                        "workspace.name_waiting_list",
+                        hierarchy::phase_label(&state.phase)
+                    )),
             );
         }
         for row in hierarchy::rows(&state.remote, self.local.preferences.show_all_hierarchy) {
@@ -1855,22 +1863,26 @@ impl Desktop {
             let add = row.session.clone();
             menu = menu.child(self.button(
                 format!("new-window-{add}"),
-                t("창 만들기…"),
+                t("workspace.create_window_ellipsis"),
                 cx,
                 move |s, _, cx| {
                     s.menu = None;
-                    s.prompt(t("창 만들기"), PromptOp::Window(add.clone()), cx);
+                    s.prompt(
+                        t("workspace.create_window"),
+                        PromptOp::Window(add.clone()),
+                        cx,
+                    );
                 },
             ));
             let target = row.session.clone();
             menu = menu.child(self.button(
                 format!("rename-session-{target}"),
-                t("세션 이름 변경…"),
+                t("workspace.rename_session_ellipsis"),
                 cx,
                 move |s, _, cx| {
                     s.menu = None;
                     s.prompt(
-                        t("세션 이름 변경"),
+                        t("workspace.rename_session"),
                         PromptOp::RenameSession(target.clone()),
                         cx,
                     );
@@ -1878,7 +1890,7 @@ impl Desktop {
             ));
             menu = menu.child(self.hierarchy_delete(
                 format!("kill-session-{}", row.session),
-                t("세션 삭제…"),
+                t("workspace.delete_session"),
                 row.label.title.clone(),
                 Operation::KillSession {
                     target: row.session.clone(),
@@ -1893,12 +1905,12 @@ impl Desktop {
             let target = window.clone();
             menu = menu.child(self.button(
                 format!("rename-{target}"),
-                t("창 이름 변경…"),
+                t("workspace.rename_window_ellipsis"),
                 cx,
                 move |s, _, cx| {
                     s.menu = None;
                     s.prompt(
-                        t("창 이름 변경"),
+                        t("workspace.rename_window"),
                         PromptOp::RenameWindow(target.clone()),
                         cx,
                     );
@@ -1906,8 +1918,8 @@ impl Desktop {
             ));
             menu = menu.child(self.hierarchy_delete(
                 format!("kill-{window}"),
-                t("창 삭제…"),
-                t("창").into(),
+                t("workspace.delete_window"),
+                t("common.window").into(),
                 Operation::KillWindow {
                     target: window.clone(),
                 },
@@ -1927,8 +1939,8 @@ impl Desktop {
         if let Some(pane) = &active_pane {
             let generation = connection.state().generation.connection;
             for (horizontal, label) in [
-                (true, t("패널 좌우 나누기")),
-                (false, t("패널 상하 나누기")),
+                (true, t("workspace.split_pane_horizontally")),
+                (false, t("workspace.split_pane_vertically")),
             ] {
                 let c = connection.clone();
                 let mut target = row.clone();
@@ -1966,12 +1978,12 @@ impl Desktop {
             let target = pane.clone();
             menu = menu.child(self.button(
                 format!("rename-pane-{target}"),
-                t("패널 제목 변경…"),
+                t("workspace.rename_pane_ellipsis"),
                 cx,
                 move |s, _, cx| {
                     s.menu = None;
                     s.prompt(
-                        t("패널 제목 변경"),
+                        t("workspace.rename_pane"),
                         PromptOp::RenamePane(target.clone()),
                         cx,
                     );
@@ -1979,8 +1991,8 @@ impl Desktop {
             ));
             menu = menu.child(self.hierarchy_delete(
                 format!("kill-{pane}"),
-                t("패널 삭제…"),
-                t("패널").into(),
+                t("workspace.delete_pane"),
+                t("common.pane").into(),
                 Operation::KillPane {
                     target: pane.clone(),
                 },
@@ -2003,7 +2015,7 @@ impl Desktop {
         self.button(id, label, cx, move |s, _, _| {
             s.menu = None;
             s.dialog = Some(Dialog::Delete {
-                title: tr!("{0} 삭제", title),
+                title: tr!("common.delete_named", title),
                 operation: DeleteOp::Remote(c.clone(), operation.clone()),
             });
         })

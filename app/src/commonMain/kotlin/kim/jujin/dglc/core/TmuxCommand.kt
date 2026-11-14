@@ -17,7 +17,7 @@ class TmuxCommand private constructor(val operation: JsonObject) {
         }
         private fun name(value: String): String {
             require(value.isNotBlank() && value.length <= 128 && value.none { it == ':' || it == '.' || it.code < 32 || it.code == 127 }) {
-                t("이름은 1–128자이며 콜론·마침표를 포함할 수 없습니다.")
+                t("tmux.invalid_name")
             }
             return value
         }

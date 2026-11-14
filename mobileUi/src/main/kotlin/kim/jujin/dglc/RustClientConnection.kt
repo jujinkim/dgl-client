@@ -95,7 +95,7 @@ class RustClientConnection(
     private fun trace(event: String) {
         if (BuildConfig.DEBUG) Log.d("DglResume", "t=${SystemClock.elapsedRealtime()} adapter=${System.identityHashCode(this)} epoch=$epoch generation=$adapterGeneration subscription=$subscription cycle=${recovery.cycle} $event")
     }
-    private fun outputFailureMessage() = t("터미널 화면을 복원하지 못했습니다. 새로고침 재시도로 다시 복원하세요.")
+    private fun outputFailureMessage() = t("connection.restore_failed")
     private fun trustRef() = "trust-" + MessageDigest.getInstance("SHA-256").digest(host.endpoint.toByteArray()).joinToString("") { "%02x".format(it) }
 
     @Synchronized override fun connect() {
@@ -111,7 +111,7 @@ class RustClientConnection(
         inputRequests.clear(); createdSessions.clear()
         val current = ++epoch
         ++adapterGeneration; nativeGeneration = null
-        status.value = ConnectionStatus(Phase.Connecting, t("SSH 연결 중…"), recovering = recovery.pending)
+        status.value = ConnectionStatus(Phase.Connecting, t("workspace.connecting_ssh"), recovering = recovery.pending)
         stateJob = scope.launch {
             try {
                 val credential = credentials.read(host.credentialRef) ?: error("Storage")
@@ -185,8 +185,8 @@ class RustClientConnection(
                     delay(16)
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: TrustRecordMismatch) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("신뢰한 호스트키 기록이 보호 저장소와 일치하지 않아 연결을 차단했습니다. 설정 > 보안·저장에서 이 서버의 신뢰를 삭제한 뒤 지문을 다시 확인하세요.")) } } }
-            catch (_: Exception) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("보호 저장소 또는 네이티브 연결을 열지 못했습니다.")); native?.stop() } } }
+            catch (_: TrustRecordMismatch) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("connection.trust_record_mismatch")) } } }
+            catch (_: Exception) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("connection.open_failed")); native?.stop() } } }
         }
     }
     // The core localizes `derived.retry_message`, so a language change also needs a fresh snapshot.
@@ -245,10 +245,10 @@ class RustClientConnection(
         val canRetryNow = outputRetry || derivedFlag("retry_available")
         val retryMessage = derived["retry_message"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
         val nextStatus = ConnectionStatus(phase, (if (outputRetry) outputFailureMessage() else null) ?: retryMessage ?: error?.let(::message) ?: when (phase) {
-            Phase.Connecting -> t("SSH 연결 중…"); Phase.Authenticating -> t("서버 확인 중…"); Phase.TrustRequired -> t("호스트키 지문을 확인하세요.")
-            Phase.Selecting -> t("tmux 세션을 선택하거나 만드세요."); Phase.Restoring -> if (resizing) t("연결됨 · tmux") else t("터미널 복원 중…"); Phase.Ready -> t("연결됨 · tmux")
-            Phase.Shell -> t("일반 SSH · tmux 탐지 실패"); Phase.Reconnecting -> t("연결 복구 중…"); Phase.MissingSession -> t("이전 세션이 삭제되었습니다. 직접 선택하세요.")
-            else -> t("연결 종료")
+            Phase.Connecting -> t("workspace.connecting_ssh"); Phase.Authenticating -> t("connection.verifying_server"); Phase.TrustRequired -> t("connection.verify_host_key_fingerprint")
+            Phase.Selecting -> t("workspace.select_or_create_session"); Phase.Restoring -> if (resizing) t("connection.connected_tmux") else t("terminal.restoring"); Phase.Ready -> t("connection.connected_tmux")
+            Phase.Shell -> t("connection.plain_ssh_tmux_detection_failed"); Phase.Reconnecting -> t("connection.recovering_connection"); Phase.MissingSession -> t("connection.previous_session_deleted")
+            else -> t("common.disconnect")
         }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering,
             derivedFlag("retry_exhausted"), presenting = presentation.pending,
             presentingPreview = presentation.pending && presentation.preview)
@@ -271,7 +271,7 @@ class RustClientConnection(
                 }
                 fun JsonObject.optional(key: String) = get(key)?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
                 TmuxProblem(kind, TmuxDiagnostics(probes.filter { it.str("stage") != "version" }.map { probe ->
-                    TmuxProbeAttempt(when (probe.str("stage")) { "direct" -> t("SSH 기본 PATH"); "login" -> t("로그인 셸 PATH"); else -> t("일반 설치 경로") },
+                    TmuxProbeAttempt(when (probe.str("stage")) { "direct" -> t("connection.ssh_default_path"); "login" -> t("connection.login_shell_path"); else -> t("connection.common_installation_paths") },
                         when (probe.str("outcome")) { "found" -> TmuxProbeOutcome.Found; "timeout" -> TmuxProbeOutcome.TimedOut; "failed" -> TmuxProbeOutcome.Failed; "invalid" -> TmuxProbeOutcome.InvalidResponse; else -> TmuxProbeOutcome.NotFound },
                         listOfNotNull(probe.optional("path")), probe.optional("exit_status")?.toIntOrNull())
                 }, probes.firstNotNullOfOrNull { it.optional("path") }), version?.optional("version"), version?.optional("exit_status")?.toIntOrNull())
@@ -298,7 +298,7 @@ class RustClientConnection(
                 lastSession to lastPane
             }
             try { updateLocal { old -> old.copy(hosts = old.hosts.map { if (it.id == host.id) it.copy(lastConnected = System.currentTimeMillis(), lastSession = recentSession, lastPane = recentPane) else it }) } }
-            catch (_: Exception) { notice.value = t("최근 연결 정보를 저장하지 못했습니다.") }
+            catch (_: Exception) { notice.value = t("connection.recent_save_failed") }
         }
     }
     @Synchronized private fun bindOutput() {
@@ -519,9 +519,9 @@ class RustClientConnection(
             credentials.write(trustRef(), Credential(password = request.fingerprint))
             updateLocal { it.copy(trust = it.trust + (request.endpoint to request.fingerprint)) }
             trustRequest.value = null; connect()
-        } catch (_: Exception) { notice.value = t("호스트키를 보호 저장소에 저장하지 못했습니다. 연결을 중단했습니다."); disconnect() }
+        } catch (_: Exception) { notice.value = t("connection.host_key_save_failed"); disconnect() }
     }
-    private fun action(value: JsonObject) { try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") } }
+    private fun action(value: JsonObject) { try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = t("connection.request_unprocessable") } }
     @Synchronized override fun retryNow() {
         backgroundResume.cancel(); userStopped = false
         val c = native
@@ -584,7 +584,7 @@ class RustClientConnection(
                     applyState(stateOf(c))
                 }
             } else if (surface != null && outputJob?.isActive != true) bindOutput()
-        } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") }
+        } catch (_: Exception) { notice.value = t("connection.request_unprocessable") }
     }
     override fun selectTarget(session: String, window: String?, pane: String?) {
         if (this.session.value == session && (pane == null || this.pane.value == pane) &&
@@ -604,7 +604,7 @@ class RustClientConnection(
         try {
             val request = c.submitAction(buildJsonObject { put("action", "manage"); put("operation", command.operation) }.toString())
             createdSessions[request] = CreatedSession(name, known, created)
-        } catch (_: Exception) { notice.value = t("요청을 처리할 수 없습니다. 연결 상태와 입력 값을 확인하세요.") }
+        } catch (_: Exception) { notice.value = t("connection.request_unprocessable") }
     }
     override fun manage(command: TmuxCommand) = action(buildJsonObject { put("action", "manage"); put("operation", command.operation) })
     @Synchronized override fun refresh() {
@@ -612,7 +612,7 @@ class RustClientConnection(
         val c = native ?: return
         refreshing.value = true
         try { refreshRequest = c.submitAction(buildJsonObject { put("action", "refresh") }.toString()) }
-        catch (_: Exception) { refreshing.value = false; notice.value = t("세션 목록을 조회하지 못했습니다.") }
+        catch (_: Exception) { refreshing.value = false; notice.value = t("connection.session_list_failed") }
     }
     @Synchronized override fun restore() {
         if (outputFailed) retryNow() else action(buildJsonObject { put("action", "snapshot") })
@@ -632,7 +632,7 @@ class RustClientConnection(
         } catch (_: Exception) {
             // A full request queue must not tear down a healthy SSH connection.
             resizes.defer(now)
-            notice.value = t("화면 크기 변경을 전송하지 못했습니다. 잠시 후 다시 시도합니다.")
+            notice.value = t("connection.resize_send_failed")
         }
     }
     /**
@@ -709,9 +709,9 @@ class RustClientConnection(
         val raw = c?.targetJson()
         when {
             c == null || raw == null || target != InputTarget(epoch, session.value, inputTargetIdentity(raw)) ->
-                completion.complete(InputCompletion(t("연결·세션·패널이 변경되어 입력을 취소했습니다.")))
-            !status.value.acceptsInput -> completion.complete(InputCompletion(t("연결이 입력 가능한 상태가 아닙니다. 초안을 보존했습니다.")))
-            bytes.isEmpty() || bytes.size > TerminalInput.MAX_BYTES -> completion.complete(InputCompletion(t("입력은 1바이트 이상, 64 KiB 이하여야 합니다.")))
+                completion.complete(InputCompletion(t("input.cancelled_target_changed")))
+            !status.value.acceptsInput -> completion.complete(InputCompletion(t("connection.input_unavailable_draft_kept")))
+            bytes.isEmpty() || bytes.size > TerminalInput.MAX_BYTES -> completion.complete(InputCompletion(t("input.rejected_size")))
             else -> try {
                 // Use the latest size generation, then let the core validate again at dequeue.
                 claimSize(force = false)
@@ -721,7 +721,7 @@ class RustClientConnection(
         return completion
     }
     private fun failInputs() {
-        inputCompletions.values.forEach { it.complete(InputCompletion(t("연결이 종료되어 전송 결과를 확인하지 못했습니다. 자동 재전송하지 않습니다."))) }
+        inputCompletions.values.forEach { it.complete(InputCompletion(t("connection.closed_before_send_confirmed"))) }
         inputCompletions.clear(); inputRequests.clear(); createdSessions.clear()
     }
     @Synchronized private fun detach() {
@@ -748,13 +748,13 @@ class RustClientConnection(
 
     private class TrustRecordMismatch : Exception()
     private fun message(code: String) = when (code) {
-        "HostKeyChanged" -> t("저장된 호스트키가 변경되어 인증 전에 연결을 차단했습니다.")
-        "Authentication" -> t("인증 실패: 비밀번호·개인키·키 암호를 확인하세요.")
-        "HostKeyUnknown" -> t("서버의 호스트키 지문을 확인하세요.")
-        "Storage" -> t("보호 저장소에 저장하지 못했습니다.")
-        "Network" -> t("네트워크 연결이 끊어졌습니다.")
-        "MissingSession" -> t("원격 세션이 삭제되었습니다. 다른 세션을 직접 선택하세요.")
-        "StaleGeneration", "Cancelled" -> t("대상 변경으로 입력 또는 요청을 취소했습니다.")
-        else -> tr("요청 실패: {0}", code)
+        "HostKeyChanged" -> t("connection.host_key_changed")
+        "Authentication" -> t("connection.auth_failed")
+        "HostKeyUnknown" -> t("connection.verify_server_host_key")
+        "Storage" -> t("connection.secure_storage_save_failed")
+        "Network" -> t("connection.network_connection_lost")
+        "MissingSession" -> t("connection.remote_session_deleted")
+        "StaleGeneration", "Cancelled" -> t("connection.cancelled_target_changed")
+        else -> tr("connection.request_failed", code)
     }
 }

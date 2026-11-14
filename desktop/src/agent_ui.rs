@@ -77,8 +77,7 @@ impl Desktop {
             now,
         ) {
             if !notifications::show(&notice) {
-                self.agents.status =
-                    "OS 알림을 요청하지 못했습니다. 앱 내 알림은 유지됩니다.".into();
+                self.agents.status = "agent.os_notification_request_failed".into();
             }
         }
         for id in notifications::take_clicks() {
@@ -106,7 +105,7 @@ impl Desktop {
         self.agents.inbox.mark_read(id);
         let Some(n) = notice else {
             self.snackbar
-                .show_snackbar(t("대상 연결이 종료되었습니다."));
+                .show_snackbar(t("agent.target_connection_closed"));
             return;
         };
         let tab = self
@@ -154,7 +153,7 @@ impl Desktop {
             self.focus_active_terminal(cx);
         } else {
             self.snackbar
-                .show_snackbar(t("대상 연결 또는 패널이 종료되어 이동할 수 없습니다."));
+                .show_snackbar(t("agent.target_closed_cannot_navigate"));
         }
         cx.notify();
     }
@@ -199,11 +198,7 @@ impl Desktop {
         if snapshot.current(now)
             && let Some(n) = unread.iter().min_by_key(|n| n.event.kind.priority())
         {
-            label = tr!(
-                "{0} · 읽지 않은 사건 {1}건",
-                n.event.kind.label(),
-                unread.len()
-            );
+            label = tr!("agent.unread_events", n.event.kind.label(), unread.len());
         }
         let icon = UiIcon::agent(badge_kind(snapshot, &unread, now));
         let id = format!("agent-{}-{}", state.handle, pane);
@@ -275,8 +270,13 @@ impl Desktop {
             .flex()
             .flex_col()
             .gap_3()
-            .child(div().id("agent-details-title").text_lg().child(tr!("에이전트 상태 연동 · {0}", alias))
-                .native_tooltip(t("마지막 관측 사건입니다. 현재 입력·승인 대기 또는 작업 성공을 뜻하지 않습니다.")))
+            .child(
+                div()
+                    .id("agent-details-title")
+                    .text_lg()
+                    .child(tr!("agent.integration_named", alias))
+                    .native_tooltip(t("agent.last_observed_note")),
+            )
             .child({
                 let mut filtered = state.agents.clone();
                 filtered.observations.retain(|o| {
@@ -289,7 +289,10 @@ impl Desktop {
                     })
                 });
                 let now = agent::now_ms();
-                div().flex().items_center().gap_1()
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
                     .child(UiIcon::agent(filtered.display_kind(None, now)).render(self.palette.fg))
                     .child(div().flex_1().min_w_0().child(filtered.label(None, now)))
             });
@@ -302,14 +305,9 @@ impl Desktop {
                 }
             })
         }) {
-            let details = tr!(
-                "진단 정보 · 세션 ID: {0} · 창 ID: {1} · 패널 ID: {2}",
-                o.session,
-                o.window,
-                o.pane
-            );
+            let details = tr!("agent.diagnostics_ids", o.session, o.window, o.pane);
             let supported = tr!(
-                "수신 확인 사건: {0}",
+                "agent.observed_event_types",
                 o.supported
                     .iter()
                     .map(|k| k.label())
@@ -331,7 +329,7 @@ impl Desktop {
                         o.agent.label(),
                         hierarchy::target_label(&state.remote, Some(&o.session), Some(&o.pane)),
                         if o.actor != "parent" {
-                            t(" · 서브에이전트")
+                            t("agent.subagent_suffix")
                         } else {
                             ""
                         }
@@ -351,12 +349,12 @@ impl Desktop {
                                     .as_ref()
                                     .map(|e| {
                                         tr!(
-                                            "{0} · {1}초 전",
+                                            "agent.event_age_seconds",
                                             e.kind.label(),
                                             agent::now_ms().saturating_sub(e.at) / 1000
                                         )
                                     })
-                                    .unwrap_or_else(|| t("미연동 · 상태 미확인").into()),
+                                    .unwrap_or_else(|| t("agent.not_linked").into()),
                             ),
                     ),
             );
@@ -365,7 +363,7 @@ impl Desktop {
             let generation = state.generation.connection;
             body = body.child(self.button(
                 format!("agent-go-{}-{}", o.run, o.actor),
-                t("패널로 이동"),
+                t("agent.go_pane"),
                 cx,
                 move |s, w, cx| {
                     let current = c.state();
@@ -390,8 +388,7 @@ impl Desktop {
                         s.group_focus(s.workspace.active, w, cx);
                         s.dialog = None;
                     } else {
-                        s.snackbar
-                            .show_snackbar(t("대상 연결 또는 패널이 종료되었습니다."));
+                        s.snackbar.show_snackbar(t("agent.target_closed"));
                     }
                 },
             ));
@@ -399,13 +396,16 @@ impl Desktop {
         if pane.is_some() {
             return body;
         }
-        body = body.child(div().id("agent-install-help")
-            .child(t("Python 3 도우미·훅을 설치하고 기존 설정을 백업합니다."))
-            .native_tooltip(t("선택 설치: Python 3 도우미·사용자 훅을 추가하고 기존 설정을 백업합니다. 대화·명령 본문은 저장하지 않습니다.")));
+        body = body.child(
+            div()
+                .id("agent-install-help")
+                .child(t("agent.install_description"))
+                .native_tooltip(t("agent.optional_setup")),
+        );
         let c = connection.clone();
         body = body.child(self.button(
             "agent-inspect",
-            t("설치 전 검사 · 변경 내용 보기"),
+            t("agent.inspect_before_install"),
             cx,
             move |s, _, _| {
                 s.submit(
@@ -425,32 +425,32 @@ impl Desktop {
                 for field in ["python", "tmux", "helper", "database"] {
                     body = body.child(format!(
                         "{field}: {}",
-                        preview[field].as_str().unwrap_or(t("미확인"))
+                        preview[field].as_str().unwrap_or(t("agent.unknown"))
                     ));
                 }
                 if let Some(configs) = preview["configs"].as_array() {
                     for c in configs {
                         body = body.child(tr!(
-                            "{0} · {1}\n{2}\n{3} · {4}\n추가 훅: {5}",
+                            "agent.integration_summary",
                             c["agent"].as_str().unwrap_or(""),
                             c["version"].as_str().unwrap_or(""),
                             c["path"].as_str().unwrap_or(""),
                             if c["installed"].as_bool() == Some(true) {
-                                t("설치됨 / 활성화 확인 필요")
+                                t("agent.installed_check_activation")
                             } else {
-                                t("설치되지 않음")
+                                t("agent.not_installed")
                             },
                             if c["supported"].as_bool() == Some(true) {
-                                t("지원 버전")
+                                t("agent.supported_version")
                             } else {
-                                t("미검증 버전 · 설치 제외")
+                                t("agent.unverified_version")
                             },
                             c["events"]
                         ));
                         if c["experimental"].as_bool() == Some(true) {
-                            body = body.child(t("실험 지원 · 실제 CLI 수신 미검증"));
+                            body = body.child(t("agent.experimental_unverified"));
                         }
-                        body = body.child(tr!("수집 가능 사건: {0}", c["capabilities"]));
+                        body = body.child(tr!("agent.available_event_types", c["capabilities"]));
                         if let Some(limitations) =
                             c["limitations"].as_str().filter(|s| !s.is_empty())
                         {
@@ -461,12 +461,15 @@ impl Desktop {
                         }
                     }
                 }
-                body = body.child(div().id("agent-codex-help")
-                    .child(t("Codex의 /hooks에서 직접 검토·신뢰하세요. 새 실행 또는 훅 수신 후 확인됩니다."))
-                    .native_tooltip(t("Codex는 /hooks에서 직접 검토·신뢰해야 합니다. 새 실행 또는 실제 훅 수신으로 확인됩니다. 기존 실행은 종료하지 않습니다.")));
+                body = body.child(
+                    div()
+                        .id("agent-codex-help")
+                        .child(t("agent.codex_trust_hooks_install"))
+                        .native_tooltip(t("agent.codex_trust_hooks_real_event")),
+                );
                 for (op, label) in [
-                    ("install", t("연동 설치")),
-                    ("remove", t("DaGaLi 훅만 해제")),
+                    ("install", t("agent.install_integration")),
+                    ("remove", t("agent.remove_dagali_hooks_only")),
                 ] {
                     let c = connection.clone();
                     let token = token.to_owned();
@@ -499,13 +502,13 @@ impl Desktop {
                     .py_3()
                     .text_sm()
                     .text_color(rgb(self.palette.muted))
-                    .child(t("수신한 알림이 없습니다.")),
+                    .child(t("agent.no_notifications_received")),
             );
         }
         for n in &self.agents.inbox.recent {
             let id = n.id();
             let details = tr!(
-                "진단 정보 · 세션 ID: {0} · 창 ID: {1} · 패널 ID: {2}",
+                "agent.diagnostics_ids",
                 n.event.session,
                 n.event.window,
                 n.event.pane
@@ -516,7 +519,7 @@ impl Desktop {
                 n.event.server,
                 n.event.run,
                 n.event.event,
-                t("읽음은 질문 응답·승인 처리를 뜻하지 않습니다.")
+                t("agent.read_does_not_answer")
             );
             body = body.child(
                 div()
@@ -540,7 +543,7 @@ impl Desktop {
                                 d.child(
                                     div()
                                         .id(SharedString::from(format!("notice-unread-{}", n.id())))
-                                        .native_tooltip(t("읽지 않음"))
+                                        .native_tooltip(t("common.unread"))
                                         .child(UiIcon::Unread.render(self.palette.accent)),
                                 )
                             })
@@ -550,7 +553,7 @@ impl Desktop {
                                 n.event.agent.label(),
                                 n.event.kind.label(),
                                 if n.event.actor != "parent" {
-                                    t(" · 서브에이전트")
+                                    t("agent.subagent_suffix")
                                 } else {
                                     ""
                                 }
@@ -561,14 +564,14 @@ impl Desktop {
                             .text_xs()
                             .text_color(rgb(self.palette.muted))
                             .child(tr!(
-                                "{0} · {1}초 전",
+                                "agent.event_age_seconds",
                                 n.endpoint,
                                 agent::now_ms().saturating_sub(n.event.at) / 1000
                             )),
                     )
                     .child(self.button(
                         format!("notice-{id}"),
-                        t("패널로 이동"),
+                        t("agent.go_pane"),
                         cx,
                         move |s, _, cx| s.open_agent_notice(&id, cx),
                     )),
@@ -582,21 +585,45 @@ impl Desktop {
             .id("agent-settings")
             .flex()
             .flex_col()
-            .native_tooltip(t("OS 권한·집중 모드와 관계없이 앱 내 알림은 유지됩니다."));
+            .native_tooltip(t("agent.in_app_notifications_note"));
         for (i, label, enabled) in [
-            (0, t("질문·승인 요청"), settings.questions),
-            (1, t("응답 종료 신호"), settings.responses),
-            (2, t("명시적 오류"), settings.errors),
-            (3, t("OS 알림"), settings.os),
+            (
+                0,
+                t("agent.questions_approval_requests"),
+                settings.questions,
+            ),
+            (1, t("agent.response_end_signals"), settings.responses),
+            (2, t("agent.explicit_errors"), settings.errors),
+            (3, t("agent.os_notifications"), settings.os),
         ] {
-            body = body.child(self.button(format!("notification-setting-{i}"), (if enabled { UiIcon::CheckboxChecked } else { UiIcon::Checkbox }, label), cx, move |s, _, _| {
-                let settings = &mut s.local.preferences.agent_notifications;
-                match i { 0 => settings.questions = !settings.questions, 1 => settings.responses = !settings.responses, 2 => settings.errors = !settings.errors, _ => {
-                    settings.os = !settings.os;
-                    if settings.os && !notifications::authorize() { s.agents.status = "OS 알림 등록 실패: 패키지 실행과 시스템 알림 설정을 확인하세요.".into(); }
-                } }
-                s.save();
-            }));
+            body = body.child(self.button(
+                format!("notification-setting-{i}"),
+                (
+                    if enabled {
+                        UiIcon::CheckboxChecked
+                    } else {
+                        UiIcon::Checkbox
+                    },
+                    label,
+                ),
+                cx,
+                move |s, _, _| {
+                    let settings = &mut s.local.preferences.agent_notifications;
+                    match i {
+                        0 => settings.questions = !settings.questions,
+                        1 => settings.responses = !settings.responses,
+                        2 => settings.errors = !settings.errors,
+                        _ => {
+                            settings.os = !settings.os;
+                            if settings.os && !notifications::authorize() {
+                                s.agents.status =
+                                    "agent.os_notification_registration_failed".into();
+                            }
+                        }
+                    }
+                    s.save();
+                },
+            ));
         }
         body.child(t(&self.agents.status).to_owned())
     }

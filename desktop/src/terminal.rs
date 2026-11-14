@@ -280,9 +280,7 @@ impl Terminal {
         self.sent.push(bytes.clone());
         if self.connection.target().is_none() {
             self.notice = Some(SnackbarRequest::new(
-                dgl_core::i18n::t(
-                    "연결 확인·복구 중에는 입력할 수 없습니다. 입력을 다시 전송하지 않습니다.",
-                ),
+                dgl_core::i18n::t("input.rejected_recovering"),
                 SnackbarDuration::Short,
             ));
         }
@@ -311,7 +309,7 @@ impl Terminal {
                 Err(e) if report && expected_report_error(Some(&e)) => {}
                 Err(e) => {
                     self.notice = Some(SnackbarRequest::new(
-                        tr!("입력을 보내지 못했습니다: {0}", e),
+                        tr!("terminal.send_failed", e),
                         SnackbarDuration::Short,
                     ))
                 }
@@ -376,9 +374,7 @@ impl Terminal {
             self.send(bytes);
         } else {
             self.notice = Some(SnackbarRequest::new(
-                dgl_core::i18n::t(
-                    "이 조합은 터미널 입력으로 표현할 수 없습니다. 조합키를 해제하거나 다른 키를 사용하세요.",
-                ),
+                dgl_core::i18n::t("terminal.unencodable_shortcut"),
                 SnackbarDuration::Short,
             ));
         }
@@ -716,7 +712,7 @@ impl EntityInputHandler for Terminal {
         if origin.is_some_and(|origin| origin != self.input_identity()) {
             self.sync_modifiers();
             self.notice = Some(SnackbarRequest::new(
-                dgl_core::i18n::t("연결·세션·패널이 변경되어 입력을 취소했습니다."),
+                dgl_core::i18n::t("input.cancelled_target_changed"),
                 SnackbarDuration::Short,
             ));
             cx.notify();

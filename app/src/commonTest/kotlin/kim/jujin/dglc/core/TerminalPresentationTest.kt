@@ -68,13 +68,13 @@ class TerminalPresentationTest {
     }
 
     @Test fun selectingCurtainAsksForASessionInsteadOfRestoring() {
-        val selecting = ConnectionStatus(Phase.Selecting, t("tmux 세션을 선택하거나 만드세요."), presenting = true)
+        val selecting = ConnectionStatus(Phase.Selecting, t("workspace.select_or_create_session"), presenting = true)
         assertTrue(selecting.presentationNotice)
-        assertEquals(t("tmux 세션을 선택하거나 만드세요."), selecting.presentationMessage)
-        val restoring = ConnectionStatus(Phase.Restoring, t("터미널 복원 중…"), presenting = true)
+        assertEquals(t("workspace.select_or_create_session"), selecting.presentationMessage)
+        val restoring = ConnectionStatus(Phase.Restoring, t("terminal.restoring"), presenting = true)
         assertFalse(restoring.presentationNotice)
-        assertEquals(t("터미널 복원 중…"), restoring.presentationMessage)
-        assertEquals(t("터미널 복원 중…"), ConnectionStatus(Phase.Ready, "connected", presenting = true).presentationMessage)
+        assertEquals(t("terminal.restoring"), restoring.presentationMessage)
+        assertEquals(t("terminal.restoring"), ConnectionStatus(Phase.Ready, "connected", presenting = true).presentationMessage)
         assertEquals("failure", ConnectionStatus(Phase.Failed, "failure", presenting = true).presentationMessage)
         assertEquals("retry", ConnectionStatus(Phase.Restoring, "retry", canRetryNow = true, presenting = true).presentationMessage)
     }

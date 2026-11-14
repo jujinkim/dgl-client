@@ -86,9 +86,9 @@ pub const QUIT_KEY: &str = if !cfg!(target_os = "macos") {
     "cmd-q"
 };
 pub const SHORTCUT_HELP: &str = if !cfg!(target_os = "macos") {
-    "Ctrl+Shift+N 호스트 · Ctrl+Shift+S 세션 · Ctrl+Shift+W 연결 종료 · Ctrl+Shift+F1–F9 연결 전환 · Ctrl+Shift+R 새로고침"
+    "app.shortcuts_hint_ctrl"
 } else {
-    "⌘N 호스트 · ⇧⌘N 세션 · ⌘W 연결 종료 · ⌘1–9 연결 전환 · ⌘R 새로고침"
+    "app.shortcuts_hint_cmd"
 };
 
 // Preserve Ctrl+C, Ctrl+V, Ctrl+R, etc. for the terminal on Windows and Linux.

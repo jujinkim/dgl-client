@@ -22,15 +22,17 @@ impl Desktop {
             .flex_col()
             .items_center()
             .gap_4()
-            .child(div().text_xl().child(t("About app")))
-            .child(self.button("about-back", t("뒤로"), cx, |s, _, _| s.settings_back()))
+            .child(div().text_xl().child(t("settings.about")))
+            .child(self.button("about-back", t("common.back"), cx, |s, _, _| {
+                s.settings_back()
+            }))
             .child(img("app-icon.png").size(px(80.)).rounded_xl())
             .child(div().text_2xl().child("DaGaLi"))
-            .child(tr!("버전 {0}", VERSION))
+            .child(tr!("settings.about_version", VERSION))
             .child("Reconnect less. Resume more.");
         for (id, label, url) in [
-            ("about-website", t("앱 사이트"), WEBSITE),
-            ("about-repository", t("GitHub 저장소"), REPOSITORY),
+            ("about-website", t("settings.about_website"), WEBSITE),
+            ("about-repository", t("settings.about_github"), REPOSITORY),
         ] {
             content = content.child(
                 self.button(id, label, cx, move |_, _, cx| cx.open_url(url))
