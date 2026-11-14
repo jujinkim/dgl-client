@@ -1133,6 +1133,13 @@ impl Control {
         self.reply(true).await
     }
     async fn reply(&mut self, sent: bool) -> Result<Vec<Vec<u8>>> {
+        match self.block(sent).await? {
+            (true, _) => Err(Error::InvalidArgument),
+            (false, lines) => Ok(lines),
+        }
+    }
+    /// The next reply block as (failed, lines).
+    async fn block(&mut self, sent: bool) -> Result<(bool, Vec<Vec<u8>>)> {
         tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 let e = self.next().await?;
@@ -1140,13 +1147,7 @@ impl Control {
                     // A command that DGL did not send on this stream, such as a hook's, is
                     // framed with flags 0; only flag 1 blocks answer DGL's commands, in order.
                     Event::Response { flags, .. } if sent && flags & 1 == 0 => {}
-                    Event::Response { failed, lines, .. } => {
-                        return if failed {
-                            Err(Error::InvalidArgument)
-                        } else {
-                            Ok(lines)
-                        };
-                    }
+                    Event::Response { failed, lines, .. } => return Ok((failed, lines)),
                     _ => self.unsolicited(e).await?,
                 }
             }
@@ -1220,7 +1221,14 @@ impl Control {
                 self.stream
                     .write(format!("{}\n", command.wire).as_bytes())
                     .await?;
-                let mut rows = self.response().await;
+                let mut rows = match self.block(true).await {
+                    Ok((true, lines)) if matches!(op, Operation::Send { .. }) => {
+                        crate::local::psmux::send_reply(&lines)
+                    }
+                    Ok((true, _)) => Err(Error::InvalidArgument),
+                    Ok((false, lines)) => Ok(lines),
+                    Err(e) => Err(e),
+                };
                 if matches!(op, Operation::Capture { .. }) {
                     self.capture_live = Some(Vec::new());
                     rows = rows.map(crate::local::psmux::capture);

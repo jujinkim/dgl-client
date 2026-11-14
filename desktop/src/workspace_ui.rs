@@ -1292,7 +1292,13 @@ impl Desktop {
                         .child(
                             state
                                 .retry_message()
-                                .unwrap_or_else(|| t("SSH 연결 중…").into()),
+                                .unwrap_or_else(|| {
+                                    if tab.host.id == local_host::ID {
+                                        t("Local 연결 중…").into()
+                                    } else {
+                                        t("SSH 연결 중…").into()
+                                    }
+                                }),
                         )
                         .child(retry_controls),
                 );

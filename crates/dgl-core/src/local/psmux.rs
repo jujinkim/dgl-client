@@ -171,6 +171,15 @@ pub(crate) async fn inventory(local: &Local) -> Result<Vec<u8>> {
     }
     Ok(out)
 }
+/// psmux 3.4.0 writes the keys of a control-mode `send-keys -H` but never answers it, so
+/// every send comes back as this `%error` block (psmux #799, fixed after 3.4.0). Only that
+/// exact body is the delivered input; any other `%error` is still a refused send.
+pub fn send_reply(lines: &[Vec<u8>]) -> Result<Vec<Vec<u8>>> {
+    match lines {
+        [line] if line.trim_ascii() == b"command timed out" => Ok(Vec::new()),
+        _ => Err(Error::InvalidArgument),
+    }
+}
 /// psmux ignores capture-pane -C; encode its literal rows for the common snapshot decoder.
 pub(crate) fn capture(rows: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     rows.into_iter()
@@ -230,6 +239,18 @@ mod tests {
             "tmux 3.4.0\npsmux 3.3.9 (abc1234 2026-01-01)",
         ] {
             assert!(!supported(value));
+        }
+    }
+    #[test]
+    fn unanswered_send_is_delivered_but_other_send_errors_are_refusals() {
+        assert_eq!(send_reply(&[b"command timed out".to_vec()]), Ok(vec![]));
+        assert_eq!(send_reply(&[b"command timed out\r".to_vec()]), Ok(vec![]));
+        for lines in [
+            vec![],
+            vec![b"can't find pane: %9".to_vec()],
+            vec![b"command timed out".to_vec(), b"extra".to_vec()],
+        ] {
+            assert_eq!(send_reply(&lines), Err(Error::InvalidArgument));
         }
     }
     #[test]

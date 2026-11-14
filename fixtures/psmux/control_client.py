@@ -61,7 +61,12 @@ elif args[0] == '-CC':
         elif command[0] == 'capture-pane':
             # Literal backslash and ANSI: psmux ignores tmux's -C capture escaping flag.
             print('fixture\\literal\x1b[0m')
-        print(f'%end 1 {number} 1')
+        if command[0] == 'send-keys':
+            # psmux 3.4.0 (#799) writes the keys but answers a control send-keys this way.
+            print('command timed out')
+            print(f'%error 1 {number} 1')
+        else:
+            print(f'%end 1 {number} 1')
         if command[0] == 'capture-pane':
             print(r'%extended-output %0 0 : AFTER_CAPTURE\015\012')
         if command[:3] == ['refresh-client', '-f', 'pause-after=2']:

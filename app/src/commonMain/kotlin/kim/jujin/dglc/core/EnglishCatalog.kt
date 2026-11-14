@@ -40,6 +40,7 @@ internal object EnglishCatalog {
         "SSH 기본 PATH" to "SSH default PATH",
         "SSH 연결 유지" to "Keep SSH connected",
         "SSH 연결 중…" to "Connecting to SSH…",
+        "Local 연결 중…" to "Connecting to Local…",
         "SSH 호스트 추가" to "Add SSH host",
         "SSH 호스트를 추가하여 시작하세요.\n원격 서버에는 SSH와 tmux만 필요합니다." to "Add an SSH host to get started.\nThe remote server only needs SSH and tmux.",
         "DaGaLi · 탐색기" to "DaGaLi · Explorer",
