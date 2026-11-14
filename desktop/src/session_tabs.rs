@@ -131,10 +131,6 @@ impl Tab {
         let title = hierarchy::display_text(self.session_title.as_deref()?);
         (!title.is_empty()).then_some(title)
     }
-    /// The tab's first line: the session title, or the name when there is no title.
-    pub(super) fn heading(&self) -> String {
-        self.session_heading().unwrap_or_else(|| self.name())
-    }
     /// The full title for the window title bar and tooltips: name, then session title.
     pub(super) fn title(&self) -> String {
         match self.session_heading() {

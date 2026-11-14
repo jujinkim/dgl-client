@@ -2211,17 +2211,20 @@ fn split_emoji_buttons_stay_at_right_of_overflowing_tab_bar(cx: &mut TestAppCont
     assert!(title.bottom() <= badge.top());
     assert!(title.top() >= header.top() && badge.bottom() <= header.bottom());
     assert!(badge.size.width <= px(120.));
-    // The session name sits in small type to the right of the host badge, below the title.
-    let name = cx.debug_bounds("tab-session-1").unwrap();
-    assert!(name.left() >= badge.right());
-    assert!(title.bottom() <= name.top() && name.bottom() <= header.bottom());
-    assert!(name.size.height < title.size.height);
+    // The session title sits in small type to the right of the host badge, below the name.
+    let heading = cx.debug_bounds("tab-session-1").unwrap();
+    assert!(heading.left() >= badge.right());
+    assert!(title.bottom() <= heading.top() && heading.bottom() <= header.bottom());
+    assert!(heading.size.height < title.size.height);
     view.read_with(cx, |s, _| {
-        assert_eq!(s.tabs[0].heading(), "한".repeat(20) + " 제목 뒷부분");
-        assert!(!s.tabs[0].heading().contains("긴 세션 이름"));
+        assert_eq!(s.tabs[0].name(), "긴 세션 이름".repeat(4));
+        assert_eq!(
+            s.tabs[0].session_heading().as_deref(),
+            Some(("한".repeat(20) + " 제목 뒷부분").as_str())
+        );
         assert!(s.tabs[0].label().ends_with("제목 뒷부분"));
     });
-    // Without a session title the name moves to the first line and is not repeated.
+    // Without a session title the second line keeps only the host badge.
     view.update(cx, |s, cx| {
         s.tabs[0].set_session_parts(("이름만".into(), String::new()));
         cx.notify();
@@ -2229,7 +2232,7 @@ fn split_emoji_buttons_stay_at_right_of_overflowing_tab_bar(cx: &mut TestAppCont
     redraw(cx);
     // gpui keeps stale debug bounds across frames, so check the condition the row renders from.
     view.read_with(cx, |s, _| {
-        assert_eq!(s.tabs[0].heading(), "이름만");
+        assert_eq!(s.tabs[0].name(), "이름만");
         assert_eq!(s.tabs[0].session_heading(), None);
         assert_eq!(s.tabs[0].title(), "이름만");
     });

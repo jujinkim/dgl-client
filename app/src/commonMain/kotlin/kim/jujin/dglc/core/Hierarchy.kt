@@ -16,16 +16,21 @@ fun graphemeCount(value: String): Int = grapheme.findAll(value).count()
 class SessionTitleCache {
     private var sessionId: String? = null
     private var sessionName: String? = null
-    private var fullTitle: String? = null
-    fun title(remote: RemoteState, session: String?, sessionOnly: Boolean = false): String {
+    private var sessionHeading: String? = null
+    /** The tab's session name and its window·pane heading; the heading is empty when it adds nothing. */
+    fun parts(remote: RemoteState, session: String?): Pair<String, String> {
         if (session != null && session != sessionId) {
-            sessionId = session; sessionName = null; fullTitle = null
+            sessionId = session; sessionName = null; sessionHeading = null
         }
         remote.sessions.firstOrNull { it.id == session }?.let {
-            sessionName = named(it.name, t("hierarchy.unnamed_session"))
-            fullTitle = remote.sessionTabTitle(it)
+            val (name, heading) = remote.sessionTabParts(it)
+            sessionName = name; sessionHeading = heading
         }
-        return (if (sessionOnly) sessionName else fullTitle) ?: session ?: t("hierarchy.select_connection")
+        return (sessionName ?: session ?: t("hierarchy.select_connection")) to sessionHeading.orEmpty()
+    }
+    fun title(remote: RemoteState, session: String?, sessionOnly: Boolean = false): String {
+        val (name, heading) = parts(remote, session)
+        return if (sessionOnly || heading.isEmpty()) name else "$name · $heading"
     }
 }
 fun displayTreeText(value: String): String = value.map { c ->
@@ -43,12 +48,16 @@ fun RemoteState.sessionLabel(session: RemoteSession): TreeLabel {
     return TreeLabel(named(session.name, t("hierarchy.unnamed_session")), tr("hierarchy.windows_panes", children.size, count),
         liveSubtitle(session.name, t("hierarchy.unnamed_session"), children.firstOrNull { it.active }))
 }
-fun RemoteState.sessionTabTitle(session: RemoteSession): String {
+/** A tab's session name and heading: the active window name and pane title, minus blanks and repeats. */
+fun RemoteState.sessionTabParts(session: RemoteSession): Pair<String, String> {
     val window = windows.firstOrNull { it.session == session.id && it.active }
     val pane = window?.let { w -> panes.firstOrNull { it.window == w.id && it.active } }
-    return (listOf(named(session.name, t("hierarchy.unnamed_session"))) + listOfNotNull(window?.name, pane?.title).map(::displayTreeText))
-        .filter { it.isNotEmpty() }.distinct().joinToString(" · ")
+    val name = named(session.name, t("hierarchy.unnamed_session"))
+    return name to listOfNotNull(window?.name, pane?.title).map(::displayTreeText)
+        .filter { it.isNotEmpty() && it != name }.distinct().joinToString(" · ")
 }
+fun RemoteState.sessionTabTitle(session: RemoteSession): String =
+    sessionTabParts(session).toList().filter { it.isNotEmpty() }.joinToString(" · ")
 fun RemoteState.windowLabel(window: RemoteWindow) = TreeLabel(named(window.name, t("hierarchy.unnamed_window")),
     tr("hierarchy.window_panes", window.index, panes.count { it.window == window.id }),
     liveSubtitle(window.name, t("hierarchy.unnamed_window"), window))

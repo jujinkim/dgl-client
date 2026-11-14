@@ -22,11 +22,22 @@ import androidx.compose.ui.unit.*
 import kim.jujin.dglc.*
 import kim.jujin.dglc.core.*
 
+@Composable private fun workspaceTitleCache(client: ClientConnection): SessionTitleCache {
+    val localCache = remember(client) { SessionTitleCache() }
+    return LocalAppModel.current?.connectionTitles(client) ?: localCache
+}
+
 @Composable internal fun workspaceTabTitle(client: ClientConnection, sessionOnly: Boolean = false): String {
     val session by client.session.collectAsState()
     val remote by client.remote.collectAsState()
-    val localCache = remember(client) { SessionTitleCache() }
-    return (LocalAppModel.current?.connectionTitles(client) ?: localCache).title(remote, session, sessionOnly)
+    return workspaceTitleCache(client).title(remote, session, sessionOnly)
+}
+
+/** The tab's session name and its window·pane heading, which is empty when it adds nothing. */
+@Composable internal fun workspaceTabParts(client: ClientConnection): Pair<String, String> {
+    val session by client.session.collectAsState()
+    val remote by client.remote.collectAsState()
+    return workspaceTitleCache(client).parts(remote, session)
 }
 
 @Composable internal fun InfoBadge(text: String, modifier: Modifier = Modifier) {
@@ -37,16 +48,21 @@ import kim.jujin.dglc.core.*
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun ConnectionTitle(client: ClientConnection, sessionOnly: Boolean = false, draggable: Boolean = false) {
-    val title = workspaceTabTitle(client, sessionOnly)
+/** A wide tab: the session name, then the host badge with the window·pane heading in small type. */
+@Composable internal fun ConnectionTitle(client: ClientConnection, draggable: Boolean = false) {
+    val (name, heading) = workspaceTabParts(client)
     val host = displayTreeText(client.host.alias)
-    val full = "$host · $title"
+    val full = listOf(host, name, heading).filter { it.isNotEmpty() }.joinToString(" · ")
     TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(full) } }, state = rememberTooltipState(), enableUserInput = !draggable) {
         Column(Modifier.clearAndSetSemantics { contentDescription = full },
             horizontalAlignment = Alignment.Start) {
-            Text(compactTabTitle(title), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-            InfoBadge(host, Modifier.widthIn(max = 120.dp))
+            Text(compactTabTitle(name), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                InfoBadge(host, Modifier.widthIn(max = 120.dp))
+                if (heading.isNotEmpty()) Text(compactTabTitle(heading), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

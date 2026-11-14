@@ -35,10 +35,12 @@ class HierarchyTest {
         fun title() = remote.sessionTabTitle(remote.sessions[0])
         fun pane(index: Int, text: String) { remote = remote.copy(panes = remote.panes.mapIndexed { i, p -> if (i == index) p.copy(title = text) else p }) }
         assertEquals("개발 · 편집 · 작업", title())
+        assertEquals("개발" to "편집 · 작업", remote.sessionTabParts(remote.sessions[0]))
         val cached = SessionTitleCache()
         assertEquals(title(), cached.title(remote, "$1"))
         assertEquals("개발 · 편집 · 작업", cached.title(RemoteState(), "$1"))
         assertEquals("개발", cached.title(RemoteState(), null, sessionOnly = true))
+        assertEquals("개발" to "편집 · 작업", cached.parts(RemoteState(), null))
         pane(2, "Hidden"); pane(4, "Other session")
         assertEquals("개발 · 편집 · 작업", title())
         remote = remote.copy(sessions = remote.sessions.mapIndexed { i, s -> if (i == 0) s.copy(name = " 프로젝트\n") else s },
@@ -59,6 +61,8 @@ class HierarchyTest {
         remote = remote.copy(windows = remote.windows.mapIndexed { i, w -> if (i == 1) w.copy(name = "\t\n") else w })
         pane(2, "")
         assertEquals("프로젝트", title())
+        assertEquals("프로젝트" to "", remote.sessionTabParts(remote.sessions[0]))
+        assertEquals("프로젝트" to "", cached.parts(remote, "$1"))
         assertEquals("개발 · Other session", remote.sessionTabTitle(remote.sessions[1]))
         assertEquals("빈 세션", remote.sessionTabTitle(remote.sessions[2]))
         remote = remote.copy(windows = emptyList())

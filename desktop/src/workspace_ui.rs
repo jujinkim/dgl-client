@@ -1039,7 +1039,7 @@ impl Desktop {
                                 .truncate()
                                 .text_size(px(14.))
                                 .line_height(px(18.))
-                                .child(hierarchy::tab_title(&tab.heading())),
+                                .child(hierarchy::tab_title(&tab.name())),
                         )
                         .child(
                             div()
@@ -1054,8 +1054,8 @@ impl Desktop {
                                         .flex_shrink_0()
                                         .max_w(px(120.)),
                                 )
-                                // Without a session title the first line already shows the name.
-                                .when(tab.session_heading().is_some(), |d| {
+                                // The session title follows the badge only when it adds to the name.
+                                .when_some(tab.session_heading(), |d, heading| {
                                     d.child(
                                         div()
                                             .debug_selector(move || format!("tab-session-{tab_id}"))
@@ -1064,7 +1064,7 @@ impl Desktop {
                                             .text_color(rgb(p.muted))
                                             .text_size(px(11.))
                                             .line_height(px(14.))
-                                            .child(hierarchy::tab_title(&tab.name())),
+                                            .child(hierarchy::tab_title(&heading)),
                                     )
                                 }),
                         )
