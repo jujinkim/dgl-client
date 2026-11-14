@@ -217,6 +217,7 @@ impl Desktop {
             let toggle_host = host.clone();
             let refresh_host = host.clone();
             let expanded = self.host_expanded(&id);
+            let active_host = self.active_tab().is_some_and(|t| t.host.id == id);
             let source = expanded.then(|| self.tree_source(&id)).flatten();
             let browse = source
                 .as_ref()
@@ -292,8 +293,13 @@ impl Desktop {
                                 .when(after_line, |d| d.bottom_0()),
                         )
                     })
-                    .when(self.active_tab().is_some_and(|t| t.host.id == id), |d| {
-                        d.bg(rgb(p.selection))
+                    .when(active_host, |d| d.bg(rgb(p.selection)))
+                    // A collapsed host stands in for the current tab's session row.
+                    .when(active_host && !expanded, |d| {
+                        d.child(
+                            self.current_outline(format!("host-current-{id}"))
+                                .bottom(px(-1.)),
+                        )
                     })
                     .child(
                         self.button(
@@ -1000,10 +1006,13 @@ impl Desktop {
             let drag_view = cx.entity();
             // The selected tab already wears `selection`, so its hovered control gets an outline.
             let is_selected = selected == Some(tab_id);
+            // Only the active group's selected tab is the current one and gets the accent frame.
+            let is_current = is_selected && self.workspace.active == id;
             header = header.child(
                 div()
                     .id(SharedString::from(format!("tab-item-{tab_id}")))
                     .debug_selector(move || format!("tab-item-{tab_id}"))
+                    .relative()
                     .flex()
                     .flex_shrink_0()
                     .border_b_2()
@@ -1039,6 +1048,8 @@ impl Desktop {
                                 .truncate()
                                 .text_size(px(14.))
                                 .line_height(px(18.))
+                                // Tabs in the background fade so the selected one stands out.
+                                .when(!is_selected, |d| d.text_color(rgb(p.muted)))
                                 .child(hierarchy::tab_title(&tab.name())),
                         )
                         .child(
@@ -1100,7 +1111,14 @@ impl Desktop {
                             move |s, _, _| s.close_tab(tab_id),
                         ),
                         UiIcon::Close,
-                    )),
+                    ))
+                    .when(is_current, |d| {
+                        // Absolute insets stop at the bottom border; reach over it.
+                        d.child(
+                            self.current_outline(format!("tab-current-{tab_id}"))
+                                .bottom(px(-2.)),
+                        )
+                    }),
             );
         }
         // Display-only: the track has no handlers, so pressing it does nothing.
@@ -1817,6 +1835,11 @@ impl Desktop {
                 d.bg(rgb(p.session_header))
             })
             .when(row.selected(state), |d| d.bg(rgb(p.selection)));
+        // The current tab's session row carries the accent frame; other selected rows keep the fill.
+        let current = session_row
+            && self.active_tab().is_some_and(|t| {
+                t.host.id == host.id && t.session.as_deref() == Some(row.session.as_str())
+            });
         for guide in 0..depth {
             line = line.child(
                 div()
@@ -1887,6 +1910,9 @@ impl Desktop {
             && let Some(connection) = connection
         {
             line = line.child(self.agent_badge(connection.clone(), host, pid, state, cx));
+        }
+        if current {
+            line = line.child(self.current_outline(format!("session-current-{}", row.session)));
         }
         let mut body = div().flex().flex_col().child(line);
         if browse

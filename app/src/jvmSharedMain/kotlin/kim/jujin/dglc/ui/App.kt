@@ -209,8 +209,12 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                     if (local.hosts.isEmpty()) item { Text(t("host.empty_state"), Modifier.padding(12.dp)) }
                                     items(local.hosts.sortedWith(compareByDescending<HostProfile> { it.favorite }.thenByDescending { it.lastConnected }), key = { it.id }) { host ->
                                         val hostExpanded = wide && host.id in expandedHosts
+                                        val activeHost = wide && selected?.host?.id == host.id
                                         Column(Modifier.fillMaxWidth()) {
-                                            Column(Modifier.padding(12.dp)) {
+                                            // A collapsed host stands in for the current tab's session row.
+                                            Column(Modifier.fillMaxWidth()
+                                                .then(if (activeHost) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+                                                .currentFrame(activeHost && !hostExpanded).padding(12.dp)) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                                     if (wide) IconButton({ if (hostExpanded) model.collapseHost(host.id) else withCredential(host) { model.expandHost(host) } },
                                                         Modifier.size(40.dp).semantics { contentDescription = tr("common.label_state", host.alias, if (hostExpanded) t("common.collapse") else t("common.expand")) }) {
@@ -461,7 +465,8 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 @Composable internal fun HierarchyEntry(row: HierarchyRow, depth: Int, client: ClientConnection, remote: RemoteState,
     session: String?, pane: String?, expanded: MutableMap<String, Boolean>, enabled: Boolean, notices: List<AgentNotice>,
     showAgents: (String) -> Unit, prompt: (NamePrompt) -> Unit, delete: (String, () -> Unit) -> Unit,
-    selectTarget: (String, String?, String?) -> Unit = client::selectTarget, selectable: Boolean = enabled) {
+    selectTarget: (String, String?, String?) -> Unit = client::selectTarget, selectable: Boolean = enabled,
+    currentSession: String? = null) {
     val actions = buildList<Pair<String, () -> Unit>> {
         if (row.kind == TreeKind.Session) {
             add(t("workspace.create_window_ellipsis") to { prompt(NamePrompt(t("workspace.create_window")) { client.manage(TmuxCommand.newWindow(row.session, it)) }) })
@@ -485,9 +490,10 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     }
     TreeRow(row.label, depth, row.selected(remote, session, pane), if (row.children.isEmpty()) null else expanded[row.key] == true,
         { expanded[row.key] = expanded[row.key] != true }, { selectTarget(row.session, row.window, row.pane) }, enabled, actions,
-        status = { row.window?.let { p -> AgentBadge(client, p, notices, compact = true) { showAgents(p) } } }, selectable = selectable)
+        status = { row.window?.let { p -> AgentBadge(client, p, notices, compact = true) { showAgents(p) } } }, selectable = selectable,
+        current = row.kind == TreeKind.Session && row.session == currentSession)
     if (expanded[row.key] == true) row.children.forEach { child ->
-        key(child.key) { HierarchyEntry(child, depth + 1, client, remote, session, pane, expanded, enabled, notices, showAgents, prompt, delete, selectTarget, selectable) }
+        key(child.key) { HierarchyEntry(child, depth + 1, client, remote, session, pane, expanded, enabled, notices, showAgents, prompt, delete, selectTarget, selectable, currentSession) }
     }
 }
 
@@ -506,7 +512,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun TreeRow(label: TreeLabel, depth: Int, active: Boolean, expanded: Boolean?, toggle: () -> Unit,
     select: () -> Unit, enabled: Boolean, actions: List<Pair<String, () -> Unit>>, status: @Composable () -> Unit = {},
-    selectable: Boolean = enabled) {
+    selectable: Boolean = enabled, current: Boolean = false) {
     val guideColor = MaterialTheme.colorScheme.outlineVariant
     val background = when {
         active -> MaterialTheme.colorScheme.secondaryContainer
@@ -514,7 +520,8 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             .compositeOver(MaterialTheme.colorScheme.surfaceContainer)
         else -> Color.Transparent
     }
-    Row(Modifier.fillMaxWidth().background(background).drawBehind {
+    // The current tab's session row is framed; other selected rows keep only the fill.
+    Row(Modifier.fillMaxWidth().background(background).currentFrame(current).drawBehind {
         repeat(depth) { level ->
             val x = (level * 20 + 4).dp.toPx()
             drawLine(guideColor, androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height), 1.dp.toPx())

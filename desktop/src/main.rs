@@ -827,6 +827,16 @@ impl Desktop {
                 .child(text),
         }
     }
+    /// The current tab's accent frame, laid over a `relative` row so its content does not move.
+    /// It has no handlers, so clicks and drags still reach the row underneath.
+    fn current_outline(&self, selector: String) -> Div {
+        div()
+            .debug_selector(move || selector.clone())
+            .absolute()
+            .inset_0()
+            .border_2()
+            .border_color(rgb(self.palette.accent))
+    }
     /// Text buttons keep a visible outline so they read as buttons; icon-only ones stay bare.
     fn outlined(&self, button: Stateful<Div>) -> Stateful<Div> {
         button

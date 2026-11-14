@@ -9,6 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.boundsInRoot
@@ -40,6 +41,10 @@ import kim.jujin.dglc.core.*
     return workspaceTitleCache(client).parts(remote, session)
 }
 
+/** The current tab's accent frame, drawn over the edge of a tab or sidebar row. */
+@Composable internal fun Modifier.currentFrame(current: Boolean): Modifier =
+    if (current) border(2.dp, MaterialTheme.colorScheme.primary) else this
+
 @Composable internal fun InfoBadge(text: String, modifier: Modifier = Modifier) {
     Text(text, modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
         .padding(horizontal = 4.dp, vertical = 1.dp),
@@ -49,7 +54,7 @@ import kim.jujin.dglc.core.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 /** A wide tab: the session name, then the host badge with the window·pane heading in small type. */
-@Composable internal fun ConnectionTitle(client: ClientConnection, draggable: Boolean = false) {
+@Composable internal fun ConnectionTitle(client: ClientConnection, draggable: Boolean = false, dimmed: Boolean = false) {
     val (name, heading) = workspaceTabParts(client)
     val host = displayTreeText(client.host.alias)
     val full = listOf(host, name, heading).filter { it.isNotEmpty() }.joinToString(" · ")
@@ -57,7 +62,9 @@ import kim.jujin.dglc.core.*
         tooltip = { PlainTooltip { Text(full) } }, state = rememberTooltipState(), enableUserInput = !draggable) {
         Column(Modifier.clearAndSetSemantics { contentDescription = full },
             horizontalAlignment = Alignment.Start) {
-            Text(compactTabTitle(name), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+            // Tabs in the background fade so the selected one stands out.
+            Text(compactTabTitle(name), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge,
+                color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 InfoBadge(host, Modifier.widthIn(max = 120.dp))
                 if (heading.isNotEmpty()) Text(compactTabTitle(heading), color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -105,6 +112,7 @@ import kim.jujin.dglc.core.*
         val pane by client.pane.collectAsState()
         val refreshing by client.refreshing.collectAsState()
         val notices by model.agentNotifications.collectAsState()
+        val selectedClient by model.selected.collectAsState()
         val expanded = remember(host.id) { mutableStateMapOf<String, Boolean>() }
         var prompt by remember(client) { mutableStateOf<NamePrompt?>(null) }
         var deletion by remember(client) { mutableStateOf<Pair<String, () -> Unit>?>(null) }
@@ -126,7 +134,7 @@ import kim.jujin.dglc.core.*
             HierarchyEntry(row, 0, client, remote, session, pane, expanded, enabled, notices,
                 { showAgents(client, it) }, { prompt = it }, { title, action -> deletion = title to action },
                 { s, w, p -> if (live) model.openSession(client, s, w, p, generation) else model.openHostSession(host, s, w, p) },
-                selectable = enabled || !live)
+                selectable = enabled || !live, currentSession = session.takeIf { live && selectedClient === client })
         } }
         prompt?.let { p -> NameDialog(p.title, { if (client.generation == generation) p.accept(it); prompt = null }, { prompt = null }, p.initial) }
         deletion?.let { (title, action) -> ConfirmDialog(title, t("workspace.delete_remote_confirm"),
@@ -228,6 +236,8 @@ private data class TabDrag(val tab: String, val position: Offset)
                                     var bounds by remember { mutableStateOf(Rect.Zero) }
                                     Row(Modifier.onGloballyPositioned { bounds = it.boundsInRoot(); tabBounds[tab] = bounds }
                                         .background(if (group.selected == tab) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)
+                                        // Only the active group's selected tab is the current one and gets the frame.
+                                        .currentFrame(active && group.selected == tab)
                                         .workspaceTabDrag(tab, { bounds.topLeft }, { drag = TabDrag(tab, it) }, { drag = drag?.copy(position = it) }, {
                                             val moving = currentDrag; val target = currentCandidate
                                             if (moving != null && target != null) model.changeWorkspace { it.drop(moving.tab, target, width, logicalHeight) }
@@ -235,7 +245,7 @@ private data class TabDrag(val tab: String, val position: Offset)
                                         }, { drag = null }), verticalAlignment = Alignment.CenterVertically) {
                                         TextButton({ model.selectConnection(client) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp), modifier = Modifier.widthIn(max = 220.dp).height(48.dp)
                                             .semantics { contentDescription = title; selected = group.selected == tab }) {
-                                            ConnectionTitle(client, draggable = true)
+                                            ConnectionTitle(client, draggable = true, dimmed = group.selected != tab)
                                         }
                                         TreeMenu(tr("workspace.tab_menu", title), buildList {
                                             add(t("workspace.close_tab") to { model.removeConnection(client) })

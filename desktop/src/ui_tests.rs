@@ -2903,6 +2903,76 @@ fn local_is_first_fixed_and_does_not_connect_on_app_start(cx: &mut TestAppContex
 }
 
 #[gpui::test]
+fn current_tab_frame_marks_the_active_groups_tab_and_its_sidebar_row(cx: &mut TestAppContext) {
+    use super::workspace::Axis;
+    let (view, ui) = setup(cx);
+    ui.simulate_resize(gpui::size(px(1200.), px(700.)));
+    view.update(ui, |s, cx| {
+        s.local.hosts = vec![ordered_host("fixture", None)];
+        s.reconcile_hosts();
+        cx.notify();
+    });
+    add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        assert!(s.workspace.split(1, Axis::Horizontal, 1200., 700.));
+        cx.notify();
+    });
+    add_terminal(&view, ui);
+    redraw(ui);
+    // Both groups show their selected tab, but only the active group's tab is framed.
+    view.read_with(ui, |s, _| {
+        assert_eq!(s.workspace.selected(), Some(2));
+        assert_eq!(s.workspace.groups[&1].selected, Some(1));
+    });
+    assert_eq!(
+        ui.debug_bounds("tab-current-2").unwrap(),
+        ui.debug_bounds("tab-item-2").unwrap()
+    );
+    // Tab 1 was framed before the split and gpui keeps stale debug bounds, so only the
+    // frame's presence is checked here; the fresh tree window below checks an absence.
+    // A collapsed host frames its own row for the current tab.
+    assert_eq!(
+        ui.debug_bounds("host-current-fixture").unwrap(),
+        ui.debug_bounds("host-row-fixture").unwrap()
+    );
+    // The frame has no handlers, so a click still selects the tab under it.
+    let tab = ui.debug_bounds("tab-1").unwrap();
+    ui.simulate_click(tab.center(), Modifiers::default());
+    redraw(ui);
+    view.read_with(ui, |s, _| {
+        assert_eq!(s.workspace.selected(), Some(1));
+        assert_eq!(s.workspace.active, 1);
+    });
+    assert_eq!(
+        ui.debug_bounds("tab-current-1").unwrap(),
+        ui.debug_bounds("tab-item-1").unwrap()
+    );
+    // In a listed tree the current tab's session row carries the frame instead.
+    let mut state = view.update(ui, |s, _| {
+        s.tabs[0].session = Some("$1".into());
+        (*s.tabs[0].connection.state()).clone()
+    });
+    state.remote = serde_json::from_value(serde_json::json!({
+        "sessions":[{"id":"$1","name":"one","attached":0},{"id":"$2","name":"two","attached":0}],
+        "windows":[],"panes":[]
+    }))
+    .unwrap();
+    let (_preview, tree) = cx.add_window_view(|_, _| HierarchyPreview {
+        desktop: view.clone(),
+        state,
+        width: 272.,
+        scroll: None,
+    });
+    redraw(tree);
+    let frame = tree.debug_bounds("session-current-$1").unwrap();
+    assert!(frame.contains(&tree.debug_bounds("session-$1").unwrap().center()));
+    assert!(tree.debug_bounds("session-current-$2").is_none());
+    let row = tree.debug_bounds("session-$1").unwrap();
+    tree.simulate_click(row.center(), Modifiers::default());
+    view.read_with(tree, |s, _| assert_eq!(s.workspace.selected(), Some(1)));
+}
+
+#[gpui::test]
 fn sidebar_nests_each_hosts_sessions_under_its_row(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     ui.simulate_resize(gpui::size(px(1000.), px(700.)));
