@@ -34,6 +34,8 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val desktopPowerSaving: String = "system",
     /** Desktop opt-in tmux paste buffer to clipboard copy; unused on Android, kept for the shared settings format. */
     val desktopTmuxBufferClipboard: Boolean = false,
+    /** Wheel/drag over a mouse-less alternate screen: auto (agent CLI panes), on, off. Mirrors Rust `ScrollAssist`. */
+    val terminalScrollAssist: String = "auto",
     val mobilePaneToolbarVisible: Boolean = true,
     val mobileShortcutBarTwoRows: Boolean = true,
     val androidKeyboardMode: String = "auto",
@@ -50,6 +52,8 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
 ) {
     val effectiveAndroidKeyboardMode: String get() = if (androidKeyboardAlwaysVisible) "resize"
         else androidKeyboardMode.takeIf { it in listOf("auto", "pan", "resize") } ?: "auto"
+    /** Unknown stored values behave as `auto`, like Rust `ScrollAssist::from_preference`. */
+    val effectiveTerminalScrollAssist: String get() = terminalScrollAssist.takeIf { it in listOf("auto", "on", "off") } ?: "auto"
 }
 @Serializable data class LocalState(val hosts: List<HostProfile> = emptyList(), val trust: Map<String, String> = emptyMap(), val preferences: Preferences = Preferences())
 

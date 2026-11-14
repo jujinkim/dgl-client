@@ -47,3 +47,5 @@ The local `terminalFontFamily` preference defaults to `""` (platform default mon
 The local `desktopPowerSaving` preference defaults to `system` (follow the OS power saving mode). `always` and `off` override it on the desktop; unknown strings are preserved and behave as `system`. Android ignores it. It is excluded from cloud sync, and old fixture sources stay unchanged while their encoded expectations include the default.
 
 The local `desktopTmuxBufferClipboard` preference defaults to `false`. When it is `true`, the desktop copies changed tmux paste buffers to the local clipboard. Android ignores it. It is excluded from cloud sync, and encoded expectations include the default.
+
+The local `terminalScrollAssist` preference defaults to `auto`. Over an alternate screen without mouse tracking, `auto` sends PageUp/PageDown for wheel or drag scrolling in panes running a supported agent CLI, `on` does so in every pane and `off` keeps Up/Down. Unknown strings are preserved and behave as `auto`. It is excluded from cloud sync, and encoded expectations include the default.

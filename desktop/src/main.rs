@@ -399,8 +399,14 @@ impl Desktop {
         let mut created = Vec::new();
         // Drags autoscroll and snackbar gauges animate from this loop.
         let mut active = resumed || cx.has_active_drag() || self.snackbar.is_timed();
+        let scroll_assist = dgl_core::scroll::ScrollAssist::from_preference(
+            &self.local.preferences.terminal_scroll_assist,
+        );
         for tab in &mut self.tabs {
-            active |= tab.terminal.update(cx, |t, cx| t.tick(cx));
+            active |= tab.terminal.update(cx, |t, cx| {
+                t.scroll_assist = scroll_assist;
+                t.tick(cx)
+            });
             let state = tab.connection.state();
             tab.update_session(&state);
             if let Some(target) = tab.pending_target.take() {

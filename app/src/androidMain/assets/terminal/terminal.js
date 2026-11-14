@@ -135,6 +135,9 @@
   }, true);
   // Remote input and gestures that change remote state share these gates.
   const gestureBlocked = () => !enabled || !pointerEnabled || fontGesture || imeAnimating || frozenWindow();
+  // `terminalScrollAssist`: auto applies to panes running a supported agent CLI.
+  let scrollAssist = 'auto', scrollAssistPanes = new Set();
+  const scrollAssistApplies = pane => scrollAssist === 'on' || (scrollAssist === 'auto' && scrollAssistPanes.has(pane));
   function createPane(pane, host) {
   const api = {};
   api.content = null;
@@ -147,6 +150,31 @@
     linkHandler: { activate() {}, hover() {}, leave() {} },
   });
   term.open(host);
+  // Wheel and touch drag over an alternate screen without mouse tracking: xterm sends
+  // Up/Down, which agent CLIs such as Codex read as prompt history. The assist sends
+  // PageUp/PageDown instead, like Rust `dgl_core::scroll::PageScroll`: a new gesture
+  // pages on its first row, then every half screen.
+  const pageScroll = { rows: 0, direction: 0, last: null };
+  term.attachCustomWheelEventHandler?.(event => {
+    if (event.shiftKey || !scrollAssistApplies(pane) || term.buffer?.active.type !== 'alternate'
+      || ['vt200', 'drag', 'any'].includes(term.modes?.mouseTrackingMode)) return true;
+    event.preventDefault?.();
+    const height = term.element?.querySelector('.xterm-screen')?.getBoundingClientRect().height / term.rows;
+    const rows = -(event.deltaMode === 1 ? event.deltaY : event.deltaMode === 2 ? event.deltaY * term.rows
+      : height > 0 ? event.deltaY / height : 0);
+    if (!rows || pointerBlocked()) return false;
+    const step = Math.max(3, Math.floor(term.rows / 2)), now = event.timeStamp > 0 ? event.timeStamp : Date.now();
+    if (pageScroll.last === null || !(Math.abs(now - pageScroll.last) <= 400) || pageScroll.direction !== Math.sign(rows))
+      pageScroll.rows = Math.sign(rows) * (step - 1);
+    pageScroll.direction = Math.sign(rows);
+    pageScroll.last = now;
+    pageScroll.rows += rows;
+    const pages = Math.trunc(pageScroll.rows / step);
+    pageScroll.rows -= pages * step;
+    if (pages) post({ type: 'input', data: (pages > 0 ? '\x1b[5~' : '\x1b[6~').repeat(Math.min(Math.abs(pages), 16384)),
+      pointer: true, user: true, ...(wheelOrigin ? { target: wheelOrigin.target } : {}) });
+    return false;
+  });
   // The bundled xterm uses its DOM renderer. Keep just one rendered viewport,
   // not another terminal/scrollback buffer, while a streamed snapshot replaces it.
   let cachedScreen = null;
@@ -793,6 +821,10 @@
   window.clearSelection = () => clearTextSelection(false);
   window.sendShortcut = (...args) => focused().sendShortcut(...args);
   window.setInputEnabled = value => { enabled = value === true; if (!enabled) { cancelTouchScroll(); cancelBoundaryDrag(); } };
+  window.setScrollAssist = (mode, cliPanes) => {
+    scrollAssist = ['on', 'off'].includes(mode) ? mode : 'auto';
+    scrollAssistPanes = new Set(Array.isArray(cliPanes) ? cliPanes : []);
+  };
   window.setSmoothTransitions = value => { smooth = value === true; for (const p of panes.values()) p.setSmoothTransitions(smooth); };
   function ensure(id) {
     if (!panes.has(id)) {

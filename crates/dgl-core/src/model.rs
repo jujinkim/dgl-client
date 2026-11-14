@@ -98,6 +98,10 @@ pub struct Preferences {
     /// change (tmux 3.4+). Off by default. Stays on this device.
     pub desktop_tmux_buffer_clipboard: bool,
     pub scrollback: i32,
+    /// Wheel/drag over an alternate screen without mouse tracking: `auto` sends
+    /// PageUp/PageDown in panes running a supported agent CLI, `on` in every pane,
+    /// `off` keeps Up/Down. Unknown values behave as `auto`. Stays on this device.
+    pub terminal_scroll_assist: String,
     pub terminal_shortcuts: Vec<crate::input::TerminalShortcut>,
     pub volume_keys_enabled: bool,
     pub agent_notifications: crate::agent::NotificationSettings,
@@ -122,6 +126,7 @@ impl Default for Preferences {
             desktop_power_saving: "system".into(),
             desktop_tmux_buffer_clipboard: false,
             scrollback: 5000,
+            terminal_scroll_assist: "auto".into(),
             terminal_shortcuts: crate::input::TerminalShortcut::defaults(),
             volume_keys_enabled: false,
             agent_notifications: Default::default(),
@@ -145,6 +150,7 @@ mod keyboard_tests {
         assert_eq!(state.preferences.terminal_font_family, "");
         assert_eq!(state.preferences.desktop_power_saving, "system");
         assert!(!state.preferences.desktop_tmux_buffer_clipboard);
+        assert_eq!(state.preferences.terminal_scroll_assist, "auto");
         assert!(!state.preferences.android_keyboard_always_visible);
         for mode in ["auto", "pan", "resize", "future-mode"] {
             state.preferences.android_keyboard_mode = mode.into();
@@ -158,12 +164,14 @@ mod keyboard_tests {
         state.preferences.terminal_font_family = "JetBrains Mono".into();
         state.preferences.desktop_power_saving = "always".into();
         state.preferences.desktop_tmux_buffer_clipboard = true;
+        state.preferences.terminal_scroll_assist = "off".into();
         let encoded = serde_json::to_vec(&state).unwrap();
         assert!(
             String::from_utf8_lossy(&encoded).contains(r#""terminalFontFamily":"JetBrains Mono""#)
         );
         assert!(String::from_utf8_lossy(&encoded).contains(r#""desktopPowerSaving":"always""#));
         assert!(String::from_utf8_lossy(&encoded).contains(r#""desktopTmuxBufferClipboard":true"#));
+        assert!(String::from_utf8_lossy(&encoded).contains(r#""terminalScrollAssist":"off""#));
         assert_eq!(LocalState::decode(&encoded).unwrap(), state);
     }
 }

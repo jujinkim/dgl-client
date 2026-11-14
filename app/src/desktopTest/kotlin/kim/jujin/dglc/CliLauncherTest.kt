@@ -182,6 +182,17 @@ class CliLauncherTest {
         }
     }
 
+    @Test fun scrollAssistPanesComeFromFreshObservationsOrCurrentCommand() {
+        val now = System.currentTimeMillis()
+        val panes = listOf(RemotePane("%1", "@1", 80, 24, true, "", "zsh"), RemotePane("%2", "@1", 80, 24, false, "", "/usr/bin/codex"),
+            RemotePane("%3", "@1", 80, 24, false, "", "less"))
+        val codex = AgentObservation("\$1", "@1", "%3", "run", "parent", "Codex")
+        assertEquals(setOf("%2"), AgentSnapshot().cliPanes(panes, now))
+        assertEquals(setOf("%2", "%3"), AgentSnapshot(valid = true, observed_at = now, observations = listOf(codex)).cliPanes(panes, now))
+        assertEquals(setOf("%2"), AgentSnapshot(valid = true, observed_at = now - 10_000, observations = listOf(codex)).cliPanes(panes, now))
+        assertEquals(listOf("Codex", "Claude", "Agy", "Grok", null), listOf("codex", "claude", "agy", "/opt/grok", "node").map(::agentForCommand))
+    }
+
     @Test fun viewportRestorationRetainsRequestsButRecoveryAndChangedTargetsRejectThem() {
         val ready = ConnectionStatus(Phase.Ready)
         val resizing = ConnectionStatus(Phase.Restoring, resizing = true)

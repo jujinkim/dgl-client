@@ -29,6 +29,16 @@ impl Agent {
             Self::Grok => "Grok Build",
         }
     }
+    /// A CLI's own executable name, as `ps` or tmux `pane_current_command` reports it.
+    pub fn from_command(command: &str) -> Option<Self> {
+        match command.rsplit('/').next()? {
+            "codex" => Some(Self::Codex),
+            "claude" => Some(Self::Claude),
+            "agy" => Some(Self::Agy),
+            "grok" => Some(Self::Grok),
+            _ => None,
+        }
+    }
     pub fn icon(self) -> &'static str {
         match self {
             Self::Codex => "launcher/openai.svg",
@@ -367,13 +377,7 @@ pub async fn basic_snapshot(ssh: &Ssh, session: &str) -> Result<Snapshot> {
             if p.len() != 8 {
                 return None;
             }
-            let agent = match p[7].rsplit('/').next()? {
-                "codex" => Some(Agent::Codex),
-                "claude" => Some(Agent::Claude),
-                "agy" => Some(Agent::Agy),
-                "grok" => Some(Agent::Grok),
-                _ => None,
-            };
+            let agent = Agent::from_command(p[7]);
             Some((
                 p[0].parse().ok()?,
                 (p[1].parse().ok()?, p[2..7].join("-"), agent),

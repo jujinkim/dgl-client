@@ -2951,3 +2951,52 @@ fn tmux_buffer_clipboard_is_an_opt_in_saved_setting(cx: &mut TestAppContext) {
         );
     }
 }
+
+#[gpui::test]
+fn scroll_assist_choice_is_saved_and_reaches_pane_terminals(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    assert!(view.read_with(ui, |s, _| {
+        s.local.preferences.terminal_scroll_assist == "auto"
+    }));
+    add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(ui);
+    for (id, expected) in [
+        ("scroll-assist-off", dgl_core::scroll::ScrollAssist::Off),
+        ("scroll-assist-on", dgl_core::scroll::ScrollAssist::On),
+        ("scroll-assist-auto", dgl_core::scroll::ScrollAssist::Auto),
+    ] {
+        let entry = ui.debug_bounds(id).unwrap();
+        view.update(ui, |s, cx| {
+            let body = s.modal.scroll.bounds();
+            let offset = s.modal.scroll.offset();
+            s.modal.scroll.set_offset(point(
+                px(0.),
+                offset.y - (entry.bottom() - body.bottom() + px(16.)).max(px(0.)),
+            ));
+            cx.notify();
+        });
+        redraw(ui);
+        let entry = ui.debug_bounds(id).unwrap().center();
+        ui.simulate_click(entry, Modifiers::default());
+        redraw(ui);
+        view.update(ui, |s, cx| s.tick(cx));
+        let path = view.read_with(ui, |s, cx| {
+            assert_eq!(
+                s.local.preferences.terminal_scroll_assist,
+                expected.preference()
+            );
+            assert_eq!(s.tabs[0].terminal.read(cx).scroll_assist, expected);
+            s.path.clone()
+        });
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            saved["preferences"]["terminalScrollAssist"],
+            serde_json::Value::String(expected.preference().into())
+        );
+    }
+}

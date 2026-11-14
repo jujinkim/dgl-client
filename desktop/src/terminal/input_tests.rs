@@ -1,5 +1,6 @@
 use super::input::{paste_bytes, pointer_report};
 use super::{Connection, TermMode, Terminal, key_sequence, mouse_sequence};
+use dgl_core::scroll::{PAGE_DOWN, PAGE_UP, ScrollAssist};
 use gpui::{
     Entity, EntityInputHandler, Keystroke, Modifiers, MouseButton, MouseMoveEvent, Pixels, Point,
     ScrollDelta, ScrollWheelEvent, TestAppContext, TouchPhase, VisualTestContext, point, px,
@@ -344,6 +345,69 @@ fn wheel_keeps_magnitude_fraction_direction_and_local_override(cx: &mut TestAppC
     output(&terminal, cx, b"\x1b[?1000l\x1b[?1049h\x1b[?1007h\x1b[?1h");
     wheel(cx, ScrollDelta::Lines(point(0., -2.)), plain);
     assert_eq!(take_sent(&terminal, cx), b"\x1bOB\x1bOB");
+}
+
+#[gpui::test]
+fn scroll_assist_pages_mouseless_alternate_screens_only(cx: &mut TestAppContext) {
+    let (_runtime, terminal, cx) = setup(cx);
+    let p = position(&terminal, cx, 0, 0);
+    let plain = Modifiers::default();
+    let wheel = |cx: &mut VisualTestContext, lines: f32, modifiers| {
+        cx.simulate_event(ScrollWheelEvent {
+            position: p,
+            delta: ScrollDelta::Lines(point(0., lines)),
+            modifiers,
+            touch_phase: TouchPhase::Moved,
+        });
+    };
+    let assist =
+        |cx: &mut VisualTestContext, mode| terminal.update(cx, |t, _| t.scroll_assist = mode);
+    output(&terminal, cx, b"\x1b[?1049h\x1b[?1007h");
+    wheel(cx, 1., plain);
+    assert_eq!(
+        take_sent(&terminal, cx),
+        b"\x1b[A",
+        "auto without a CLI in the pane keeps Up/Down"
+    );
+    assist(cx, ScrollAssist::On);
+    wheel(cx, 1., plain);
+    assert_eq!(
+        take_sent(&terminal, cx),
+        PAGE_UP,
+        "a gesture pages on its first row"
+    );
+    wheel(cx, -1., plain);
+    assert_eq!(
+        take_sent(&terminal, cx),
+        PAGE_DOWN,
+        "reversing starts a new gesture"
+    );
+    wheel(
+        cx,
+        1.,
+        Modifiers {
+            shift: true,
+            ..plain
+        },
+    );
+    assert!(take_sent(&terminal, cx).is_empty(), "Shift stays local");
+    output(&terminal, cx, b"\x1b[?1000h\x1b[?1006h");
+    wheel(cx, 1., plain);
+    assert_eq!(
+        take_sent(&terminal, cx),
+        b"\x1b[<64;1;1M",
+        "mouse-tracking programs keep wheel reports"
+    );
+    output(&terminal, cx, b"\x1b[?1000l\x1b[?1049l");
+    wheel(cx, 1., plain);
+    assert!(
+        take_sent(&terminal, cx).is_empty(),
+        "the normal screen scrolls locally"
+    );
+    output(&terminal, cx, b"\x1b[?1049h");
+    assist(cx, ScrollAssist::Off);
+    wheel(cx, -1., plain);
+    assert_eq!(take_sent(&terminal, cx), b"\x1b[B");
 }
 
 #[gpui::test]

@@ -693,6 +693,18 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
                     "resize" -> "settings.keyboard_resize_description"
                     else -> "settings.keyboard_automatic_description"
                 }), style = MaterialTheme.typography.bodySmall)
+                Text(t("settings.scroll_assist_title"), style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("auto" to t("settings.scroll_assist_auto"), "on" to t("settings.scroll_assist_on"), "off" to t("settings.scroll_assist_off")).forEach { (value, label) ->
+                        FilterChip(local.preferences.effectiveTerminalScrollAssist == value,
+                            { model.modify { it.copy(preferences = it.preferences.copy(terminalScrollAssist = value)) } }, label = { Text(label) })
+                    }
+                }
+                Text(t("settings.scroll_assist_description") + " " + t(when (local.preferences.effectiveTerminalScrollAssist) {
+                    "on" -> "settings.scroll_assist_on_description"
+                    "off" -> "settings.scroll_assist_off_description"
+                    else -> "settings.scroll_assist_auto_description"
+                }), style = MaterialTheme.typography.bodySmall)
                 SettingsSwitch(t("settings.bottom_shortcuts_two_rows"), local.preferences.mobileShortcutBarTwoRows) { enabled ->
                     model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = enabled)) }
                 }

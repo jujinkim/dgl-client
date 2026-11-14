@@ -13,6 +13,14 @@ import kotlinx.serialization.Serializable
     /** Mirrors Rust `Snapshot::agent_in_pane`: a CLI process in a fresh poll; unknown state is null. */
     fun agentInPane(pane: String, now: Long): String? =
         if (!valid || now - observed_at >= 10_000) null else observations.firstOrNull { it.pane == pane }?.agent
+    /** Mirrors Rust `dgl_core::scroll::cli_in_pane` for every pane: observed, or tmux's current command. */
+    fun cliPanes(panes: List<RemotePane>, now: Long): Set<String> =
+        (if (!valid || now - observed_at >= 10_000) emptySet() else observations.map { it.pane }.toSet()) +
+            panes.filter { agentForCommand(it.command) != null }.map { it.id }
+}
+/** Mirrors Rust `Agent::from_command`: a supported CLI's executable name as `ps` or tmux reports it. */
+fun agentForCommand(command: String): String? = when (command.substringAfterLast('/')) {
+    "codex" -> "Codex"; "claude" -> "Claude"; "agy" -> "Agy"; "grok" -> "Grok"; else -> null
 }
 @Serializable data class AgentNotice(val endpoint: String, val event: AgentEvent, val read: Boolean = false) {
     val id get() = "$endpoint:${event.id}"

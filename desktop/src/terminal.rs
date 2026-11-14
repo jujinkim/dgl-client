@@ -12,6 +12,7 @@ use alacritty_terminal::{
 use dgl_core::connection::{Action, Connection};
 use dgl_core::flow::{OutputEvent, OutputKind};
 use dgl_core::input::{Modifiers as KeyModifiers, TerminalShortcut};
+use dgl_core::scroll::{PageScroll, ScrollAssist};
 use dgl_core::tr;
 use gpui::{prelude::*, *};
 use std::{
@@ -111,6 +112,9 @@ pub struct Terminal {
     mouse_button: Option<MouseButton>,
     last_mouse: Option<(CellPoint, u8)>,
     scroll: ScrollAccumulator,
+    /// `terminalScrollAssist`, copied from the window terminal every tick.
+    pub scroll_assist: ScrollAssist,
+    page_scroll: PageScroll,
     displayed_pane: Option<String>,
     snapshot_modes: Option<TermMode>,
     pub enabled: bool,
@@ -182,6 +186,8 @@ impl Terminal {
             mouse_button: None,
             last_mouse: None,
             scroll: ScrollAccumulator::default(),
+            scroll_assist: ScrollAssist::default(),
+            page_scroll: PageScroll::default(),
             displayed_pane: None,
             snapshot_modes: None,
             enabled: true,
@@ -586,6 +592,24 @@ impl Terminal {
             }
         }
     }
+    /// The scroll assist applies to this pane: always, or while a supported CLI runs in it.
+    fn assists_scroll(&self) -> bool {
+        match self.scroll_assist {
+            ScrollAssist::Auto => {
+                let state = self.connection.state();
+                let pane = self.pane_id.as_deref().or(state.pane.as_deref());
+                pane.is_some_and(|pane| {
+                    dgl_core::scroll::cli_in_pane(
+                        &state.agents,
+                        &state.remote.panes,
+                        pane,
+                        dgl_core::agent::now_ms(),
+                    )
+                })
+            }
+            mode => mode.applies(false),
+        }
+    }
     fn scroll_wheel(&mut self, e: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(delta) = font_wheel_delta(e) {
             self.scroll = ScrollAccumulator::default();
@@ -609,6 +633,9 @@ impl Terminal {
         let [horizontal, vertical] =
             self.scroll
                 .steps(e.delta, e.touch_phase, self.cell_size(), mode, e.modifiers);
+        if matches!(e.touch_phase, TouchPhase::Started) {
+            self.page_scroll.reset();
+        }
         if self.mouse_active(e.modifiers) {
             for (steps, positive, negative) in [(vertical, 64, 65), (horizontal, 66, 67)] {
                 // One write per wheel event avoids flooding the connection request queue.
@@ -631,6 +658,17 @@ impl Terminal {
                         ),
                     );
                 }
+            }
+        } else if !e.modifiers.shift && mode.contains(TermMode::ALT_SCREEN) && self.assists_scroll()
+        {
+            // Agent CLIs read Up/Down as prompt history; PageUp/PageDown scrolls them.
+            let pages = self.page_scroll.pages(
+                vertical,
+                self.term.screen_lines(),
+                dgl_core::agent::now_ms(),
+            );
+            if pages != 0 {
+                self.send(PageScroll::bytes(pages));
             }
         } else if !e.modifiers.shift
             && mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL)

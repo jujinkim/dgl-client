@@ -23,6 +23,8 @@ pub struct WindowTerminal {
     drag: Option<(RemotePane, Point<Pixels>, bool, PaneTarget)>,
     claims: Claims,
     pub enabled: bool,
+    /// `terminalScrollAssist` for every pane emulator.
+    pub scroll_assist: dgl_core::scroll::ScrollAssist,
     pub notice: Option<SnackbarRequest>,
     #[cfg(test)]
     pub sent: Vec<Vec<u8>>,
@@ -66,6 +68,7 @@ impl WindowTerminal {
             drag: None,
             claims,
             enabled: true,
+            scroll_assist: Default::default(),
             notice: None,
             #[cfg(test)]
             sent: Vec::new(),
@@ -136,6 +139,7 @@ impl WindowTerminal {
         for t in self.panes.values() {
             t.update(cx, |t, _| {
                 t.enabled = self.enabled;
+                t.scroll_assist = self.scroll_assist;
                 t.pointer_enabled =
                     self.resize_request.is_none() && self.applied_size == Some(self.requested);
                 t.sync_modifiers();

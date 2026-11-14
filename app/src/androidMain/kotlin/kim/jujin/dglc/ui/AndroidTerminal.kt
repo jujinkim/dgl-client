@@ -171,6 +171,12 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     LaunchedEffect(terminal, preferences.smoothTerminalTransitions) {
         terminal.setSmoothTransitions(preferences.smoothTerminalTransitions)
     }
+    val agents by client.agents.collectAsState()
+    val remote by client.remote.collectAsState()
+    val cliPanes = remember(agents, remote) { agents.cliPanes(remote.panes, System.currentTimeMillis()) }
+    LaunchedEffect(terminal, preferences.effectiveTerminalScrollAssist, cliPanes) {
+        terminal.setScrollAssist(preferences.effectiveTerminalScrollAssist, cliPanes)
+    }
     DisposableEffect(terminal, focus, composeView) {
         terminal.view.setOnTouchListener { _, event ->
             if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) entry.focus.activate()
@@ -749,6 +755,12 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     suspend fun setSmoothTransitions(enabled: Boolean) {
         withTimeout(15_000) { ready.await() }
         withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setSmoothTransitions($enabled)", null) }
+    }
+    /** Wheel/drag over a mouse-less alternate screen sends PageUp/PageDown in `on`, or `auto` for [cliPanes]. */
+    suspend fun setScrollAssist(mode: String, cliPanes: Set<String>) {
+        withTimeout(15_000) { ready.await() }
+        val panes = org.json.JSONArray(cliPanes.toList()).toString()
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setScrollAssist(${org.json.JSONObject.quote(mode)}, $panes)", null) }
     }
     fun beginImeAnimation(): Long = imeAnimation.begin().also { dispatchImeAnimation(true, it) }
     fun endImeAnimation(version: Long) {

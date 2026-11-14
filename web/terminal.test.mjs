@@ -110,6 +110,7 @@ class FakeTerminal {
   onKey(callback) { this.key = callback; }
   onScroll(callback) { this.scroll = callback; }
   attachCustomKeyEventHandler(callback) { this.customKey = callback; }
+  attachCustomWheelEventHandler(callback) { this.customWheel = callback; }
   onRender(callback) { this.renders.add(callback); return { dispose: () => this.renders.delete(callback) }; }
   render() { for (const callback of [...this.renders]) callback(); }
   resize(columns, rows) { this.cols = columns; this.rows = rows; }
@@ -950,6 +951,7 @@ function touchRenderer({ lines } = {}) {
       super();
       this.screen.cloneNode = () => new Element();
       this.element.addEventListener('wheel', event => {
+        if (this.customWheel?.(event) === false) return;
         this.wheels.push(event);
         (this.binaryMode ? this.binary : this.data)(event.deltaY < 0 ? 'wheel-up' : 'wheel-down');
       });
@@ -1143,6 +1145,41 @@ test('touch TUI wheel uses row steps, captured target and raw channels without c
   assert.deepEqual(t.scrolls, []);
   t.buffer.active.type = 'normal'; t.modes.mouseTrackingMode = 'x10'; r.drag(100, 80);
   assert.deepEqual(t.scrolls, [1], 'X10 does not support wheel reports');
+});
+
+test('scroll assist pages mouse-less alternate screens for agent panes and leaves other modes to xterm', () => {
+  const r = touchRenderer(), t = r.terminals[0];
+  const sent = () => r.messages.splice(0).map(m => [m.type, m.target, m.data, m.pointer]);
+  t.buffer.active.type = 'alternate';
+  r.drag(100, 121);
+  assert.deepEqual(sent(), [['input', 'one', 'wheel-up', true]], 'auto without a detected CLI keeps xterm Up/Down');
+  r.window.setScrollAssist('auto', ['shell']);
+  r.drag(100, 141);
+  assert.deepEqual(sent(), [['input', 'one', '\x1b[5~', true]], 'a new gesture pages on its first row only');
+  r.drag(100, 79);
+  assert.deepEqual(sent(), [['input', 'one', '\x1b[6~', true]], 'reversing starts a new gesture');
+  assert.deepEqual(t.wheels, [t.wheels[0]], 'xterm never sees assisted wheels');
+  const wheel = (deltaY, timeStamp, extra = {}) => t.element.dispatchEvent({ type: 'wheel', deltaMode: 0, deltaY, timeStamp, ...extra });
+  r.window.setScrollAssist('on', []);
+  wheel(-60, 1000); wheel(-200, 1100); wheel(-20, 1200); wheel(-20, 1300);
+  assert.deepEqual(sent(), [['input', 'one', '\x1b[5~', true], ['input', 'one', '\x1b[5~', true]],
+    'pixel deltas accumulate a page per half screen (12 of 24 rows)');
+  wheel(-20, 2000);
+  assert.deepEqual(sent(), [['input', 'one', '\x1b[5~', true]], 'a pause starts a new gesture');
+  wheel(20, 2050);
+  assert.deepEqual(sent(), [['input', 'one', '\x1b[6~', true]], 'reversing right after a whole page starts a new gesture');
+  assert.equal(wheel(-20, 2100, { shiftKey: true }), true); assert.equal(sent()[0][2], 'wheel-up', 'Shift bypasses the assist');
+  t.modes.mouseTrackingMode = 'vt200'; r.drag(100, 121);
+  assert.equal(sent()[0][2], 'wheel-up', 'mouse-tracking programs keep wheel reports');
+  t.modes.mouseTrackingMode = 'none'; t.buffer.active.type = 'normal'; r.drag(100, 121);
+  assert.deepEqual([sent(), t.scrolls], [[], [-1]], 'the normal screen keeps local scrollback');
+  t.buffer.active.type = 'alternate';
+  for (const [mode, panes] of [['off', ['shell']], ['auto', ['%9']], ['future', ['%9']]]) {
+    r.window.setScrollAssist(mode, panes); r.drag(100, 121);
+    assert.equal(sent()[0][2], 'wheel-up', `${mode} keeps xterm Up/Down`);
+  }
+  r.window.setScrollAssist('on', []); r.window.setInputEnabled(false); r.drag(100, 141);
+  assert.deepEqual(sent(), [], 'closed input gates drop assisted pages');
 });
 
 test('inactive pane drag selects once without focus or scrolling, and remote split grids survive rendering', () => {

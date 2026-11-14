@@ -95,6 +95,41 @@ impl Desktop {
             .child(t("settings.theme"))
             .child(themes)
             .child(self.accent_settings(cx));
+        let assist_mode = dgl_core::scroll::ScrollAssist::from_preference(
+            &self.local.preferences.terminal_scroll_assist,
+        );
+        let mut scroll_assist = div().flex().flex_wrap().gap_2();
+        for (mode, label) in [
+            (
+                dgl_core::scroll::ScrollAssist::Auto,
+                t("settings.scroll_assist_auto"),
+            ),
+            (
+                dgl_core::scroll::ScrollAssist::On,
+                t("settings.scroll_assist_on"),
+            ),
+            (
+                dgl_core::scroll::ScrollAssist::Off,
+                t("settings.scroll_assist_off"),
+            ),
+        ] {
+            scroll_assist = scroll_assist.child(self.button(
+                format!("scroll-assist-{}", mode.preference()),
+                (
+                    if assist_mode == mode {
+                        UiIcon::RadioSelected
+                    } else {
+                        UiIcon::Radio
+                    },
+                    label,
+                ),
+                cx,
+                move |s, _, _| {
+                    s.local.preferences.terminal_scroll_assist = mode.preference().into();
+                    s.save();
+                },
+            ));
+        }
         let mut font = div()
             .flex()
             .items_center()
@@ -176,6 +211,13 @@ impl Desktop {
                 )
                 .native_tooltip(t("settings.copy_tmux_buffers_description")),
             )
+            .child(
+                div()
+                    .id("scroll-assist-title")
+                    .native_tooltip(t("settings.scroll_assist_description"))
+                    .child(t("settings.scroll_assist_title")),
+            )
+            .child(scroll_assist)
             .child(self.button(
                 "edit-shortcuts",
                 (

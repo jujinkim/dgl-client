@@ -736,6 +736,7 @@ mod tests {
         local.preferences.terminal_font_family = "PRIVATE-FONT".into();
         local.preferences.desktop_power_saving = "always".into();
         local.preferences.desktop_tmux_buffer_clipboard = true;
+        local.preferences.terminal_scroll_assist = "off".into();
         let out = exchange(Some(a.cache), &local, doc.as_bytes(), &[]).unwrap();
         for value in [
             "SECRET-REFERENCE",
@@ -754,6 +755,7 @@ mod tests {
             "PRIVATE-FONT",
             "desktopPowerSaving",
             "desktopTmuxBufferClipboard",
+            "terminalScrollAssist",
             "privateKey",
             "password",
         ] {
@@ -778,6 +780,7 @@ mod tests {
         assert_eq!(other.local.preferences.terminal_font_family, "");
         assert_eq!(other.local.preferences.desktop_power_saving, "system");
         assert!(!other.local.preferences.desktop_tmux_buffer_clipboard);
+        assert_eq!(other.local.preferences.terminal_scroll_assist, "auto");
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {

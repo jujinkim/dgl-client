@@ -86,6 +86,7 @@ TESTS = {
                                     'returningToTheSubmittedSizeNeedsNoRequest'],
     'CliLauncherTest': ['modifiersToggleUnionConsumeAndRejectUnsupportedWithoutReplay', 'targetChangesRecoveryAndModalClearsCannotLeakModifiers', 'exactCommandsOnceForActiveShellAndPane', 'targetChangesAndUnavailableInputNeverSendOrReplay',
                         'runningCliInTheInputPaneBlocksLaunchUntilItLeaves',
+                        'scrollAssistPanesComeFromFreshObservationsOrCurrentCommand',
                         'viewportRestorationRetainsRequestsButRecoveryAndChangedTargetsRejectThem',
                         'menuPlacementKeepsTheLauncherAboveAndFlipsSelectionMenusInsideTheOverlay'],
     'MigrationContractTest': ['controlStreamFixturesAtEveryBoundary', 'escapeFixtures',
