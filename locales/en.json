@@ -590,6 +590,7 @@
   "workspace.first_connection_prompt": "First connection to server · {0}\n{1}\nCompare with the SHA-256 fingerprint supplied by your administrator.",
   "workspace.group": "Group {0}",
   "workspace.host_key_save_failed": "Could not save host key: {0}",
+  "workspace.list_paused": "Listing paused · Refresh to list again",
   "workspace.local_check_again": "Check again",
   "workspace.local_connecting": "Connecting to Local…",
   "workspace.local_copy_command": "Copy command",

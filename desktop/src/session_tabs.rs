@@ -197,6 +197,7 @@ impl Desktop {
         let id = self.workspace.add_tab();
         let session = host.last_session.clone();
         let (connection, terminal) = self.connect(&host, credential, trusted, cx);
+        self.expanded.insert(host_tree::expand_key(&host.id));
         self.tabs.push(Tab {
             id,
             host,
@@ -283,15 +284,39 @@ impl Desktop {
         pane: Option<String>,
         cx: &mut Context<Self>,
     ) -> Option<TabId> {
-        let source_tab = self
+        let host = self
             .tabs
             .iter()
-            .find(|t| Arc::ptr_eq(&t.connection, source))?;
+            .find(|t| Arc::ptr_eq(&t.connection, source))
+            .map(|t| t.host.clone())
+            .or_else(|| {
+                self.probes
+                    .values()
+                    .find(|p| {
+                        p.connection
+                            .as_ref()
+                            .is_some_and(|c| Arc::ptr_eq(c, source))
+                    })
+                    .map(|p| p.host.clone())
+            })?;
         let state = source.state();
         if state.generation.connection != generation {
             return None;
         }
-        let host = source_tab.host.clone();
+        self.route_session(host, session, window, pane, &state, cx)
+    }
+    /// Opens `session` of `host` as listed in `state`: activates its tab, binds a tab
+    /// still selecting, or starts a new one.
+    pub(super) fn route_session(
+        &mut self,
+        host: HostProfile,
+        session: &str,
+        window: Option<String>,
+        pane: Option<String>,
+        state: &State,
+        cx: &mut Context<Self>,
+    ) -> Option<TabId> {
+        self.touch_probe(&host.id);
         let browse = state.browses_sessions();
         let route = route(
             self.tabs

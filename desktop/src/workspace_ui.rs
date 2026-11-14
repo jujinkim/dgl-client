@@ -214,6 +214,15 @@ impl Desktop {
             let edit = host.clone();
             let delete = host.clone();
             let setup_host = host.clone();
+            let toggle_host = host.clone();
+            let refresh_host = host.clone();
+            let expanded = self.host_expanded(&id);
+            let source = expanded.then(|| self.tree_source(&id)).flatten();
+            let browse = source
+                .as_ref()
+                .is_some_and(|s| s.connection.is_some() && s.state.browses_sessions());
+            let refreshing = source.as_ref().is_some_and(|s| s.refreshing);
+            let create_on = source.as_ref().and_then(|s| s.connection.clone());
             let menu_id = format!("host-menu-{id}");
             let toggle = menu_id.clone();
             let before = id.clone();
@@ -288,6 +297,25 @@ impl Desktop {
                     })
                     .child(
                         self.button(
+                            format!("expand-host-{id}"),
+                            if expanded {
+                                UiIcon::ChevronDown
+                            } else {
+                                UiIcon::ChevronRight
+                            },
+                            cx,
+                            move |s, _, cx| {
+                                s.menu = None;
+                                s.toggle_host(&toggle_host, cx);
+                                cx.notify();
+                            },
+                        )
+                        .w(px(28.))
+                        .px_0()
+                        .flex_shrink_0(),
+                    )
+                    .child(
+                        self.button(
                             format!("host-{id}"),
                             if host.favorite {
                                 ButtonLabel::IconText(UiIcon::Star, host.alias.clone().into())
@@ -324,11 +352,51 @@ impl Desktop {
                             )
                         }),
                     )
+                    .when(expanded, |d| {
+                        d.child(
+                            self.button(
+                                format!("new-session-{id}"),
+                                UiIcon::Plus,
+                                cx,
+                                move |s, _, cx| {
+                                    if let Some(connection) = create_on.clone().filter(|_| browse) {
+                                        s.prompt_on(
+                                            connection,
+                                            t("workspace.create_session"),
+                                            PromptOp::Session,
+                                            cx,
+                                        );
+                                    }
+                                },
+                            )
+                            .w(px(28.))
+                            .px_0()
+                            .flex_shrink_0()
+                            .when(!browse, |d| d.opacity(0.35)),
+                        )
+                        .child(
+                            self.button(
+                                format!("refresh-sessions-{id}"),
+                                UiIcon::Refresh,
+                                cx,
+                                move |s, _, cx| {
+                                    s.refresh_host(&refresh_host, cx);
+                                    cx.notify();
+                                },
+                            )
+                            .native_tooltip(t("workspace.refresh_sessions"))
+                            .w(px(28.))
+                            .px_0()
+                            .flex_shrink_0()
+                            .when(refreshing, |d| d.opacity(0.35)),
+                        )
+                    })
                     .when(!is_local, |d| {
                         d.child(
                             self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
                                 s.toggle_menu(toggle.clone())
-                            }),
+                            })
+                            .flex_shrink_0(),
                         )
                     }),
             );
@@ -390,30 +458,22 @@ impl Desktop {
                         )),
                 );
             }
+            if expanded {
+                explorer = explorer.child(self.render_host_tree(&host, source, cx));
+            }
         }
-        // Hosts and sessions are two stacked sections (about 45/55 of the space left
-        // under the title), each scrolling on its own so neither list pushes the other
-        // away. A strong divider and a different surface keep the boundary obvious.
-        sidebar = sidebar
-            .child(
-                div()
-                    .debug_selector(|| "host-section".into())
-                    .flex()
-                    .flex_col()
-                    .flex_shrink()
-                    .flex_basis(relative(0.45))
-                    .min_h_0()
-                    .child(hosts_header)
-                    .child(explorer),
-            )
-            .child(
-                div()
-                    .debug_selector(|| "sidebar-divider".into())
-                    .flex_shrink_0()
-                    .h(px(2.))
-                    .bg(rgb(p.control_border)),
-            )
-            .child(self.render_session_section(cx));
+        // One scrolling list: each host row carries its own collapsible session tree,
+        // so the sessions of several hosts show at once.
+        sidebar = sidebar.child(
+            div()
+                .debug_selector(|| "host-section".into())
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h_0()
+                .child(hosts_header)
+                .child(explorer),
+        );
         let unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
         let layout = self.workspace.layout.clone();
         let workspace = self.render_layout(layout, vec![], preview, cx);
@@ -1625,39 +1685,17 @@ impl Desktop {
             )
             .children(actions)
     }
-    /// The lower sidebar section: a fixed header and its own scrolling session tree.
-    fn render_session_section(&mut self, cx: &mut Context<Self>) -> Div {
+    /// The session tree under an expanded host row, indented on a lighter surface.
+    fn render_host_tree(
+        &mut self,
+        host: &HostProfile,
+        source: Option<host_tree::TreeSource>,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let p = self.palette;
-        let active = self
-            .active_tab()
-            .map(|tab| (tab.connection.state(), tab.refresh.is_some()));
-        let browse = active
-            .as_ref()
-            .is_some_and(|(state, _)| state.browses_sessions());
-        let refreshing = active.as_ref().is_some_and(|(_, refreshing)| *refreshing);
-        let header = self.sidebar_section_header(
-            "sessions-header",
-            t("common.sessions"),
-            vec![
-                self.button("new-session", UiIcon::Plus, cx, move |s, _, cx| {
-                    if browse {
-                        s.prompt(t("workspace.create_session"), PromptOp::Session, cx);
-                    }
-                })
-                .when(!browse, |d| d.opacity(0.35))
-                .into_any_element(),
-                self.button("refresh-sessions", UiIcon::Refresh, cx, move |s, _, _| {
-                    if browse {
-                        s.refresh();
-                    }
-                })
-                .native_tooltip(t("workspace.refresh_sessions"))
-                .when(refreshing || !browse, |d| d.opacity(0.35))
-                .into_any_element(),
-            ],
-        );
-        let body = match active {
-            Some((state, _)) => self.render_tree_state(&state, cx),
+        let id = host.id.clone();
+        let body = match source {
+            Some(source) => self.render_tree_state(host, &source, cx),
             None => div()
                 .debug_selector(|| "session-empty".into())
                 .px_3()
@@ -1668,38 +1706,36 @@ impl Desktop {
                 .into_any_element(),
         };
         div()
-            .debug_selector(|| "session-section".into())
-            .flex()
-            .flex_col()
-            .flex_shrink()
-            .flex_basis(relative(0.55))
-            .min_h_0()
+            .debug_selector(move || format!("host-tree-{id}"))
+            .pl(px(12.))
             .bg(rgb(p.bg))
-            .child(header)
-            .child(
-                div()
-                    .id("session-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .child(body),
-            )
+            .border_b_1()
+            .border_color(rgb(p.line))
+            .child(body)
     }
     pub(super) fn render_tree_state(
         &mut self,
-        state: &dgl_core::connection::State,
+        host: &HostProfile,
+        source: &host_tree::TreeSource,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let mut tree = div().debug_selector(|| "session-tree".into());
-        let Some(tab) = self.active_tab() else {
-            return tree.into_any_element();
-        };
-        let connection = tab.connection.clone();
-        let tid = tab.id;
-        let browse = state.browses_sessions();
-        // Keep cached rows at the same coordinates while the connection recovers.
-        // The status bar already displays the phase; only an empty tree needs a hint.
-        if !browse && state.remote.sessions.is_empty() {
+        let state = &source.state;
+        let connection = source.connection.as_ref();
+        let browse = connection.is_some() && state.browses_sessions();
+        if connection.is_none() {
+            // A closed probe's rows still open tabs; refreshing lists them again.
+            tree = tree.child(
+                div()
+                    .debug_selector(|| "session-list-paused".into())
+                    .px_3()
+                    .text_xs()
+                    .text_color(rgb(self.palette.muted))
+                    .child(t("workspace.list_paused")),
+            );
+        } else if !browse && state.remote.sessions.is_empty() {
+            // Keep cached rows at the same coordinates while the connection recovers.
+            // The status bar already displays the phase; only an empty tree needs a hint.
             tree = tree.child(
                 div()
                     .debug_selector(|| "session-list-waiting".into())
@@ -1712,7 +1748,7 @@ impl Desktop {
             );
         }
         for row in hierarchy::rows(&state.remote, self.local.preferences.show_all_hierarchy) {
-            tree = tree.child(self.render_hierarchy_row(&row, 0, tid, &connection, &state, cx));
+            tree = tree.child(self.render_hierarchy_row(&row, 0, host, connection, state, cx));
         }
         tree.into_any_element()
     }
@@ -1720,18 +1756,20 @@ impl Desktop {
         &self,
         row: &hierarchy::Row,
         depth: usize,
-        tid: TabId,
-        connection: &Arc<Connection>,
-        state: &dgl_core::connection::State,
+        host: &HostProfile,
+        connection: Option<&Arc<Connection>>,
+        state: &Arc<dgl_core::connection::State>,
         cx: &mut Context<Self>,
     ) -> Div {
-        let browse = state.browses_sessions();
+        let browse = connection.is_some() && state.browses_sessions();
         let p = self.palette;
-        let expand = format!("{tid}/{}", row.key);
+        let expand = format!("{}/{}", host.id, row.key);
         let toggle = expand.clone();
         let menu_id = format!("{expand}/menu");
         let menu = menu_id.clone();
-        let c = connection.clone();
+        let c = connection.cloned();
+        let open_host = host.clone();
+        let listed = state.clone();
         let generation = state.generation.connection;
         let target = row.clone();
         let session_row = row.kind == hierarchy::Kind::Session;
@@ -1748,7 +1786,7 @@ impl Desktop {
             ),
         };
         let mut line = div()
-            .id(SharedString::from(format!("row-{}", row.key)))
+            .id(SharedString::from(format!("row-{expand}")))
             .relative()
             .flex()
             .items_center()
@@ -1793,43 +1831,46 @@ impl Desktop {
                 row.kind == hierarchy::Kind::Pane,
                 cx,
                 move |s, w, cx| {
-                    if s.select_session_tab(
-                        &c,
-                        generation,
-                        &target.session,
-                        if session_row {
-                            None
-                        } else {
-                            target.window.clone()
-                        },
-                        if session_row {
-                            None
-                        } else {
-                            target.pane.clone()
-                        },
-                        cx,
-                    )
-                    .is_some()
-                    {
+                    let window = (!session_row).then(|| target.window.clone()).flatten();
+                    let pane = (!session_row).then(|| target.pane.clone()).flatten();
+                    let opened = match &c {
+                        Some(c) => {
+                            s.select_session_tab(c, generation, &target.session, window, pane, cx)
+                        }
+                        None => s.route_session(
+                            open_host.clone(),
+                            &target.session,
+                            window,
+                            pane,
+                            &listed,
+                            cx,
+                        ),
+                    };
+                    if opened.is_some() {
                         s.group_focus(s.workspace.active, w, cx);
                     }
                 },
             ))
             .when_some(expand_button, |d, button| d.child(button))
-            .child(
-                self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
-                    s.toggle_menu(menu.clone())
-                })
-                .w(px(28.))
-                .px_0(),
-            );
+            .when(connection.is_some(), |d| {
+                d.child(
+                    self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
+                        s.toggle_menu(menu.clone())
+                    })
+                    .w(px(28.))
+                    .px_0(),
+                )
+            });
         if let Some(pid) = &row.window
-            && let Some(tab) = self.active_tab()
+            && let Some(connection) = connection
         {
-            line = line.child(self.agent_badge(connection.clone(), &tab.host, pid, state, cx));
+            line = line.child(self.agent_badge(connection.clone(), host, pid, state, cx));
         }
         let mut body = div().flex().flex_col().child(line);
-        if browse && self.menu.as_ref() == Some(&menu_id) {
+        if browse
+            && self.menu.as_ref() == Some(&menu_id)
+            && let Some(connection) = connection
+        {
             body = body.child(self.hierarchy_menu(row, depth, connection, cx));
         }
         if self.expanded.contains(&expand) {
@@ -1837,7 +1878,7 @@ impl Desktop {
                 body = body.child(self.render_hierarchy_row(
                     child,
                     depth + 1,
-                    tid,
+                    host,
                     connection,
                     state,
                     cx,
@@ -1865,13 +1906,17 @@ impl Desktop {
                 format!("new-window-{add}"),
                 t("workspace.create_window_ellipsis"),
                 cx,
-                move |s, _, cx| {
-                    s.menu = None;
-                    s.prompt(
-                        t("workspace.create_window"),
-                        PromptOp::Window(add.clone()),
-                        cx,
-                    );
+                {
+                    let c = connection.clone();
+                    move |s, _, cx| {
+                        s.menu = None;
+                        s.prompt_on(
+                            c.clone(),
+                            t("workspace.create_window"),
+                            PromptOp::Window(add.clone()),
+                            cx,
+                        );
+                    }
                 },
             ));
             let target = row.session.clone();
@@ -1879,13 +1924,17 @@ impl Desktop {
                 format!("rename-session-{target}"),
                 t("workspace.rename_session_ellipsis"),
                 cx,
-                move |s, _, cx| {
-                    s.menu = None;
-                    s.prompt(
-                        t("workspace.rename_session"),
-                        PromptOp::RenameSession(target.clone()),
-                        cx,
-                    );
+                {
+                    let c = connection.clone();
+                    move |s, _, cx| {
+                        s.menu = None;
+                        s.prompt_on(
+                            c.clone(),
+                            t("workspace.rename_session"),
+                            PromptOp::RenameSession(target.clone()),
+                            cx,
+                        );
+                    }
                 },
             ));
             menu = menu.child(self.hierarchy_delete(
@@ -1907,13 +1956,17 @@ impl Desktop {
                 format!("rename-{target}"),
                 t("workspace.rename_window_ellipsis"),
                 cx,
-                move |s, _, cx| {
-                    s.menu = None;
-                    s.prompt(
-                        t("workspace.rename_window"),
-                        PromptOp::RenameWindow(target.clone()),
-                        cx,
-                    );
+                {
+                    let c = connection.clone();
+                    move |s, _, cx| {
+                        s.menu = None;
+                        s.prompt_on(
+                            c.clone(),
+                            t("workspace.rename_window"),
+                            PromptOp::RenameWindow(target.clone()),
+                            cx,
+                        );
+                    }
                 },
             ));
             menu = menu.child(self.hierarchy_delete(
@@ -1980,13 +2033,17 @@ impl Desktop {
                 format!("rename-pane-{target}"),
                 t("workspace.rename_pane_ellipsis"),
                 cx,
-                move |s, _, cx| {
-                    s.menu = None;
-                    s.prompt(
-                        t("workspace.rename_pane"),
-                        PromptOp::RenamePane(target.clone()),
-                        cx,
-                    );
+                {
+                    let c = connection.clone();
+                    move |s, _, cx| {
+                        s.menu = None;
+                        s.prompt_on(
+                            c.clone(),
+                            t("workspace.rename_pane"),
+                            PromptOp::RenamePane(target.clone()),
+                            cx,
+                        );
+                    }
                 },
             ));
             menu = menu.child(self.hierarchy_delete(

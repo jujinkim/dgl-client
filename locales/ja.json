@@ -590,6 +590,7 @@
   "workspace.first_connection_prompt": "初めて接続するサーバー · {0}\n{1}\n管理者から受け取った SHA-256 フィンガープリントと比較してください。",
   "workspace.group": "グループ {0}",
   "workspace.host_key_save_failed": "ホスト鍵を保存できませんでした: {0}",
+  "workspace.list_paused": "一覧の更新を停止中 · 再読み込みで再取得します",
   "workspace.local_check_again": "再確認",
   "workspace.local_connecting": "Local に接続中…",
   "workspace.local_copy_command": "コマンドをコピー",

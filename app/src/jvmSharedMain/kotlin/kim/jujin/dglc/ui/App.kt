@@ -67,9 +67,8 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     val local by model.local.collectAsState()
     val connections by model.connections.collectAsState()
     val selected by model.selected.collectAsState()
-    var lastExplorerClient by remember(model) { mutableStateOf<ClientConnection?>(null) }
-    SideEffect { if (selected != null) lastExplorerClient = selected }
-    val navigationClient = selected ?: lastExplorerClient?.takeIf { it in connections }
+    val expandedHosts by model.expandedHosts.collectAsState()
+    val hostProbes by model.hostProbes.collectAsState()
     val inputBlocks by model.inputBlocks.collectAsState()
     val appInputOwner = remember { Any() }
     LaunchedEffect(connections, selected) { model.reconcileWorkspace() }
@@ -195,38 +194,43 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                     Text(t("settings.connection"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                     BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("host.add_short")) }
                                 }
-                                LazyColumn(Modifier.weight(if (wide) .45f else 1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                                // A host opens only with a stored credential; otherwise its editor asks for one.
+                                fun withCredential(host: HostProfile, action: () -> Unit) {
+                                    try {
+                                        if (model.credentials.read(host.credentialRef) == null) {
+                                            model.hostEditing = true
+                                            edit = host
+                                            error = t("host.credentials_hint")
+                                        } else action()
+                                    } catch (_: Exception) { error = t("app.secure_storage_open_failed") }
+                                }
+                                // Wide: one list where each host row carries its own collapsible session tree.
+                                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                                     if (local.hosts.isEmpty()) item { Text(t("host.empty_state"), Modifier.padding(12.dp)) }
                                     items(local.hosts.sortedWith(compareByDescending<HostProfile> { it.favorite }.thenByDescending { it.lastConnected }), key = { it.id }) { host ->
+                                        val hostExpanded = wide && host.id in expandedHosts
                                         Column(Modifier.fillMaxWidth()) {
                                             Column(Modifier.padding(12.dp)) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    if (wide) IconButton({ if (hostExpanded) model.collapseHost(host.id) else withCredential(host) { model.expandHost(host) } },
+                                                        Modifier.size(40.dp).semantics { contentDescription = tr("common.label_state", host.alias, if (hostExpanded) t("common.collapse") else t("common.expand")) }) {
+                                                        UiGlyph(if (hostExpanded) UiIcons.chevronDown else UiIcons.chevronRight)
+                                                    }
                                                     if (host.favorite) Icon(UiIcons.star, t("host.favorite"), Modifier.size(20.dp))
                                                     Text(host.alias, style = MaterialTheme.typography.titleMedium)
                                                 }
                                                 Text("${host.username}@${host.hostname}:${host.port}", style = MaterialTheme.typography.bodySmall)
                                                 if (host.lastConnected != 0L) Text(t("host.last_connected") + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    BorderedButton({
-                                                        try {
-                                                            if (model.credentials.read(host.credentialRef) == null) {
-                                                                model.hostEditing = true
-                                                                edit = host
-                                                                error = t("host.credentials_hint")
-                                                            } else { model.open(host); explorer = false }
-                                                        } catch (_: Exception) { error = t("app.secure_storage_open_failed") }
-                                                    }) { Text(t("settings.connection")) }
+                                                    BorderedButton({ withCredential(host) { model.open(host); explorer = false } }) { Text(t("settings.connection")) }
                                                     Spacer(Modifier.weight(1f))
                                                     TreeMenu(tr("common.menu_for", host.alias), listOf(t("common.edit") to { model.hostEditing = true; edit = host }, t("agent.integration") to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = t("workspace.connect_host_first") } }, t("workspace.delete_ellipsis") to { model.hostEditing = true; deletion = host }))
                                                 }
                                             }
+                                            if (hostExpanded) HostSessionTree(host, hostTreeSource(host.id, connections, selected, hostProbes), local.preferences, model) { client, pane -> agentDetails = client to pane }
                                             HorizontalDivider()
                                         }
                                     }
-                                }
-                                if (wide) {
-                                    if (navigationClient != null) WorkspaceNavigation(navigationClient, local.preferences, model, Modifier.weight(.55f)) { client, pane -> agentDetails = client to pane }
-                                    else WorkspaceNavigationPlaceholder(Modifier.weight(.55f))
                                 }
                                 if (!workspaceMode) Text(model.storageDescription, Modifier.padding(12.dp), style = MaterialTheme.typography.labelSmall)
                             }
@@ -457,7 +461,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 @Composable internal fun HierarchyEntry(row: HierarchyRow, depth: Int, client: ClientConnection, remote: RemoteState,
     session: String?, pane: String?, expanded: MutableMap<String, Boolean>, enabled: Boolean, notices: List<AgentNotice>,
     showAgents: (String) -> Unit, prompt: (NamePrompt) -> Unit, delete: (String, () -> Unit) -> Unit,
-    selectTarget: (String, String?, String?) -> Unit = client::selectTarget) {
+    selectTarget: (String, String?, String?) -> Unit = client::selectTarget, selectable: Boolean = enabled) {
     val actions = buildList<Pair<String, () -> Unit>> {
         if (row.kind == TreeKind.Session) {
             add(t("workspace.create_window_ellipsis") to { prompt(NamePrompt(t("workspace.create_window")) { client.manage(TmuxCommand.newWindow(row.session, it)) }) })
@@ -481,9 +485,9 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     }
     TreeRow(row.label, depth, row.selected(remote, session, pane), if (row.children.isEmpty()) null else expanded[row.key] == true,
         { expanded[row.key] = expanded[row.key] != true }, { selectTarget(row.session, row.window, row.pane) }, enabled, actions,
-        status = { row.window?.let { p -> AgentBadge(client, p, notices, compact = true) { showAgents(p) } } })
+        status = { row.window?.let { p -> AgentBadge(client, p, notices, compact = true) { showAgents(p) } } }, selectable = selectable)
     if (expanded[row.key] == true) row.children.forEach { child ->
-        key(child.key) { HierarchyEntry(child, depth + 1, client, remote, session, pane, expanded, enabled, notices, showAgents, prompt, delete, selectTarget) }
+        key(child.key) { HierarchyEntry(child, depth + 1, client, remote, session, pane, expanded, enabled, notices, showAgents, prompt, delete, selectTarget, selectable) }
     }
 }
 
@@ -501,7 +505,8 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun TreeRow(label: TreeLabel, depth: Int, active: Boolean, expanded: Boolean?, toggle: () -> Unit,
-    select: () -> Unit, enabled: Boolean, actions: List<Pair<String, () -> Unit>>, status: @Composable () -> Unit = {}) {
+    select: () -> Unit, enabled: Boolean, actions: List<Pair<String, () -> Unit>>, status: @Composable () -> Unit = {},
+    selectable: Boolean = enabled) {
     val guideColor = MaterialTheme.colorScheme.outlineVariant
     val background = when {
         active -> MaterialTheme.colorScheme.secondaryContainer
@@ -518,7 +523,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
         Box(Modifier.weight(1f)) {
             TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
                 tooltip = { PlainTooltip { Text(label.fullText) } }, state = rememberTooltipState(), modifier = Modifier.fillMaxWidth()) {
-                TextButton(select, enabled = enabled, shape = RectangleShape, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                TextButton(select, enabled = selectable, shape = RectangleShape, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .semantics { contentDescription = label.fullText }) {
                     Column(Modifier.fillMaxWidth().clearAndSetSemantics {}) {
                         Text(label.title, maxLines = 1, overflow = TextOverflow.Ellipsis,

@@ -590,6 +590,7 @@
   "workspace.first_connection_prompt": "처음 연결하는 서버 · {0}\n{1}\n관리자에게 받은 SHA-256 지문과 비교하세요.",
   "workspace.group": "그룹 {0}",
   "workspace.host_key_save_failed": "호스트키 저장 실패: {0}",
+  "workspace.list_paused": "목록 갱신 멈춤 · 새로고침하면 다시 조회합니다",
   "workspace.local_check_again": "다시 확인",
   "workspace.local_connecting": "Local 연결 중…",
   "workspace.local_copy_command": "명령 복사",

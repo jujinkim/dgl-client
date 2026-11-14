@@ -625,10 +625,17 @@ impl gpui::Render for HierarchyPreview {
             InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
             prelude::FluentBuilder,
         };
-        let state = self.state.clone();
-        let tree = self
-            .desktop
-            .update(cx, |s, cx| s.render_tree_state(&state, cx));
+        let state = std::sync::Arc::new(self.state.clone());
+        let tree = self.desktop.update(cx, |s, cx| {
+            let tab = s.active_tab().unwrap();
+            let host = tab.host.clone();
+            let source = super::host_tree::TreeSource {
+                connection: Some(tab.connection.clone()),
+                state,
+                refreshing: false,
+            };
+            s.render_tree_state(&host, &source, cx)
+        });
         gpui::div()
             .id("hierarchy-preview")
             .w(px(self.width))
@@ -652,8 +659,11 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
     state.pane = Some("%2".into());
     desktop.update(ui, |s, _| {
         s.local.preferences.show_all_hierarchy = true;
-        s.expanded
-            .extend(["1/$1".into(), "1/$1/@1".into(), "1/$1/@2".into()]);
+        s.expanded.extend([
+            "fixture/$1".into(),
+            "fixture/$1/@1".into(),
+            "fixture/$1/@2".into(),
+        ]);
     });
     let owner = desktop.clone();
     let (preview, ui) = cx.add_window_view(|_, _| HierarchyPreview {
@@ -685,7 +695,7 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
             assert_eq!(window_x - session_x, px(20.));
             assert!(ui.debug_bounds("pane-$1-@1-%1").is_none());
             let pane = ui.debug_bounds("window-$1-@2").unwrap();
-            let pane_menu = ui.debug_bounds("1/$1/@2/menu").unwrap();
+            let pane_menu = ui.debug_bounds("fixture/$1/@2/menu").unwrap();
             let badge_id = preview.read_with(ui, |p, _| format!("agent-{}-@2", p.state.handle));
             let badge = ui
                 .debug_bounds(Box::leak(badge_id.into_boxed_str()))
@@ -694,7 +704,7 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
             assert!(pane_menu.right() <= badge.left());
             assert!(badge.right() <= px(width));
             let title = ui.debug_bounds("window-$1-@2").unwrap();
-            let menu = ui.debug_bounds("1/$1/@2/menu").unwrap();
+            let menu = ui.debug_bounds("fixture/$1/@2/menu").unwrap();
             assert!(title.right() <= menu.left(), "title overlaps menu");
         }
     }
@@ -727,14 +737,14 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
         expanded,
         "title selects without toggling"
     );
-    assert!(ui.debug_bounds("expand-1/$1/@1").is_none());
+    assert!(ui.debug_bounds("expand-fixture/$1/@1").is_none());
     redraw(ui);
-    let menu = ui.debug_bounds("1/$1/@1/menu").unwrap();
+    let menu = ui.debug_bounds("fixture/$1/@1/menu").unwrap();
     ui.simulate_click(menu.center(), Modifiers::default());
     redraw(ui);
     assert_eq!(
         desktop.read_with(ui, |s, _| s.menu.clone()),
-        Some("1/$1/@1/menu".into())
+        Some("fixture/$1/@1/menu".into())
     );
     assert!(ui.debug_bounds("rename-@1").is_some());
     assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
@@ -763,7 +773,7 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
     ui.update(|w, _| w.focus(&focus));
     redraw(ui);
     let row = ui.debug_bounds("session-$1").unwrap();
-    let menu = ui.debug_bounds("1/$1/menu").unwrap();
+    let menu = ui.debug_bounds("fixture/$1/menu").unwrap();
     let badge = ui
         .debug_bounds(Box::leak(format!("agent-{handle}-@1").into_boxed_str()))
         .unwrap();
@@ -791,7 +801,8 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
     desktop.update(ui, |s, _| {
         s.dialog = None;
         s.local.preferences.show_all_hierarchy = true;
-        s.expanded.extend(["1/$1".into(), "1/$1/@1".into()]);
+        s.expanded
+            .extend(["fixture/$1".into(), "fixture/$1/@1".into()]);
     });
     redraw(ui);
     assert!(ui.debug_bounds("window-$1-@1").is_some());
@@ -802,7 +813,7 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
         before,
         preview.read_with(ui, |p, _| (p.state.session.clone(), p.state.pane.clone()))
     );
-    assert!(desktop.read_with(ui, |s, _| s.expanded.contains("1/$1/@1")));
+    assert!(desktop.read_with(ui, |s, _| s.expanded.contains("fixture/$1/@1")));
     assert!(ui.update(|w, _| focus.is_focused(w)));
     assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
 }
@@ -827,7 +838,7 @@ fn hierarchy_recovery_preserves_row_positions_expansion_and_scroll(cx: &mut Test
     state.pane = Some("%2".into());
     desktop.update(ui, |s, _| {
         s.local.preferences.show_all_hierarchy = true;
-        s.expanded.insert("1/$1".into());
+        s.expanded.insert("fixture/$1".into());
     });
     let scroll = gpui::ScrollHandle::default();
     let owner = desktop.clone();
@@ -2867,33 +2878,59 @@ fn local_is_first_fixed_and_does_not_connect_on_app_start(cx: &mut TestAppContex
 }
 
 #[gpui::test]
-fn sidebar_stacks_hosts_over_sessions_with_independent_scrolling(cx: &mut TestAppContext) {
+fn sidebar_nests_each_hosts_sessions_under_its_row(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     ui.simulate_resize(gpui::size(px(1000.), px(700.)));
+    view.update(ui, |s, cx| {
+        s.local.hosts = vec![ordered_host("fixture", None), ordered_host("b", None)];
+        s.reconcile_hosts();
+        cx.notify();
+    });
     redraw(ui);
-    let sections = |ui: &mut VisualTestContext| {
-        [
-            "session-sidebar",
-            "host-section",
-            "sidebar-divider",
-            "session-section",
-        ]
-        .map(|id| ui.debug_bounds(id).unwrap())
-    };
-    let [sidebar, hosts, divider, sessions] = sections(ui);
-    // Without a connection the sessions section keeps its header and an empty hint.
-    let header = ui.debug_bounds("sessions-header").unwrap();
-    let empty = ui.debug_bounds("session-empty").unwrap();
-    assert!(header.top() >= sessions.top() && empty.top() >= header.bottom());
-    assert!(ui.debug_bounds("new-session").unwrap().top() >= sessions.top());
-    assert!(ui.debug_bounds("add").unwrap().bottom() <= hosts.top() + px(40.));
-    assert!(hosts.top() >= sidebar.top() && sessions.bottom() <= sidebar.bottom());
-    assert!(hosts.bottom() <= divider.top() && divider.bottom() <= sessions.top());
-    assert_eq!(divider.size.height, px(2.));
-    assert_eq!(divider.size.width, sidebar.size.width - px(1.));
-    let share = f32::from(hosts.size.height) / f32::from(hosts.size.height + sessions.size.height);
-    assert!((share - 0.45).abs() < 0.01, "hosts share {share}");
-    // A long host list scrolls inside its own section and never moves the sessions.
+    let sidebar = ui.debug_bounds("session-sidebar").unwrap();
+    let hosts = ui.debug_bounds("host-section").unwrap();
+    // One list fills the sidebar under its title; no separate sessions section.
+    assert!(hosts.top() >= sidebar.top() && hosts.bottom() <= sidebar.bottom());
+    assert!(hosts.size.height > sidebar.size.height * 0.8);
+    assert!(ui.debug_bounds("sidebar-divider").is_none());
+    assert!(ui.debug_bounds("session-section").is_none());
+    let row = ui.debug_bounds("host-row-fixture").unwrap();
+    let chevron = ui.debug_bounds("expand-host-fixture").unwrap();
+    assert!(chevron.left() >= row.left() && chevron.right() <= row.right());
+    assert!(ui.debug_bounds("host-tree-fixture").is_none());
+    // A host's first tab expands it; its tree sits indented right under its row,
+    // above the next host.
+    add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        s.expanded.insert(super::host_tree::expand_key("fixture"));
+        cx.notify();
+    });
+    redraw(ui);
+    let row = ui.debug_bounds("host-row-fixture").unwrap();
+    let tree = ui.debug_bounds("host-tree-fixture").unwrap();
+    let next = ui.debug_bounds("host-row-b").unwrap();
+    assert!(tree.top() >= row.bottom() - px(1.) && tree.bottom() <= next.top() + px(1.));
+    let sessions = ui.debug_bounds("session-tree").unwrap();
+    assert!(sessions.left() > tree.left() && sessions.right() <= tree.right());
+    for id in ["new-session-fixture", "refresh-sessions-fixture"] {
+        let action = ui.debug_bounds(id).unwrap();
+        assert!(
+            action.top() >= row.top() && action.bottom() <= row.bottom(),
+            "{id}"
+        );
+    }
+    // Collapsing hides the tree and keeps the tab and its connection.
+    let chevron = ui.debug_bounds("expand-host-fixture").unwrap();
+    ui.simulate_click(chevron.center(), Modifiers::default());
+    redraw(ui);
+    view.read_with(ui, |s, _| {
+        assert!(!s.host_expanded("fixture"));
+        assert_eq!(s.tabs.len(), 1);
+    });
+    // GPUI keeps stale bounds of removed elements; the next host moving up proves
+    // the tree is gone.
+    assert!(ui.debug_bounds("host-row-b").unwrap().top() < next.top());
+    // A long host list scrolls inside the one list.
     view.update(ui, |s, cx| {
         s.local.hosts = (0..60)
             .map(|i| ordered_host(&format!("h{i}"), None))
@@ -2902,15 +2939,62 @@ fn sidebar_stacks_hosts_over_sessions_with_independent_scrolling(cx: &mut TestAp
         cx.notify();
     });
     redraw(ui);
-    assert_eq!(sections(ui), [sidebar, hosts, divider, sessions]);
+    assert_eq!(ui.debug_bounds("host-section").unwrap(), hosts);
     assert!(ui.debug_bounds("host-row-h59").unwrap().top() > hosts.bottom());
-    // A connected tab's tree renders inside the sessions section, under its header.
-    add_terminal(&view, ui);
+}
+
+#[gpui::test]
+fn host_probes_list_without_tabs_and_close_with_their_host(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    view.update(ui, |s, cx| {
+        s.local.hosts = vec![ordered_host("a", None)];
+        s.reconcile_hosts();
+        let host = super::host_tree::probe_host(&ordered_host("a", Some("$1")));
+        assert_eq!(host.last_session, None);
+        let _enter = s.runtime.enter();
+        let connection = Connection::start(host.clone(), Credential::default(), None);
+        s.probes.insert(
+            "a".into(),
+            super::host_tree::Probe::new(host, connection, std::time::Instant::now()),
+        );
+        s.expanded.insert(super::host_tree::expand_key("a"));
+        cx.notify();
+    });
     redraw(ui);
-    assert_eq!(sections(ui), [sidebar, hosts, divider, sessions]);
-    let tree = ui.debug_bounds("session-tree").unwrap();
-    assert!(tree.top() >= header.bottom() && tree.left() >= sessions.left());
-    assert!(tree.right() <= sessions.right());
+    // The probe lists the host's tree without opening a tab.
+    assert!(ui.debug_bounds("host-tree-a").is_some());
+    view.read_with(ui, |s, _| {
+        assert!(s.tabs.is_empty());
+        let source = s.tree_source("a").unwrap();
+        assert!(source.connection.is_some());
+    });
+    // Idle: the connection closes and its last rows stay as a read-only cache.
+    view.update(ui, |s, _| {
+        s.probes.get_mut("a").unwrap().used -= super::host_tree::PROBE_IDLE;
+        s.tick_probes();
+        let probe = &s.probes["a"];
+        assert!(probe.connection.is_none() && probe.cached.is_some());
+        assert!(s.tree_source("a").unwrap().connection.is_none());
+    });
+    redraw(ui);
+    assert!(ui.debug_bounds("session-list-paused").is_some());
+    // Collapsing drops the probe entirely; a deleted host's probe goes as well.
+    let chevron = ui.debug_bounds("expand-host-a").unwrap();
+    ui.simulate_click(chevron.center(), Modifiers::default());
+    view.update(ui, |s, _| {
+        assert!(s.probes.is_empty() && s.tree_source("a").is_none());
+        let host = ordered_host("a", None);
+        let _enter = s.runtime.enter();
+        let connection = Connection::start(host.clone(), Credential::default(), None);
+        s.probes.insert(
+            "a".into(),
+            super::host_tree::Probe::new(host, connection, std::time::Instant::now()),
+        );
+        s.expanded.insert(super::host_tree::expand_key("a"));
+        s.local.hosts.clear();
+        s.tick_probes();
+        assert!(s.probes.is_empty());
+    });
 }
 
 #[gpui::test]

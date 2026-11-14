@@ -68,58 +68,54 @@ import kim.jujin.dglc.core.*
 }
 
 /**
- * Lower half of the wide sidebar: a strong rule plus a tinted background split it from the host list,
- * and the body scrolls on its own so neither half pushes the other off screen.
+ * The session tree under an expanded host row in the wide sidebar, indented on a tinted surface.
+ * Its rows come from the host's tab, or from a tab-less probe; a closed probe's rows stay
+ * read-only until refreshed, and still open their session as a tab.
  */
-@Composable internal fun WorkspaceSessionsSection(modifier: Modifier, actions: @Composable RowScope.() -> Unit = {},
-    content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
-        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
-        WorkspaceSectionHeader(t("common.sessions"), actions = actions)
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), content = content)
-    }
-}
-
-/** Keeps the session half in place before any host is connected. */
-@Composable internal fun WorkspaceNavigationPlaceholder(modifier: Modifier) {
-    WorkspaceSessionsSection(modifier) {
-        Text(t("workspace.connect_hint"), Modifier.padding(12.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable internal fun WorkspaceNavigation(client: ClientConnection, preferences: Preferences, model: AppModel,
-    modifier: Modifier, showAgents: (ClientConnection, String) -> Unit) {
-    val status by client.status.collectAsState()
-    val remote by client.remote.collectAsState()
-    val session by client.session.collectAsState()
-    val pane by client.pane.collectAsState()
-    val refreshing by client.refreshing.collectAsState()
-    val notices by model.agentNotifications.collectAsState()
-    val expanded = remember(client) { mutableStateMapOf<String, Boolean>() }
-    var prompt by remember(client) { mutableStateOf<NamePrompt?>(null) }
-    var deletion by remember(client) { mutableStateOf<Pair<String, () -> Unit>?>(null) }
-    val owner = remember { Any() }
-    WorkspaceInputBlock(model, owner, prompt != null || deletion != null)
-    val enabled = status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
-    val generation = client.generation
-    WorkspaceSessionsSection(modifier, actions = {
-        IconButton({ prompt = NamePrompt(t("workspace.create_session")) { model.createSession(client, it) } }, enabled = enabled,
-            modifier = Modifier.semantics { contentDescription = t("workspace.create_session") }) { UiGlyph(UiIcons.plus) }
-        IconButton(client::refresh, enabled = enabled && !refreshing,
-            modifier = Modifier.semantics { contentDescription = t("workspace.refresh_sessions") }) { UiGlyph(UiIcons.refresh) }
-    }) {
-        if (remote.sessions.isEmpty()) Text(t("workspace.no_sessions_create_one"), Modifier.padding(12.dp))
+@Composable internal fun HostSessionTree(host: HostProfile, source: HostTreeSource?, preferences: Preferences, model: AppModel,
+    showAgents: (ClientConnection, String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(start = 12.dp).background(MaterialTheme.colorScheme.surfaceContainer)) {
+        if (source == null) {
+            Text(t("workspace.connect_hint"), Modifier.padding(12.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            return@Column
+        }
+        val client = source.client
+        val live = source.live
+        val status by client.status.collectAsState()
+        val liveRemote by client.remote.collectAsState()
+        val remote = if (live) liveRemote else source.probe?.cached ?: RemoteState()
+        val session by client.session.collectAsState()
+        val pane by client.pane.collectAsState()
+        val refreshing by client.refreshing.collectAsState()
+        val notices by model.agentNotifications.collectAsState()
+        val expanded = remember(host.id) { mutableStateMapOf<String, Boolean>() }
+        var prompt by remember(client) { mutableStateOf<NamePrompt?>(null) }
+        var deletion by remember(client) { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+        val owner = remember { Any() }
+        WorkspaceInputBlock(model, owner, prompt != null || deletion != null)
+        val enabled = live && status.phase in setOf(Phase.Ready, Phase.Selecting, Phase.MissingSession)
+        val generation = client.generation
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (live) t("common.sessions") else t("workspace.list_paused"), Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            IconButton({ prompt = NamePrompt(t("workspace.create_session")) { model.createSession(client, it) } }, enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = t("workspace.create_session") }) { UiGlyph(UiIcons.plus) }
+            IconButton({ model.refreshHost(host, client.takeIf { source.probe == null }) }, enabled = !live || !refreshing,
+                modifier = Modifier.semantics { contentDescription = t("workspace.refresh_sessions") }) { UiGlyph(UiIcons.refresh) }
+        }
+        if (remote.sessions.isEmpty() && enabled) Text(t("workspace.no_sessions_create_one"), Modifier.padding(12.dp))
         remote.hierarchyRows(preferences.showAllHierarchy).forEach { row -> key(row.key) {
             HierarchyEntry(row, 0, client, remote, session, pane, expanded, enabled, notices,
                 { showAgents(client, it) }, { prompt = it }, { title, action -> deletion = title to action },
-                { s, w, p -> model.openSession(client, s, w, p, generation) })
+                { s, w, p -> if (live) model.openSession(client, s, w, p, generation) else model.openHostSession(host, s, w, p) },
+                selectable = enabled || !live)
         } }
+        prompt?.let { p -> NameDialog(p.title, { if (client.generation == generation) p.accept(it); prompt = null }, { prompt = null }, p.initial) }
+        deletion?.let { (title, action) -> ConfirmDialog(title, t("workspace.delete_remote_confirm"),
+            { if (client.generation == generation) action(); deletion = null }, { deletion = null }) }
     }
-    prompt?.let { p -> NameDialog(p.title, { if (client.generation == generation) p.accept(it); prompt = null }, { prompt = null }, p.initial) }
-    deletion?.let { (title, action) -> ConfirmDialog(title, t("workspace.delete_remote_confirm"),
-        { if (client.generation == generation) action(); deletion = null }, { deletion = null }) }
 }
 
 private data class TabDrag(val tab: String, val position: Offset)

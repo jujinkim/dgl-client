@@ -249,6 +249,70 @@ class WorkspaceTest {
         val model = AppModel(LocalRepository(directory), credentials, "test", keys, inbox) { host, _, _, _ -> Connection(host).also { created += it } }
         try { test(model, created) } finally { model.close(); directory.deleteRecursively() }
     }
+    @Test fun hostProbesListWithoutTabsAndCloseWhenUnused() = runBlocking {
+        withModel { model, created ->
+            val hosts = (1..3).map { HostProfile("h$it", "alias$it", "example.test", username = "test", lastSession = "\$9") }
+            model.modify { it.copy(hosts = hosts) }
+            var now = 0L
+            model.clock = { now }
+            model.foreground = true
+            val (a, b, c) = hosts
+            // Expanding a host without a tab lists it through a probe that never attaches.
+            model.expandHost(a)
+            val probe = created.single()
+            assertNull(probe.host.lastSession)
+            assertEquals(1, probe.connects)
+            assertTrue(model.connections.value.isEmpty())
+            assertSame(probe, hostTreeSource(a.id, model.connections.value, null, model.hostProbes.value)?.client)
+            // Opening a listed session starts a tab; the tab then lists the host and the probe closes.
+            probe.status.value = ConnectionStatus(Phase.Selecting)
+            val tab = model.openSession(probe, "\$1") as Connection
+            assertEquals("\$1", tab.host.lastSession)
+            assertEquals(listOf<ClientConnection>(tab), model.connections.value)
+            assertSame(tab, hostTreeSource(a.id, model.connections.value, null, model.hostProbes.value)?.client)
+            model.expireProbes()
+            assertEquals(1, probe.closes)
+            assertNull(model.hostProbes.value[a.id])
+            // An idle probe closes and keeps its rows; they still open their session as a tab.
+            model.expandHost(b)
+            val idle = created.last()
+            idle.remote.value = RemoteState(sessions = listOf(RemoteSession("\$2", "work", 0)))
+            now += HostProbe.IDLE_MS - 1
+            model.expireProbes()
+            assertTrue(model.hostProbes.value.getValue(b.id).live)
+            now += 1
+            model.expireProbes()
+            val paused = model.hostProbes.value.getValue(b.id)
+            assertFalse(paused.live)
+            assertEquals(1, idle.closes)
+            assertEquals(listOf("\$2"), paused.remote.sessions.map { it.id })
+            assertNull(model.openSession(idle, "\$2"), "a closed probe cannot act")
+            val opened = model.openHostSession(b, "\$2") as Connection
+            assertEquals("\$2", opened.host.lastSession)
+            // Refreshing a paused host lists it again through a new probe.
+            model.removeConnection(opened)
+            model.refreshHost(b, null)
+            assertTrue(model.hostProbes.value.getValue(b.id).live)
+            assertNotSame(idle, model.hostProbes.value.getValue(b.id).client)
+            // The background closes every probe; collapsing drops it.
+            model.expandHost(c)
+            model.foreground = false
+            model.expireProbes()
+            assertTrue(model.hostProbes.value.values.none { it.live })
+            model.collapseHost(c.id)
+            assertNull(model.hostProbes.value[c.id])
+            assertFalse(c.id in model.expandedHosts.value)
+            // A host's selected tab lists it before its other tabs.
+            model.open(c.copy(lastSession = null))
+            val first = created.last()
+            model.openHostSession(c, "\$5")
+            val second = created.last()
+            assertNotSame(first, second)
+            assertSame(first, hostTreeSource(c.id, model.connections.value, first, emptyMap())?.client)
+            assertSame(second, hostTreeSource(c.id, model.connections.value, null, emptyMap())?.client)
+            assertTrue(c.id in model.expandedHosts.value, "a host's first tab expands it")
+        }
+    }
     @Test fun connectionResourcesAreSharedPerConnectionAndReleasedTogether() = runBlocking {
         withModel { model, created ->
             repeat(2) { model.open(HostProfile("host$it", "alias", "example.test", username = "test")) }

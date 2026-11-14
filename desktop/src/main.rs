@@ -14,6 +14,7 @@ mod file_picker;
 mod hierarchy;
 mod host_dialog;
 mod host_order;
+mod host_tree;
 mod i18n;
 mod key_file;
 mod launcher;
@@ -155,6 +156,8 @@ struct Desktop {
     accent_error: bool,
     modal: modal::Modal,
     expanded: HashSet<String>,
+    /// Tab-less session listings of expanded hosts, by host ID.
+    probes: HashMap<String, host_tree::Probe>,
     menu: Option<String>,
     launcher: launcher::LaunchMenu,
     shortcut_target: Option<(GroupId, Option<TabId>)>,
@@ -256,6 +259,7 @@ impl Desktop {
             accent_error: false,
             modal: modal::Modal::default(),
             expanded: HashSet::new(),
+            probes: HashMap::new(),
             menu: None,
             launcher: launcher::LaunchMenu::default(),
             shortcut_target: None,
@@ -539,6 +543,17 @@ impl Desktop {
                 changed = true;
             }
         }
+        let (probes_changed, probe_created) = self.tick_probes();
+        changed |= probes_changed;
+        for (host, state, session) in probe_created {
+            if self
+                .route_session(host, &session, None, None, &state, cx)
+                .is_some()
+            {
+                self.focus_active_terminal(cx);
+                changed = true;
+            }
+        }
         // Deferred focus claims of tabs still visible, once their connection is back.
         let visible = self.workspace.visible_tabs();
         let due = self
@@ -715,16 +730,26 @@ impl Desktop {
         }
     }
     fn prompt(&mut self, title: &str, operation: PromptOp, cx: &mut Context<Self>) {
-        if let Some(tab) = self.active_tab() {
-            // A rename starts from the current name.
-            let current = operation.current_name(&tab.connection.state().remote);
-            self.dialog = Some(Dialog::Prompt {
-                title: title.into(),
-                connection: tab.connection.clone(),
-                operation,
-                input: cx.new(|cx| TextInput::selected(&current, t("common.name"), cx)),
-            });
+        if let Some(connection) = self.active_tab().map(|t| t.connection.clone()) {
+            self.prompt_on(connection, title, operation, cx);
         }
+    }
+    /// A name prompt for an operation on `connection`, a tab's or a host probe's.
+    fn prompt_on(
+        &mut self,
+        connection: Arc<Connection>,
+        title: &str,
+        operation: PromptOp,
+        cx: &mut Context<Self>,
+    ) {
+        // A rename starts from the current name.
+        let current = operation.current_name(&connection.state().remote);
+        self.dialog = Some(Dialog::Prompt {
+            title: title.into(),
+            connection,
+            operation,
+            input: cx.new(|cx| TextInput::selected(&current, t("common.name"), cx)),
+        });
     }
     fn submit(&mut self, connection: &Arc<Connection>, action: Action) {
         if let Err(e) = connection.action(action) {
@@ -917,17 +942,22 @@ impl Desktop {
         match connection.action(Action::Manage { operation }) {
             Ok(request) => {
                 self.dialog = None;
-                if let Some(name) = created
-                    && let Some(tab) = self
+                if let Some(name) = created {
+                    let pending = session_tabs::CreatedSession::new(request, name, &connection);
+                    if let Some(tab) = self
                         .tabs
                         .iter_mut()
                         .find(|t| Arc::ptr_eq(&t.connection, &connection))
-                {
-                    tab.created_session = Some(session_tabs::CreatedSession::new(
-                        request,
-                        name,
-                        &connection,
-                    ));
+                    {
+                        tab.created_session = Some(pending);
+                    } else if let Some(probe) = self.probes.values_mut().find(|p| {
+                        p.connection
+                            .as_ref()
+                            .is_some_and(|c| Arc::ptr_eq(c, &connection))
+                    }) {
+                        probe.used = std::time::Instant::now();
+                        probe.created = Some(pending);
+                    }
                 }
             }
             Err(e) => self.snackbar.show_snackbar(tr!("app.check_name", e)),
