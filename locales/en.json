@@ -367,6 +367,8 @@
   "settings.keyboard_always_description": "Keep the keyboard visible in the terminal and resize to fit above it. Turning this off restores your previous sizing option.",
   "settings.keyboard_automatic": "Automatic",
   "settings.keyboard_automatic_description": "Resize for short output; move long output and full-screen apps upward.",
+  "settings.keyboard_on_touch": "Open keyboard on tap",
+  "settings.keyboard_on_touch_description": "Open the keyboard when you lift your finger after tapping the terminal. Long-press selection and drags never open it. When off, only the keyboard button at the bottom opens it. Saved on this device only.",
   "settings.keyboard_pan_description": "Keep the terminal size and move only the obscured content upward.",
   "settings.keyboard_resize": "Resize",
   "settings.keyboard_resize_description": "Adjust terminal rows to fit above the keyboard. Running apps may rearrange their screens.",

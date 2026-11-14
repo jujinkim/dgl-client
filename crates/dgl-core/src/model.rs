@@ -87,6 +87,9 @@ pub struct Preferences {
     pub mobile_shortcut_bar_two_rows: bool,
     pub android_keyboard_mode: String,
     pub android_keyboard_always_visible: bool,
+    /// Android: a finished tap on the terminal opens the soft keyboard. Off leaves only the
+    /// keyboard button. Stays on this device.
+    pub android_keyboard_on_touch: bool,
     pub font_size: i32,
     /// Installed monospace family for the terminal; empty uses the platform default.
     /// Stays on this device: another device may not have the same font installed.
@@ -121,6 +124,7 @@ impl Default for Preferences {
             mobile_shortcut_bar_two_rows: true,
             android_keyboard_mode: "auto".into(),
             android_keyboard_always_visible: false,
+            android_keyboard_on_touch: true,
             font_size: 12,
             terminal_font_family: String::new(),
             desktop_power_saving: "system".into(),
@@ -152,6 +156,7 @@ mod keyboard_tests {
         assert!(!state.preferences.desktop_tmux_buffer_clipboard);
         assert_eq!(state.preferences.terminal_scroll_assist, "auto");
         assert!(!state.preferences.android_keyboard_always_visible);
+        assert!(state.preferences.android_keyboard_on_touch);
         for mode in ["auto", "pan", "resize", "future-mode"] {
             state.preferences.android_keyboard_mode = mode.into();
             let encoded = serde_json::to_vec(&state).unwrap();

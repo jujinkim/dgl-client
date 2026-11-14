@@ -20,6 +20,32 @@
   const WORD_SEPARATOR = /[\s()[\]{}'",`]/;
   // The touch pointer resting on a pane, and the textarea a long-press blur gave back focus.
   let touchHold = null, keptFocus = null;
+  // The soft keyboard opens only for a finished tap, never at touch down or for a long press,
+  // drag or selection. A touch that starts with the IME hidden marks every xterm textarea
+  // `inputmode=none`, so Chrome's tap/long-press focus steps and the long-press refocus below
+  // cannot raise it. The tap then lifts the mark and asks native to show the IME, unless
+  // `touchKeyboard` is off: only the keyboard button (native `allowKeyboard`) opens it then.
+  let touchKeyboard = true, keyboardSuppressed = false, touchPointer = false;
+  const applyInputMode = textarea => {
+    if (typeof textarea?.setAttribute !== 'function') return;
+    if (keyboardSuppressed) textarea.setAttribute('inputmode', 'none'); else textarea.removeAttribute('inputmode');
+  };
+  const suppressKeyboard = value => {
+    if (keyboardSuppressed === value) return;
+    keyboardSuppressed = value;
+    for (const p of panes.values()) applyInputMode(p.term.textarea);
+  };
+  const touchStarted = event => {
+    touchPointer = event.pointerType === 'touch';
+    if (touchPointer && !viewport?.imeVisible && !imeAnimating) suppressKeyboard(true);
+  };
+  const tapKeyboard = () => {
+    if (!touchPointer || !touchKeyboard) return;
+    suppressKeyboard(false);
+    send({ type: 'show-keyboard' });
+  };
+  window.setTouchKeyboard = value => { touchKeyboard = value !== false; };
+  window.allowKeyboard = () => suppressKeyboard(false);
   // Sentence punctuation and an unbalanced closing bracket end the link.
   const trimLink = url => {
     for (;;) {
@@ -150,6 +176,7 @@
     linkHandler: { activate() {}, hover() {}, leave() {} },
   });
   term.open(host);
+  applyInputMode(term.textarea);
   // Wheel and touch drag over an alternate screen without mouse tracking: xterm sends
   // Up/Down, which agent CLIs such as Codex read as prompt history. The assist sends
   // PageUp/PageDown instead, like Rust `dgl_core::scroll::PageScroll`: a new gesture
@@ -675,6 +702,7 @@
     fling.frame = requestAnimationFrame(step);
   };
   host.addEventListener('pointerdown', event => {
+    touchStarted(event);
     stopPanelFling();
     touchOrigin = event.pointerType === 'touch';
     if (event.pointerType !== 'touch') { cancelPress(); clearTextSelection(true); suppressTouchClick = false; return; }
@@ -805,6 +833,7 @@
     if (!enabled || fontGesture) return;
     if (pane !== active) send({ type: 'focus', pane, target: inputTarget });
     api.focusTerminal();
+    tapKeyboard();
   });
   return Object.assign(api, { term, host });
   }
@@ -1121,10 +1150,10 @@
   };
   // The server may keep a smaller grid than this viewport. Tapping the empty
   // container still opens the active pane's IME, just as tapping its cells does.
-  root.addEventListener('pointerdown', stopPanelFling, true);
+  root.addEventListener('pointerdown', event => { touchStarted(event); stopPanelFling(); }, true);
   root.addEventListener('scroll', () => { if (viewport?.imeVisible && root.scrollTop) root.scrollTop = 0; });
   root.addEventListener('click', event => {
-    if (enabled && !fontGesture && !event.target.closest('.pane, .boundary')) focused().focusTerminal();
+    if (enabled && !fontGesture && !event.target.closest('.pane, .boundary')) { focused().focusTerminal(); tapKeyboard(); }
   });
   geometryObserver = new ResizeObserver(() => {
     resize();

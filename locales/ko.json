@@ -367,6 +367,8 @@
   "settings.keyboard_always_description": "터미널에서 키보드를 유지하고 크기를 키보드 위 영역에 맞춥니다. 끄면 이전 크기 설정으로 돌아갑니다.",
   "settings.keyboard_automatic": "자동",
   "settings.keyboard_automatic_description": "짧은 출력은 리사이즈하고, 긴 출력과 전체 화면 앱은 위로 이동합니다.",
+  "settings.keyboard_on_touch": "화면 터치 시 키보드 열기",
+  "settings.keyboard_on_touch_description": "터미널을 탭하고 손을 떼면 키보드를 엽니다. 길게 눌러 선택하거나 끌 때는 열지 않습니다. 끄면 하단 키보드 버튼으로만 엽니다. 이 기기에만 저장합니다.",
   "settings.keyboard_pan_description": "터미널 크기를 유지하고, 가려지는 내용만 위로 이동합니다.",
   "settings.keyboard_resize": "리사이즈",
   "settings.keyboard_resize_description": "키보드 위 영역에 맞춰 터미널 행 수를 변경합니다. 실행 중인 앱이 다시 배치될 수 있습니다.",

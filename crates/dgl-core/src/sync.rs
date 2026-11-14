@@ -733,6 +733,7 @@ mod tests {
         local.preferences.mobile_shortcut_bar_two_rows = false;
         local.preferences.android_keyboard_mode = "resize".into();
         local.preferences.android_keyboard_always_visible = true;
+        local.preferences.android_keyboard_on_touch = false;
         local.preferences.terminal_font_family = "PRIVATE-FONT".into();
         local.preferences.desktop_power_saving = "always".into();
         local.preferences.desktop_tmux_buffer_clipboard = true;
@@ -751,6 +752,7 @@ mod tests {
             "mobileShortcutBarTwoRows",
             "androidKeyboardMode",
             "androidKeyboardAlwaysVisible",
+            "androidKeyboardOnTouch",
             "terminalFontFamily",
             "PRIVATE-FONT",
             "desktopPowerSaving",
@@ -777,6 +779,7 @@ mod tests {
         assert!(other.local.preferences.mobile_shortcut_bar_two_rows);
         assert_eq!(other.local.preferences.android_keyboard_mode, "auto");
         assert!(!other.local.preferences.android_keyboard_always_visible);
+        assert!(other.local.preferences.android_keyboard_on_touch);
         assert_eq!(other.local.preferences.terminal_font_family, "");
         assert_eq!(other.local.preferences.desktop_power_saving, "system");
         assert!(!other.local.preferences.desktop_tmux_buffer_clipboard);

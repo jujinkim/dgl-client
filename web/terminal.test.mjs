@@ -1479,6 +1479,54 @@ test('a finger resting on a pane keeps the textarea focused through Chrome\'s lo
   assert.equal(other.stopped, undefined);
 });
 
+test('the soft keyboard opens on a finished tap only, never for a long press, drag or with the tap setting off', () => {
+  const r = touchRenderer({ lines: ['word'] }), t = r.terminals[0];
+  const textarea = t.textarea = { setAttribute(name, value) { this[name] = value; }, removeAttribute(name) { delete this[name]; } };
+  const shows = () => r.messages.filter(m => m.type === 'show-keyboard').length;
+  const tap = (x = 15, y = 10) => { r.pointer('pointerdown', x, y); r.pointer('pointerup', x, y); r.pointer('click', x, y); };
+
+  // Touch down with the IME hidden keeps Chrome's focus steps from raising it.
+  r.pointer('pointerdown', 15, 10);
+  assert.equal(textarea.inputmode, 'none');
+  r.hold(); r.pointer('pointerup', 15, 10);
+  for (const type of ['mousedown', 'mouseup', 'click']) r.pointer(type, 15, 10);
+  assert.equal(shows(), 0, 'selection never opens the keyboard');
+  assert.equal(textarea.inputmode, 'none');
+  // The tap that dismisses the selection menu stays closed too.
+  tap();
+  assert.equal(shows(), 0);
+  assert.equal(textarea.inputmode, 'none');
+
+  r.drag(100, 140);
+  assert.equal(shows(), 0, 'a drag never opens the keyboard');
+
+  const focuses = t.focuses;
+  tap();
+  assert.equal(shows(), 1, 'a finished tap asks native for the IME');
+  assert.equal(textarea.inputmode, undefined);
+  assert.equal(t.focuses, focuses + 1);
+
+  r.window.setTouchKeyboard(false); r.messages.length = 0;
+  tap();
+  assert.equal(shows(), 0, 'with the setting off only the keyboard button opens it');
+  assert.equal(textarea.inputmode, 'none');
+  assert.equal(t.focuses, focuses + 2, 'the tap still focuses the editor for a hardware keyboard');
+  r.window.allowKeyboard();
+  assert.equal(textarea.inputmode, undefined, 'native keyboard requests lift the mark');
+
+  // An open IME stays as it is.
+  r.window.setTouchKeyboard(true);
+  r.window.setViewport({ version: 1, width: 807, logicalHeight: 480, visibleHeight: 80, imeVisible: true });
+  r.pointer('pointerdown', 15, 10);
+  assert.equal(textarea.inputmode, undefined);
+  r.pointer('pointerup', 15, 10);
+
+  // A mouse click is not a touch tap.
+  r.messages.length = 0;
+  for (const type of ['pointerdown', 'pointerup', 'click']) r.pointer(type, 15, 10, t, { pointerType: 'mouse' });
+  assert.equal(shows(), 0);
+});
+
 test('target changes, disabled input, recovery, pinch and cancellation discard unsent touch movement', () => {
   for (const reason of ['target', 'disable', 'recovery', 'pinch', 'cancel', 'capture', 'second-pointer']) {
     const r = touchRenderer(), t = r.terminals[0];

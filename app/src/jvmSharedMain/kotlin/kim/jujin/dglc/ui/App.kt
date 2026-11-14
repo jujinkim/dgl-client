@@ -685,6 +685,12 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
                     model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = enabled)) }
                 }
                 Text(t("settings.keyboard_always_description"), style = MaterialTheme.typography.bodySmall)
+                // Moot while the keyboard always shows.
+                SettingsSwitch(t("settings.keyboard_on_touch"), local.preferences.androidKeyboardOnTouch,
+                    enabled = !local.preferences.androidKeyboardAlwaysVisible) { enabled ->
+                    model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardOnTouch = enabled)) }
+                }
+                Text(t("settings.keyboard_on_touch_description"), style = MaterialTheme.typography.bodySmall)
                 Text(t("settings.keyboard_when_opens"), style = MaterialTheme.typography.titleSmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("auto" to t("settings.keyboard_automatic"), "pan" to t("common.move_up"), "resize" to t("settings.keyboard_resize")).forEach { (value, label) ->
@@ -762,9 +768,11 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
     }
 }
 
-@Composable private fun SettingsSwitch(label: String, selected: Boolean, change: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(selected, role = Role.Switch, onValueChange = change), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f)); AccentSwitch(selected, null)
+@Composable private fun SettingsSwitch(label: String, selected: Boolean, enabled: Boolean = true, change: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(selected, enabled = enabled, role = Role.Switch, onValueChange = change),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), color = if (enabled) Color.Unspecified else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+        AccentSwitch(selected, null, enabled = enabled)
     }
 }
 

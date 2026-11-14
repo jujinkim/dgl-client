@@ -94,6 +94,8 @@ private class TerminalEntry(val terminal: AndroidTerminal) {
     var restoreIme = false
     val keyboardVisibility = TerminalKeyboardVisibility()
     var updateKeyboard: () -> Unit = {}
+    /** `androidKeyboardOnTouch`: a finished tap on the terminal may open the IME. */
+    var touchKeyboard = true
     var selection by mutableStateOf<TerminalSelection?>(null)
 }
 private tailrec fun Context.terminalLifecycleOwner(): LifecycleOwner? = when (this) {
@@ -141,6 +143,12 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
                     }
                 },
                 selection = { if (entry.visible) entry.selection = it },
+                // A finished tap only; long press, drags and selection never ask.
+                touchKeyboard = {
+                    if (entry.touchKeyboard && entry.visible && entry.focus.inputAllowed() && entry.focus.keyboardAllowed()) {
+                        entry.terminal.showIme { entry.touchKeyboard && entry.visible && entry.focus.inputAllowed() && entry.focus.keyboardAllowed() }
+                    }
+                },
                 // Before the user's own input only; the bridge never marks emulator replies.
                 userInput = { if (entry.visible && entry.focus.inputAllowed()) client.claimSize(force = false) }))
             return entry
@@ -149,7 +157,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
     }
     val terminal = entry.terminal
     val alwaysShowKeyboard by rememberUpdatedState(preferences.androidKeyboardAlwaysVisible)
-    SideEffect { entry.focus = focus; entry.updateKeyboard() }
+    SideEffect { entry.focus = focus; entry.touchKeyboard = preferences.androidKeyboardOnTouch; entry.updateKeyboard() }
     // IME Back normally hides the keyboard first. Consume any Back that reaches
     // the Activity during a show/hide handoff instead of leaving the terminal.
     BackHandler(enabled = preferences.androidKeyboardAlwaysVisible && focus.keyboardAllowed()) {
@@ -168,6 +176,7 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             terminal.keyboard(true) { entry.visible && entry.focus.inputAllowed() }
         }
     }
+    LaunchedEffect(terminal, preferences.androidKeyboardOnTouch) { terminal.setTouchKeyboard(preferences.androidKeyboardOnTouch) }
     LaunchedEffect(terminal, preferences.smoothTerminalTransitions) {
         terminal.setSmoothTransitions(preferences.smoothTerminalTransitions)
     }
@@ -426,7 +435,8 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     private val pointerInput: ((String, String?, ByteArray) -> Unit)? = null,
     private val keyboardInput: (String, String?, String, String?, TerminalModifiers, Boolean) -> Unit = { _, _, _, _, _, _ -> },
     private val selection: (TerminalSelection?) -> Unit = {},
-    private val userInput: () -> Unit = {}) : TerminalSurface {
+    private val userInput: () -> Unit = {},
+    private val touchKeyboard: () -> Unit = {}) : TerminalSurface {
     var screenPending by mutableStateOf(false); private set
     /** A reattachment shows the frozen last frame (input still blocked) instead of the curtain. */
     var presentationPreview by mutableStateOf(false); private set
@@ -594,6 +604,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
                         keyboardFocusChanged()
                     }
                     "blocked-input" -> blockedInput()
+                    "show-keyboard" -> touchKeyboard()
                     "input" -> {
                         val bytes = json.getString("data").toByteArray(Charsets.UTF_8)
                         inputForPane(bytes)
@@ -672,12 +683,23 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             withTimeoutOrNull(15_000) { ready.await() } ?: return@launch
             if (closed || !allowed()) return@launch
             view.requestFocus()
-            view.evaluateJavascript("window.focusTerminal && window.focusTerminal()") {
-                view.post { if (!closed && allowed()) {
-                    view.windowInsetsController?.show(AndroidInsets.Type.ime()) ?: ime.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-                } }
+            // Lift a touch's `inputmode=none` first, or Chromium keeps the IME hidden.
+            view.evaluateJavascript("window.allowKeyboard && window.allowKeyboard(); window.focusTerminal && window.focusTerminal()") {
+                view.post { if (!closed && allowed()) showImeNow() }
             }
         }
+    }
+    /** Shows the IME for the editor a tap already focused, without moving page focus. */
+    fun showIme(allowed: () -> Boolean = { true }) {
+        view.post { if (!closed && allowed()) { view.requestFocus(); showImeNow() } }
+    }
+    private fun showImeNow() {
+        view.windowInsetsController?.show(AndroidInsets.Type.ime())
+            ?: view.context.getSystemService(InputMethodManager::class.java).showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+    }
+    suspend fun setTouchKeyboard(enabled: Boolean) {
+        withTimeout(15_000) { ready.await() }
+        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setTouchKeyboard($enabled)", null) }
     }
     fun shortcut(shortcut: TerminalShortcut) {
         val (key, own) = shortcut.key?.semanticInput() ?: return

@@ -367,6 +367,8 @@
   "settings.keyboard_always_description": "ターミナルでキーボードを表示したままにし、キーボードの上の領域に合わせてサイズを変更します。オフにすると以前のサイズ設定に戻ります。",
   "settings.keyboard_automatic": "自動",
   "settings.keyboard_automatic_description": "短い出力はサイズを変更し、長い出力と全画面アプリは上へ移動します。",
+  "settings.keyboard_on_touch": "タップでキーボードを開く",
+  "settings.keyboard_on_touch_description": "ターミナルをタップして指を離すとキーボードを開きます。長押しの選択やドラッグでは開きません。オフにすると下部のキーボードボタンでのみ開きます。この端末にのみ保存します。",
   "settings.keyboard_pan_description": "ターミナルのサイズを維持し、隠れる内容だけを上へ移動します。",
   "settings.keyboard_resize": "サイズ変更",
   "settings.keyboard_resize_description": "キーボードの上の領域に合わせてターミナルの行数を変更します。実行中のアプリの表示が再配置されることがあります。",
