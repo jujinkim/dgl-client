@@ -362,6 +362,9 @@ fn scroll_assist_pages_mouseless_alternate_screens_only(cx: &mut TestAppContext)
     };
     let assist =
         |cx: &mut VisualTestContext, mode| terminal.update(cx, |t, _| t.scroll_assist = mode);
+    let hint = |cx: &mut VisualTestContext| {
+        terminal.update(cx, |t, _| t.page_hint.map(|(up, count, _)| (up, count)))
+    };
     output(&terminal, cx, b"\x1b[?1049h\x1b[?1007h");
     wheel(cx, 1., plain);
     assert_eq!(
@@ -369,6 +372,7 @@ fn scroll_assist_pages_mouseless_alternate_screens_only(cx: &mut TestAppContext)
         b"\x1b[A",
         "auto without a CLI in the pane keeps Up/Down"
     );
+    assert_eq!(hint(cx), None, "arrow keys show no page hint");
     assist(cx, ScrollAssist::On);
     wheel(cx, 1., plain);
     assert_eq!(
@@ -376,11 +380,17 @@ fn scroll_assist_pages_mouseless_alternate_screens_only(cx: &mut TestAppContext)
         PAGE_UP,
         "a gesture pages on its first row"
     );
+    assert_eq!(hint(cx), Some((true, 0)), "the sent page key flashes");
     wheel(cx, -1., plain);
     assert_eq!(
         take_sent(&terminal, cx),
         PAGE_DOWN,
         "reversing starts a new gesture"
+    );
+    assert_eq!(
+        hint(cx),
+        Some((false, 1)),
+        "each page key restarts the hint"
     );
     wheel(
         cx,

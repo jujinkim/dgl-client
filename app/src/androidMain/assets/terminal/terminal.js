@@ -182,6 +182,14 @@
   // PageUp/PageDown instead, like Rust `dgl_core::scroll::PageScroll`: a new gesture
   // pages on its first row, then every half screen.
   const pageScroll = { rows: 0, direction: 0, last: null };
+  // The sent page key flashes over the pane and fades out over 500ms; each press restarts it.
+  let pageHint = null, pageHintFade = null;
+  const showPageHint = up => {
+    if (!pageHint) { pageHint = document.createElement('div'); pageHint.className = 'page-hint'; host.appendChild(pageHint); }
+    pageHint.textContent = up ? 'PgUp \u2191' : 'PgDn \u2193';
+    pageHintFade?.cancel();
+    pageHintFade = pageHint.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 500, easing: 'linear', fill: 'forwards' }) ?? null;
+  };
   term.attachCustomWheelEventHandler?.(event => {
     if (event.shiftKey || !scrollAssistApplies(pane) || term.buffer?.active.type !== 'alternate'
       || ['vt200', 'drag', 'any'].includes(term.modes?.mouseTrackingMode)) return true;
@@ -198,8 +206,11 @@
     pageScroll.rows += rows;
     const pages = Math.trunc(pageScroll.rows / step);
     pageScroll.rows -= pages * step;
-    if (pages) post({ type: 'input', data: (pages > 0 ? '\x1b[5~' : '\x1b[6~').repeat(Math.min(Math.abs(pages), 16384)),
-      pointer: true, user: true, ...(wheelOrigin ? { target: wheelOrigin.target } : {}) });
+    if (pages) {
+      post({ type: 'input', data: (pages > 0 ? '\x1b[5~' : '\x1b[6~').repeat(Math.min(Math.abs(pages), 16384)),
+        pointer: true, user: true, ...(wheelOrigin ? { target: wheelOrigin.target } : {}) });
+      showPageHint(pages > 0);
+    }
     return false;
   });
   // The bundled xterm uses its DOM renderer. Keep just one rendered viewport,

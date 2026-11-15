@@ -19,6 +19,7 @@ use std::{
     collections::HashSet,
     ops::Range,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 mod font_size;
 pub mod fonts;
@@ -115,6 +116,8 @@ pub struct Terminal {
     /// `terminalScrollAssist`, copied from the window terminal every tick.
     pub scroll_assist: ScrollAssist,
     page_scroll: PageScroll,
+    /// Last assisted page key (true is PageUp), its press count and time, shown as a fading hint.
+    page_hint: Option<(bool, u64, Instant)>,
     displayed_pane: Option<String>,
     snapshot_modes: Option<TermMode>,
     pub enabled: bool,
@@ -188,6 +191,7 @@ impl Terminal {
             scroll: ScrollAccumulator::default(),
             scroll_assist: ScrollAssist::default(),
             page_scroll: PageScroll::default(),
+            page_hint: None,
             displayed_pane: None,
             snapshot_modes: None,
             enabled: true,
@@ -669,6 +673,8 @@ impl Terminal {
             );
             if pages != 0 {
                 self.send(PageScroll::bytes(pages));
+                let count = self.page_hint.map_or(0, |(_, count, _)| count + 1);
+                self.page_hint = Some((pages > 0, count, Instant::now()));
             }
         } else if !e.modifiers.shift
             && mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL)
@@ -862,6 +868,37 @@ fn color(c: Color) -> Hsla {
         }
     }
 }
+/// How long the scroll assist page hint takes to fade out after a page key.
+const PAGE_HINT_FADE: Duration = Duration::from_millis(500);
+
+/// Centered `PgUp ↑`/`PgDn ↓` badge that starts opaque and fades out; each press restarts it.
+fn page_hint(up: bool, count: u64) -> impl IntoElement {
+    div()
+        .absolute()
+        .inset_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .debug_selector(|| "page-hint".into())
+                .px_3()
+                .py_1()
+                .rounded_md()
+                .bg(rgba(0x11151be0))
+                .border_1()
+                .border_color(rgb(0x8acdd0))
+                .text_color(rgb(0xdce1e8))
+                .text_lg()
+                .child(if up { "PgUp ↑" } else { "PgDn ↓" }),
+        )
+        .with_animation(
+            ElementId::NamedInteger("page-hint".into(), count),
+            Animation::new(PAGE_HINT_FADE),
+            |el, delta| el.opacity(1. - delta),
+        )
+}
+
 impl Render for Terminal {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
@@ -884,6 +921,7 @@ impl Render for Terminal {
             .on_mouse_up_out(MouseButton::Middle, cx.listener(Self::mouse_up))
             .on_mouse_up_out(MouseButton::Right, cx.listener(Self::mouse_up))
             .on_scroll_wheel(cx.listener(Self::scroll_wheel))
+            .relative()
             .child(
                 canvas(
                     move |bounds, _, cx| {
@@ -1011,6 +1049,12 @@ impl Render for Terminal {
                     },
                 )
                 .size_full(),
+            )
+            // After the grid so the hint paints over it.
+            .when_some(
+                self.page_hint
+                    .filter(|(_, _, at)| at.elapsed() < PAGE_HINT_FADE),
+                |el, (up, count, _)| el.child(page_hint(up, count)),
             )
     }
 }

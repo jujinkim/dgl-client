@@ -997,7 +997,7 @@ function touchRenderer({ lines } = {}) {
     const event = { type, pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: x, clientY: y, timeStamp: clock.now, ...extra };
     term.host.dispatchEvent(event); return event;
   };
-  return { window, terminals, messages, layout, pointer, canvas: element('window'), root: element('terminal'), body,
+  return { window, terminals, messages, layout, pointer, canvas: element('window'), root: element('terminal'), body, dom,
     advance: ms => clock.advance(ms),
     // Hold still for the long press, then the selection timer fires.
     hold: () => clock.expire(500),
@@ -1156,8 +1156,13 @@ test('scroll assist pages mouse-less alternate screens for agent panes and leave
   r.window.setScrollAssist('auto', ['shell']);
   r.drag(100, 141);
   assert.deepEqual(sent(), [['input', 'one', '\x1b[5~', true]], 'a new gesture pages on its first row only');
+  const hint = t.host.querySelector('.page-hint'), fade = () => r.dom.animations.filter(a => a.options?.duration === 500);
+  assert.equal(hint.textContent, 'PgUp \u2191', 'the sent page key flashes over the pane');
+  assert.deepEqual([fade().length, JSON.stringify(fade()[0].keyframes)], [1, '[{"opacity":1},{"opacity":0}]'], 'and fades out over 500ms');
   r.drag(100, 79);
   assert.deepEqual(sent(), [['input', 'one', '\x1b[6~', true]], 'reversing starts a new gesture');
+  assert.equal(t.host.querySelectorAll('.page-hint').length, 1);
+  assert.deepEqual([hint.textContent, fade().map(a => a.cancelled)], ['PgDn \u2193', [true, false]], 'a new page key restarts the fade');
   assert.deepEqual(t.wheels, [t.wheels[0]], 'xterm never sees assisted wheels');
   const wheel = (deltaY, timeStamp, extra = {}) => t.element.dispatchEvent({ type: 'wheel', deltaMode: 0, deltaY, timeStamp, ...extra });
   r.window.setScrollAssist('on', []);
