@@ -76,8 +76,8 @@ Windows 작업 메뉴를 열려면 저장소 루트에서 다음 짧은 명령�
 메뉴: 1 빌드·실행, 2 빌드·ZIP만 생성, 3 빌드·테스트·실행,
 4 전체 빌드 도구·업데이트 확인, 5 빌드 도구 설치·업데이트, 0 종료.
 선택 작업이 실패해도 결과를 표시하고 메뉴로 돌아오므로 더블클릭한 창이 바로 닫히지 않는다.
-메뉴 없이 바로 빌드·실행하려면 `.\scripts\run_windows.cmd -Run`,
-테스트도 실행하려면 `.\scripts\run_windows.cmd -Test`를 사용한다.
+인수를 붙이면 메뉴 없이 `build_windows.ps1 -Run`에 그 인수를 더해 실행한다.
+빌드·테스트·실행은 `.\scripts\run_windows.cmd -Test`, 빌드·실행만 할 때는 `build_windows.ps1 -Run`을 직접 사용한다.
 
 도구 확인은 Git·Python·Rustup·VS 2022 Build Tools의 WinGet 업데이트 목록,
 Rust 업데이트 정보, 로컬 MSVC·CMake·SDK(rc/fxc)·Python 버전·고정 Rust 도구와 target을
@@ -141,7 +141,7 @@ GPU 경로는 GPUI 0.2.2의 Direct3D 11이다. 설치·실행 성공 여부는 W
 `windows-2022` runner가 같은 PowerShell 스크립트로 빌드하고
 `windows-rust-candidate` artifact에 ZIP·빌드 정보·해시를 올린다. 실행 화면의 `msix` 입력을 켜면
 `-Msix`로 빌드해 MSIX도 함께 올린다(기본은 꺼짐).
-수동 실행 전용이며 일반 push/PR의 기존 Linux 기본 검증은 그대로다.
+수동 실행 전용이며 Linux 기본 검증(**Build and verify**)과 별개다.
 이 workflow는 앱 실행·DPAPI 테스트·GUI 검증을 하지 않는다.
 
 ## 4. Microsoft Store MSIX
@@ -190,7 +190,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 
 `-Test`는 선택 옵션이다. Windows DPAPI의 저장/읽기/덮어쓰기/삭제,
 평문 미저장, 암호문 변조·다른 항목으로 바꿔치기 거부, 저장 실패 처리를 포함한다.
 실제 SSH/tmux 통합 테스트는 기본 Cargo 검사에서 ignored이며 성공으로 계산하지 않는다.
-Android 바인딩 `dgl-uniffi`는 Windows 앱에 포함되지 않으므로 여기서 돌리지 않고 Linux CI가 push마다 검사한다.
+Android 바인딩 `dgl-uniffi`는 Windows 앱에 포함되지 않으므로 여기서 돌리지 않고 Linux 기본 CI(수동 **Build and verify**)가 검사한다.
 격리 서버 통합 테스트는 [개발 안내](DEVELOPMENT.md)의 별도 명령을 따른다.
 
 실기 확인 항목:

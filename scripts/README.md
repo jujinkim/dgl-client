@@ -10,7 +10,7 @@
 |---|---|
 | `build_rust_android.py` | Windows·macOS·Linux에서 Gradle이 선택한 SDK/NDK로 Rust 네 ABI 빌드·UniFFI 생성 |
 | `collect_rust_android.py` | 원본 Debug APK의 ID·SDK·네 ABI·Rust payload·서명 확인, `artifacts/rust-candidate/android/build.json` 기록 |
-| `verify_app_versions.py` | Cargo 버전과 선택 플랫폼의 패키지 비교. 기본/`--android`는 Kotlin·Debug APK, `--mac`은 `.app`, `--windows`는 ZIP 내부·외부 메타데이터, `--linux`는 AppImage 이름·메타데이터·체크섬 검사; 플래그 조합 가능 |
+| `verify_app_versions.py` | Cargo 버전과 선택 플랫폼의 패키지 비교. 기본/`--android`는 Kotlin·Debug APK, `--mac`은 `.app`, `--windows`는 ZIP 내부·외부 메타데이터와 MSIX가 있으면 매니페스트 버전, `--linux`는 AppImage 이름·메타데이터·체크섬 검사; 플래그 조합 가능 |
 | `collect_artifacts.py` | 원본 Android Debug/Release APK 정책·assets·라이선스 검사, `artifacts/` manifest·해시 생성 |
 | `package_rust_linux.py` | Ubuntu 24.04 x86_64 Release·AppImage, 고정 도구/런타임 SHA-256·ELF/추출 검사·고지·해시 |
 | `package_rust_mac.py` | GPUI Debug/`--release` 빌드, `.app`·Rust 고지·ad-hoc 서명 |
@@ -31,13 +31,14 @@
 
 | 도구 | 용도 |
 |---|---|
+| `generate_locales.py` | `locales/*.json` 키 기반 UI 문구 검증과 Rust·Kotlin 목록 생성; `--check`로 언어별 키·자리표시자·소스 키 사용·생성 파일 일치 검사 |
 | `generate_ui_icons.py` | 공통 SVG에서 Compose 벡터·Rust 포함 목록 생성. `--check`로 SVG 형식·생성물 일치 검사; [UI 아이콘 안내](../assets/ui-icons/README.md) |
 | `check_prompt.py` / `verify_wrapper.py` | 원문 요구사항·Gradle bootstrap 무결성 |
 | `verify_test_results.py` | JVM의 모든 지정 테스트 결과·예상 skip 검사 (`linux`, JVM 참조 SSH용 `ssh`) |
 | `verify_android_results.py` | 계측의 지정 테스트 이름·완료·실패/skip 검사; 실행 도구에서 import |
 | `verify_lint.py` | lint 진단·검토 조건·만료 확인 |
 | `scan_secrets.py` | Gitleaks로 작업 파일·전체 staged snapshot·Git refs 검사 |
-| `audit_dependencies.py` | Gradle 선택 inventory·Cargo.lock(crates.io)·npm lock의 OSV 검사. 통신·입력 오류도 실패 보고서로 기록; 매일 12:23 KST의 별도 보안 CI와 수동/의존성 변경 실행 |
+| `audit_dependencies.py` | Gradle 선택 inventory·Cargo.lock(crates.io)·npm lock의 OSV 검사. 통신·입력 오류도 실패 보고서로 기록; 수동 **Dependency security audit** workflow와 `verify_packaging`에서 실행 |
 | `verify_licenses.py` | 선택 inventory의 라이선스·원문 해시·고지 확인 |
 | `refresh_licenses.py` | 명시적으로 요청할 때 라이선스 근거 갱신; 생성 결과 검토 필요 |
 | `verify_dependency_origins.py` | 의존성 출처와 다운로드 해시 대조 |
@@ -74,12 +75,12 @@ IME·Activity 재생성·짧은 백그라운드 복귀·알림 인텐트·task �
 
 ## 선택적 성능·자원 도구
 
-`migration_` 접두사와 `fixtures/migration/` 경로는 재현·테스트 참조 때문에 유지합니다.
+`migration_` 접두사는 기존 증거의 재현 경로, `fixtures/migration/`은 계약 테스트 참조 때문에 유지합니다.
 현재 앱 실행에 필요한 도구는 아니며, 자동으로 성능 인수를 시작하지 않습니다.
+아래 측정 도구는 `scripts/tests` 단위 검사 대상이 아닙니다.
 
 | 도구 | 역할 |
 |---|---|
-| `generate_locales.py` | `locales/*.json` 키 기반 UI 문구 검증과 Rust·Kotlin 목록 생성; `--check`로 언어별 키·자리표시자·소스 키 사용·생성 파일 일치 검사 |
 | `migration_performance.py` | Mac CPU/RSS·패키지 크기 수집, 성능 계약 판정. Android 상대 비교는 기준 앱 제거로 판정하지 않음 |
 | `migration_android_presentation.py` | API36 Perfetto 표시 trace 수집·상한/첫 표시 분석 |
 | `migration_first_presentation.py` | 첫 표시 증명·누락 근거 오프라인 판정 |

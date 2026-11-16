@@ -5,8 +5,9 @@
 ## 연결·저장 경계
 
 - 최초 SSH 호스트키는 SHA-256 지문을 사용자가 확인합니다. 저장된 지문 불일치는 인증 전에 차단하며 자동 재시도하지 않습니다.
-- Android Keystore, macOS Keychain, Windows CURRENT_USER DPAPI로 자격 증명을 보호합니다.
-  Windows는 참조별 entropy·해시 파일명·암호문 교체 저장을 사용합니다. 보호 저장 실패 시 평문으로 대체하지 않습니다.
+- Android Keystore, macOS Keychain, Windows CURRENT_USER DPAPI, Linux Secret Service로 자격 증명을 보호합니다.
+  Windows는 참조별 entropy·해시 파일명·암호문 교체 저장을 사용합니다. Linux는 서비스 부재·잠금을 구분해 표시하고 잠금을 자동 해제하지 않습니다.
+  보호 저장 실패 시 평문으로 대체하지 않습니다.
 - 비밀번호·개인키·암호는 실행 중 메모리에 존재합니다. 모든 런타임의 메모리 완전 삭제를 보장하지 않습니다.
 - 복구 중 입력을 차단하고 실패한 입력을 자동 재전송하지 않습니다. 연결 종료는 tmux 세션 삭제 명령을 보내지 않습니다.
 - SSH 채널 열기·초기 요청과 tmux 명령·화면 캡처·일반 셸 쓰기는 각 15초로 제한합니다.
@@ -32,7 +33,9 @@ Drive 파일 동기화는 호스트·설정의 허용 필드만 공유합니다.
 탐지 값은 출력하지 않습니다. 임시 SSH 키·설정·로그·빌드 출력은 Git에서 제외합니다.
 CI는 `contents: read`, Action SHA 고정, `persist-credentials: false`를 사용합니다.
 `pull_request_target`이나 자동 release 게시는 사용하지 않습니다. 산출물은 지정 APK·검사 보고서,
-수동 Windows workflow의 ZIP·manifest·해시로 제한합니다.
+수동 Windows workflow의 ZIP(선택 시 MSIX)·`build.json`·해시, 수동 Linux workflow의 AppImage·`build.json`·해시로 제한합니다.
+수동 [Play 내부 테스트 게시](../.github/workflows/publish-google-play-internal.yml)는 `main`에서만 `google-play` environment의
+서명·서비스 계정 secret으로 AAB를 서명·검증한 뒤 internal track에 올립니다.
 
 Wrapper 배포/JAR checksum, Gradle verification metadata·dependency lock, Cargo.lock, npm lock을 유지합니다.
 고정 값을 바꿀 때 출처와 변경 이유를 검토하며 검증 실패를 피하기 위한 자동 재생성은 하지 않습니다.
@@ -62,7 +65,8 @@ SSH 엔진은 `ring`·RSA 기능을 유지한 `russh =0.65.0`, Windows 간접 �
 DGL 생성 키는 Ed25519이며 RSA 개인키는 사용자가 가져온 키 인증에 쓰입니다. 상류 고정 버전 갱신을 추적합니다.
 `pin-utils`는 `gpui → gpui_http_client → zed-async-tar → async-std`의 데스크톱 간접 의존성으로,
 [유지보수 중단 공지](https://rustsec.org/advisories/RUSTSEC-2026-0441.html)를 한시적으로 예외 처리합니다.
-예외의 재검토일 2026-12-15·만료일 2027-01-27은 연장하지 않습니다.
+나머지 예외도 gpui 0.2.2·uniffi 코드 생성·AGP가 버전을 고정한 간접 의존성입니다(`security/dependency-exceptions.json`).
+모든 예외의 재검토일 2026-12-15·만료일 2027-01-27은 연장하지 않습니다.
 
 `verify_licenses.py`는 선택 inventory와 `licenses/dependencies.json`의 원문 해시·고지를 대조합니다.
 `refresh_licenses.py`는 검토를 위한 유지보수 도구이며 자동 승인 단계가 아닙니다.
@@ -79,7 +83,7 @@ lint 검토는 `security/lint-reviews.json`에서 진단 ID·메시지 해시·�
 
 ## 남은 확인
 
-- macOS 실제 Keychain 저장·재기동, Windows DPAPI round trip·다른 사용자 격리·변조/키 손실 검사.
+- macOS 실제 Keychain 저장·재기동, Windows DPAPI round trip·다른 사용자 격리·변조/키 손실 검사, Linux Secret Service 실제 저장·잠금 처리.
 - Windows ZIP 실행, 실제 기기·IME·OS 알림, 현재 Rust/Gradle/npm 그래프의 배포 전 감사.
 - 서명된 실제 전달물의 고지·키/개인 설정/터미널 기록 제외 확인.
 - GitHub Secret scanning·Push protection 활성 상태 확인. 현재 문서만으로 활성 여부를 단정하지 않습니다.

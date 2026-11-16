@@ -15,7 +15,7 @@
 | Android 빌드 | CI 기본 job의 Debug APK·`lintDebug`와 `verify_lint.py` 검토 목록 대조 | 계측 실행은 선택 |
 
 Android Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 원본만 검증하며 복사본을 만들지 않습니다.
-`main` push/PR의 **Build and verify**가 위 검사를 실행합니다. GPUI 데스크톱 검사는 macOS 로컬,
+수동 실행(`workflow_dispatch`)하는 **Build and verify** 기본 job이 위 검사를 실행합니다. GPUI 데스크톱 검사는 macOS 로컬,
 Windows는 `build_windows.ps1 -Test`로 별도 실행합니다.
 
 ## 기본 범위 밖
@@ -40,7 +40,8 @@ CI 성공은 서명·공개 릴리스·실기 인수 완료를 뜻하지 않습�
   Windows psmux의 실제 ConPTY 화면·흐름·입력·클라이언트 종료·작업 유지와 DPAPI·GUI는 별도 사용자 인수입니다.
 
 - 실기 인수(macOS GUI·IME·Keychain·OS 알림, Windows MSVC 네이티브 빌드·DPAPI·GUI, Android 물리 기기·실제 키보드·네트워크 전환)는
-  미수행입니다. 항목은 [TASKS.md](../TASKS.md)의 기능 인수, Windows 절차는 [WINDOWS.md](WINDOWS.md)를 따릅니다.
+  미수행입니다. Windows MSIX 등록·Store 제출도 미검증이며 Store Identity 교체는 미완료입니다.
+  항목은 [TASKS.md](../TASKS.md)의 기능 인수, Windows 절차는 [WINDOWS.md](WINDOWS.md)를 따릅니다.
 - Android 성능·자원 계측 하네스(`ResourceScenario`·`ResourceInstrumentation`·`MigrationPresentationProbe`)는
   제품 WebView를 SSHJ 참조 엔진으로 구동합니다. 결과는 Rust 엔진 성능 근거가 아닙니다.
 - 정확한 첫 표시 프레임은 `proven 0`, `unresolved 17`, `invalid_trace`로 미해결입니다.

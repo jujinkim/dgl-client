@@ -20,7 +20,7 @@ OS가 테두리를 처리하지 않는 Windows·MSIX·대시보드 타일과 mac
 | [source.png](source.png) | 공통 도형에서 Pillow로 생성한 투명 1024×1024 RGBA 원본 |
 | [prompt.txt](prompt.txt) | 확정한 디자인 명세. 이미지 생성 서비스는 사용하지 않음 |
 | [master.png](master.png) | 플랫폼 변환용 투명 1024×1024 PNG, 현재 원본과 동일 |
-| [icon.png](icon.png) | 여백 없이 macOS와 같은 비율(196/896)로 모서리를 둥글린 그라데이션·테두리 타일의 1024×1024 PNG, Windows·로컬 대시보드용 |
+| [icon.png](icon.png) | 여백 없이 macOS와 같은 비율(196/896)로 모서리를 둥글린 그라데이션·테두리 타일의 1024×1024 PNG, Windows·Linux AppImage·로컬 대시보드용 |
 | [macos.png](macos.png) | 투명 여백 안에 같은 그라데이션·테두리 타일(896px)을 둔 macOS용 1024×1024 PNG |
 | [monochrome.json](monochrome.json) | 컬러·단색이 공유하는 M/L/C/Z 도형. `contours`는 끊긴 창 테두리·구분선과 왼쪽 pane 구멍, `details`는 재접속 원호·화살촉·`>`·`_`·블록 커서 |
 | [preview-sizes.png](preview-sizes.png) | 어두운·밝은 배경 위 128·48·32·24·16px 실제 크기와 작은 크기의 최근접 확대 |
@@ -71,6 +71,8 @@ Python 3.9 이상을 사용합니다. Windows에서는 가상환경 실행 파�
   `desktop/build.rs`는 Windows target에서만 `app.rc`를 컴파일하고 실행 파일의 ID `1`에 연결합니다.
   GPUI 0.2.2의 기존 `LoadImageW`·창 클래스 아이콘 경로를 사용합니다.
   Windows SDK `rc.exe`는 기존 필수 도구이며 별도 변환기는 일반 빌드에 필요하지 않습니다.
+- Linux: `scripts/package_rust_linux.py`가 `icon.png`를 AppImage의 `usr/share/icons/hicolor/1024x1024/apps/kim.jujin.dglc.png`·
+  루트 `kim.jujin.dglc.png`·`.DirIcon`으로 복사합니다. 별도 Linux 전용 이미지는 생성하지 않습니다.
 - Windows MSIX: `desktop/resources/windows/msix/Assets/`의 `Square44x44Logo`(44px)·`Square150x150Logo`(150px)·
   `StoreLogo`(50px)는 ICO와 같은 둥근 타일을 배율 100 크기로 직접 렌더한 PNG입니다. `AppxManifest.xml`이 참조하며
   재생성·`--check`에 포함합니다.

@@ -7,15 +7,20 @@
 
 | 모듈 | 소유권 |
 |---|---|
-| `crates/dgl-core` | 순수 모델/설정/입력, SSH, tmux 파싱·명령·레이아웃, 연결·복구·출력 제어 |
-| `crates/dgl-uniffi` | Android용 외부 객체(`NativeConnection`·`NativeAgentInbox`)·JSON/바이트 변환·`CoreError` 변환, async `shutdown`. 콜백 인터페이스는 없고 Kotlin이 polling한다 |
-| `desktop` | GPUI 후보, 터미널 엔진/그리기/IME/포커스, OS 보안 저장 |
+| `crates/dgl-core` | 순수 모델/설정/입력, SSH·Local, tmux/psmux 파싱·명령·레이아웃, 연결·복구·출력 제어 |
+| `crates/dgl-uniffi` | Android용 외부 객체(`NativeConnection`·`NativeAgentInbox`)·JSON/바이트 변환·`CoreError` 변환, async `shutdown`. 함수는 `configure_language`, `generate_key`·`public_key`, `encode_terminal_input`, `new_sync_document`·`exchange_sync`·`acknowledge_sync`, `export_settings`·`import_settings`다. 콜백 인터페이스는 없고 Kotlin이 polling한다 |
+| `desktop` | GPUI 후보(macOS·Windows·Linux), 터미널 엔진/그리기/IME/포커스, OS 보안 저장 |
 | `:coreBindings` | 빌드 산출물만 보유: `scripts/build_rust_android.py`가 만드는 생성 Kotlin 바인딩(`src/main/kotlin/uniffi`, JNA 로딩 포함)·`jniLibs`, `scripts/collect_rust_notices.py`가 만드는 Rust 고지 assets |
 | `:mobileUi` | Rust 연결 어댑터(`RustClientConnection`·`RustAgentInbox`·`RustKeyTools`·`RustFileSync`·`RustLocalization`). Compose·ViewModel은 없다 |
 | `:app` | 공통 모델·Compose 화면, Android WebView/xterm.js 렌더러(`androidMain`), Keystore 자격 증명 저장(`AndroidCredentialStore`)·설정 저장소; 이전 연결 엔진은 referenceTest 전용 |
 | `:androidApp` | Activity·Application·연결 서비스·알림, 엔진 조립(`EngineFactory.kt`) |
 
-코어에 Compose/GPUI/JNI 객체, OS 창, UI 표시 문구를 넣지 않는다. 모듈 경로가 없는 이름은
+`dgl-core` 모듈: `model`(호스트·설정·자격 증명), `connection`(actor·상태·Action), `command`(형식화된 tmux 조작), `protocol`(Control Mode 파서),
+`flow`(세대·출력 큐), 내부 `transport`(SSH 채널·Local 자식 프로세스 공통 전송), `ssh`(russh 연결·키·tmux 탐지), `local`(Local tmux·psmux 탐지·실행),
+내부 `title`(OSC 제목 조회 예약), `input`(키 인코더), `scroll`(`ScrollAssist`·`PageScroll`: 마우스 추적 없는 대체 화면의 휠·드래그를 PageUp/PageDown으로),
+`agent`(관측·Inbox), `sync`(내보내기·파일 동기화 허용 목록), `accent`(강조 선택), `i18n`(`locales/*.json`에서 생성한 카탈로그).
+
+코어에 Compose/GPUI/JNI 객체, OS 창을 넣지 않는다. 코어가 만드는 UI 문구(재시도 안내 등)는 `i18n` 카탈로그만 사용한다. 모듈 경로가 없는 이름은
 언어 중립 API 명세이고 실제 후보는 아래 매핑을 사용한다. 모듈 경로·`State` 필드로 적은 이름은 실제 Rust 타입이다.
 
 - `ConnectionHandle`: 생성 후 재사용하지 않는 opaque ID. `close` 이후 모든 일반 호출은 `Closed`.
@@ -34,9 +39,11 @@
 - `Command { requestId, operation }`: 세션/창/패널 생성·선택·이름 변경·분할·resize·삭제,
   창 크기 되찾기(`claimSize`), 새로고침, snapshot, `checkConnection`. raw shell/control 문자열을 일반 UI에 노출하지 않는다.
 - `dgl_core::Error`: 필드 없는 enum이다. Authentication, HostKeyUnknown, HostKeyChanged, Network, Protocol,
-  MissingSession, Storage, InvalidArgument, QueueFull, NotReady, StaleGeneration, Cancelled, Closed.
-  JSON(`State.error`, 완료 결과 `error`)과 `Display`는 변형 이름 문자열이다. UniFFI는 이를 `CoreError::Failure { code }`
-  (Kotlin `CoreException.Failure.code`)로 전달하며 `code`가 같은 변형 이름이다. 작업·재시도 여부·진단 필드는 없다.
+  MissingSession, Storage, StorageUnavailable, StorageLocked, LocalToolMissing, LocalToolUnsupported, LocalToolPermission,
+  InvalidArgument, QueueFull, NotReady, StaleGeneration, Cancelled, Closed.
+  JSON(`State.error`, 완료 결과 `error`)은 변형 이름 문자열이다. `Display`도 변형 이름이며, Linux Secret Service용
+  `StorageUnavailable`·`StorageLocked`만 안내 문장이다. UniFFI는 `Display`를 `CoreError::Failure { code }`
+  (Kotlin `CoreException.Failure.code`)로 전달한다. 작업·재시도 여부·진단 필드는 없다.
 - 진단은 오류와 별개인 `State.diagnostics`(`ssh::Probe { stage, exit_status, outcome, path, version }`)다.
   tmux 탐지 단계·종료 코드·결과·찾은 경로와 미지원 시 `tmux -V` 결과(최대 128자)만 담으며 비밀번호/키/터미널 출력/사용자 입력을 포함하지 않는다.
 - `StateEvent { sequence, connectionGeneration, state }`: 연결 단계, 신뢰 요청,
@@ -169,7 +176,8 @@ native await 취소는 호출 종료와 코어 작업 취소를 구분해 정의
 ## 저장·호환·복귀
 
 `CredentialStore`/`FileStore`는 플랫폼 어댑터다. Android Keystore, Windows DPAPI,
-macOS Keychain의 저장 실패를 Storage로 전달하며 평문 fallback은 없다. Linux 저장소는 미구현이다.
+macOS Keychain, Linux Secret Service의 저장 실패를 Storage로 전달하며 평문 fallback은 없다.
+Linux는 서비스 부재·잠금을 StorageUnavailable·StorageLocked로 구분한다.
 최초 키 신뢰는 사용자 승인 후 보호 저장이 성공해야 다음 연결에 적용한다. 변경된 키는
 인증 전에 차단한다. 비밀번호·RSA·Ed25519·암호화 키 실패를 Network로 분류하지 않는다.
 
@@ -186,12 +194,12 @@ Kotlin 패키지 변경은 저장 키 교체나 초기 앱 데이터 자동 이�
 
 ## 구현 매핑
 
-- `dgl_core::connection::Connection`이 actor를 소유한다. `input`/`action`은 request ID,
+- `dgl_core::connection::Connection`이 actor를 소유한다. SSH는 `Connection::start`, 데스크톱 Local은 `Connection::start_local`로 만든다. `input`/`action`은 request ID,
   `state()`는 sequence 포함 최신 스냅샷을 공유 `Arc`로 반환해 조회가 복제를 만들지 않고, 갱신은 읽는 쪽이
   스냅샷을 보유할 때만 복사한다. `sequence()`는 변경 확인만 한다. `completions()`는 한 번만 소비하는 제한된 결과를 반환한다.
   `close()` 후 `join()`과 완료 결과 조회는 허용되며, 일반 요청은 Closed다.
 - `NativeConnection`은 상태/명령/대상을 JSON으로 전달하고 출력은 바이트 record와 `NativeOutputKind` enum으로 전달한다.
-  상태 JSON의 `derived`는 코어가 계산한 재시도 판정(`reconnecting`, `retry_available`, 소진, 지역화 문구)이다.
+  상태 JSON의 `derived`는 코어가 계산한 관측 여부(`observing_agents`)와 재시도 판정(`reconnecting`, `retry_available`, 소진, 지역화 문구)이다.
   어댑터는 이를 다시 계산하지 않고 플랫폼 고유의 출력·표시 상태만 더한다. 데스크톱 재시도 패널은 확인 중 숨기는
   `offers_retry()`를 쓰며, 코어는 확인 중에도 재시도 요청을 받아 진행 중인 확인과 합친다.
   원시 tmux/shell 문자열은 UI에 노출하지 않는다. Kotlin은 `stop → jobs join → shutdown → close`로 해제한다.
@@ -200,14 +208,15 @@ Kotlin 패키지 변경은 저장 키 교체나 초기 앱 데이터 자동 이�
 - 연결당 출력 구독 하나로 현재 창의 모든 보이는 pane을 전달한다. 구독 교체는 이전 출력 예산을 반환하고 오래된 구독을 거절한다.
 - GPUI는 alacritty 엔진 적용 후, Android는 xterm write callback 후 ack한다. Kotlin은
   적용 직전에 `acceptsOutput(targetJson)`으로 다시 확인하고, 거절한 이벤트도 ack한다. 구독이 없으면 화면 출력 큐를 만들지 않는다.
-- 데스크톱 보안 저장은 `desktop/src/storage.rs`가 macOS Keychain(`storage/macos.rs`)·Windows DPAPI(`storage/windows.rs`)를
-  선택한다. Android는 `app/src/androidMain`의 `AndroidCredentialStore`(Keystore)를 후보 전용 디렉터리
+- 데스크톱 보안 저장은 `desktop/src/storage.rs`가 macOS Keychain(`storage/macos.rs`)·Windows DPAPI(`storage/windows.rs`)·
+  Linux Secret Service(`storage/linux.rs`)를 선택한다. Android는 `app/src/androidMain`의 `AndroidCredentialStore`(Keystore)를 후보 전용 디렉터리
   (`noBackupFilesDir/rust-candidate-v1`, `androidApp`의 `EngineFactory.kt`)에 사용한다. 플랫폼 자격 증명을 코어 생성 시 전달하고 코어에 OS UI를 넣지 않는다.
 - `:mobileUi`는 Rust 연결 어댑터를 소유하며 Compose/xterm 화면·플랫폼 렌더러는 `:app`의
   재사용 컴포넌트를 호출한다. 앱 엔진 선택은 없으며 이전 엔진은 테스트 소스에서만 컴파일한다.
 - 키 생성·공개키 추출은 UniFFI `generate_key`/`public_key`를 통해 Rust에서 수행한다.
   Kotlin `KeyTools`는 UI 경계이며 SSHJ/BC 런타임 의존성은 없다.
-- 데스크톱 그룹 배치는 `workspace-layout.json`, 기기별 호스트 ID 순서는 `host-order.json`에 저장한다. 공통 설정·동기화 형식과 공개 API는 유지한다. 탭·연결·자격 증명은 배치 파일에 저장하지 않으며 재실행 시 그룹을 빈 상태로 만든다.
+- 데스크톱 그룹 배치는 `workspace-layout.json`, 기기별 호스트 ID 순서는 `host-order.json`, 창모드 크기는 `window.json`,
+  Local 최근 대상은 `local-session.json`에 저장한다. 공통 설정·동기화 형식과 공개 API는 유지한다. 탭·연결·자격 증명은 배치 파일에 저장하지 않으며 재실행 시 그룹을 빈 상태로 만든다.
 
 공통 fixture·출력 큐/종료·인증·복구 검사와 미검증 항목은
 [검증 기록](VALIDATION.md)을 따른다. 자동 검사는 실제 IME/모든 VT 상태의 증거가 아니다.

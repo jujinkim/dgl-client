@@ -17,6 +17,8 @@
 | Windows | VS 2022 C++·Windows SDK·CMake, Rust MSVC x64, Python·Git |
 
 Android 작업 전 `JAVA_HOME`을 JDK 17, `ANDROID_HOME`을 SDK 경로로 설정합니다.
+Gradle daemon은 `gradle/gradle-daemon-jvm.properties`에 따라 JDK 25로 실행하며 없으면 Gradle이 내려받습니다.
+앱·라이브러리 바이트코드 대상은 Java 17입니다.
 macOS Rust GUI 빌드는 명령별 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`를 사용합니다.
 Windows 앱만 빌드할 때 JDK·Android SDK는 필요하지 않습니다.
 
@@ -323,7 +325,7 @@ Rust 툴체인이 필요합니다. runtime은 배포 타깃별(Android 네 ABI�
 
 모든 GitHub Actions는 수동 실행(`workflow_dispatch`)만 사용합니다.
 **Build and verify**는 수동 실행 시 Linux 기본 job 하나를 실행합니다.
-Python·Rust 코어/UniFFI·web·JVM 단위 검사, Android Debug 빌드·lint, Wrapper·비밀정보·번들 검사를 포함합니다.
+Python·Rust 코어/UniFFI·web·JVM 단위 검사, Android Debug 빌드·lint, 원문·Wrapper·번역·UI 아이콘·비밀정보·번들 검사를 포함합니다.
 GPUI 데스크톱(`dgl-desktop`) 검사는 위 macOS 로컬 명령, Windows는 `build_windows.ps1 -Test`로 별도 실행합니다.
 Debug APK는 `android-debug` artifact로 수집합니다.
 
@@ -334,7 +336,9 @@ Debug APK는 `android-debug` artifact로 수집합니다.
 | `verify_android` | Android API 34·35·36 계측 |
 
 입력은 기본 꺼짐입니다. **Build Windows Rust candidate**는 별도 수동 workflow이며
-Windows MSVC 빌드·ZIP만 수행합니다. CI 성공은 서명·공개 릴리스·Windows 실기 인수 완료를 뜻하지 않습니다.
+Windows MSVC 빌드·ZIP만 수행합니다(`msix` 입력을 켜면 미서명 MSIX 추가).
+**Build Linux Rust candidate**는 Ubuntu 24.04에서 단위·격리 Local 검사와 AppImage 생성·추출 검사를 수행합니다(GUI 실행 없음).
+CI 성공은 서명·공개 릴리스·Windows/Linux 실기 인수 완료를 뜻하지 않습니다.
 
 **Dependency security audit**는 별도 수동 workflow입니다.
 기존 고정 Java·Rust·Node·Android 도구 환경으로 Gradle inventory와

@@ -4,7 +4,7 @@
 
 ## 프로토콜
 
-SSH exec 채널에서 PTY 없이 `tmux -C attach-session -t '$ID'`를 연다. 자동 재접속은 `-f ignore-size`를 더해 사용 중인 다른 클라이언트의 창 크기를 빼앗지 않는다. `-CC`의 tty 제어와 일반 셸 출력을 섞지 않는다. 다른 클라이언트를 떼어내는 `attach -d`를 사용하지 않는다.
+SSH exec 채널에서 PTY 없이 `tmux -u -C attach-session -t '$ID'`를 연다. 자동 재접속은 `-f ignore-size`를 더해 사용 중인 다른 클라이언트의 창 크기를 빼앗지 않고, 이후 첫 크기 claim에서 `refresh-client -f '!ignore-size'`로 이 클라이언트의 크기를 다시 반영한다. `-CC`의 tty 제어와 일반 셸 출력을 섞지 않는다. 다른 클라이언트를 떼어내는 `attach -d`를 사용하지 않는다. 데스크톱 Local은 로컬 tmux를 같은 명령으로 실행하고, psmux는 `-CC attach-session` 출력을 어댑터가 같은 이벤트로 변환한다.
 
 바이트 기준 LF 프레이밍 이후 메시지 종류를 판별한다. UTF-8 문자가 여러 `%output`에 걸쳐도 바이트를 보존한다. 응답 본문은 같은 timestamp/number/flags의 `%end`/`%error`만 닫는다. flags 0 블록(attach 명령 자체·hook 등 DGL이 보내지 않은 명령)은 명령 응답 순서에 넣지 않는다. 본문 안의 `%output` 같은 텍스트는 알림이 아니다. `%extended-output`, octal escape, 부분 읽기, 알 수 없는 알림을 처리한다. 1 MiB line / 4 MiB response 상한을 넘거나 EOF에서 프레임이 잘리면 중단한다.
 
@@ -23,7 +23,7 @@ SSH exec 채널에서 PTY 없이 `tmux -C attach-session -t '$ID'`를 연다. �
 5. `capture-pane -p -a -q -e -C -N` (alternate 진입 전 화면)
 6. `refresh-client -A %pane:continue`
 
-tmux continue는 현재 offset으로 이동한다. 캡처와 재개를 여러 SSH round trip으로 나누면 사이의 출력이 누락된다. 명령 목록에 `run-shell` 같은 비동기 명령을 넣지 않는다. 응답을 처리하는 reader에서 pane 크기와 화면을 복원한 뒤 다음 라이브 이벤트를 전달한다. 명령 목록 중 실패하면 후속 명령이 실행되지 않는 tmux 규칙도 응답 처리에 반영한다.
+tmux continue는 현재 offset으로 이동한다. 캡처와 재개를 여러 SSH round trip으로 나누면 사이의 출력이 누락된다. 명령 목록에 `run-shell` 같은 비동기 명령을 넣지 않는다. 응답을 처리하는 reader에서 pane 크기와 화면을 복원한 뒤 다음 라이브 이벤트를 전달한다. 명령 목록 중 실패하면 후속 명령이 실행되지 않는 tmux 규칙도 응답 처리에 반영한다. pause를 지원하지 않는 psmux는 캡처 응답 뒤 복원이 끝날 때까지 도착한 그 pane의 출력을 최대 4 MiB까지 보관했다가 `ResetEnd` 뒤에 이어 보낸다.
 
 connection/pane/size generation이 달라진 응답은 화면에 적용하지 않는다. 입력은 복원 후에만 허용하며 이전 세대의 대기 입력은 버린다. 삭제된 세션은 자동 대체하지 않는다. pane의 실제 열/행을 렌더러에 전달해 분할 pane의 줄바꿈 폭을 유지한다.
 

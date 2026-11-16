@@ -1,7 +1,7 @@
 # Claude Code·Codex·AGY·Grok Build 관측과 알림
 
-Mac·Windows·Android는 같은 Rust 관측 모델과 알림 큐를 사용한다.
-SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH 셸에는 세부 관측을 제공하지 않는다.
+Mac·Windows·Linux·Android는 같은 Rust 관측 모델과 알림 큐를 사용한다.
+SSH로 연결한 tmux 세션의 모든 창·패널을 조회한다. 일반 SSH 셸과 데스크톱 Local 연결(로컬 tmux/psmux)에는 관측을 제공하지 않는다.
 
 ## CLI 실행 메뉴
 
@@ -98,10 +98,11 @@ Rust `Inbox::tick` 하나가 데스크톱과 Android의 모든 연결을 같은 
 
 - macOS: UserNotifications, 번들 ID `kim.jujin.dglc`. 패키지 `.app`에서 사용한다.
 - Windows: ZIP판은 자체 AUMID·사용자 Start Menu 바로가기·COM 알림 활성화, Store MSIX판은 패키지 ID와 매니페스트 선언 활성화. [등록·실기 절차](WINDOWS.md#7-에이전트-알림).
-- Android: `agent-observations-v1` 알림 채널과 `POST_NOTIFICATIONS`. 알림 클릭 Intent에는 사건 ID만 전달한다. 포그라운드 서비스·푸시는 추가하지 않는다.
+- Linux: 세션 D-Bus의 freedesktop `org.freedesktop.Notifications`. `DBUS_SESSION_BUS_ADDRESS`가 없으면 OS 알림을 보내지 않는다. 실기 표시·클릭은 미검증([Linux 안내](LINUX.md)).
+- Android: `agent-observations-v1` 알림 채널과 `POST_NOTIFICATIONS`. 알림 클릭 Intent에는 사건 ID만 전달한다. 알림 전용 포그라운드 서비스·푸시는 없다.
 
 OS 권한 거부·집중 모드·프로세스 종료 때문에 표시가 보장되지는 않는다. 앱 내 사건은 유지된다.
-Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다.
+Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다. 백그라운드·화면 잠금 중에는 `keepConnectionsInBackground`(기본 켬)의 연결 유지 서비스가 SSH 연결을 지키는 동안만 받는다.
 
 ## 확인한 범위와 제한
 

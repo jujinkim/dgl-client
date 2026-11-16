@@ -82,7 +82,7 @@ try {
     $env:RUSTUP_TOOLCHAIN = $toolchain
     Invoke-Checked -Executable $python.Source -Arguments (@('scripts/package_rust_windows.py') + @(if ($Msix) { '--msix' }))
     if ($Test) {
-        # dgl-uniffi is the Android binding: not shipped on Windows and tested by Linux CI on every push.
+        # dgl-uniffi is the Android binding: not shipped on Windows and tested by the Linux "Build and verify" CI.
         Invoke-Checked -Executable cargo -Arguments @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '-p', 'dgl-core', '-p', 'dgl-desktop')
     }
     if ($Run) {

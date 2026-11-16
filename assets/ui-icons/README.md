@@ -16,7 +16,7 @@ python3 scripts/generate_ui_icons.py --check
 생성물은 `app/src/jvmSharedMain/kotlin/kim/jujin/dglc/ui/UiIcons.kt`와
 `desktop/src/ui_icons.rs`입니다. 생성물을 직접 편집하지 않습니다.
 일반 빌드는 저장된 생성물을 사용하며 Rust는 `include_bytes!`로 SVG를 포함합니다.
-Windows·macOS 배포 시 별도 SVG 파일이 필요하지 않습니다.
+Windows·macOS·Linux 배포 시 별도 SVG 파일이 필요하지 않습니다.
 
 모바일 기본 크기는 20dp, 작은 입력 도구는 18dp, 데스크톱은 16px입니다.
 버튼의 기존 영역과 입력·포커스 동작은 호출부에서 유지합니다.

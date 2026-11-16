@@ -50,7 +50,7 @@ python3 scripts/migration_performance.py evaluate <presentation-trace.json> --ou
 
 Android는 아래의 **테스트 전용 표시 계측 훅**을 추가했다. Mac 기동/input-ready·표시 훅,
 Android의 정확한 첫 입력 표시·전체 시나리오·정식 표본 수는 아직 미완료다.
-evaluator의 unit-test 데이터를 실측으로 사용하지 않는다.
+측정 도구는 `scripts/tests` 단위 검사 대상이 아니며 합성 trace를 실측으로 사용하지 않는다.
 `PerformanceTest`의 20개 SSH callback 표본, xterm write ack, `am start TotalTime`,
 headless 렌더러 시간은 위 GUI 지표로 변환할 수 없다. 이 미완료 항목 때문에 성능 기준선
 전체 통과나 R1 전체 통과를 선언하지 않는다.

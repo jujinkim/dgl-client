@@ -7,14 +7,15 @@ iOS/iPadOS 앱·Swift/Xcode 타깃은 이 저장소에 없으며 연결 수명·
 
 | 경로 | 역할 |
 |---|---|
-| `crates/dgl-core` | 호스트·설정·입력 모델, russh 연결, tmux 파서·관리·복구, 출력 예산, 파일 동기화·에이전트 관측 |
+| `crates/dgl-core` | 호스트·설정·입력 모델, russh·Local 연결, tmux/psmux 파서·관리·복구, 출력 예산, 스크롤 보조, 파일 동기화·에이전트 관측, UI 문구 |
 | `crates/dgl-uniffi` | 코어의 JSON 상태·명령과 바이트 출력에 대한 UniFFI 경계 |
 | `coreBindings` | 생성 Kotlin 바인딩, Android 네이티브 라이브러리·저장소 콜백 |
 | `mobileUi` | Rust 연결 어댑터·모바일 상태와 수명 관리 |
 | `app` | 공통 Kotlin 모델·Compose 화면·Android 터미널 컴포넌트, JVM 참조 테스트 |
 | `androidApp` | Android 진입점·Manifest·계측 검사 |
-| `desktop` | GPUI 창·탭 그룹·입력·터미널·OS 보호 저장·알림 |
+| `desktop` | GPUI 창·탭 그룹·입력·터미널·OS 보호 저장·알림(macOS·Windows·Linux) |
 | `web` | Android 터미널 assets용 xterm.js 복사 도구와 브리지 단위 검사. 랜딩 웹사이트 소스가 아님 |
+| `locales` | UI 문구 원본(`en`·`ko`·`ja`). `scripts/generate_locales.py`가 Rust `i18n_catalog.rs`·Kotlin `UiCatalog.kt`를 생성 |
 | `fixtures` | Rust/Kotlin 공통 계약·표시·에이전트 훅 fixture |
 | `scripts` | 빌드·수집·검증·선택적 계측 도구 |
 
@@ -22,7 +23,7 @@ iOS/iPadOS 앱·Swift/Xcode 타깃은 이 저장소에 없으며 연결 수명·
 
 연결마다 독립 transport와 명령 actor를 둡니다. Android는 기존 SSH 경로를 사용합니다.
 데스크톱은 SSH 또는 Local을 선택하며 `Connection::start_local`은 argv로 실행한 로컬 control client를
-SSH 채널과 같은 입출력 인터페이스로 감쌉니다. Local의 기기 전용 최근 대상은 별도 파일에 저장합니다.
+SSH 채널과 같은 입출력 인터페이스로 감쌉니다(`dgl_core::transport`). Local의 기기 전용 최근 대상은 `local-session.json`에 저장합니다.
 Windows psmux 어댑터는 -CC 시작 프레임, 명시적 세션, 세션별 window/pane ID 범위, 기본 화면 캡처와
 흐름 제어 차이를 처리하며 POSIX SSH helper는 실행하지 않습니다. tmux Control Mode로 목록·배치를 읽고
 형식화된 명령으로 조작합니다. 원격 상태의 기준은 tmux이며 앱 종료가 원격 세션 삭제를 뜻하지 않습니다.
@@ -33,10 +34,13 @@ Windows psmux 어댑터는 -CC 시작 프레임, 명시적 세션, 세션별 win
 연결 복구는 서버 상태를 다시 읽고 화면을 복원한 후 입력을 허용합니다.
 [코어 계약](CORE_API.md), [창 동기화](TMUX_WINDOW_SYNC.md), [복원 ADR](decisions/002-terminal-restoration.md)에 상세 규칙이 있습니다.
 
+마우스 추적이 없는 대체 화면의 휠·드래그는 `dgl_core::scroll`의 `ScrollAssist`(기기 로컬 `terminalScrollAssist`, 기본 `auto`)와
+`PageScroll`이 PageUp/PageDown으로 바꿉니다. 데스크톱은 이 모듈을 직접 쓰고, Android `terminal.js`는 같은 규칙을 JavaScript로 따릅니다.
+
 ## 저장과 플랫폼 경계
 
-Android Keystore, macOS Keychain, Windows CURRENT_USER DPAPI를 플랫폼 어댑터로 제공합니다.
-보호 저장 실패 시 평문 저장으로 대체하지 않습니다. Linux 보호 저장과 패키징은 미구현입니다.
+Android Keystore, macOS Keychain, Windows CURRENT_USER DPAPI, Linux Secret Service를 플랫폼 어댑터로 제공합니다.
+보호 저장 실패 시 평문 저장으로 대체하지 않습니다. Linux AppImage 패키징은 [LINUX.md](LINUX.md)를 따르며 Linux 네이티브 실행 검증은 하지 않았습니다.
 앱 ID와 Kotlin 제품·테스트 패키지의 루트는 `kim.jujin.dglc`입니다.
 소스 경로·import·계측 실행명·검증기·생성 번역 목록도 같은 패키지를 사용합니다.
 모듈 리소스 namespace는 `.shared`·`.mobile`·`.bindings` 접미사를 둡니다. UniFFI 생성 패키지는 `uniffi.dgl_core`입니다.
