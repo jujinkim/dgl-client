@@ -683,7 +683,7 @@ mod tests {
         fresh.seq = 2;
         snapshot.observations[0].last = Some(fresh);
         snapshot.discard_observations_through(1);
-        assert!(snapshot.label(None, 100).contains("작업 사건"));
+        assert!(snapshot.label(None, 100).contains("작업 이벤트"));
         snapshot.invalidate();
         assert!(snapshot.events.is_empty());
     }

@@ -87,7 +87,7 @@ class AndroidHierarchyTest {
                 assertTrue(bounds(await(compact)).right <= bounds(await("$compact 메뉴")).left)
                 assertTrue(bounds(await("$compact 메뉴")).right <= bounds(badge).left)
                 clickNode(badge)
-                await("수신 확인 사건: 미확인")
+                await("수신 확인 이벤트: 미확인")
                 assertEquals(3, first.agents.value.panelState("@1", first.agentEndpoint, emptyList(), System.currentTimeMillis()).observations.size)
                 // Large system fonts put the third observation below the dialog viewport.
                 withTimeout(5000) {

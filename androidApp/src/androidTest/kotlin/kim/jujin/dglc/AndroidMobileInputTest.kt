@@ -202,7 +202,7 @@ class AndroidMobileInputTest {
                 scenario.onActivity {
                     client.status.value = ConnectionStatus(Phase.Failed, canRetryNow = true, retryExhausted = true)
                 }
-                val button = bounds(awaitNode("다시 재접속 시도"))
+                val button = bounds(awaitNode("재접속 다시 시도"))
                 awaitNode("재접속 실패")
                 assertNull(node("새로고침 재시도"))
                 scenario.onActivity {
@@ -212,7 +212,7 @@ class AndroidMobileInputTest {
                     assertTrue(kotlin.math.abs(button.centerX() - area.centerX()) <= 2)
                     assertTrue(kotlin.math.abs(button.centerY() - area.centerY()) < 64 * it.resources.displayMetrics.density)
                 }
-                click("다시 재접속 시도")
+                click("재접속 다시 시도")
                 withTimeout(5000) { while (client.connects != 1) delay(20) }
                 assertSame(surface, client.surface)
                 assertEquals(1, app.connections.value.size)
@@ -1072,16 +1072,16 @@ class AndroidMobileInputTest {
                 openConnectionMenu(); click("설정"); awaitNode("닫기")
                 stage = "scroll to About app"
                 withTimeout(5000) {
-                    while (node("About app")?.isVisibleToUser != true) {
+                    while (node("앱 정보")?.isVisibleToUser != true) {
                         val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }!!
                         scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); delay(100)
                     }
                 }
-                val entry = bounds(awaitNode("About app"))
+                val entry = bounds(awaitNode("앱 정보"))
                 instrumentation.addMonitor(monitor)
                 for (hardwareBack in listOf(false, true)) {
                     stage = "open About app, hardwareBack=$hardwareBack"
-                    click("About app"); awaitNode("버전 $APP_VERSION")
+                    click("앱 정보"); awaitNode("버전 $APP_VERSION")
                     assertEquals(BuildConfig.VERSION_NAME, APP_VERSION)
                     assertEquals(APP_VERSION, instrumentation.targetContext.packageManager
                         .getPackageInfo(instrumentation.targetContext.packageName, 0).versionName)
@@ -1106,12 +1106,12 @@ class AndroidMobileInputTest {
                     if (hardwareBack) instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
                     else click("뒤로")
                     awaitNode("닫기")
-                    assertEquals(entry, bounds(awaitNode("About app")))
+                    assertEquals(entry, bounds(awaitNode("앱 정보")))
                     withTimeout(5000) {
                         while (true) {
                             instrumentation.uiAutomation.clearCache()
                             val focused = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isFocused }
-                            if (find(focused) { it.text?.toString()?.contains("About app") == true } != null) break
+                            if (find(focused) { it.text?.toString()?.contains("앱 정보") == true } != null) break
                             delay(25)
                         }
                     }

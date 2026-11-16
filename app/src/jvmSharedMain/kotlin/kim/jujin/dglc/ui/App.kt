@@ -191,7 +191,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                     }
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 } else Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(t("settings.connection"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                    Text(t("common.hosts"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                     BorderedButton({ model.hostEditing = true; adding = true }) { Text(t("host.add_short")) }
                                 }
                                 // A host opens only with a stored credential; otherwise its editor asks for one.
@@ -226,7 +226,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                                 Text("${host.username}@${host.hostname}:${host.port}", style = MaterialTheme.typography.bodySmall)
                                                 if (host.lastConnected != 0L) Text(t("host.last_connected") + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(host.lastConnected)), style = MaterialTheme.typography.labelSmall)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    BorderedButton({ withCredential(host) { model.open(host); explorer = false } }) { Text(t("settings.connection")) }
+                                                    BorderedButton({ withCredential(host) { model.open(host); explorer = false } }) { Text(t("common.connect")) }
                                                     Spacer(Modifier.weight(1f))
                                                     TreeMenu(tr("common.menu_for", host.alias), listOf(t("common.edit") to { model.hostEditing = true; edit = host }, t("agent.integration") to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = t("workspace.connect_host_first") } }, t("workspace.delete_ellipsis") to { model.hostEditing = true; deletion = host }))
                                                 }
