@@ -259,8 +259,13 @@ impl Desktop {
                 &values[PASSPHRASE],
             )
             .map_err(|e| (ErrorArea::Authentication, e))?;
-            write(&host.credential_ref, &credential)
-                .map_err(|_| (ErrorArea::Storage, t("host.credentials_save_failed")))?;
+            write(&host.credential_ref, &credential).map_err(|e| {
+                let hint = storage::hint(&e);
+                (
+                    ErrorArea::Storage,
+                    hint.unwrap_or(t("host.credentials_save_failed")),
+                )
+            })?;
             let mut next = self.local.clone();
             if let Some(existing) = next.hosts.iter_mut().find(|h| h.id == host.id) {
                 *existing = host;
@@ -387,7 +392,7 @@ impl Desktop {
         let result = (|| {
             let saved = match original {
                 Some(host) => storage::read_optional(&host.credential_ref)
-                    .map_err(|_| t("host.credentials_read_failed"))?
+                    .map_err(|e| storage::hint(&e).unwrap_or(t("host.credentials_read_failed")))?
                     .unwrap_or_default(),
                 None => Credential::default(),
             };

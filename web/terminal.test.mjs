@@ -1163,6 +1163,10 @@ test('scroll assist pages mouse-less alternate screens for agent panes and leave
   assert.deepEqual(sent(), [['input', 'one', '\x1b[6~', true]], 'reversing starts a new gesture');
   assert.equal(t.host.querySelectorAll('.page-hint').length, 1);
   assert.deepEqual([hint.textContent, fade().map(a => a.cancelled)], ['PgDn \u2193', [true, false]], 'a new page key restarts the fade');
+  assert.equal(fade()[1].options.easing, 'linear');
+  r.window.matchMedia = () => ({ matches: true }); r.drag(100, 121);
+  assert.equal(fade().at(-1).options.easing, 'step-end', 'reduced motion holds the hint, then hides it without a fade');
+  delete r.window.matchMedia; sent();
   assert.deepEqual(t.wheels, [t.wheels[0]], 'xterm never sees assisted wheels');
   const wheel = (deltaY, timeStamp, extra = {}) => t.element.dispatchEvent({ type: 'wheel', deltaMode: 0, deltaY, timeStamp, ...extra });
   r.window.setScrollAssist('on', []);

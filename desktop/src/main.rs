@@ -651,7 +651,10 @@ impl Desktop {
                         t("connection.trust_record_mismatch").to_string()
                     }
                     storage::TrustError::Storage(e) => {
-                        tr!("app.secure_storage_open_failed_detail", e)
+                        tr!(
+                            "app.secure_storage_open_failed_detail",
+                            storage::describe(&e)
+                        )
                     }
                 };
                 self.snackbar
@@ -778,7 +781,8 @@ impl Desktop {
                 }
             };
             if let Err(e) = result {
-                self.snackbar.show_snackbar(tr!("app.delete_failed", e))
+                self.snackbar
+                    .show_snackbar(tr!("app.delete_failed", storage::describe(&e)))
             } else {
                 self.dialog = None;
             }

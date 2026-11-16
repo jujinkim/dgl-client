@@ -429,6 +429,8 @@
   "shortcut.reorder_named": "{0} を並べ替え",
   "shortcut.reset": "ショートカットを初期設定に戻す",
   "shortcut.settings": "ショートカット設定",
+  "storage.secret_service_locked": "キーリングがロックされています。デスクトップ環境でロックを解除してから、もう一度お試しください。",
+  "storage.secret_service_unavailable": "Secret Service を利用できません。GNOME Keyring や KWallet などのセッションのキーリングサービスを起動してください。",
   "sync.checking_file": "ファイルを確認中…",
   "sync.choose_folder": "同期フォルダを選択",
   "sync.choose_folder_ellipsis": "同期フォルダを選択…",

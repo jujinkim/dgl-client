@@ -1432,7 +1432,7 @@ impl Desktop {
                                 },
                             ) {
                                 s.snackbar.show_snackbar_with_duration(
-                                    tr!("workspace.host_key_save_failed", e),
+                                    tr!("workspace.host_key_save_failed", storage::describe(&e)),
                                     SnackbarDuration::Long,
                                 );
                                 return;

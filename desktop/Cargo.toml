@@ -25,6 +25,8 @@ sha2 = "=0.10.9"
 tempfile = "=3.27.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# Same portal client GPUI uses; called directly so the key picker can set a start folder.
+ashpd = { version = "=0.11.1", default-features = false, features = ["async-std", "raw_handle"] }
 secret-service = { version = "=5.2.0", features = ["rt-async-io-crypto-rust"] }
 zbus = { version = "=5.19.0", default-features = false, features = ["tokio"] }
 futures-lite = "=2.6.1"

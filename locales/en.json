@@ -429,6 +429,8 @@
   "shortcut.reorder_named": "Reorder {0}",
   "shortcut.reset": "Reset shortcuts",
   "shortcut.settings": "Shortcut settings",
+  "storage.secret_service_locked": "The keyring is locked. Unlock it in your desktop environment, then try again.",
+  "storage.secret_service_unavailable": "Secret Service is not available. Start a keyring service for this session, such as GNOME Keyring or KWallet.",
   "sync.checking_file": "Checking file…",
   "sync.choose_folder": "Choose sync folder",
   "sync.choose_folder_ellipsis": "Choose sync folder…",

@@ -183,12 +183,15 @@
   // pages on its first row, then every half screen.
   const pageScroll = { rows: 0, direction: 0, last: null };
   // The sent page key flashes over the pane and fades out over 500ms; each press restarts it.
+  // Reduced motion keeps it steady for the same 500ms, then hides it without a fade.
   let pageHint = null, pageHintFade = null;
   const showPageHint = up => {
     if (!pageHint) { pageHint = document.createElement('div'); pageHint.className = 'page-hint'; host.appendChild(pageHint); }
     pageHint.textContent = up ? 'PgUp \u2191' : 'PgDn \u2193';
     pageHintFade?.cancel();
-    pageHintFade = pageHint.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 500, easing: 'linear', fill: 'forwards' }) ?? null;
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    pageHintFade = pageHint.animate?.([{ opacity: 1 }, { opacity: 0 }],
+      { duration: 500, easing: reducedMotion ? 'step-end' : 'linear', fill: 'forwards' }) ?? null;
   };
   term.attachCustomWheelEventHandler?.(event => {
     if (event.shiftKey || !scrollAssistApplies(pane) || term.buffer?.active.type !== 'alternate'

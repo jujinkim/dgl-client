@@ -429,6 +429,8 @@
   "shortcut.reorder_named": "{0} 순서 이동",
   "shortcut.reset": "단축키 기본값 복원",
   "shortcut.settings": "단축키 설정",
+  "storage.secret_service_locked": "키링이 잠겨 있습니다. 데스크톱 환경에서 키링 잠금을 해제한 뒤 다시 시도하세요.",
+  "storage.secret_service_unavailable": "Secret Service를 사용할 수 없습니다. GNOME Keyring·KWallet 같은 세션 키링 서비스를 실행하세요.",
   "sync.checking_file": "파일 확인 중…",
   "sync.choose_folder": "동기화 폴더 선택",
   "sync.choose_folder_ellipsis": "동기화 폴더 선택…",

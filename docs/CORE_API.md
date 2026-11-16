@@ -41,9 +41,9 @@
 - `dgl_core::Error`: 필드 없는 enum이다. Authentication, HostKeyUnknown, HostKeyChanged, Network, Protocol,
   MissingSession, Storage, StorageUnavailable, StorageLocked, LocalToolMissing, LocalToolUnsupported, LocalToolPermission,
   InvalidArgument, QueueFull, NotReady, StaleGeneration, Cancelled, Closed.
-  JSON(`State.error`, 완료 결과 `error`)은 변형 이름 문자열이다. `Display`도 변형 이름이며, Linux Secret Service용
-  `StorageUnavailable`·`StorageLocked`만 안내 문장이다. UniFFI는 `Display`를 `CoreError::Failure { code }`
-  (Kotlin `CoreException.Failure.code`)로 전달한다. 작업·재시도 여부·진단 필드는 없다.
+  JSON(`State.error`, 완료 결과 `error`)과 `Display`는 변형 이름 문자열이다. UniFFI는 이를 `CoreError::Failure { code }`
+  (Kotlin `CoreException.Failure.code`)로 전달하며 `code`가 같은 변형 이름이다. 작업·재시도 여부·진단 필드는 없다.
+  Linux Secret Service의 `StorageUnavailable`·`StorageLocked` 안내 문구는 데스크톱 `storage::hint`가 UI 문구 카탈로그에서 고른다.
 - 진단은 오류와 별개인 `State.diagnostics`(`ssh::Probe { stage, exit_status, outcome, path, version }`)다.
   tmux 탐지 단계·종료 코드·결과·찾은 경로와 미지원 시 `tmux -V` 결과(최대 128자)만 담으며 비밀번호/키/터미널 출력/사용자 입력을 포함하지 않는다.
 - `StateEvent { sequence, connectionGeneration, state }`: 연결 단계, 신뢰 요청,

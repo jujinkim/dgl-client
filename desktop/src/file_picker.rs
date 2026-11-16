@@ -1,6 +1,8 @@
 use gpui::{App, Task, Window};
 use std::path::PathBuf;
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
@@ -11,20 +13,7 @@ pub type Selection = Result<Option<PathBuf>, ()>;
 pub fn select(directory: Option<PathBuf>, window: &Window, cx: &App) -> Task<Selection> {
     #[cfg(target_os = "linux")]
     {
-        let _ = (directory, window);
-        let receiver = cx.prompt_for_paths(gpui::PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: Some(dgl_core::i18n::t("host.choose_private_key_file").into()),
-        });
-        return cx.foreground_executor().spawn(async move {
-            receiver
-                .await
-                .map_err(|_| ())?
-                .map(|paths| paths.and_then(|p| p.into_iter().next()))
-                .map_err(|_| ())
-        });
+        return linux::select(directory, window, cx);
     }
     #[cfg(not(target_os = "linux"))]
     let (sender, receiver) = tokio::sync::oneshot::channel();

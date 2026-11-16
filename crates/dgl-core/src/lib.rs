@@ -31,9 +31,9 @@ pub enum Error {
     MissingSession,
     #[error("Storage")]
     Storage,
-    #[error("Secret Service unavailable: start a session keyring service")]
+    #[error("StorageUnavailable")]
     StorageUnavailable,
-    #[error("Secret Service locked: unlock the session keyring")]
+    #[error("StorageLocked")]
     StorageLocked,
     #[error("LocalToolMissing")]
     LocalToolMissing,

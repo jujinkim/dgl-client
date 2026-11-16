@@ -76,8 +76,8 @@ Windows 작업 메뉴를 열려면 저장소 루트에서 다음 짧은 명령�
 메뉴: 1 빌드·실행, 2 빌드·ZIP만 생성, 3 빌드·테스트·실행,
 4 전체 빌드 도구·업데이트 확인, 5 빌드 도구 설치·업데이트, 0 종료.
 선택 작업이 실패해도 결과를 표시하고 메뉴로 돌아오므로 더블클릭한 창이 바로 닫히지 않는다.
-인수를 붙이면 메뉴 없이 `build_windows.ps1 -Run`에 그 인수를 더해 실행한다.
-빌드·테스트·실행은 `.\scripts\run_windows.cmd -Test`, 빌드·실행만 할 때는 `build_windows.ps1 -Run`을 직접 사용한다.
+인수를 붙이면 메뉴 없이 `build_windows.ps1 -Run`에 그 인수를 더해 실행한다. `-Run`을 직접 붙여도 한 번만 전달한다.
+예: 빌드·테스트·실행은 `.\scripts\run_windows.cmd -Test`.
 
 도구 확인은 Git·Python·Rustup·VS 2022 Build Tools의 WinGet 업데이트 목록,
 Rust 업데이트 정보, 로컬 MSVC·CMake·SDK(rc/fxc)·Python 버전·고정 Rust 도구와 target을
