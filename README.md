@@ -99,3 +99,7 @@ Google Play 내부 테스트 배포는 **Publish DGL internal test** workflow를
 - [현재 구조](docs/ARCHITECTURE.md) · [스크립트 안내](scripts/README.md)
 - [검증 범위](docs/VALIDATION.md) · [남은 작업](TASKS.md) · [보안](docs/SECURITY.md)
 - [과거 결정·작업 요약](docs/HISTORY.md) · [제3자 고지](THIRD_PARTY_NOTICES.md)
+
+## 라이선스
+
+DGL 자체 코드는 [Apache License 2.0](LICENSE)으로 배포합니다. 제3자 구성 요소의 라이선스는 [제3자 고지](THIRD_PARTY_NOTICES.md)를 따릅니다.

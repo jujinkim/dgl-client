@@ -2,6 +2,7 @@
 name = "dgl-desktop"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 dgl-core = { path = "../crates/dgl-core" }

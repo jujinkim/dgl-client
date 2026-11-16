@@ -12,7 +12,7 @@ Retrieved on 2026-10-23; these texts are redistributed unmodified. The versioned
 
 The JediTerm source JARs for **3.59** must be supplied to the reference rebuild recipe and checked against the source artifact hashes in `gradle/verification-metadata.xml`. The licence text from upstream's current tree does not assert that the current upstream dual-licence declaration applies retroactively to 3.59; the notices conservatively retain the 3.59 POM's LGPL declaration.
 
-The xterm.js notice is copied directly from the npm integrity-verified package into Android assets by `web/bundle.mjs`. New project code is not assigned a licence by these third-party notices.
+The xterm.js notice is copied directly from the npm integrity-verified package into Android assets by `web/bundle.mjs`. DGL's own code is licensed under Apache-2.0 by the root `LICENSE`, not by these third-party notices.
 
 ## Selected runtime inventory
 
@@ -27,7 +27,7 @@ removed components (the retired JVM desktop, Skiko/Skia) stays in `evidence/` un
 Run `python3 scripts/verify_licenses.py` after `./gradlew writeDependencyInventory`.
 `refresh_licenses.py` is an explicit maintenance command, never a CI auto-approval
 step. Review its generated changes and upstream evidence before updating the registry.
-Source/archive notices do not assign a license to new application code.
+Source/archive notices apply only to their components; the root `LICENSE` covers DGL's own code.
 
 `jediterm-rebuild/` supplies the verified replacement build recipe, compiler metadata
 and dependency locks. Its generated caches and binaries must never be redistributed

@@ -33,7 +33,7 @@ The tested replacement build recipe is `licenses/jediterm-rebuild/README.md`. It
 
 The Android APK ships JNA 5.18.1 native dispatch (`libjnidispatch.so`); its license and the embedded libffi license are included.
 
-No repository-wide license for new project code is inferred on the owner's behalf.
+DGL's own code is licensed under Apache-2.0 (see `LICENSE`). Third-party components keep the licenses listed here.
 
 
 ## Rust candidate dependencies (2026-10-24)

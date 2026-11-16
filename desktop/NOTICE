@@ -1,4 +1,6 @@
 DaGaLi
+Copyright 2026 Jujin Kim
+Licensed under the Apache License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
 
 text_input.rs adapts the GPUI 0.2.2 text input example.
 Copyright Zed Industries contributors. Licensed under Apache License 2.0.
