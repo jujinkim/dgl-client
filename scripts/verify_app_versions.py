@@ -14,12 +14,13 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def workspace_version(root=ROOT):
+def workspace_version(root=None):
+    root = root or ROOT  # Read at call time so a patched ROOT applies.
     section = (root / "Cargo.toml").read_text().split("[workspace.package]", 1)[1].split("\n[", 1)[0]
     return re.search(r'^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$', section, re.M)[1]
 
 
-def android_version_code(root=ROOT):
+def android_version_code(root=None):
     version = workspace_version(root)
     major, minor, patch = map(int, version.split('.'))
     if not (0 <= major <= 9 and 0 <= minor <= 99 and 0 <= patch <= 99):
