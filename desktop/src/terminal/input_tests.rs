@@ -221,6 +221,24 @@ fn key_events_and_ime_commit_do_not_duplicate_input(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn restored_mouse_modes_leave_the_one_tmux_reported(cx: &mut TestAppContext) {
+    // The core's snapshot restore: every tracking mode reset, then the active one.
+    let (_runtime, terminal, cx) = setup(cx);
+    let reset = b"\x1b[?1000l\x1b[?1002l\x1b[?1003l";
+    for (set, expected) in [
+        (&b"\x1b[?1003h"[..], TermMode::MOUSE_MOTION),
+        (b"\x1b[?1002h", TermMode::MOUSE_DRAG),
+        (b"\x1b[?1000h", TermMode::MOUSE_REPORT_CLICK),
+        (b"", TermMode::empty()),
+    ] {
+        output(&terminal, cx, &[&reset[..], set, b"\x1b[?1006h"].concat());
+        let mode = terminal.read_with(cx, |t, _| *t.term.mode());
+        assert_eq!(mode & TermMode::MOUSE_MODE, expected);
+        assert!(mode.contains(TermMode::SGR_MOUSE));
+    }
+}
+
+#[gpui::test]
 fn mouse_tracking_distinguishes_click_drag_and_hover(cx: &mut TestAppContext) {
     let (_runtime, terminal, cx) = setup(cx);
     let p = position(&terminal, cx, 0, 0);

@@ -1586,33 +1586,7 @@ impl Control {
         }
         let screen = self.response().await?;
         writer.rows(screen).await?;
-        let mut modes = format!(
-            "\x1b[0m\x1b[{};{}r\x1b[{};{}H",
-            fields[12] + 1,
-            fields[13] + 1,
-            fields[1] + 1,
-            fields[0] + 1
-        );
-        for (code, index) in [
-            (25, 3),
-            (1, 4),
-            (1003, 6),
-            (1002, 7),
-            (1000, 8),
-            (1005, 9),
-            (1006, 10),
-            (2004, 11),
-        ] {
-            modes.push_str(&format!(
-                "\x1b[?{code}{}",
-                if fields[index] == 1 { 'h' } else { 'l' }
-            ));
-        }
-        modes.push_str(if fields[5] == 1 { "\x1b=" } else { "\x1b>" });
-        modes.push_str(&format!(
-            "\x1b[4{}",
-            if fields[14] == 1 { 'h' } else { 'l' }
-        ));
+        let modes = restore_modes(&fields);
         writer.write(modes.as_bytes()).await?;
         for row in self.response().await? {
             writer.write(&crate::protocol::decode(&row, true)?).await?;
@@ -1631,6 +1605,47 @@ impl Control {
         self.paused.remove(&id);
         Ok(())
     }
+}
+/// Terminal modes that recreate a pane's state after its captured rows, from the
+/// `Command::modes` fields. tmux keeps exactly one mouse tracking mode, and
+/// `mouse_any_flag` means any of them is on: all-motion is the one that is neither
+/// button nor standard. Every tracking mode is reset before the active one is set,
+/// because xterm.js turns tracking off for a reset of any of 1000/1002/1003.
+fn restore_modes(fields: &[u16]) -> String {
+    let mut modes = format!(
+        "\x1b[0m\x1b[{};{}r\x1b[{};{}H",
+        fields[12] + 1,
+        fields[13] + 1,
+        fields[1] + 1,
+        fields[0] + 1
+    );
+    for (code, index) in [(25, 3), (1, 4)] {
+        modes.push_str(&format!(
+            "\x1b[?{code}{}",
+            if fields[index] == 1 { 'h' } else { 'l' }
+        ));
+    }
+    modes.push_str("\x1b[?1000l\x1b[?1002l\x1b[?1003l");
+    let (any, button, standard) = (fields[6] == 1, fields[7] == 1, fields[8] == 1);
+    if button {
+        modes.push_str("\x1b[?1002h");
+    } else if standard {
+        modes.push_str("\x1b[?1000h");
+    } else if any {
+        modes.push_str("\x1b[?1003h");
+    }
+    for (code, index) in [(1005, 9), (1006, 10), (2004, 11)] {
+        modes.push_str(&format!(
+            "\x1b[?{code}{}",
+            if fields[index] == 1 { 'h' } else { 'l' }
+        ));
+    }
+    modes.push_str(if fields[5] == 1 { "\x1b=" } else { "\x1b>" });
+    modes.push_str(&format!(
+        "\x1b[4{}",
+        if fields[14] == 1 { 'h' } else { 'l' }
+    ));
+    modes
 }
 async fn list(ssh: &Transport) -> Result<RemoteState> {
     let (code, bytes) = ssh.execute_tmux(&Command::inventory()).await?;
@@ -3019,6 +3034,38 @@ mod tests {
         };
         let writer = SnapshotWriter::new(output.clone(), id, target, Size::default());
         (output, writer)
+    }
+    #[test]
+    fn restored_modes_keep_the_single_tmux_mouse_mode() {
+        // tmux 3.7c flags: 1000 any+standard, 1002 any+button, 1003 any only.
+        let fields = |any, button, standard, sgr| {
+            let mut f = vec![0u16; 17];
+            (f[6], f[7], f[8], f[10]) = (any, button, standard, sgr);
+            f
+        };
+        let reset = "\x1b[?1000l\x1b[?1002l\x1b[?1003l";
+        for (any, button, standard, set) in [
+            (0, 0, 0, ""),
+            (1, 0, 1, "\x1b[?1000h"),
+            (1, 1, 0, "\x1b[?1002h"),
+            (1, 0, 0, "\x1b[?1003h"),
+        ] {
+            for sgr in [0, 1] {
+                let modes = restore_modes(&fields(any, button, standard, sgr));
+                let mouse = format!(
+                    "{reset}{set}\x1b[?1005l\x1b[?1006{}",
+                    if sgr == 1 { 'h' } else { 'l' }
+                );
+                assert!(modes.contains(&mouse), "{modes:?}");
+                // Nothing after the active mode may reset tracking again.
+                let tail = &modes[modes.find(&mouse).unwrap() + mouse.len()..];
+                assert!(!tail.contains("\x1b[?100"), "{tail:?}");
+            }
+        }
+        assert_eq!(
+            restore_modes(&fields(0, 0, 0, 0)),
+            "\x1b[0m\x1b[1;1r\x1b[1;1H\x1b[?25l\x1b[?1l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?2004l\x1b>\x1b[4l"
+        );
     }
     #[tokio::test]
     async fn snapshot_batches_preserve_main_alternate_modes_and_pending_bytes() {
