@@ -138,7 +138,7 @@ Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나를
 서명 환경변수가 없으면 `androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`이며 미서명입니다.
 Release는 R8 코드·리소스 축소를 켜고 난독화는 끕니다(`-dontobfuscate`). keep 규칙은 `androidApp/proguard-rules.pro`에
 JNA·UniFFI 바인딩과 검사기가 이름으로 확인하는 Rust 진입 클래스용으로 둡니다. 바인딩을 리플렉션으로 새로 노출하면 함께 갱신합니다.
-앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.3` / `103`입니다.
+앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.4` / `104`입니다.
 
 ### Google Play 내부 테스트 수동 배포
 
@@ -176,7 +176,7 @@ Google Play Console에 DGL 앱과 첫 AAB를 먼저 등록하고 Play App Signin
 
 ### 앱 버전 관리
 
-루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.1.3`입니다.
+루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.1.4`입니다.
 Rust 코어·데스크톱은 workspace 버전을 상속하고 표시에는 빌드 시 `CARGO_PKG_VERSION`을 사용합니다.
 Gradle은 같은 값을 Android `versionName`과 `app/build/generated/appVersion/`의 Kotlin `APP_VERSION`으로 생성합니다.
 생성 디렉터리는 Git에 추가하지 않습니다. macOS 번들 두 버전 필드·`build.json`과 Windows ZIP의
