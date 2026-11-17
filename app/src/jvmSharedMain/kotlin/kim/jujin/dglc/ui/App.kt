@@ -236,7 +236,6 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                         }
                                     }
                                 }
-                                if (!workspaceMode) Text(model.storageDescription, Modifier.padding(12.dp), style = MaterialTheme.typography.labelSmall)
                             }
                             if (wide) VerticalDivider(color = MaterialTheme.colorScheme.outline)
                         }
