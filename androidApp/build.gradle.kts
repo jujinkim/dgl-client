@@ -17,6 +17,7 @@ android {
     namespace = "kim.jujin.dglc"
     compileSdk = 37
     buildToolsVersion = "36.0.0"
+    ndkVersion = "29.0.14206865"
     defaultConfig {
         applicationId = "kim.jujin.dglc"
         minSdk = 34
@@ -47,6 +48,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Bundle native symbol tables so Google Play symbolicates Rust and JNA crashes.
+            ndk { debugSymbolLevel = "SYMBOL_TABLE" }
             if (signRelease) signingConfig = signingConfigs.getByName("release")
         }
     }
