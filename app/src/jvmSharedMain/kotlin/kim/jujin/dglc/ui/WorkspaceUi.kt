@@ -3,6 +3,8 @@ package kim.jujin.dglc.ui
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -234,7 +236,10 @@ private data class TabDrag(val tab: String, val position: Offset)
                                 group.tabs.forEach { tab -> key(tab) { model.tabClient(tab)?.let { client ->
                                     val title = displayTreeText(client.host.alias) + " · " + workspaceTabTitle(client)
                                     var bounds by remember { mutableStateOf(Rect.Zero) }
-                                    Row(Modifier.onGloballyPositioned { bounds = it.boundsInRoot(); tabBounds[tab] = bounds }
+                                    // Selecting from the session panel scrolls an off-screen tab into the strip.
+                                    val reveal = remember { BringIntoViewRequester() }
+                                    LaunchedEffect(group.selected == tab) { if (group.selected == tab) reveal.bringIntoView() }
+                                    Row(Modifier.bringIntoViewRequester(reveal).onGloballyPositioned { bounds = it.boundsInRoot(); tabBounds[tab] = bounds }
                                         .background(if (group.selected == tab) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)
                                         // Only the active group's selected tab is the current one and gets the frame.
                                         .currentFrame(active && group.selected == tab)

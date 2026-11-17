@@ -88,6 +88,28 @@ impl Desktop {
         }
         cx.notify();
     }
+    /// Scrolls the active group's tab strip so its selected tab is visible. Session panel
+    /// selections call this; clicking the tab bar or terminal leaves the strip alone.
+    pub(super) fn reveal_selected_tab(&mut self) {
+        let group = self.workspace.active;
+        let Some(selected) = self.workspace.selected() else {
+            return;
+        };
+        // Index among the strip's rendered children, which skip tabs without a slot.
+        let Some(index) = self.workspace.groups[&group]
+            .tabs
+            .iter()
+            .filter(|id| self.tabs.iter().any(|t| t.id == **id))
+            .position(|id| *id == selected)
+        else {
+            return;
+        };
+        self.pointer
+            .tab_scroll
+            .entry(group)
+            .or_default()
+            .scroll_to_item(index);
+    }
     fn tab_drop_target(&self, tab: TabId, position: Point<Pixels>) -> Option<TabDropTarget> {
         if self.dialog.is_some() || self.snackbar.is_some() {
             return None;
@@ -332,6 +354,7 @@ impl Desktop {
                             move |s, w, cx| {
                                 s.open(open.clone(), cx);
                                 s.group_focus(s.workspace.active, w, cx);
+                                s.reveal_selected_tab();
                             },
                         )
                         // Host rows are list items; the row itself carries the selection.
@@ -1893,6 +1916,7 @@ impl Desktop {
                     };
                     if opened.is_some() {
                         s.group_focus(s.workspace.active, w, cx);
+                        s.reveal_selected_tab();
                     }
                 },
             ))

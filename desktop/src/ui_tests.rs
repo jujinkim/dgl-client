@@ -2324,6 +2324,49 @@ fn overflowing_tab_bar_shows_a_display_only_scrollbar(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn session_panel_selection_scrolls_its_tab_into_view(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx);
+    for _ in 0..9 {
+        add_terminal(&view, cx);
+    }
+    cx.simulate_resize(gpui::size(px(640.), px(480.)));
+    redraw(cx);
+    let first = view.read_with(cx, |s, _| s.workspace.groups[&1].tabs[0]);
+    let last = view.read_with(cx, |s, _| *s.workspace.groups[&1].tabs.last().unwrap());
+    // Start from the left end with the first tab selected, so the last one is off-screen.
+    view.update(cx, |s, cx| {
+        s.activate_tab(first);
+        s.pointer.tab_scroll[&1].set_offset(point(px(0.), px(0.)));
+        cx.notify();
+    });
+    redraw(cx);
+    let strip = |view: &Entity<Desktop>, cx: &mut VisualTestContext| {
+        view.read_with(cx, |s, _| {
+            let scroll = s.pointer.tab_scroll[&1].clone();
+            let index = s.workspace.groups[&1].tabs.len() - 1;
+            (
+                scroll.bounds(),
+                scroll.bounds_for_item(index).unwrap(),
+                scroll.offset().x,
+            )
+        })
+    };
+    let (viewport, item, offset) = strip(&view, cx);
+    assert!(item.right() + offset > viewport.right());
+    // A session panel selection reveals the tab; plain activation does not move the strip.
+    view.update(cx, |s, cx| {
+        s.activate_tab(last);
+        s.reveal_selected_tab();
+        cx.notify();
+    });
+    redraw(cx);
+    let (viewport, item, offset) = strip(&view, cx);
+    assert!(offset < px(0.));
+    assert!(item.left() + offset >= viewport.left() - px(1.));
+    assert!(item.right() + offset <= viewport.right() + px(1.));
+}
+
+#[gpui::test]
 fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext) {
     let (view, cx) = setup(cx);
     add_terminal(&view, cx);
