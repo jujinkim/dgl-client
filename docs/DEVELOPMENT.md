@@ -136,6 +136,8 @@ Gradle의 Rust 작업은 `scripts/build_rust_android.py`로 네 ABI를 빌드합
 Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` 하나를 사용합니다.
 검사·배포 스크립트는 이 원본을 검증하고 APK 복사본을 만들지 않습니다. Release APK는
 서명 환경변수가 없으면 `androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk`이며 미서명입니다.
+Release는 R8 코드·리소스 축소를 켜고 난독화는 끕니다(`-dontobfuscate`). keep 규칙은 `androidApp/proguard-rules.pro`에
+JNA·UniFFI 바인딩과 검사기가 이름으로 확인하는 Rust 진입 클래스용으로 둡니다. 바인딩을 리플렉션으로 새로 노출하면 함께 갱신합니다.
 앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.1.3` / `103`입니다.
 
 ### Google Play 내부 테스트 수동 배포
