@@ -159,7 +159,7 @@ class AndroidAppFlowTest {
                     it.phase in setOf(Phase.Connecting, Phase.Authenticating, Phase.Reconnecting, Phase.Failed, Phase.Disconnected)
                 })
                 assertTrue("Resize restoration keeps the connected label and hides connection progress", keyboardStates.filter { it.resizing }.all {
-                    it.message == "연결됨 · tmux" && !it.showsConnectionProgress && !it.acceptsInput
+                    it.message == "연결됨 · tmux" && !it.showsConnectionProgress && it.acceptsInput && !it.acceptsPointer
                 })
                 assertEquals(clientsBeforeKeyboard, admin.execute("tmux list-clients -t '$session' -F '#{client_pid}'").decodeToString().trim())
                 scenario.onActivity { assertSame(keyboardView, findWebView(it.window.decorView)) }

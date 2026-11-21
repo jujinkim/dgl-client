@@ -439,22 +439,25 @@ class AndroidMobileInputTest {
                 val last = shortcutBounds(TerminalShortcut.Enter)
                 val keyboard = bounds(awaitNode("키보드 열기")); val composer = bounds(awaitNode("텍스트 작성 열기"))
                 val density = instrumentation.targetContext.resources.displayMetrics.density
-                assertEquals(top.left, bottom.left)
-                assertTrue("Short lower key must keep its own width", top.width() > bottom.width())
-                assertEquals(keyboard.top, top.top); assertEquals(composer.top, bottom.top)
+                // Rows and columns round dp to pixels on their own, so positions agree within 2 px.
+                fun assertNear(expected: Int, actual: Int, message: String? = null) =
+                    assertTrue("${message ?: "position"}: expected $expected within 2 px, was $actual", kotlin.math.abs(expected - actual) <= 2)
+                assertNear(top.left, bottom.left)
+                assertTrue("Short lower key must keep its own width", top.width() > bottom.width() + 2)
+                assertNear(keyboard.top, top.top); assertNear(composer.top, bottom.top)
                 assertTrue(kotlin.math.abs(top.left - keyboard.right - 4 * density) <= 2)
                 assertTrue(kotlin.math.abs(last.left - bottom.right - 4 * density) <= 2)
-                assertEquals("The third key must fill the shorter lower row", bottom.top, last.top)
+                assertNear(bottom.top, last.top, "The third key must fill the shorter lower row")
                 stage = "equal row lengths start with the upper row"
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(
                     terminalShortcuts = listOf(TerminalShortcut.Ctrl, TerminalShortcut.Shift, TerminalShortcut.Alt))) } }
                 instrumentation.waitForIdleSync(); checkBar()
                 val equalTop = shortcutBounds(TerminalShortcut.Ctrl); val equalBottom = shortcutBounds(TerminalShortcut.Shift)
                 val equalLast = shortcutBounds(TerminalShortcut.Alt)
-                assertEquals(equalTop.width(), equalBottom.width())
-                assertEquals(equalTop.left, equalBottom.left)
-                assertEquals(keyboard.top, equalTop.top); assertEquals(composer.top, equalBottom.top)
-                assertEquals(equalTop.top, equalLast.top)
+                assertNear(equalTop.width(), equalBottom.width())
+                assertNear(equalTop.left, equalBottom.left)
+                assertNear(keyboard.top, equalTop.top); assertNear(composer.top, equalBottom.top)
+                assertNear(equalTop.top, equalLast.top)
                 assertTrue(kotlin.math.abs(equalLast.left - equalTop.right - 4 * density) <= 2)
                 stage = "independent rows share one horizontal scroll"
                 scenario.onActivity { app.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = listOf(

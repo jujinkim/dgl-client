@@ -108,11 +108,13 @@ class AndroidOutputRecoveryTest {
             for (pane in panes) assertTrue("Restored alternate buffer must show the TUI for $pane: $text", text.contains("TUI_${pane.removePrefix("%")}"))
             assertFalse("The primary-buffer reconstruction must not be the displayed screen", text.contains("MAIN_"))
         }
-        suspend fun held(panes: List<String>) {
+        /** [preview]: a reattachment to the window presented last keeps that frame, not the curtain. */
+        suspend fun held(panes: List<String>, preview: Boolean = false) {
             assertEquals(panes.last(), withTimeout(10_000) { surface.entered.receive() })
             assertTrue(surface.pending)
-            assertTrue(renderer.screenPending)
-            instrumentation.runOnMainSync {
+            assertEquals(preview, client.status.value.presentingPreview)
+            assertEquals(!preview, renderer.screenPending)
+            if (!preview) instrumentation.runOnMainSync {
                 val bitmap = android.graphics.Bitmap.createBitmap(renderer.view.width, renderer.view.height, android.graphics.Bitmap.Config.ARGB_8888)
                 try {
                     renderer.view.draw(android.graphics.Canvas(bitmap))
@@ -136,7 +138,7 @@ class AndroidOutputRecoveryTest {
             surface.rendered.clear(); surface.snapshotWrites = 0
             surface.held = CompletableDeferred()
             client.unbindSurface(surface); client.bindSurface(surface)
-            held(firstPanes)
+            held(firstPanes, preview = true)
             assertEquals("One bounded capture write per pane, rather than two per row", 2, surface.snapshotWrites)
             surface.rendered.clear(); surface.snapshotWrites = 0
             surface.held = CompletableDeferred(); surface.heldPane = secondPanes.last()

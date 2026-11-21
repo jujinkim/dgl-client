@@ -228,8 +228,8 @@ class AndroidWorkspaceTest {
                 renderer.reset("SHELL_MEASUREMENT".encodeToByteArray())
                 val remote = RemoteState(windows = listOf(RemoteWindow("@1", "\$1", "one", true, "", width = 20, height = 10)),
                     panes = listOf(RemotePane("%1", "@1", 20, 10, true, "", "sh")))
-                renderer.layout(remote, "@1", "%1", "target")
-                renderer.outputPane("%1", "target"); renderer.resizeRemote(Size(20, 10)); renderer.reset("VISIBLE".encodeToByteArray())
+                renderer.layout(remote, "@1", "%1", paneTarget("target"))
+                renderer.outputPane("%1", paneTarget("target")); renderer.resizeRemote(Size(20, 10)); renderer.reset("VISIBLE".encodeToByteArray())
                 stage = "hidden shell overflow reproduction"
                 assertTrue(js(renderer, """(() => {
                     const r=document.querySelector('#terminal'), c=document.querySelector('#window'), s=document.querySelector('#shell');
@@ -242,10 +242,10 @@ class AndroidWorkspaceTest {
                 assertTrue(js(renderer, """(() => { const r=document.querySelector('#terminal'); r.scrollLeft=100000;
                     return r.scrollWidth<=r.clientWidth+1 && r.scrollLeft===0; })()""").contains("true"))
                 stage = "real wider remote grid"
-                renderer.layout(remote.copy(windows = remote.windows.map { it.copy(width = 120) }), "@1", "%1", "target")
+                renderer.layout(remote.copy(windows = remote.windows.map { it.copy(width = 120) }), "@1", "%1", paneTarget("target"))
                 assertTrue(js(renderer, """(() => { const r=document.querySelector('#terminal'), c=document.querySelector('#window'); r.scrollLeft=100000;
                     return r.scrollLeft>0 && Math.abs(r.scrollLeft+r.clientWidth-c.getBoundingClientRect().width)<2; })()""").contains("true"))
-                renderer.layout(remote, "@1", "%1", "target")
+                renderer.layout(remote, "@1", "%1", paneTarget("target"))
                 assertEquals("0", js(renderer, "document.querySelector('#terminal').scrollLeft"))
                 val previousWidth = js(renderer, "document.querySelector('.pane .xterm-screen').getBoundingClientRect().width").toDouble()
                 stage = "pinch and reset control"

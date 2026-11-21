@@ -138,7 +138,7 @@ class AndroidPlatformTest {
                 withTimeout(5000) { sizes.receive() }
                 val remote = RemoteState(windows = listOf(RemoteWindow("@1", "$1", "nested", true, "", width = 81, height = 24)),
                     panes = listOf(RemotePane("%1", "@1", 40, 24, true, "", "sh"), RemotePane("%2", "@1", 40, 24, false, "", "sh", left = 41)))
-                terminal.layout(remote, "@1", "%1", "first")
+                terminal.layout(remote, "@1", "%1", paneTarget("first"))
                 for ((pane, text) in listOf("%1" to "LEFT_PERSIST", "%2" to "RIGHT_PERSIST")) {
                     terminal.outputPane(pane, pane)
                     terminal.resizeRemote(Size(40, 24))
@@ -146,7 +146,7 @@ class AndroidPlatformTest {
                 }
                 withTimeout(5000) { while (!js(terminal, "[...document.querySelectorAll('.pane .xterm-screen')].map(s=>s.textContent).join('|')").contains("RIGHT_PERSIST")) delay(20) }
                 js(terminal, "window.__left=document.querySelectorAll('.pane .xterm')[0]; true")
-                terminal.layout(remote, "@1", "%2", "second")
+                terminal.layout(remote, "@1", "%2", paneTarget("second"))
                 assertTrue(js(terminal, "window.__left === document.querySelectorAll('.pane .xterm')[0]").contains("true"))
                 val screen = js(terminal, "[...document.querySelectorAll('.pane .xterm-screen')].map(s=>s.textContent).join('|')")
                 assertTrue(screen.contains("LEFT_PERSIST")); assertTrue(screen.contains("RIGHT_PERSIST"))
@@ -161,9 +161,9 @@ class AndroidPlatformTest {
                 delay(100)
                 assertTrue("Pane grids must never request client resize", sizes.tryReceive().isFailure)
                 assertTrue(js(terminal, "document.querySelectorAll('.pane .xterm-screen')[0].textContent").contains("LEFT_PERSIST"))
-                terminal.layout(remote.copy(windows = remote.windows.map { it.copy(zoomed = true) }), "@1", "%2", "zoom")
+                terminal.layout(remote.copy(windows = remote.windows.map { it.copy(zoomed = true) }), "@1", "%2", paneTarget("zoom"))
                 assertEquals("1", js(terminal, "[...document.querySelectorAll('.pane')].filter(p=>p.style.display!=='none').length"))
-                terminal.layout(remote, "@1", "%2", "before-recovery")
+                terminal.layout(remote, "@1", "%2", paneTarget("before-recovery"))
                 terminal.connectionRecovery(true)
                 assertTrue(js(terminal, "document.querySelector('.connection-cache').textContent").contains("LEFT_PERSIST"))
                 assertTrue(js(terminal, "document.querySelector('.connection-cache').textContent").contains("RIGHT_PERSIST"))
@@ -202,7 +202,7 @@ class AndroidPlatformTest {
             suspend fun awaitJs(script: String) = withTimeout(5000) {
                 while (js(terminal, script) != "true") delay(20)
             }
-            suspend fun expectInput(value: String, target: String = "one") {
+            suspend fun expectInput(value: String, target: String = paneTarget("one")) {
                 val received = withTimeout(5000) { input.receive() }
                 assertEquals(target, received.first)
                 assertArrayEquals(value.toByteArray(Charsets.ISO_8859_1), received.second)
@@ -214,8 +214,8 @@ class AndroidPlatformTest {
                     Terminal.prototype.open=function(host){window.__terms.push(this);return window.__open.call(this,host);}; true""")
                 val remote = RemoteState(windows = listOf(RemoteWindow("@1", "${'$'}1", "touch", true, "", width = 80, height = 24)),
                     panes = listOf(RemotePane("%1", "@1", 80, 24, true, "", "sh")))
-                terminal.layout(remote, "@1", "%1", "one")
-                terminal.outputPane("%1", "one")
+                terminal.layout(remote, "@1", "%1", paneTarget("one"))
+                terminal.outputPane("%1", paneTarget("one"))
                 terminal.resizeRemote(Size(80, 24))
                 terminal.reset(("\u001bc" + "X".repeat(79) + "ZQ").encodeToByteArray())
                 awaitJs("window.__terms[0].element.querySelector('.xterm-rows').children[1].textContent.startsWith('Q')")
@@ -254,7 +254,7 @@ class AndroidPlatformTest {
                 repeat(2) {
                     stage = "SGR up report $it"
                     val received = withTimeout(5000) { input.receive() }
-                    assertEquals("one", received.first)
+                    assertEquals(paneTarget("one"), received.first)
                     assertTrue(received.second.decodeToString().matches(Regex("\u001b\\[<64;\\d+;\\d+M")))
                 }
                 stage = "SGR down"
@@ -340,24 +340,24 @@ class AndroidPlatformTest {
                 stage = "split selection"
                 val split = remote.copy(windows = remote.windows.map { it.copy(width = 81) }, panes = listOf(
                     RemotePane("%1", "@1", 40, 24, true, "", "sh"), RemotePane("%2", "@1", 40, 24, false, "", "sh", left = 41)))
-                terminal.layout(split, "@1", "%1", "one")
+                terminal.layout(split, "@1", "%1", paneTarget("one"))
                 for (pane in listOf("%1", "%2")) {
-                    terminal.outputPane(pane, "one"); terminal.resizeRemote(Size(40, 24))
+                    terminal.outputPane(pane, paneTarget("one")); terminal.resizeRemote(Size(40, 24))
                     terminal.reset(("\u001bc" + "L".repeat(39) + "RQ\u001b[?1000h\u001b[?1006h").encodeToByteArray())
                 }
                 // Snapshot replacement intentionally preserves a history reader's
                 // position. Inspect the new split grid at the live bottom.
-                js(terminal, "window.__terms.forEach(t=>t.scrollToBottom()); true")
-                awaitJs("window.__terms.every(t=>t.cols===40 && t.element.querySelector('.xterm-rows').children[0].textContent==='L'.repeat(39)+'R')")
+                // The position is restored after the write is parsed, so scroll on every check.
+                awaitJs("window.__terms.forEach(t=>t.scrollToBottom()); window.__terms.every(t=>t.cols===40 && t.element.querySelector('.xterm-rows').children[0].textContent==='L'.repeat(39)+'R')")
                 js(terminal, "window.__drag(2,1); true")
                 assertEquals("%2", withTimeout(5000) { selected.receive() })
                 assertTrue(input.tryReceive().isFailure)
-                terminal.layout(split, "@1", "%2", "two")
+                terminal.layout(split, "@1", "%2", paneTarget("two"))
                 js(terminal, "window.__drag(1,1); true")
-                assertEquals("two", withTimeout(5000) { input.receive() }.first)
+                assertEquals(paneTarget("two"), withTimeout(5000) { input.receive() }.first)
                 // A partial row cannot be replayed after input destination changes.
                 js(terminal, "window.__point('pointerdown',100,50,1); window.__point('pointermove',110,50,1); true")
-                terminal.layout(split, "@1", "%2", "three")
+                terminal.layout(split, "@1", "%2", paneTarget("three"))
                 js(terminal, "window.__point('pointermove',180,50,1); window.__point('pointerup',180,50,1); true")
                 delay(100); assertTrue(input.tryReceive().isFailure)
             } catch (failure: Throwable) {
