@@ -8,6 +8,7 @@ mod agent_ui;
 mod app_info;
 mod appearance;
 mod cadence;
+mod chrome;
 mod cloud_sync;
 mod composer;
 mod file_picker;
@@ -176,6 +177,7 @@ struct Desktop {
     size_focus: size_claim::FocusClaims,
     cloud_sync: cloud_sync::CloudSync,
     window_size: window_size::Tracker,
+    chrome: chrome::Chrome,
 }
 impl Desktop {
     fn new(runtime: Arc<tokio::runtime::Runtime>, path: PathBuf, cx: &mut Context<Self>) -> Self {
@@ -282,6 +284,7 @@ impl Desktop {
             size_focus: Default::default(),
             cloud_sync,
             window_size,
+            chrome: Default::default(),
         }
     }
     /// Opt-in tmux buffer copying runs only while a DGL window is active, so a remote
@@ -1021,11 +1024,13 @@ impl Render for Desktop {
             ),
         };
         let dark = self.appearance.as_ref().map_or(dark, |a| a.dark);
-        self.palette = theme::Palette::with_accent(
+        let palette = theme::Palette::with_accent(
             dark,
             &self.local.preferences.accent,
             self.appearance.as_ref().and_then(|a| a.accent),
         );
+        self.chrome.stale = self.palette != palette;
+        self.palette = palette;
         self.sync_title_updates(window.is_window_active());
         self.sync_launcher(window, cx);
         let bg = self.palette.bg;

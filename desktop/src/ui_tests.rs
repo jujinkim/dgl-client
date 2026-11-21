@@ -3222,3 +3222,107 @@ fn scroll_assist_choice_is_saved_and_reaches_pane_terminals(cx: &mut TestAppCont
         );
     }
 }
+
+#[gpui::test]
+fn chrome_parts_repaint_for_desktop_changes_not_for_terminal_output(cx: &mut TestAppContext) {
+    use super::chrome::Part;
+    let (view, ui) = setup(cx);
+    let terminal = add_terminal(&view, ui);
+    // Sticky modifiers only hold in an active window.
+    ui.update(|w, _| w.activate_window());
+    redraw(ui);
+    ui.run_until_parked();
+    let group = view.read_with(ui, |s, _| s.workspace.active);
+    let parts = [
+        Part::Sidebar,
+        Part::GroupHeader(group),
+        Part::PaneToolbar(group),
+        Part::InputTools,
+        Part::StatusBar,
+    ];
+    let renders = |ui: &mut VisualTestContext| {
+        view.read_with(ui, |s, _| parts.map(|part| s.chrome.renders(part)))
+    };
+    let first = renders(ui);
+    assert!(first.iter().all(|n| *n > 0), "{first:?}");
+    // The toolbar wraps: its cached view takes the height the first frame measured.
+    let toolbar = view.read_with(ui, |s, _| s.chrome.toolbar_heights[&group]);
+    let selector: &'static str = Box::leak(
+        format!("tmux-toolbar-{}", view.read_with(ui, |s, _| s.tabs[0].id)).into_boxed_str(),
+    );
+    assert_eq!(ui.debug_bounds(selector).unwrap().size.height, toolbar);
+    // Terminal output repaints the window but none of the chrome.
+    for _ in 0..3 {
+        terminal.update(ui, |_, cx| cx.notify());
+        ui.run_until_parked();
+    }
+    assert_eq!(renders(ui), first);
+    // The shortcut bar follows the terminal's sticky modifiers, which do not notify
+    // `Desktop`; the other parts stay.
+    terminal.update(ui, |t, cx| {
+        t.shortcut(
+            dgl_core::input::TerminalShortcut::Modifier(dgl_core::input::Modifier::Ctrl),
+            cx,
+        )
+    });
+    ui.run_until_parked();
+    assert!(terminal.read_with(ui, |t, cx| t.modifiers(cx).control));
+    let sticky = renders(ui);
+    assert_eq!(sticky[3], first[3] + 1);
+    assert_eq!(
+        (sticky[0], sticky[1], sticky[4]),
+        (first[0], first[1], first[4])
+    );
+    // A palette that changes while rendering (no notification) repaints every part.
+    view.update(ui, |s, _| {
+        s.local.preferences.theme = if s.palette == super::theme::Palette::new(true) {
+            "light".into()
+        } else {
+            "dark".into()
+        };
+    });
+    terminal.update(ui, |_, cx| cx.notify());
+    ui.run_until_parked();
+    let themed = renders(ui);
+    assert!(
+        themed
+            .iter()
+            .zip(sticky)
+            .all(|(now, before)| *now == before + 1)
+    );
+    // Any `Desktop` change repaints them.
+    view.update(ui, |_, cx| cx.notify());
+    ui.run_until_parked();
+    let notified = renders(ui);
+    assert!(
+        notified
+            .iter()
+            .zip(themed)
+            .all(|(now, before)| *now == before + 1)
+    );
+    // A group that is gone leaves no view or measurement behind.
+    view.update(ui, |s, cx| {
+        assert!(
+            s.workspace
+                .split(group, super::workspace::Axis::Horizontal, 1600., 1000.)
+        );
+        cx.notify();
+    });
+    ui.run_until_parked();
+    let second = view.read_with(ui, |s, _| s.workspace.active);
+    assert_ne!(second, group);
+    assert!(view.read_with(ui, |s, _| s.chrome.renders(Part::GroupHeader(second))) > 0);
+    view.update(ui, |s, cx| {
+        s.workspace.merge(second);
+        cx.notify();
+    });
+    ui.run_until_parked();
+    view.read_with(ui, |s, _| {
+        let gone = [group, second]
+            .into_iter()
+            .find(|id| !s.workspace.groups.contains_key(id))
+            .unwrap();
+        assert_eq!(s.chrome.renders(Part::GroupHeader(gone)), 0);
+        assert!(!s.chrome.toolbar_heights.contains_key(&gone));
+    });
+}

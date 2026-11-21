@@ -14,6 +14,9 @@ pub(crate) struct PointerState {
     pub tab_scroll: HashMap<GroupId, ScrollHandle>,
 }
 
+const SIDEBAR_WIDTH: f32 = 272.;
+const INPUT_TOOLS_HEIGHT: f32 = 40.;
+const STATUS_BAR_HEIGHT: f32 = 26.;
 const TAB_BAR_HEIGHT: f32 = 48.;
 const TAB_SCROLLBAR_HEIGHT: f32 = 2.;
 const TAB_SCROLLBAR_MIN_THUMB: f32 = 24.;
@@ -178,10 +181,16 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        if !cx.has_active_drag() {
+        if !cx.has_active_drag()
+            && (self.pointer.dragging_tab.is_some()
+                || self.pointer.dragging_host.is_some()
+                || self.pointer.host_drop.is_some())
+        {
             self.pointer.dragging_tab = None;
             self.pointer.dragging_host = None;
             self.pointer.host_drop = None;
+            // Cleared here without a notification: the chrome must not reuse its paint.
+            self.chrome.stale = true;
         }
         let preview = self.pointer.dragging_tab.and_then(|tab| {
             self.tab_drop_target(tab, window.mouse_position())
@@ -191,9 +200,235 @@ impl Desktop {
                 })
         });
         let p = self.palette;
+        self.chrome.retain_groups(&self.workspace.groups);
+        let sidebar = self.chrome(
+            crate::chrome::Part::Sidebar,
+            StyleRefinement::default()
+                .w(px(SIDEBAR_WIDTH))
+                .flex_shrink_0()
+                .h_full(),
+            false,
+            cx,
+        );
+        let layout = self.workspace.layout.clone();
+        let workspace = self.render_layout(layout, vec![], preview, cx);
+        // The shortcut bar draws the active terminal's sticky modifiers, which change
+        // without a `Desktop` notification.
+        let modifiers = self
+            .active_tab()
+            .map(|tab| tab.terminal.read(cx).modifiers(cx))
+            .unwrap_or_default();
+        let modifiers_changed =
+            std::mem::replace(&mut self.chrome.modifiers, modifiers) != modifiers;
+        div()
+            .id("desktop")
+            .size_full()
+            .relative()
+            .font_family(platform::UI_FONT)
+            .text_size(px(13.))
+            .bg(rgb(p.bg))
+            .text_color(rgb(p.fg))
+            .track_focus(&self.focus)
+            // Any keyboard or pointer press resumes the frame rate before its effects arrive.
+            .capture_any_mouse_down(|_, _, _| crate::cadence::wake())
+            .capture_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
+                crate::cadence::wake();
+                if e.keystroke.key == "escape"
+                    && (s.pointer.dragging_tab.is_some() || s.pointer.dragging_host.is_some())
+                    && cx.has_active_drag()
+                {
+                    s.pointer.dragging_tab = None;
+                    s.pointer.dragging_host = None;
+                    s.pointer.host_drop = None;
+                    cx.stop_active_drag(w);
+                    cx.stop_propagation();
+                    w.prevent_default();
+                    cx.notify();
+                    return;
+                }
+                if s.settings.dragging.is_some() && e.keystroke.key == "escape" {
+                    s.settings.dragging = None;
+                    cx.stop_active_drag(w);
+                    cx.stop_propagation();
+                    w.prevent_default();
+                    cx.notify();
+                    return;
+                }
+                if s.launcher.opened.is_some() && e.keystroke.key == "escape" {
+                    s.launcher_escape(w, cx);
+                    return;
+                }
+                if s.dialog.is_some() {
+                    match e.keystroke.key.as_str() {
+                        "tab" => {
+                            s.modal.cycle(e.keystroke.modifiers.shift, w);
+                            cx.stop_propagation();
+                            w.prevent_default();
+                        }
+                        "escape" => {
+                            s.dismiss_dialog(cx);
+                            cx.stop_propagation();
+                            w.prevent_default();
+                        }
+                        "enter" => {
+                            if matches!(s.dialog, Some(Dialog::Settings))
+                                && s.accent_input.focus_handle(cx).is_focused(w)
+                                && !s.accent_input.read(cx).is_composing()
+                            {
+                                s.apply_accent(cx);
+                                cx.stop_propagation();
+                                w.prevent_default();
+                            }
+                            if let Some(Dialog::Prompt { input, .. }) = &s.dialog
+                                && input.focus_handle(cx).is_focused(w)
+                                && !input.read(cx).is_composing()
+                            {
+                                s.accept_name(cx);
+                                cx.stop_propagation();
+                                w.prevent_default();
+                            }
+                        }
+                        _ => {}
+                    }
+                    cx.notify();
+                    return;
+                }
+                use platform::AppShortcut::*;
+                match platform::app_shortcut_for(&e.keystroke) {
+                    Some(NewSession) => {
+                        s.prompt(t("workspace.create_session"), PromptOp::Session, cx)
+                    }
+                    Some(NewHost) => s.edit(None, cx),
+                    Some(CloseTab) => {
+                        if let Some(id) = s.workspace.selected() {
+                            s.close_tab(id);
+                        }
+                    }
+                    Some(Settings) => s.dialog = Some(Dialog::Settings),
+                    Some(Refresh) => s.refresh(),
+                    Some(SelectTab(n)) => {
+                        let Some(id) = s.workspace.groups[&s.workspace.active]
+                            .tabs
+                            .get(n - 1)
+                            .copied()
+                        else {
+                            return;
+                        };
+                        s.workspace.select(s.workspace.active, id);
+                        s.group_focus(s.workspace.active, w, cx);
+                    }
+                    // Copy and paste belong to the focused view; quit is a key action.
+                    Some(Copy | Paste | Quit) | None => return,
+                }
+                cx.stop_propagation();
+                cx.notify();
+            }))
+            .on_drag_move::<DragTab>(cx.listener(|_, _, _, cx| {
+                cx.notify();
+                cx.stop_propagation();
+            }))
+            .on_drag_move::<DragHost>(cx.listener(|s, _, _, cx| {
+                s.pointer.host_drop = None;
+                cx.notify();
+            }))
+            .on_mouse_move(cx.listener(|s, e: &MouseMoveEvent, _, cx| {
+                if s.dialog.is_some() {
+                    return;
+                }
+                if let Some(path) = s.pointer.resizing.clone()
+                    && let Some(bounds) = s.pointer.split_bounds.get(&path).copied()
+                    && let Some(Layout::Split {
+                        axis,
+                        ratio,
+                        first,
+                        second,
+                    }) = s.workspace.layout.at_mut(&path)
+                {
+                    let (a, b, length, position) = match axis {
+                        Axis::Horizontal => (
+                            first.minimum().0,
+                            second.minimum().0,
+                            f32::from(bounds.size.width) - DIVIDER,
+                            f32::from(e.position.x - bounds.left()),
+                        ),
+                        Axis::Vertical => (
+                            first.minimum().1,
+                            second.minimum().1,
+                            f32::from(bounds.size.height) - DIVIDER,
+                            f32::from(e.position.y - bounds.top()),
+                        ),
+                    };
+                    if length >= a + b {
+                        *ratio = (position / length)
+                            .clamp((a / length).max(0.05), (1. - b / length).min(0.95));
+                        cx.notify();
+                    }
+                }
+            }))
+            .capture_any_mouse_up(cx.listener(|s, e: &MouseUpEvent, w, cx| {
+                if let Some(tab) = s.pointer.dragging_tab.take() {
+                    if cx.has_active_drag()
+                        && e.button == MouseButton::Left
+                        && let Some(target) = s.tab_drop_target(tab, e.position)
+                    {
+                        cx.stop_active_drag(w);
+                        s.drop_tab(tab, target, w, cx);
+                        cx.stop_propagation();
+                    }
+                    cx.notify();
+                }
+                if s.pointer.resizing.take().is_some() {
+                    s.save_layout();
+                    cx.notify();
+                }
+            }))
+            .child(
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div().flex_1().min_h_0().flex().child(sidebar).child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .child(div().flex_1().min_h_0().child(workspace))
+                                .child(
+                                    self.chrome(
+                                        crate::chrome::Part::InputTools,
+                                        StyleRefinement::default()
+                                            .w_full()
+                                            .h(px(INPUT_TOOLS_HEIGHT))
+                                            .flex_shrink_0(),
+                                        modifiers_changed,
+                                        cx,
+                                    ),
+                                ),
+                        ),
+                    )
+                    .child(
+                        self.chrome(
+                            crate::chrome::Part::StatusBar,
+                            StyleRefinement::default()
+                                .w_full()
+                                .h(px(STATUS_BAR_HEIGHT))
+                                .flex_shrink_0(),
+                            false,
+                            cx,
+                        ),
+                    ),
+            )
+            .children(self.render_launcher(cx))
+    }
+    /// The host and session explorer. A cached view of its own (`chrome::Part::Sidebar`):
+    /// it reads `Desktop` only, never the window or a terminal.
+    pub(crate) fn render_sidebar(&mut self, cx: &mut Context<Self>) -> Div {
+        let p = self.palette;
         let mut sidebar = div()
             .debug_selector(|| "session-sidebar".into())
-            .w(px(272.))
+            .w(px(SIDEBAR_WIDTH))
             .flex_shrink_0()
             .h_full()
             .flex()
@@ -503,37 +738,12 @@ impl Desktop {
                 .child(hosts_header)
                 .child(explorer),
         );
-        let unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
-        let layout = self.workspace.layout.clone();
-        let workspace = self.render_layout(layout, vec![], preview, cx);
-        let status = self
-            .active_tab()
-            .map(|tab| {
-                let state = tab.connection.state();
-                [
-                    hierarchy::display_text(&tab.host.alias),
-                    hierarchy::phase_label(&state.phase).into(),
-                    hierarchy::target_label(
-                        &state.remote,
-                        state.session.as_deref(),
-                        state.pane.as_deref(),
-                    ),
-                ]
-                .into_iter()
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<_>>()
-                .join(" · ")
-                    + &state.error.map(|e| format!(" · {e}")).unwrap_or_default()
-            })
-            .unwrap_or_else(|| t("workspace.empty_group").into());
-        let status_host = self
-            .active_tab()
-            .map(|tab| hierarchy::display_text(&tab.host.alias));
-        let status_detail = status_host
-            .as_ref()
-            .and_then(|host| status.strip_prefix(&format!("{host} · ")))
-            .unwrap_or(&status)
-            .to_string();
+        sidebar
+    }
+    /// The composer button, terminal shortcut keys and CLI launcher under the workspace.
+    /// A cached view of its own (`chrome::Part::InputTools`).
+    pub(crate) fn render_input_tools(&mut self, cx: &mut Context<Self>) -> Div {
+        let p = self.palette;
         let mut shortcuts = div()
             .id("shortcut-bar")
             .debug_selector(|| "shortcut-bar".into())
@@ -572,326 +782,166 @@ impl Desktop {
             }
         }
         div()
-            .id("desktop")
-            .size_full()
-            .relative()
-            .font_family(platform::UI_FONT)
-            .text_size(px(13.))
-            .bg(rgb(p.bg))
-            .text_color(rgb(p.fg))
-            .track_focus(&self.focus)
-            // Any keyboard or pointer press resumes the frame rate before its effects arrive.
-            .capture_any_mouse_down(|_, _, _| crate::cadence::wake())
-            .capture_key_down(cx.listener(|s, e: &KeyDownEvent, w, cx| {
-                crate::cadence::wake();
-                if e.keystroke.key == "escape"
-                    && (s.pointer.dragging_tab.is_some() || s.pointer.dragging_host.is_some())
-                    && cx.has_active_drag()
-                {
-                    s.pointer.dragging_tab = None;
-                    s.pointer.dragging_host = None;
-                    s.pointer.host_drop = None;
-                    cx.stop_active_drag(w);
-                    cx.stop_propagation();
-                    w.prevent_default();
-                    cx.notify();
-                    return;
-                }
-                if s.settings.dragging.is_some() && e.keystroke.key == "escape" {
-                    s.settings.dragging = None;
-                    cx.stop_active_drag(w);
-                    cx.stop_propagation();
-                    w.prevent_default();
-                    cx.notify();
-                    return;
-                }
-                if s.launcher.opened.is_some() && e.keystroke.key == "escape" {
-                    s.launcher_escape(w, cx);
-                    return;
-                }
-                if s.dialog.is_some() {
-                    match e.keystroke.key.as_str() {
-                        "tab" => {
-                            s.modal.cycle(e.keystroke.modifiers.shift, w);
-                            cx.stop_propagation();
-                            w.prevent_default();
-                        }
-                        "escape" => {
-                            s.dismiss_dialog(cx);
-                            cx.stop_propagation();
-                            w.prevent_default();
-                        }
-                        "enter" => {
-                            if matches!(s.dialog, Some(Dialog::Settings))
-                                && s.accent_input.focus_handle(cx).is_focused(w)
-                                && !s.accent_input.read(cx).is_composing()
-                            {
-                                s.apply_accent(cx);
-                                cx.stop_propagation();
-                                w.prevent_default();
-                            }
-                            if let Some(Dialog::Prompt { input, .. }) = &s.dialog
-                                && input.focus_handle(cx).is_focused(w)
-                                && !input.read(cx).is_composing()
-                            {
-                                s.accept_name(cx);
-                                cx.stop_propagation();
-                                w.prevent_default();
-                            }
-                        }
-                        _ => {}
-                    }
-                    cx.notify();
-                    return;
-                }
-                use platform::AppShortcut::*;
-                match platform::app_shortcut_for(&e.keystroke) {
-                    Some(NewSession) => {
-                        s.prompt(t("workspace.create_session"), PromptOp::Session, cx)
-                    }
-                    Some(NewHost) => s.edit(None, cx),
-                    Some(CloseTab) => {
-                        if let Some(id) = s.workspace.selected() {
-                            s.close_tab(id);
-                        }
-                    }
-                    Some(Settings) => s.dialog = Some(Dialog::Settings),
-                    Some(Refresh) => s.refresh(),
-                    Some(SelectTab(n)) => {
-                        let Some(id) = s.workspace.groups[&s.workspace.active]
-                            .tabs
-                            .get(n - 1)
-                            .copied()
-                        else {
-                            return;
-                        };
-                        s.workspace.select(s.workspace.active, id);
-                        s.group_focus(s.workspace.active, w, cx);
-                    }
-                    // Copy and paste belong to the focused view; quit is a key action.
-                    Some(Copy | Paste | Quit) | None => return,
-                }
-                cx.stop_propagation();
-                cx.notify();
-            }))
-            .on_drag_move::<DragTab>(cx.listener(|_, _, _, cx| {
-                cx.notify();
-                cx.stop_propagation();
-            }))
-            .on_drag_move::<DragHost>(cx.listener(|s, _, _, cx| {
-                s.pointer.host_drop = None;
-                cx.notify();
-            }))
-            .on_mouse_move(cx.listener(|s, e: &MouseMoveEvent, _, cx| {
-                if s.dialog.is_some() {
-                    return;
-                }
-                if let Some(path) = s.pointer.resizing.clone()
-                    && let Some(bounds) = s.pointer.split_bounds.get(&path).copied()
-                    && let Some(Layout::Split {
-                        axis,
-                        ratio,
-                        first,
-                        second,
-                    }) = s.workspace.layout.at_mut(&path)
-                {
-                    let (a, b, length, position) = match axis {
-                        Axis::Horizontal => (
-                            first.minimum().0,
-                            second.minimum().0,
-                            f32::from(bounds.size.width) - DIVIDER,
-                            f32::from(e.position.x - bounds.left()),
-                        ),
-                        Axis::Vertical => (
-                            first.minimum().1,
-                            second.minimum().1,
-                            f32::from(bounds.size.height) - DIVIDER,
-                            f32::from(e.position.y - bounds.top()),
-                        ),
-                    };
-                    if length >= a + b {
-                        *ratio = (position / length)
-                            .clamp((a / length).max(0.05), (1. - b / length).min(0.95));
-                        cx.notify();
-                    }
-                }
-            }))
-            .capture_any_mouse_up(cx.listener(|s, e: &MouseUpEvent, w, cx| {
-                if let Some(tab) = s.pointer.dragging_tab.take() {
-                    if cx.has_active_drag()
-                        && e.button == MouseButton::Left
-                        && let Some(target) = s.tab_drop_target(tab, e.position)
-                    {
-                        cx.stop_active_drag(w);
-                        s.drop_tab(tab, target, w, cx);
-                        cx.stop_propagation();
-                    }
-                    cx.notify();
-                }
-                if s.pointer.resizing.take().is_some() {
-                    s.save_layout();
-                    cx.notify();
-                }
-            }))
+            .debug_selector(|| "terminal-input-tools".into())
+            .flex()
+            .items_center()
+            .w_full()
+            .h(px(INPUT_TOOLS_HEIGHT))
+            .px_1()
+            .gap_1()
+            .flex_shrink_0()
+            .bg(rgb(p.panel))
+            .child(
+                self.input_button("open-composer", t("input.compose_text"), cx, |s, _, cx| {
+                    s.open_composer(cx)
+                })
+                .h(px(32.))
+                .flex()
+                .items_center()
+                .rounded_md()
+                .when(self.active_tab().is_none(), |d| {
+                    d.opacity(0.35).cursor_default()
+                }),
+            )
+            .child(shortcuts)
+            .child(self.launcher_button(cx))
+    }
+    /// The connection status line and its actions. A cached view of its own
+    /// (`chrome::Part::StatusBar`).
+    pub(crate) fn render_status_bar(&mut self, cx: &mut Context<Self>) -> Div {
+        let p = self.palette;
+        let unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
+        let status = self
+            .active_tab()
+            .map(|tab| {
+                let state = tab.connection.state();
+                [
+                    hierarchy::display_text(&tab.host.alias),
+                    hierarchy::phase_label(&state.phase).into(),
+                    hierarchy::target_label(
+                        &state.remote,
+                        state.session.as_deref(),
+                        state.pane.as_deref(),
+                    ),
+                ]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ")
+                    + &state.error.map(|e| format!(" · {e}")).unwrap_or_default()
+            })
+            .unwrap_or_else(|| t("workspace.empty_group").into());
+        let status_host = self
+            .active_tab()
+            .map(|tab| hierarchy::display_text(&tab.host.alias));
+        let status_detail = status_host
+            .as_ref()
+            .and_then(|host| status.strip_prefix(&format!("{host} · ")))
+            .unwrap_or(&status)
+            .to_string();
+        div()
+            .debug_selector(|| "status-bar".into())
+            .w_full()
+            .h(px(STATUS_BAR_HEIGHT))
+            .flex_shrink_0()
+            .px_3()
+            .flex()
+            .items_center()
+            .bg(rgb(p.panel))
+            .border_t_1()
+            .border_color(rgb(p.line))
+            .text_xs()
             .child(
                 div()
-                    .size_full()
+                    .id("connection-status")
+                    .debug_selector(|| "connection-status".into())
+                    .flex_1()
+                    .min_w_0()
                     .flex()
-                    .flex_col()
+                    .items_center()
+                    .gap_2()
+                    .native_tooltip(status.clone())
+                    .when_some(status_host, |d, host| {
+                        d.child(self.info_badge(host).max_w(px(120.)))
+                    })
+                    .child(div().flex_1().min_w_0().truncate().child(status_detail)),
+            )
+            .child(
+                div()
+                    .debug_selector(|| "status-actions".into())
+                    .flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    // Preserve the prior focus until the modal records it.
+                    .on_mouse_down(MouseButton::Left, |_, w, _| w.prevent_default())
                     .child(
-                        div().flex_1().min_h_0().flex().child(sidebar).child(
+                        self.button_base("agent-notifications", cx, |s, _, _| {
+                            s.dialog = if matches!(s.dialog, Some(Dialog::Notifications)) {
+                                None
+                            } else {
+                                Some(Dialog::Notifications)
+                            };
+                        })
+                        .child(
+                            canvas(
+                                {
+                                    let anchor = self.agents.anchor.clone();
+                                    move |bounds, _, _| {
+                                        // The canvas is inset by the button's 1px border.
+                                        *anchor.borrow_mut() = bounds.dilate(px(1.))
+                                    }
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
+                        .w(px(56.))
+                        .h(px(24.))
+                        .p_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .gap_1()
+                        .native_tooltip(t("common.notifications"))
+                        .child(
                             div()
-                                .flex_1()
-                                .min_w_0()
-                                .flex()
-                                .flex_col()
-                                .child(div().flex_1().min_h_0().child(workspace))
-                                .child(
-                                    div()
-                                        .debug_selector(|| "terminal-input-tools".into())
-                                        .flex()
-                                        .items_center()
-                                        .h(px(40.))
-                                        .px_1()
-                                        .gap_1()
-                                        .flex_shrink_0()
-                                        .bg(rgb(p.panel))
-                                        .child(
-                                            self.input_button(
-                                                "open-composer",
-                                                t("input.compose_text"),
-                                                cx,
-                                                |s, _, cx| s.open_composer(cx),
-                                            )
-                                            .h(px(32.))
-                                            .flex()
-                                            .items_center()
-                                            .rounded_md()
-                                            .when(self.active_tab().is_none(), |d| {
-                                                d.opacity(0.35).cursor_default()
-                                            }),
-                                        )
-                                        .child(shortcuts)
-                                        .child(self.launcher_button(cx)),
-                                ),
-                        ),
+                                .debug_selector(|| "notification-icon".into())
+                                .child(UiIcon::Bell.render(p.fg)),
+                        )
+                        .when(unread > 0, |d| {
+                            d.child(
+                                div()
+                                    .debug_selector(|| "unread-notifications".into())
+                                    .w(px(24.))
+                                    .flex_shrink_0()
+                                    .rounded_full()
+                                    .bg(rgb(p.accent_fill))
+                                    .text_color(rgb(p.on_accent))
+                                    .text_size(px(10.))
+                                    .line_height(px(14.))
+                                    .text_center()
+                                    .child(if unread > 99 {
+                                        "99+".into()
+                                    } else {
+                                        unread.to_string()
+                                    }),
+                            )
+                        }),
                     )
                     .child(
-                        div()
-                            .debug_selector(|| "status-bar".into())
-                            .h(px(26.))
-                            .flex_shrink_0()
-                            .px_3()
-                            .flex()
-                            .items_center()
-                            .bg(rgb(p.panel))
-                            .border_t_1()
-                            .border_color(rgb(p.line))
-                            .text_xs()
-                            .child(
-                                div()
-                                    .id("connection-status")
-                                    .debug_selector(|| "connection-status".into())
-                                    .flex_1()
-                                    .min_w_0()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .native_tooltip(status.clone())
-                                    .when_some(status_host, |d, host| {
-                                        d.child(self.info_badge(host).max_w(px(120.)))
-                                    })
-                                    .child(
-                                        div().flex_1().min_w_0().truncate().child(status_detail),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .debug_selector(|| "status-actions".into())
-                                    .flex()
-                                    .flex_shrink_0()
-                                    .items_center()
-                                    // Preserve the prior focus until the modal records it.
-                                    .on_mouse_down(MouseButton::Left, |_, w, _| w.prevent_default())
-                                    .child(
-                                        self.button_base("agent-notifications", cx, |s, _, _| {
-                                            s.dialog = if matches!(
-                                                s.dialog,
-                                                Some(Dialog::Notifications)
-                                            ) {
-                                                None
-                                            } else {
-                                                Some(Dialog::Notifications)
-                                            };
-                                        })
-                                        .child(
-                                            canvas(
-                                                {
-                                                    let anchor = self.agents.anchor.clone();
-                                                    move |bounds, _, _| {
-                                                        // The canvas is inset by the button's 1px border.
-                                                        *anchor.borrow_mut() = bounds.dilate(px(1.))
-                                                    }
-                                                },
-                                                |_, _, _, _| {},
-                                            )
-                                            .absolute()
-                                            .inset_0(),
-                                        )
-                                        .w(px(56.))
-                                        .h(px(24.))
-                                        .p_0()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .gap_1()
-                                        .native_tooltip(t("common.notifications"))
-                                        .child(
-                                            div()
-                                                .debug_selector(|| "notification-icon".into())
-                                                .child(UiIcon::Bell.render(p.fg)),
-                                        )
-                                        .when(
-                                            unread > 0,
-                                            |d| {
-                                                d.child(
-                                                    div()
-                                                        .debug_selector(|| {
-                                                            "unread-notifications".into()
-                                                        })
-                                                        .w(px(24.))
-                                                        .flex_shrink_0()
-                                                        .rounded_full()
-                                                        .bg(rgb(p.accent_fill))
-                                                        .text_color(rgb(p.on_accent))
-                                                        .text_size(px(10.))
-                                                        .line_height(px(14.))
-                                                        .text_center()
-                                                        .child(if unread > 99 {
-                                                            "99+".into()
-                                                        } else {
-                                                            unread.to_string()
-                                                        }),
-                                                )
-                                            },
-                                        ),
-                                    )
-                                    .child(
-                                        self.button("settings", UiIcon::Settings, cx, |s, _, _| {
-                                            s.dialog = Some(Dialog::Settings);
-                                        })
-                                        .w(px(28.))
-                                        .h(px(24.))
-                                        .p_0()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .native_tooltip(t("common.settings")),
-                                    ),
-                            ),
+                        self.button("settings", UiIcon::Settings, cx, |s, _, _| {
+                            s.dialog = Some(Dialog::Settings);
+                        })
+                        .w(px(28.))
+                        .h(px(24.))
+                        .p_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .native_tooltip(t("common.settings")),
                     ),
             )
-            .children(self.render_launcher(cx))
     }
     fn render_layout(
         &mut self,
@@ -990,17 +1040,15 @@ impl Desktop {
             }
         }
     }
-    fn render_group(
-        &mut self,
-        id: GroupId,
-        preview: Option<TabDropTarget>,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
+    /// A group's tab strip and split tools. A cached view of its own
+    /// (`chrome::Part::GroupHeader`): it reads `Desktop` only.
+    pub(crate) fn render_group_header(&mut self, id: GroupId, cx: &mut Context<Self>) -> Div {
         let p = self.palette;
-        let group = &self.workspace.groups[&id];
+        let Some(group) = self.workspace.groups.get(&id) else {
+            return div();
+        };
         let selected = group.selected;
         let ids = group.tabs.clone();
-        let entity = cx.entity();
         let groups = &self.workspace.groups;
         self.pointer
             .tab_scroll
@@ -1236,6 +1284,28 @@ impl Desktop {
                 .when(!enabled, |d| d.opacity(0.35).cursor_default()),
             );
         }
+        div()
+            .debug_selector(move || format!("group-header-{id}"))
+            .flex()
+            .items_center()
+            .w_full()
+            .h(px(TAB_BAR_HEIGHT))
+            .flex_shrink_0()
+            .bg(rgb(p.panel))
+            .child(header)
+            .child(tools)
+    }
+    fn render_group(
+        &mut self,
+        id: GroupId,
+        preview: Option<TabDropTarget>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let p = self.palette;
+        let group = &self.workspace.groups[&id];
+        let selected = group.selected;
+        let ids = group.tabs.clone();
+        let entity = cx.entity();
         let mut body = div()
             .id(SharedString::from(format!("group-{id}")))
             .size_full()
@@ -1272,15 +1342,15 @@ impl Desktop {
                 .size_full(),
             )
             .child(
-                div()
-                    .debug_selector(move || format!("group-header-{id}"))
-                    .flex()
-                    .items_center()
-                    .h(px(TAB_BAR_HEIGHT))
-                    .flex_shrink_0()
-                    .bg(rgb(p.panel))
-                    .child(header)
-                    .child(tools),
+                self.chrome(
+                    crate::chrome::Part::GroupHeader(id),
+                    StyleRefinement::default()
+                        .w_full()
+                        .h(px(TAB_BAR_HEIGHT))
+                        .flex_shrink_0(),
+                    false,
+                    cx,
+                ),
             );
         for tab_id in ids {
             if self.menu.as_deref() == Some(&format!("tab-menu-{tab_id}")) {
@@ -1327,10 +1397,25 @@ impl Desktop {
                 body = body.child(menu);
             }
         }
+        let pane_toolbar = self.chrome.toolbar_heights.get(&id).copied().map(|height| {
+            self.chrome(
+                crate::chrome::Part::PaneToolbar(id),
+                StyleRefinement::default()
+                    .w_full()
+                    .h(height)
+                    .flex_shrink_0(),
+                false,
+                cx,
+            )
+        });
         if let Some(tab) = selected.and_then(|tid| self.tabs.iter().find(|t| t.id == tid)) {
             let terminal = tab.terminal.clone();
             let state = tab.connection.state();
-            body = body.child(self.render_pane_toolbar(tab, cx));
+            body = body.child(match pane_toolbar {
+                Some(cached) => cached,
+                // Not laid out yet: this frame measures it.
+                None => self.render_pane_toolbar(tab, id, cx).into_any_element(),
+            });
             if tab.host.id == local_host::ID
                 && matches!(
                     state.error,
@@ -1558,6 +1643,14 @@ impl Desktop {
         if let Some(target) = preview {
             let mut left = 0.;
             let mut top = 0.;
+            let bounds = self
+                .pointer
+                .group_bounds
+                .get(&id)
+                .copied()
+                .unwrap_or_default();
+            let width = f32::from(bounds.size.width);
+            let height = f32::from(bounds.size.height);
             let mut preview_width = width - 2.;
             let mut preview_height = height - 2.;
             let label = match target.edge {

@@ -52,7 +52,30 @@ impl Desktop {
         }
     }
 
-    pub(super) fn render_pane_toolbar(&self, tab: &Tab, cx: &mut Context<Self>) -> Div {
+    /// The pane toolbar of `group`'s selected tab, as `chrome::Part::PaneToolbar` renders it.
+    pub(super) fn render_group_pane_toolbar(
+        &self,
+        group: crate::workspace::GroupId,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.workspace
+            .groups
+            .get(&group)
+            .and_then(|g| g.selected)
+            .and_then(|id| self.tabs.iter().find(|t| t.id == id))
+            .map_or_else(
+                || Empty.into_any_element(),
+                |tab| self.render_pane_toolbar(tab, group, cx).into_any_element(),
+            )
+    }
+    /// The toolbar wraps with its group's width. It reports the height it laid out with,
+    /// which the cached view of the next frames is given (`Chrome::toolbar_heights`).
+    pub(super) fn render_pane_toolbar(
+        &self,
+        tab: &Tab,
+        group: crate::workspace::GroupId,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let p = self.palette;
         let tab_id = tab.id;
         let state = tab.connection.state();
@@ -132,8 +155,10 @@ impl Desktop {
                 &[(UiIcon::Close, t("pane.close_current"), PaneAction::Close)][..],
             ),
         ];
+        let entity = cx.entity();
         let mut toolbar = div()
             .debug_selector(move || format!("tmux-toolbar-{tab_id}"))
+            .w_full()
             .flex()
             .flex_wrap()
             .flex_shrink_0()
@@ -167,6 +192,29 @@ impl Desktop {
             }
             toolbar = toolbar.child(category);
         }
-        toolbar
+        // Measured around the toolbar so that its border counts.
+        div()
+            .relative()
+            .w_full()
+            .flex_shrink_0()
+            .child(
+                canvas(
+                    move |bounds, _, cx| {
+                        let height = bounds.size.height;
+                        let changed = entity.update(cx, |s, _| {
+                            s.chrome.toolbar_heights.insert(group, height) != Some(height)
+                        });
+                        if changed {
+                            // A notification while drawing does not schedule a frame.
+                            let entity = entity.clone();
+                            cx.defer(move |cx| entity.update(cx, |_, cx| cx.notify()));
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+            .child(toolbar)
     }
 }
