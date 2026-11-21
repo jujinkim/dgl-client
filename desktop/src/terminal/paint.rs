@@ -1,8 +1,110 @@
+use super::fonts::TerminalFace;
 use alacritty_terminal::{
     Term,
     grid::Indexed,
     term::cell::{Cell, Flags},
 };
+use gpui::{FontWeight, Hsla, LineLayout, Pixels, Point, SharedString, TextRun, Window, point, px};
+use std::{collections::HashMap, sync::Arc};
+
+/// Most distinct non-ASCII cells kept shaped before the cache starts over.
+const MAX_SHAPED: usize = 4096;
+
+/// Shaped glyphs of single cells, kept across frames. A screen repeats a small set of
+/// characters, so each one is shaped once per face and size instead of once per cell
+/// on every frame.
+#[derive(Default)]
+pub(super) struct GlyphCache {
+    family: SharedString,
+    font_size: f32,
+    /// Printable ASCII, regular then bold: the common case needs no hashing.
+    ascii: Vec<Option<Arc<LineLayout>>>,
+    other: HashMap<(char, bool), Arc<LineLayout>>,
+}
+impl GlyphCache {
+    pub fn layout(
+        &mut self,
+        window: &Window,
+        face: &TerminalFace,
+        font_size: f32,
+        c: char,
+        zerowidth: Option<&[char]>,
+        bold: bool,
+    ) -> Arc<LineLayout> {
+        if self.font_size != font_size || self.family != face.family || self.ascii.is_empty() {
+            self.family = face.family.clone();
+            self.font_size = font_size;
+            self.ascii = vec![None; 2 * ASCII];
+            self.other.clear();
+        }
+        let shape = |text: &str| {
+            let mut font = face.font();
+            if bold {
+                font.weight = FontWeight::BOLD;
+            }
+            window.text_system().layout_line(
+                text,
+                px(font_size),
+                &[TextRun {
+                    len: text.len(),
+                    font,
+                    color: Hsla::default(),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                }],
+                None,
+            )
+        };
+        let mut utf8 = [0; 4];
+        match (c, zerowidth) {
+            (' '..='~', None) => {
+                let slot = &mut self.ascii[c as usize - ' ' as usize + bold as usize * ASCII];
+                slot.get_or_insert_with(|| shape(c.encode_utf8(&mut utf8)))
+                    .clone()
+            }
+            (_, None) => {
+                if self.other.len() >= MAX_SHAPED && !self.other.contains_key(&(c, bold)) {
+                    self.other.clear();
+                }
+                self.other
+                    .entry((c, bold))
+                    .or_insert_with(|| shape(c.encode_utf8(&mut utf8)))
+                    .clone()
+            }
+            // Combining sequences are rare and unbounded: the frame's own cache holds them.
+            (_, Some(marks)) => {
+                let mut text = c.to_string();
+                text.extend(marks);
+                shape(&text)
+            }
+        }
+    }
+}
+/// Count of printable ASCII characters, space to tilde.
+const ASCII: usize = 95;
+
+/// Paints one cell's glyphs with the cell's top-left corner at `origin`, vertically
+/// centred in `line_height` like a shaped line.
+pub(super) fn paint_glyphs(
+    layout: &LineLayout,
+    origin: Point<Pixels>,
+    line_height: Pixels,
+    color: Hsla,
+    window: &mut Window,
+) {
+    let baseline = origin.y + (line_height - layout.ascent - layout.descent) / 2. + layout.ascent;
+    for run in &layout.runs {
+        for glyph in &run.glyphs {
+            let at = point(origin.x + glyph.position.x, baseline);
+            let _ = if glyph.is_emoji {
+                window.paint_emoji(at, run.font_id, glyph.id, layout.font_size)
+            } else {
+                window.paint_glyph(at, run.font_id, glyph.id, layout.font_size, color)
+            };
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum CellLayer {
@@ -112,6 +214,47 @@ mod tests {
         term::{Config, test::TermSize},
         vte::ansi::Processor,
     };
+
+    #[gpui::test]
+    fn glyph_cache_shapes_each_cell_once_per_face_and_size(cx: &mut gpui::TestAppContext) {
+        let ui = cx.add_empty_window();
+        ui.update(|window, _| {
+            let face = TerminalFace::default();
+            let mut cache = GlyphCache::default();
+            for (c, bold) in [('a', false), ('a', true), ('한', false), ('─', true)] {
+                let first = cache.layout(window, &face, 14., c, None, bold);
+                let again = cache.layout(window, &face, 14., c, None, bold);
+                assert!(Arc::ptr_eq(&first, &again), "{c} bold={bold}");
+                assert_eq!(first.font_size, px(14.));
+            }
+            // Weight is part of the key: regular and bold fill separate slots.
+            assert_eq!(cache.ascii.iter().flatten().count(), 2);
+            assert_eq!(cache.other.len(), 2);
+            // Combining sequences are shaped as one text and never stored.
+            let stored = cache.other.len();
+            let combined = cache.layout(window, &face, 14., 'e', Some(&['\u{301}']), false);
+            assert_eq!(combined.len, "e\u{301}".len());
+            assert_eq!(cache.other.len(), stored);
+            // Another size or family starts over.
+            assert_eq!(
+                cache.layout(window, &face, 18., 'a', None, false).font_size,
+                px(18.)
+            );
+            assert!(cache.other.is_empty());
+            let other = TerminalFace {
+                family: "Other".into(),
+                ..face.clone()
+            };
+            cache.layout(window, &face, 18., '한', None, false);
+            cache.layout(window, &other, 18., 'a', None, false);
+            assert!(cache.other.is_empty());
+            // The non-ASCII store is bounded.
+            for c in ('가'..).take(MAX_SHAPED + 1) {
+                cache.layout(window, &other, 18., c, None, false);
+            }
+            assert_eq!(cache.other.len(), 1);
+        });
+    }
 
     #[test]
     fn wide_glyph_coverage_survives_neighboring_cell_backgrounds() {

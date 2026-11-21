@@ -104,6 +104,7 @@ pub struct Terminal {
     font_size: f32,
     /// Shared with the window so pane painting and the size requested from tmux agree.
     face: fonts::TerminalFace,
+    glyphs: paint::GlyphCache,
     font_owner: Option<WeakEntity<WindowTerminal>>,
     bounds: Bounds<Pixels>,
     marked: String,
@@ -184,6 +185,7 @@ impl Terminal {
             focus: cx.focus_handle(),
             font_size: font_size.clamp(10, 28) as f32,
             face: fonts::TerminalFace::default(),
+            glyphs: paint::GlyphCache::default(),
             font_owner: None,
             bounds: Bounds::default(),
             marked: String::new(),
@@ -447,6 +449,17 @@ impl Terminal {
     }
     pub fn set_face(&mut self, face: fonts::TerminalFace) {
         self.face = face;
+    }
+    /// Sets the size and face to paint with; true when either changed. Neither change
+    /// notifies, so the caller must not reuse this terminal's previous paint.
+    fn restyle(&mut self, font_size: i32, face: &fonts::TerminalFace) -> bool {
+        let before = self.font_size;
+        self.set_font(font_size);
+        let changed = before != self.font_size || self.face != *face;
+        if changed {
+            self.set_face(face.clone());
+        }
+        changed
     }
     fn cell_size(&self) -> (f32, f32) {
         self.face.cell_size(self.font_size)
@@ -865,50 +878,34 @@ fn font_wheel_delta(e: &ScrollWheelEvent) -> Option<i32> {
         .then(|| if vertical > 0. { 1 } else { -1 })
 }
 pub const DEFAULT_BACKGROUND: u32 = 0x11151b;
-/// Printable ASCII, sliced so the common one-character glyph needs no allocation.
-const ASCII: &str = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
-fn glyph_text(cell: &alacritty_terminal::term::cell::Cell) -> SharedString {
-    match (cell.c, cell.zerowidth()) {
-        (' '..='~', None) => {
-            let i = cell.c as usize - ' ' as usize;
-            SharedString::new_static(&ASCII[i..=i])
-        }
-        (c, zerowidth) => {
-            let mut text = c.to_string();
-            text.extend(zerowidth.into_iter().flatten());
-            text.into()
-        }
-    }
-}
-fn color(c: Color) -> Hsla {
-    let palette = [
+/// The 0xRRGGBB value of a cell colour.
+fn color(c: Color) -> u32 {
+    const PALETTE: [u32; 16] = [
         0x11151b, 0xe06c75, 0x98c379, 0xe5c07b, 0x61afef, 0xc678dd, 0x8acdd0, 0xd8dee9, 0x596273,
         0xff7a85, 0xb2e28d, 0xffd68a, 0x82c7ff, 0xe29bff, 0xa8e5e7, 0xffffff,
     ];
     match c {
-        Color::Spec(c) => rgb((c.r as u32) << 16 | (c.g as u32) << 8 | c.b as u32).into(),
+        Color::Spec(c) => (c.r as u32) << 16 | (c.g as u32) << 8 | c.b as u32,
         Color::Named(n) => {
             let i = n as usize;
-            rgb(if i < 16 {
-                palette[i]
+            if i < 16 {
+                PALETTE[i]
             } else if i == 257 {
-                0x11151b
+                DEFAULT_BACKGROUND
             } else {
                 0xd8dee9
-            })
-            .into()
+            }
         }
         Color::Indexed(i) => {
             let i = i as usize;
             if i < 16 {
-                rgb(palette[i]).into()
+                PALETTE[i]
             } else if i >= 232 {
-                let v = 8 + (i - 232) * 10;
-                rgb((v * 0x010101) as u32).into()
+                ((8 + (i - 232) * 10) * 0x010101) as u32
             } else {
                 let i = i - 16;
                 let n = |x: usize| if x == 0 { 0 } else { 55 + x * 40 };
-                rgb(((n(i / 36) << 16) | (n(i / 6 % 6) << 8) | n(i % 6)) as u32).into()
+                ((n(i / 36) << 16) | (n(i / 6 % 6) << 8) | n(i % 6)) as u32
             }
         }
     }
@@ -985,10 +982,13 @@ impl Render for Terminal {
                             let content = this.term.renderable_content();
                             let cursor = content.cursor.point;
                             let offset = content.display_offset as i32;
+                            let font_size = this.font_size;
+                            let face = &this.face;
+                            let glyphs = &mut this.glyphs;
                             // Same-coloured neighbours share one quad; the default colour
                             // is the container's own background.
                             let mut runs = Runs::new();
-                            let paint_run = |run: Option<Run<Hsla>>, window: &mut Window| {
+                            let paint_run = |run: Option<Run<u32>>, window: &mut Window| {
                                 if let Some(r) = run {
                                     window.paint_quad(fill(
                                         Bounds::new(
@@ -998,65 +998,68 @@ impl Render for Terminal {
                                             ),
                                             size(px((r.end - r.start) as f32 * w), px(h)),
                                         ),
-                                        r.key,
+                                        rgb(r.key),
                                     ));
                                 }
                             };
+                            // Neighbouring glyphs mostly share a colour: convert it once.
+                            let mut ink = (0xd8dee9, Hsla::from(rgb(0xd8dee9)));
                             paint_grid(&this.term, |layer, indexed| {
                                 let cell = indexed.cell;
                                 let row = indexed.point.line.0 + offset;
                                 if row < 0 {
                                     return;
                                 }
-                                let origin = point(
-                                    bounds.left() + px(indexed.point.column.0 as f32 * w),
-                                    bounds.top() + px(row as f32 * h),
-                                );
-                                let mut fg = color(cell.fg);
-                                let mut bg = color(cell.bg);
-                                if cell.flags.contains(Flags::INVERSE) {
-                                    std::mem::swap(&mut fg, &mut bg);
-                                }
-                                if content.selection.is_some_and(|s| s.contains(indexed.point)) {
-                                    bg = rgb(0x36575e).into();
-                                }
-                                if indexed.point == cursor
-                                    && content.cursor.shape != CursorShape::Hidden
-                                {
-                                    bg = rgb(0x8acdd0).into();
-                                    fg = rgb(0x11151b).into();
-                                }
-                                if layer == CellLayer::Background {
-                                    let default = bg == Hsla::from(rgb(DEFAULT_BACKGROUND));
+                                let background = layer == CellLayer::Background;
+                                let inverse = cell.flags.contains(Flags::INVERSE);
+                                let cursor_cell = indexed.point == cursor
+                                    && content.cursor.shape != CursorShape::Hidden;
+                                if background {
+                                    let bg = if cursor_cell {
+                                        0x8acdd0
+                                    } else if content
+                                        .selection
+                                        .is_some_and(|s| s.contains(indexed.point))
+                                    {
+                                        0x36575e
+                                    } else {
+                                        color(if inverse { cell.fg } else { cell.bg })
+                                    };
                                     let run = runs.push(
                                         row,
                                         indexed.point.column.0,
-                                        (!default).then_some(bg),
+                                        (bg != DEFAULT_BACKGROUND).then_some(bg),
                                     );
                                     paint_run(run, window);
-                                } else {
-                                    paint_run(runs.finish(), window);
-                                    let text = glyph_text(cell);
-                                    let mut font = this.face.font();
-                                    if cell.flags.contains(Flags::BOLD) {
-                                        font.weight = FontWeight::BOLD;
-                                    }
-                                    let len = text.len();
-                                    let line = window.text_system().shape_line(
-                                        text,
-                                        px(this.font_size),
-                                        &[TextRun {
-                                            len,
-                                            font,
-                                            color: fg,
-                                            background_color: None,
-                                            underline: None,
-                                            strikethrough: None,
-                                        }],
-                                        None,
-                                    );
-                                    let _ = line.paint(origin, px(h), window, cx);
+                                    return;
                                 }
+                                paint_run(runs.finish(), window);
+                                let fg = if cursor_cell {
+                                    0x11151b
+                                } else {
+                                    color(if inverse { cell.bg } else { cell.fg })
+                                };
+                                if ink.0 != fg {
+                                    ink = (fg, rgb(fg).into());
+                                }
+                                let layout = glyphs.layout(
+                                    window,
+                                    face,
+                                    font_size,
+                                    cell.c,
+                                    cell.zerowidth(),
+                                    cell.flags.contains(Flags::BOLD),
+                                );
+                                paint::paint_glyphs(
+                                    &layout,
+                                    point(
+                                        bounds.left() + px(indexed.point.column.0 as f32 * w),
+                                        bounds.top() + px(row as f32 * h),
+                                    ),
+                                    px(h),
+                                    ink.1,
+                                    window,
+                                );
                             });
                             paint_run(runs.finish(), window);
                             if !this.marked.is_empty() {
@@ -1118,23 +1121,6 @@ mod tests {
         model::{AuthKind, Credential, HostProfile, Size},
     };
     use gpui::{AppContext, TestAppContext};
-    #[test]
-    fn glyph_text_matches_the_cell_with_or_without_allocation() {
-        use alacritty_terminal::term::cell::Cell;
-        for c in (' '..='~').chain(['한', '🙂']) {
-            let cell = Cell {
-                c,
-                ..Cell::default()
-            };
-            assert_eq!(super::glyph_text(&cell).as_ref(), c.to_string());
-        }
-        let mut cell = Cell {
-            c: 'e',
-            ..Cell::default()
-        };
-        cell.push_zerowidth('\u{301}');
-        assert_eq!(super::glyph_text(&cell).as_ref(), "e\u{301}");
-    }
     fn fixture_host() -> HostProfile {
         HostProfile {
             id: "fixture".into(),
@@ -1226,6 +1212,34 @@ mod tests {
         }
         terminal.update(cx, |t, _| {
             assert!(t.clipboard.lock().unwrap().is_none());
+        });
+        connection.close();
+        runtime.block_on(connection.join());
+    }
+    #[gpui::test]
+    fn restyle_reports_only_a_changed_size_or_face(cx: &mut TestAppContext) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _enter = runtime.enter();
+        let connection = Connection::start(fixture_host(), Credential::default(), None);
+        let terminal = cx.new(|cx| Terminal::new(connection.clone(), 14, 5000, cx));
+        terminal.update(cx, |t, _| {
+            let face = super::fonts::TerminalFace::default();
+            assert!(!t.restyle(14, &face));
+            assert!(t.restyle(16, &face));
+            assert!(!t.restyle(16, &face));
+            // Sizes clamp to the same value: nothing to repaint.
+            assert!(t.restyle(28, &face));
+            assert!(!t.restyle(40, &face));
+            let other = super::fonts::TerminalFace {
+                family: "Other".into(),
+                ..face
+            };
+            assert!(t.restyle(28, &other));
+            assert!(!t.restyle(28, &other));
+            assert_eq!(t.face, other);
         });
         connection.close();
         runtime.block_on(connection.join());

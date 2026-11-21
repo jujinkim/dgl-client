@@ -309,6 +309,18 @@ impl Focusable for WindowTerminal {
             .unwrap_or_else(|| self.focus.clone())
     }
 }
+/// A pane's element. Its previous layout and paint are reused while the terminal has not
+/// notified, so output in one pane or a change elsewhere in the window does not repaint
+/// the other grids. `restyled` paints afresh: a font change does not notify.
+fn pane_view(terminal: Entity<Terminal>, restyled: bool) -> AnyElement {
+    if restyled {
+        terminal.into_any_element()
+    } else {
+        AnyView::from(terminal)
+            .cached(StyleRefinement::default().size_full())
+            .into_any_element()
+    }
+}
 impl Render for WindowTerminal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let current = self.connection.state();
@@ -357,25 +369,23 @@ impl Render for WindowTerminal {
             .flex_shrink_0();
         if state.pane.is_none() || state.pane.as_deref() == Some("shell") {
             let t = self.pane("shell", cx);
-            t.update(cx, |t, _| {
-                t.set_font(font_size);
-                t.set_face(face.clone());
+            let restyled = t.update(cx, |t, _| {
                 t.enabled = self.enabled;
                 t.pointer_enabled =
                     self.resize_request.is_none() && self.applied_size == Some(self.requested);
                 t.sync_modifiers();
+                t.restyle(font_size, &face)
             });
-            content = content.child(t);
+            content = content.child(pane_view(t, restyled));
         }
         for p in &panes {
             let terminal = self.pane(&p.id, cx);
-            terminal.update(cx, |t, _| {
-                t.set_font(font_size);
-                t.set_face(face.clone());
+            let restyled = terminal.update(cx, |t, _| {
                 t.enabled = self.enabled;
                 t.pointer_enabled =
                     self.resize_request.is_none() && self.applied_size == Some(self.requested);
                 t.sync_modifiers();
+                t.restyle(font_size, &face)
             });
             content = content.child(
                 div()
@@ -384,7 +394,7 @@ impl Render for WindowTerminal {
                     .top(px(p.top as f32 * cell.1))
                     .w(px(p.width as f32 * cell.0))
                     .h(px(p.height as f32 * cell.1))
-                    .child(terminal),
+                    .child(pane_view(terminal, restyled)),
             );
             for horizontal in [true, false] {
                 let boundary = if horizontal {
