@@ -140,3 +140,92 @@ impl ScrollAccumulator {
         steps
     }
 }
+
+/// Input requests one pane keeps in flight before holding keys back. The core admits
+/// at most 33 requests per connection and refuses the rest (`QueueFull`), so a burst
+/// faster than the connection answers (key repeat, a text expander) used to lose keys.
+/// Below this limit keys are pipelined as before, so slow links add no typing latency.
+pub(super) const INPUT_IN_FLIGHT: usize = 8;
+/// `Connection::input` refuses anything larger.
+const INPUT_MAX: usize = 65536;
+
+pub(super) enum Admission {
+    /// Nothing is held: send these bytes now.
+    Send(Vec<u8>),
+    /// Joined the held keys; they go out together when a request completes.
+    Held,
+    /// A pointer report during a burst. Its grid coordinates must be checked alone,
+    /// and sending it now would pass the keys held before it.
+    Skipped,
+    /// The held keys already fill one request.
+    Overflow,
+}
+
+/// Keys held back while `INPUT_IN_FLIGHT` requests are unanswered. They are not
+/// failed input: they were never sent. A failure or a new destination discards them,
+/// so nothing typed after a failed key reaches the pane and nothing is resent.
+#[derive(Default)]
+pub(super) struct InputBacklog(Option<(dgl_core::flow::PaneTarget, Vec<u8>, bool)>);
+
+impl InputBacklog {
+    pub(super) fn admit(
+        &mut self,
+        target: &dgl_core::flow::PaneTarget,
+        bytes: Vec<u8>,
+        claim: bool,
+        in_flight: usize,
+    ) -> Admission {
+        if self
+            .0
+            .as_ref()
+            .is_some_and(|(t, ..)| !t.same_input_destination(target))
+        {
+            self.0 = None;
+        }
+        if self.0.is_none() && in_flight < INPUT_IN_FLIGHT {
+            return Admission::Send(bytes);
+        }
+        if pointer_report(&bytes) {
+            return Admission::Skipped;
+        }
+        match &mut self.0 {
+            Some((_, held, _)) if held.len() + bytes.len() > INPUT_MAX => Admission::Overflow,
+            Some((_, held, held_claim)) => {
+                held.extend(bytes);
+                *held_claim |= claim;
+                Admission::Held
+            }
+            None => {
+                self.0 = Some((target.clone(), bytes, claim));
+                Admission::Held
+            }
+        }
+    }
+
+    /// After a request succeeded: the held keys and whether they operate the screen,
+    /// when they still belong to `target`. Otherwise they are dropped and `Err` says
+    /// that keys were lost.
+    pub(super) fn release(
+        &mut self,
+        target: Option<&dgl_core::flow::PaneTarget>,
+        in_flight: usize,
+    ) -> Result<Option<(Vec<u8>, bool)>, ()> {
+        if in_flight >= INPUT_IN_FLIGHT {
+            return Ok(None);
+        }
+        match self.0.take() {
+            None => Ok(None),
+            Some((held_target, bytes, claim))
+                if target.is_some_and(|t| held_target.same_input_destination(t)) =>
+            {
+                Ok(Some((bytes, claim)))
+            }
+            Some(_) => Err(()),
+        }
+    }
+
+    /// An earlier request failed: keys typed after it must not reach the pane.
+    pub(super) fn discard(&mut self) -> bool {
+        self.0.take().is_some()
+    }
+}

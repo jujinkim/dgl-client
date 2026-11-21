@@ -28,7 +28,10 @@ mod input;
 mod input_tests;
 mod paint;
 mod window;
-use input::{ScrollAccumulator, button_code, key_sequence, mouse_modifiers, mouse_sequence};
+use input::{
+    Admission, InputBacklog, ScrollAccumulator, button_code, key_sequence, mouse_modifiers,
+    mouse_sequence,
+};
 use paint::{CellLayer, Run, Runs, paint_grid};
 pub use window::WindowTerminal;
 /// Emulator answers (DA, DSR, cursor position, OSC queries) go straight to the
@@ -126,6 +129,8 @@ pub struct Terminal {
     pub sent: Vec<Vec<u8>>,
     pub notice: Option<SnackbarRequest>,
     input_requests: HashSet<u64>,
+    /// Keys held while `INPUT_IN_FLIGHT` requests are unanswered.
+    backlog: InputBacklog,
     /// Pointer reports queued behind a size claim. They carry the old grid's
     /// coordinates, so the core may reject them; that rejection is not reported.
     claimed_reports: HashSet<u64>,
@@ -200,6 +205,7 @@ impl Terminal {
             sent: Vec::new(),
             notice: None,
             input_requests: HashSet::new(),
+            backlog: InputBacklog::default(),
             claimed_reports: HashSet::new(),
             claims,
             modifiers: KeyModifiers::default(),
@@ -299,6 +305,23 @@ impl Terminal {
             .target()
             .filter(|t| self.pane_id.as_ref().is_none_or(|id| id == &t.pane_id))
         {
+            match self
+                .backlog
+                .admit(&t, bytes, claim, self.input_requests.len())
+            {
+                Admission::Send(bytes) => self.dispatch(t, bytes, claim),
+                Admission::Held | Admission::Skipped => {}
+                Admission::Overflow => {
+                    self.notice = Some(SnackbarRequest::new(
+                        tr!("terminal.send_failed", dgl_core::Error::QueueFull),
+                        SnackbarDuration::Short,
+                    ))
+                }
+            }
+        }
+    }
+    fn dispatch(&mut self, t: dgl_core::flow::PaneTarget, bytes: Vec<u8>, claim: bool) {
+        {
             // Queued before the input, so the core resizes the window first.
             if claim {
                 self.claims.before_input(&self.connection);
@@ -391,11 +414,33 @@ impl Terminal {
     }
     pub fn complete(&mut self, id: u64, error: Option<&dgl_core::Error>) -> InputCompletion {
         let report = self.claimed_reports.remove(&id);
-        match self.input_requests.remove(&id) {
+        let completion = match self.input_requests.remove(&id) {
             true if report && expected_report_error(error) => InputCompletion::Quiet,
             true => InputCompletion::Input,
-            false => InputCompletion::Other,
+            false => return InputCompletion::Other,
+        };
+        if completion == InputCompletion::Input && error.is_some() {
+            self.backlog.discard();
+            return completion;
         }
+        let target = self
+            .connection
+            .target()
+            .filter(|t| self.pane_id.as_ref().is_none_or(|id| id == &t.pane_id));
+        match self
+            .backlog
+            .release(target.as_ref(), self.input_requests.len())
+        {
+            Ok(Some((bytes, claim))) => self.dispatch(target.unwrap(), bytes, claim),
+            Ok(None) => {}
+            Err(()) => {
+                self.notice = Some(SnackbarRequest::new(
+                    dgl_core::i18n::t("input.rejected_recovering"),
+                    SnackbarDuration::Short,
+                ))
+            }
+        }
+        completion
     }
     pub fn set_font(&mut self, n: i32) {
         self.font_size = n.clamp(10, 28) as f32;

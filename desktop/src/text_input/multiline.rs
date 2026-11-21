@@ -170,7 +170,7 @@ impl Element for MultilineElement {
         let style = window.text_style();
         self.input.update(cx, |input, _| {
             let text = if input.content.is_empty() {
-                input.placeholder.clone()
+                t(&input.placeholder).to_string().into()
             } else {
                 input.content.clone()
             };
@@ -426,6 +426,22 @@ mod tests {
         let point = bounds.origin + point(px(3.), px(4.));
         cx.simulate_click(point, Modifiers::default());
         assert!(input.read_with(cx, |i, _| i.cursor_offset()) < 10);
+    }
+
+    #[gpui::test]
+    fn empty_editor_shows_the_translated_placeholder(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|_, cx| Editor(cx.new(TextInput::multiline)));
+        let input = view.read_with(cx, |view, _| view.0.clone());
+        cx.update(|w, _| w.refresh());
+        cx.run_until_parked();
+        input.read_with(cx, |i, _| {
+            let shown = i.multiline.as_ref().unwrap().lines[0]
+                .shaped
+                .text
+                .to_string();
+            assert_eq!(shown, t("input.text_send"));
+            assert_ne!(shown, "input.text_send", "a key is not a placeholder");
+        });
     }
 
     #[gpui::test]

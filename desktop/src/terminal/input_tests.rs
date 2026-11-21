@@ -520,3 +520,89 @@ fn copy_keeps_a_shift_drag_selection_that_a_redraw_erased(cx: &mut TestAppContex
     output(&terminal, cx, b"\r\x1b[2K");
     assert_eq!(copy(cx).as_deref(), Some("spi"));
 }
+
+fn target(pane: &str, generation: u64) -> dgl_core::flow::PaneTarget {
+    dgl_core::flow::PaneTarget {
+        connection: 1,
+        pane_id: pane.into(),
+        generation: dgl_core::flow::Generation {
+            connection: 1,
+            pane: generation,
+            size: 0,
+        },
+    }
+}
+
+#[test]
+fn a_key_burst_is_held_and_sent_together_instead_of_overrunning_the_queue() {
+    use super::input::{Admission, INPUT_IN_FLIGHT, InputBacklog};
+    let pane = target("%1", 1);
+    let mut backlog = InputBacklog::default();
+    // Below the limit keys are pipelined one request each, as before.
+    assert!(matches!(
+        backlog.admit(&pane, b"a".to_vec(), true, INPUT_IN_FLIGHT - 1),
+        Admission::Send(b) if b == b"a"
+    ));
+    for key in [&b"b"[..], b"c", b"\r"] {
+        assert!(matches!(
+            backlog.admit(&pane, key.to_vec(), true, INPUT_IN_FLIGHT),
+            Admission::Held
+        ));
+    }
+    // A completion that leaves the pane at the limit sends nothing yet.
+    assert_eq!(backlog.release(Some(&pane), INPUT_IN_FLIGHT), Ok(None));
+    // Keys keep their order behind the held ones even once a slot is free.
+    assert!(matches!(
+        backlog.admit(&pane, b"d".to_vec(), false, 0),
+        Admission::Held
+    ));
+    // A pointer report would pass the held keys and must be checked alone.
+    assert!(matches!(
+        backlog.admit(&pane, b"\x1b[<0;1;1M".to_vec(), true, 0),
+        Admission::Skipped
+    ));
+    // A viewport change keeps the destination.
+    let resized = dgl_core::flow::PaneTarget {
+        generation: dgl_core::flow::Generation {
+            size: 3,
+            ..pane.generation.clone()
+        },
+        ..pane.clone()
+    };
+    assert_eq!(
+        backlog.release(Some(&resized), INPUT_IN_FLIGHT - 1),
+        Ok(Some((b"bc\rd".to_vec(), true)))
+    );
+    assert_eq!(backlog.release(Some(&pane), 0), Ok(None));
+}
+
+#[test]
+fn held_keys_never_outlive_a_failure_or_their_destination() {
+    use super::input::{Admission, INPUT_IN_FLIGHT, InputBacklog};
+    let pane = target("%1", 1);
+    let mut backlog = InputBacklog::default();
+    backlog.admit(&pane, b"x".to_vec(), true, INPUT_IN_FLIGHT);
+    // An earlier key failed: what was typed after it is not sent.
+    assert!(backlog.discard());
+    assert!(!backlog.discard());
+    assert_eq!(backlog.release(Some(&pane), 0), Ok(None));
+    // Recovery replaced the pane generation: held keys are dropped, never resent.
+    backlog.admit(&pane, b"y".to_vec(), true, INPUT_IN_FLIGHT);
+    assert_eq!(backlog.release(Some(&target("%1", 2)), 0), Err(()));
+    backlog.admit(&pane, b"y".to_vec(), true, INPUT_IN_FLIGHT);
+    assert_eq!(backlog.release(None, 0), Err(()));
+    // New input for another pane drops keys held for the old one.
+    backlog.admit(&pane, b"z".to_vec(), true, INPUT_IN_FLIGHT);
+    let other = target("%2", 1);
+    assert!(matches!(
+        backlog.admit(&other, b"w".to_vec(), true, 0),
+        Admission::Send(b) if b == b"w"
+    ));
+    // One request holds at most what the core accepts.
+    let mut full = InputBacklog::default();
+    full.admit(&pane, vec![b'a'; 65536], true, INPUT_IN_FLIGHT);
+    assert!(matches!(
+        full.admit(&pane, b"b".to_vec(), true, INPUT_IN_FLIGHT),
+        Admission::Overflow
+    ));
+}
