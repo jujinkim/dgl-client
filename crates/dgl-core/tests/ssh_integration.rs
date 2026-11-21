@@ -212,7 +212,7 @@ async fn agent_hidden_pane_case(service: dgl_core::agent::Agent, executable: &st
     assert!(c.state().agents.events.is_empty());
     // Exercise the same fallback used when Python is absent. This path only
     // executes tmux and ps and cannot claim a detailed hook observation.
-    let basic = agent::basic_snapshot(&inspector, ids[0]).await.unwrap();
+    let basic = agent::basic_snapshot(&inspector).await.unwrap();
     assert!(
         basic
             .observations
@@ -229,7 +229,7 @@ async fn agent_hidden_pane_case(service: dgl_core::agent::Agent, executable: &st
     // One helper process, started once, answers successive polls.
     let mut observer = agent::Observer::start(&inspector).await.unwrap();
     for _ in 0..2 {
-        let reply = observer.poll(ids[0], 0, "").await.unwrap();
+        let reply = observer.poll(0, "").await.unwrap();
         assert!(reply.get("server").is_some(), "{reply}");
     }
     observer.close().await;

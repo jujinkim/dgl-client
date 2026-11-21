@@ -49,6 +49,7 @@
   "agent.limit.questions_not_collected": "質問と一般的なエラーは収集しません。/hooks での信頼の確認と実際の受信は別の手順です。",
   "agent.name_status_unknown": "{0} · 状態不明",
   "agent.no_notifications_received": "受信した通知はありません。",
+  "agent.not_detected": "実行中のエージェントなし",
   "agent.not_installed": "未インストール",
   "agent.not_linked": "未連携 · 状態不明",
   "agent.notice_with_diagnostics": "{0} · {1}\n診断情報 · セッション ID: {2} · ウィンドウ ID: {3} · ペイン ID: {4}",

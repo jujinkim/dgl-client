@@ -49,6 +49,7 @@
   "agent.limit.questions_not_collected": "질문·일반 오류는 수집하지 않습니다. /hooks 신뢰 검토와 실제 수신은 별도입니다.",
   "agent.name_status_unknown": "{0} · 상태 미확인",
   "agent.no_notifications_received": "수신한 알림이 없습니다.",
+  "agent.not_detected": "실행 중인 에이전트 없음",
   "agent.not_installed": "설치되지 않음",
   "agent.not_linked": "미연동 · 상태 미확인",
   "agent.notice_with_diagnostics": "{0} · {1}\n진단 정보 · 세션 ID: {2} · 창 ID: {3} · 패널 ID: {4}",

@@ -2074,21 +2074,16 @@ async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
     };
     let mut cursor = 0u64;
     let mut epoch = String::new();
-    let mut scope = (String::new(), String::new());
+    let mut server = String::new();
     let mut observation_floor = 0;
     let mut observer: Option<crate::agent::Observer> = None;
     let mut answered = false;
     let mut retry_at: Option<tokio::time::Instant> = None;
     loop {
         let state = shared.state.lock().unwrap().clone();
-        if tmux
-            && state.observing_agents()
-            && let Some(session) = state.session.clone()
-        {
-            if scope.0 != session {
-                cursor = 0;
-                epoch.clear();
-            }
+        // Every session of the server, attached or not: a tab that is not selected, or
+        // a session no tab shows, keeps its CLIs and their status in the sidebar.
+        if tmux && state.observing_agents() {
             if observer.is_none() && retry_at.is_none_or(|at| tokio::time::Instant::now() >= at) {
                 observer = tokio::time::timeout(
                     Duration::from_secs(8),
@@ -2104,9 +2099,7 @@ async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
             }
             let mut snapshot = None;
             if let Some(o) = observer.as_mut() {
-                match tokio::time::timeout(Duration::from_secs(8), o.poll(&session, cursor, &epoch))
-                    .await
-                {
+                match tokio::time::timeout(Duration::from_secs(8), o.poll(cursor, &epoch)).await {
                     // An `{"error"}` reply keeps the helper; only this poll falls back.
                     Ok(Ok(v)) => {
                         answered = true;
@@ -2127,19 +2120,15 @@ async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
                 }
             }
             if snapshot.is_none() {
-                snapshot = tokio::time::timeout(
-                    Duration::from_secs(2),
-                    crate::agent::basic_snapshot(ssh, &session),
-                )
-                .await
-                .ok()
-                .and_then(|r| r.ok());
+                snapshot =
+                    tokio::time::timeout(Duration::from_secs(2), crate::agent::basic_snapshot(ssh))
+                        .await
+                        .ok()
+                        .and_then(|r| r.ok());
             }
             match snapshot {
                 Some(mut snapshot) => {
-                    if epoch != snapshot.epoch
-                        || scope != (session.clone(), snapshot.server.clone())
-                    {
+                    if epoch != snapshot.epoch || server != snapshot.server {
                         observation_floor = 0;
                         snapshot.events.clear();
                     }
@@ -2150,14 +2139,10 @@ async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
                     snapshot.discard_observations_through(observation_floor);
                     cursor = snapshot.cursor;
                     epoch = snapshot.epoch.clone();
-                    scope = (session.clone(), snapshot.server.clone());
+                    server = snapshot.server.clone();
                     snapshot.valid = true;
                     snapshot.observed_at = crate::agent::now_ms();
-                    shared.update(|s| {
-                        if s.session.as_ref() == Some(&session) {
-                            s.agents = snapshot;
-                        }
-                    });
+                    shared.update(|s| s.agents = snapshot);
                 }
                 None => {
                     shared.update(|s| s.agents.invalidate());

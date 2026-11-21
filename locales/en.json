@@ -49,6 +49,7 @@
   "agent.limit.questions_not_collected": "Questions and general errors are not collected. Trusting the hooks in /hooks and actually receiving events are separate steps.",
   "agent.name_status_unknown": "{0} · Status unknown",
   "agent.no_notifications_received": "No notifications received.",
+  "agent.not_detected": "No running agent detected",
   "agent.not_installed": "Not installed",
   "agent.not_linked": "Not linked · Status unknown",
   "agent.notice_with_diagnostics": "{0} · {1}\nDiagnostics · Session ID: {2} · Window ID: {3} · Pane ID: {4}",

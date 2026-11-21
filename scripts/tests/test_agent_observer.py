@@ -61,7 +61,7 @@ class AgentObserverTest(unittest.TestCase):
             removed = observer.configure('/bin/tmux', installed['token'], False, '')
             self.assertFalse(any(c['installed'] for c in removed['configs']))
             self.assertEqual(json.loads(path.read_text()), {'theme': 'changed'})
-        with patch.object(observer, 'run', return_value='999.0.0'), patch.object(observer.shutil, 'which', return_value='/bin/unknown'):
+        with patch.object(observer, 'run', return_value='0.1.0'), patch.object(observer.shutil, 'which', return_value='/bin/unknown'):
             preview = observer.inspect('/bin/tmux')
             self.assertFalse(any(c['supported'] for c in preview['configs'] if not c['experimental']))
             self.assertTrue(all(c['supported'] for c in preview['configs'] if c['experimental']))
@@ -101,6 +101,18 @@ class AgentObserverTest(unittest.TestCase):
         self.assertTrue(all(line.startswith('\x1e') for line in lines))
         self.assertEqual([json.loads(line[1:]) for line in lines],
                          [{'server': 's', 'note': '한글'}, {'error': 'failed'}, {'error': 'failed'}])
+
+    def test_an_empty_session_observes_every_session_of_the_server(self):
+        procs = {10: {'parent': 1, 'token': 't', 'agent': None, 'launcher': False}}
+        def run(args):
+            if args[1] == 'display-message':
+                return '/socket|10'
+            return '$1|@1|%1|20\n$2|@2|%2|30'
+        with patch.object(observer, 'processes', return_value=procs), patch.object(observer, 'run', side_effect=run):
+            _, every, _ = observer.topology('/bin/tmux', '')
+            _, attached, _ = observer.topology('/bin/tmux', '$1')
+        self.assertEqual([p['session'] for p in every], ['$1', '$2'])
+        self.assertEqual([p['session'] for p in attached], ['$1'])
 
     def test_helper_output_has_codes_not_ui_copy(self):
         source = SOURCE.read_text(encoding='utf-8')
@@ -163,12 +175,19 @@ class AgentObserverTest(unittest.TestCase):
             self.assertEqual(paths['Agy'], Path('/fixture/home/.gemini/config/hooks.json'))
 
     def test_versions_and_bad_cli_configs_are_isolated(self):
-        for version in ('0.163.0', '0.164.0', '0.164.00', '0.165.0', '0.164.0-alpha.1'):
+        # The oldest really received release and every later stable release are installable.
+        cases = [('0.163.0', '2.1.310', True), ('0.164.0', '2.1.330', True), ('0.171.0', '2.10.0', True),
+                 ('0.162.9', '2.1.309', False), ('0.164.00', '2.1.310-beta.1', False),
+                 ('0.164.0-alpha.1', '2.1.0310', False)]
+        for codex, claude, expected in cases:
             def run(args):
-                return 'codex-cli ' + version if args[0].endswith('codex') else 'fixture 1.4.4'
+                if args[0].endswith('codex'):
+                    return 'codex-cli ' + codex
+                return claude + ' (Claude Code)' if args[0].endswith('claude') else 'fixture 1.4.4'
             with patch.object(observer, 'run', side_effect=run), patch.object(observer.shutil, 'which', side_effect=lambda s: '/bin/' + s):
                 configs = {c['agent']: c for c in observer.inspect('/bin/tmux')['configs']}
-                self.assertEqual(configs['Codex']['supported'], version in ('0.163.0', '0.164.0'))
+                self.assertEqual(configs['Codex']['supported'], expected, codex)
+                self.assertEqual(configs['Claude']['supported'], expected, claude)
                 self.assertTrue(configs['Agy']['experimental'])
                 self.assertIn('Question', configs['Grok']['capabilities'])
         (self.root / 'Agy.json').write_text('{invalid')

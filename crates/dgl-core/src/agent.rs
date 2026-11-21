@@ -298,15 +298,10 @@ impl Observer {
             buffer: Vec::new(),
         })
     }
-    /// A helper that is missing or exits ends its stream: `NotReady`.
-    pub async fn poll(
-        &mut self,
-        session: &str,
-        after: u64,
-        epoch: &str,
-    ) -> Result<serde_json::Value> {
-        command::target(session, '$')?;
-        let request = serde_json::json!({"session": session, "after": after, "epoch": epoch});
+    /// A helper that is missing or exits ends its stream: `NotReady`. Every session of
+    /// the tmux server is observed, so the sidebar shows CLIs outside the attached one.
+    pub async fn poll(&mut self, after: u64, epoch: &str) -> Result<serde_json::Value> {
+        let request = serde_json::json!({"session": "", "after": after, "epoch": epoch});
         crate::ssh::write(&self.stream, format!("{request}\n").as_bytes())
             .await
             .map_err(|_| Error::NotReady)?;
@@ -353,8 +348,9 @@ impl Observer {
 }
 
 /// Python is optional for basic process identification. No screen, spinner, CPU or
-/// generic `node` heuristics are used by this conservative POSIX fallback.
-pub async fn basic_snapshot(ssh: &Ssh, session: &str) -> Result<Snapshot> {
+/// generic `node` heuristics are used by this conservative POSIX fallback. Like the
+/// helper, it covers every session of the tmux server.
+pub async fn basic_snapshot(ssh: &Ssh) -> Result<Snapshot> {
     let tmux = command::quote(ssh.tmux.as_deref().ok_or(Error::NotReady)?)?;
     let (code, panes) = ssh
         .execute(&format!(
@@ -387,7 +383,7 @@ pub async fn basic_snapshot(ssh: &Ssh, session: &str) -> Result<Snapshot> {
     let mut snapshot = Snapshot::default();
     for line in String::from_utf8_lossy(&panes).lines() {
         let p: Vec<_> = line.split('|').collect();
-        if p.len() != 4 || p[0] != session {
+        if p.len() != 4 {
             continue;
         }
         let root: u32 = p[3].parse().map_err(|_| Error::Protocol)?;

@@ -16,6 +16,21 @@ fn endpoint(host: &HostProfile) -> String {
     format!("{}@{}", host.username, host.endpoint())
 }
 
+/// The CLI a fresh poll found and, when hooks report it, its status. A stale or missing
+/// poll shows nothing detected; a CLI without received hooks shows no status.
+fn badge_content(
+    snapshot: &agent::Snapshot,
+    unread: &[&agent::Notice],
+    now: u64,
+) -> (Option<Agent>, Option<agent::Kind>) {
+    if !snapshot.valid || now.saturating_sub(snapshot.observed_at) >= 10_000 {
+        return (None, None);
+    }
+    let detected = Agent::ALL
+        .into_iter()
+        .find(|a| snapshot.observations.iter().any(|o| o.agent == *a));
+    (detected, detected.and(badge_kind(snapshot, unread, now)))
+}
 fn badge_kind(
     snapshot: &agent::Snapshot,
     unread: &[&agent::Notice],
@@ -200,53 +215,48 @@ impl Desktop {
         {
             label = tr!("agent.unread_events", n.event.kind.label(), unread.len());
         }
-        let icon = UiIcon::agent(badge_kind(snapshot, &unread, now));
+        let (detected, kind) = badge_content(snapshot, &unread, now);
+        if detected.is_none() {
+            label = t("agent.not_detected").into();
+        }
         let id = format!("agent-{}-{}", state.handle, pane);
         let title = host.alias.clone();
         let target_pane = pane.to_owned();
-        let tip = label.clone();
-        let mut badge = self
-            .button(
-                id,
-                (
-                    icon,
-                    if unread.is_empty() {
-                        String::new()
-                    } else {
-                        unread.len().to_string()
-                    },
-                ),
-                cx,
-                move |s, _, _| {
-                    s.dialog = Some(Dialog::Agents(
-                        connection.clone(),
-                        title.clone(),
-                        Some(target_pane.clone()),
-                    ));
-                },
-            )
+        // No outline: the badge reads as part of the row, not as a separate box.
+        let badge = self
+            .button_base(id, cx, move |s, _, _| {
+                s.dialog = Some(Dialog::Agents(
+                    connection.clone(),
+                    title.clone(),
+                    Some(target_pane.clone()),
+                ));
+            })
             .flex()
             .items_center()
+            .justify_end()
             .gap_1()
-            .w(px(48.))
+            // Service, status and unread count fit without clipping.
+            .w(px(56.))
             .px_1()
             .flex_shrink_0()
             .overflow_hidden()
             .text_xs()
-            .native_tooltip(tip);
-        if unread.len() < 10
-            && let Some(a) = Agent::ALL
-                .into_iter()
-                .find(|a| snapshot.observations.iter().any(|o| o.agent == *a))
-        {
-            badge = badge.child(
-                svg()
-                    .path(a.icon())
-                    .size(px(15.))
-                    .text_color(rgb(self.palette.fg)),
-            );
-        }
+            .native_tooltip(label);
+        let Some(detected) = detected else {
+            return badge.child(UiIcon::Unknown.render(self.palette.muted));
+        };
         badge
+            .child(
+                svg()
+                    .path(detected.icon())
+                    .size(px(15.))
+                    .flex_shrink_0()
+                    .text_color(rgb(self.palette.fg)),
+            )
+            .when_some(kind, |d, kind| {
+                d.child(UiIcon::agent(Some(kind)).render(self.palette.fg))
+            })
+            .when(!unread.is_empty(), |d| d.child(unread.len().to_string()))
     }
     pub fn agent_details(
         &self,
@@ -631,7 +641,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{Agent, UiIcon, agent, badge_kind};
+    use super::{Agent, UiIcon, agent, badge_content, badge_kind};
     use agent::{AgentEvent, Kind, Notice, Observation, Snapshot};
 
     #[test]
@@ -703,5 +713,60 @@ mod tests {
             assert_eq!(UiIcon::agent(Some(kind)), icon);
         }
         assert_eq!(UiIcon::agent(None), UiIcon::Unknown);
+    }
+
+    #[test]
+    fn badge_shows_status_only_beside_a_detected_agent() {
+        let observation = Observation {
+            session: "$1".into(),
+            window: "@1".into(),
+            pane: "%1".into(),
+            run: "run".into(),
+            actor: "parent".into(),
+            agent: Agent::Claude,
+            last: None,
+            supported: vec![],
+        };
+        let mut snapshot = Snapshot {
+            valid: true,
+            observed_at: 1000,
+            ..Default::default()
+        };
+        // Nothing detected: the "not detected" icon only.
+        assert_eq!(badge_content(&snapshot, &[], 1001), (None, None));
+        // A CLI process without received hooks: its icon, no status.
+        snapshot.observations.push(observation);
+        assert_eq!(
+            badge_content(&snapshot, &[], 1001),
+            (Some(Agent::Claude), None)
+        );
+        // A received hook adds the status.
+        snapshot.observations[0].last = Some(AgentEvent {
+            id: "event".into(),
+            seq: 1,
+            server: "server".into(),
+            run: "run".into(),
+            actor: "parent".into(),
+            session: "$1".into(),
+            window: "@1".into(),
+            pane: "%1".into(),
+            agent: Agent::Claude,
+            kind: Kind::Activity,
+            event: "UserPromptSubmit".into(),
+            at: 1000,
+        });
+        assert_eq!(
+            badge_content(&snapshot, &[], 1001),
+            (Some(Agent::Claude), Some(Kind::Activity))
+        );
+        // An event gap keeps the process but not its status; a stale poll keeps neither.
+        snapshot.gap = true;
+        assert_eq!(
+            badge_content(&snapshot, &[], 1001),
+            (Some(Agent::Claude), None)
+        );
+        assert_eq!(badge_content(&snapshot, &[], 11_000), (None, None));
+        snapshot.invalidate();
+        assert_eq!(badge_content(&snapshot, &[], 1001), (None, None));
     }
 }

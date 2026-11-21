@@ -36,8 +36,10 @@ EVENTS = {
              'PostToolUseFailure', 'PermissionDenied', 'Stop', 'StopFailure', 'StopCancelled',
              'Notification', 'SubagentStart', 'SubagentStop', 'SessionEnd'],
 }
-# Conservative release gate: unknown releases need revalidation, not optimistic support.
-VERSIONS = {'Codex': ('0.163.0', '0.164.0'), 'Claude': ('2.1.310',)}
+# Release gate: the oldest release whose hooks were received for real. Later stable
+# releases keep the same hook contract; pre-releases and malformed versions stay excluded.
+MINIMUM = {'Codex': (0, 163, 0), 'Claude': (2, 1, 310)}
+RELEASE = re.compile(r'(?<![\w.])(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?![\w.+-])')
 CAPABILITIES = {a: ['Activity', 'Approval', 'Response', 'Ended'] for a in EVENTS}
 CAPABILITIES['Claude'] += ['Question', 'Error']
 CAPABILITIES['Agy'] += ['Question', 'Error']
@@ -46,6 +48,10 @@ CAPABILITIES['Grok'] += ['Question', 'Error']
 
 def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def release_supported(agent, version):
+    return any(tuple(map(int, m.groups())) >= MINIMUM[agent] for m in RELEASE.finditer(version))
 
 
 def run(args):
@@ -485,8 +491,7 @@ def inspect(tmux):
             raw, data = adapter.load(path)
             executable = shutil.which(agent.lower())
             version = run([executable, '--version']) if executable else 'not installed'
-            supported = bool(executable) and (adapter.experimental or any(
-                re.search(r'(?<![\w.])' + re.escape(v) + r'(?![\w.+-])', version) for v in VERSIONS[agent]))
+            supported = bool(executable) and (adapter.experimental or release_supported(agent, version))
             transformed(data, agent, tmux, supported)
             installed = any(owned(h) for h in adapter.handlers(data))
         except Exception:
