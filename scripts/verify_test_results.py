@@ -26,6 +26,8 @@ TESTS = {
                               'advancesMustMatchWithinOnePercent'],
     'core.BackgroundResumeTest': ['backgroundStopKeepsTargetAndResumesOnlyOnce',
                                  'explicitStopsFailuresAndMissingSessionsNeverReserveResume'],
+    'core.PollCadenceTest': ['activityKeepsTheFastRateThroughTheLingerThenIdles',
+                             'wakeEndsEveryIdleWaitAtOnceAndIsKeptForABusyLoop'],
     'core.TerminalOutputTest': ['renderTimeoutReleasesBackpressureBeforeCleanupAndLateAck',
                                 'cancelledReplacementsJoinOldCleanupBeforeUsingOrClosingSurface'],
     'core.TerminalRecoveryTest': ['healthyCheckDimsScreenWhileRecoveryWaitsForEveryCurrentPane',

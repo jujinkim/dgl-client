@@ -84,6 +84,10 @@ class RustClientConnection(
     private val recovery = TerminalRecovery()
     private val presentation = TerminalPresentation()
     private val backgroundResume = BackgroundResume()
+    // Both polling loops slow down while the connection is idle; requests wake them.
+    private val cadence = PollCadence()
+    private fun now() = SystemClock.elapsedRealtime()
+    private fun wake() = cadence.wake(now())
     private var userStopped = false
     private val inputRequests = java.util.concurrent.ConcurrentHashMap.newKeySet<ULong>()
     private val inputCompletions = mutableMapOf<ULong, CompletableDeferred<InputCompletion>>()
@@ -96,6 +100,8 @@ class RustClientConnection(
         if (BuildConfig.DEBUG) Log.d("DglResume", "t=${SystemClock.elapsedRealtime()} adapter=${System.identityHashCode(this)} epoch=$epoch generation=$adapterGeneration subscription=$subscription cycle=${recovery.cycle} $event")
     }
     private fun outputFailureMessage() = t("connection.restore_failed")
+    /** Phases that move on by themselves; every other one waits for the user or for output. */
+    private val unsettled = setOf(Phase.Connecting, Phase.Authenticating, Phase.Restoring, Phase.Reconnecting)
     private fun trustRef() = "trust-" + MessageDigest.getInstance("SHA-256").digest(host.endpoint.toByteArray()).joinToString("") { "%02x".format(it) }
 
     @Synchronized override fun connect() {
@@ -129,14 +135,19 @@ class RustClientConnection(
                     bindOutput()
                 }
                 var sequence = -1L
+                val pace = cadence.Waiter(PollCadence.STATE_ACTIVE, PollCadence.IDLE)
+                cadence.mark(now())
                 while (isActive && current == epoch) {
+                    var moved = false
                     if (connection.stateSequence().toLong() != sequence) {
+                        moved = true
                         val state = stateOf(connection)
                         sequence = state.getValue("sequence").jsonPrimitive.long
                         synchronized(this@RustClientConnection) { if (current == epoch && !closed) applyState(state) }
                     }
                     val opened = mutableListOf<() -> Unit>()
                     json.parseToJsonElement(connection.completionsJson()).jsonArray.forEach { result ->
+                        moved = true
                         val record = result.jsonObject
                         synchronized(this@RustClientConnection) {
                             if (current == epoch) {
@@ -182,7 +193,12 @@ class RustClientConnection(
                     // The owner re-checks that this screen is still shown and focused, and takes
                     // its own lock first, so this runs outside the adapter lock.
                     claim?.invoke()
-                    delay(16)
+                    // Anything in flux keeps the frame rate; a settled connection idles.
+                    val busy = moved || claim != null || synchronized(this@RustClientConnection) {
+                        resizes.pending || status.value.let { it.checking || it.recovering || it.presenting || it.resizing || it.phase in unsettled }
+                    }
+                    if (busy) cadence.mark(now())
+                    pace.wait(now())
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: TrustRecordMismatch) { synchronized(this@RustClientConnection) { if (current == epoch) { failInputs(); agents.value = AgentSnapshot(); status.value = ConnectionStatus(Phase.Failed, t("connection.trust_record_mismatch")) } } }
@@ -325,6 +341,8 @@ class RustClientConnection(
             var previewApplied = synchronized(this@RustClientConnection) { presentation.preview }
             terminal.presentationPending(true, previewApplied)
             terminal.cancelSnapshot()
+            val pace = cadence.Waiter(PollCadence.OUTPUT_ACTIVE, PollCadence.IDLE)
+            cadence.mark(now())
             while (isActive && current == epoch) {
                 val state = stateOf(c)
                 synchronized(this@RustClientConnection) {
@@ -349,6 +367,7 @@ class RustClientConnection(
                 val sequence = state.getValue("sequence").toString()
                 if (sequence != layoutSequence) {
                     layoutSequence = sequence
+                    cadence.mark(now())
                     fun text(key: String) = state[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
                     // Recovery clears the native input target. Keep the last visible
                     // window underneath the dim until a replacement layout exists.
@@ -367,9 +386,12 @@ class RustClientConnection(
                             applyState(stateOf(c))
                         }
                     }
-                    if (presentIfReady(c, terminal, id, current)) presentationApplied = false
-                    delay(8); continue
+                    val presented = presentIfReady(c, terminal, id, current)
+                    if (presented) presentationApplied = false
+                    if (presented || pending || preserve || state["checking"]?.jsonPrimitive?.boolean == true) cadence.mark(now())
+                    pace.wait(now()); continue
                 }
+                cadence.mark(now())
                 if (current == epoch && subscription == id && surface === terminal && c.acceptsOutput(event.targetJson)) {
                     val target = json.parseToJsonElement(event.targetJson).jsonObject.getValue("pane_id").jsonPrimitive.content
                     terminal.outputPane(target, event.targetJson)
@@ -508,6 +530,7 @@ class RustClientConnection(
     }
     @Synchronized override fun bindSurface(value: TerminalSurface?) {
         if (surface === value) return
+        wake()
         surface = value
         if (value != null) bindOutput()
         else { outputJob?.cancel(); native?.let { releaseOutput(it, subscription, epoch) } }
@@ -521,8 +544,9 @@ class RustClientConnection(
             trustRequest.value = null; connect()
         } catch (_: Exception) { notice.value = t("connection.host_key_save_failed"); disconnect() }
     }
-    private fun action(value: JsonObject) { try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = t("connection.request_unprocessable") } }
+    private fun action(value: JsonObject) { wake(); try { native?.submitAction(value.toString()) } catch (_: Exception) { notice.value = t("connection.request_unprocessable") } }
     @Synchronized override fun retryNow() {
+        wake()
         backgroundResume.cancel(); userStopped = false
         val c = native
         if (c != null) applyState(stateOf(c))
@@ -554,6 +578,7 @@ class RustClientConnection(
         status.value = ConnectionStatus()
     }
     @Synchronized override fun onResume() {
+        wake()
         if (closed) return
         trace("resume")
         backgroundResume.take()?.let {
@@ -598,6 +623,7 @@ class RustClientConnection(
     override fun selectPane(id: String) = action(buildJsonObject { put("action", "selectPane"); put("id", id) })
     override fun createSession(name: String) = manage(TmuxCommand.newSession(name))
     @Synchronized override fun createSession(name: String, created: (String) -> Unit) {
+        wake()
         val command = TmuxCommand.newSession(name)
         val c = native ?: return
         val known = remote.value.sessions.mapTo(mutableSetOf()) { it.id }
@@ -609,6 +635,7 @@ class RustClientConnection(
     override fun manage(command: TmuxCommand) = action(buildJsonObject { put("action", "manage"); put("operation", command.operation) })
     @Synchronized override fun refresh() {
         if (refreshing.value) return
+        wake()
         val c = native ?: return
         refreshing.value = true
         try { refreshRequest = c.submitAction(buildJsonObject { put("action", "refresh") }.toString()) }
@@ -617,7 +644,7 @@ class RustClientConnection(
     @Synchronized override fun restore() {
         if (outputFailed) retryNow() else action(buildJsonObject { put("action", "snapshot") })
     }
-    @Synchronized override fun resize(value: Size) { if (!closed) resizes.resize(value, System.nanoTime() / 1_000_000) }
+    @Synchronized override fun resize(value: Size) { if (!closed) { resizes.resize(value, System.nanoTime() / 1_000_000); wake() } }
     // Called only by the current connection's polling loop while holding the owner lock.
     // No timer can outlive detach(), and native completions bound us to one request in flight.
     private fun submitResize(connection: NativeConnection) {
@@ -643,6 +670,7 @@ class RustClientConnection(
      */
     @Synchronized override fun claimSize(force: Boolean, deferred: (() -> Unit)?) {
         if (closed) return
+        wake()
         val retry = deferred.takeIf { force }
         val c = native ?: return sizeClaims.refused("NotReady", status.value.phase, retry)
         if (!sizeClaims.shouldClaim(force) { stateOf(c)["displaced"]?.jsonPrimitive?.booleanOrNull == true }) return
@@ -657,6 +685,7 @@ class RustClientConnection(
     // paneInput also carries the renderer's automatic replies, so its caller claims for user
     // input. input() and sendInput() are only user, CLI launcher, volume key or composer input.
     @Synchronized override fun paneInput(pane: String, target: String?, bytes: ByteArray) {
+        wake()
         val c = native ?: return rejectInput("Closed")
         if (!status.value.acceptsInput) return rejectInput("NotReady")
         val current = c.targetJson() ?: return rejectInput("NotReady")
@@ -691,6 +720,7 @@ class RustClientConnection(
     override fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? =
         runCatching { uniffi.dgl_core.encodeTerminalInput(key, text, modifiers.control, modifiers.shift, modifiers.alt, applicationCursor) }.getOrNull()
     @Synchronized override fun input(bytes: ByteArray) {
+        wake()
         val c = native ?: return rejectInput("Closed")
         if (!status.value.acceptsInput) return rejectInput("NotReady")
         try {
@@ -704,6 +734,7 @@ class RustClientConnection(
     }
     override suspend fun sendInput(target: InputTarget, bytes: ByteArray): InputCompletion = submitText(target, bytes).await()
     @Synchronized private fun submitText(target: InputTarget, bytes: ByteArray): CompletableDeferred<InputCompletion> {
+        wake()
         val completion = CompletableDeferred<InputCompletion>()
         val c = native
         val raw = c?.targetJson()

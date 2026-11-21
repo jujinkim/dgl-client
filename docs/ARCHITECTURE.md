@@ -91,6 +91,8 @@ Android·데스크톱 재시도는 네트워크 오류에 최대 3회, 첫 시�
 기기 로컬 `desktopPowerSaving`(기본 `system`)이 사용자가 켠 macOS 저전력 모드·Windows 배터리 절약 모드(30초마다 확인, `desktop/src/power.rs`)를 따르거나
 `always`·`off`로 덮어씁니다. 절전 중에는 활동 중 16ms를 유지하고
 활동 뒤 유지 시간을 0.75초, 한가할 때를 250ms·500ms로 바꿉니다. 전원 연결 여부만으로는 바꾸지 않습니다.
+Android 연결 어댑터의 상태·출력 폴링은 출력·상태 변화·요청 완료·크기 조정·복구·표시 대기가 있거나 그 뒤 1.5초 동안 16ms·8ms로 돌고,
+한가하면 둘 다 100ms로 늘립니다. 입력·조작 요청·화면 연결·전면 복귀는 두 루프를 즉시 깨웁니다(`core/PollCadence.kt`).
 Android 복귀 시 네트워크 소진은 새 주기를 시작하지만 사용자 정지는 유지합니다.
 루트 뒤로가기는 [Android 기본 백그라운드 전환](https://developer.android.com/guide/components/activities/tasks-and-back-stack#back-press-behavior)을 사용합니다.
 최근 앱 제거는 앱 모델·연결·관측/동기화 작업을 닫으며 원격 tmux에는 종료 명령을 보내지 않습니다.

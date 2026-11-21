@@ -720,11 +720,19 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             .put("panes", org.json.JSONArray().apply { remote.panes.forEach { p -> put(JSONObject()
                 .put("id", p.id).put("left", p.left).put("top", p.top).put("width", p.width).put("height", p.height)
                 .put("visible", p.window == window && (w?.zoomed != true || p.active))) } })
-        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.setLayout($value)", null) }
+        withContext(Dispatchers.Main.immediate) { if (!closed) { outputPane = null; view.evaluateJavascript("window.setLayout($value)", null) } }
     }
+    /** The pane the page currently writes to. A layout may drop that pane, so it forgets this. */
+    private var outputPane: String? = null
     override suspend fun outputPane(pane: String, target: String) {
         withTimeout(15_000) { ready.await() }
-        withContext(Dispatchers.Main.immediate) { if (!closed) view.evaluateJavascript("window.outputPane(${JSONObject.quote(pane)},${JSONObject.quote(target)})", null) }
+        withContext(Dispatchers.Main.immediate) {
+            // Every output event names its pane; the page only needs to hear of a change.
+            if (!closed && outputPane != pane) {
+                outputPane = pane
+                view.evaluateJavascript("window.outputPane(${JSONObject.quote(pane)},${JSONObject.quote(target)})", null)
+            }
+        }
     }
     override suspend fun write(bytes: ByteArray) { deliver(bytes, false) }
     override suspend fun reset(bytes: ByteArray) { deliver(bytes, true) }

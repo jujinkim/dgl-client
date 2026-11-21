@@ -486,7 +486,10 @@
   let savedScroll = null;
   api.receive = (base64, reset, id) => {
     if (typeof base64 !== 'string' || base64.length > 22000 || !Number.isSafeInteger(id) || id <= 0) return;
-    let data = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    // A plain loop: `Uint8Array.from` with a mapping callback is many times slower per chunk.
+    const binary = atob(base64);
+    let data = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; ++i) data[i] = binary.charCodeAt(i);
     if (reset === true) {
       if (initialized) {
         // Keep this pane's local history when replacing its viewport after resize.
