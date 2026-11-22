@@ -116,6 +116,7 @@ def run(args):
 
 
 APP_SERVER = re.compile(r'(?:^|/)codex(?:\.js)? app-server(?:\s|$)')
+UUID_TEXT = re.compile(r'(?<![0-9A-Za-z])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(?![0-9A-Za-z])')
 
 
 def processes():
@@ -163,7 +164,11 @@ def processes():
             managed = '--managed-daemon' in args.split()
         result[pid] = {'parent': parent, 'token': digest(f'{pid}:{start}:{exe}'), 'agent': agent,
                        'launcher': bool(agent and launcher), 'daemon': daemon, 'managed': bool(managed),
-                       'started': started(start)}
+                       'started': started(start),
+                       # Only thread IDs a Codex TUI was started with (`codex resume <id>`) and whether it
+                       # reopens one (`resume`/`fork`) instead of starting its own; kept in memory.
+                       'threads': frozenset(t.lower() for t in UUID_TEXT.findall(args)) if agent == 'Codex' else frozenset(),
+                       'reuses': agent == 'Codex' and args.split()[2 if launcher else 1:][:1] in (['resume'], ['fork'])}
     return result
 
 
@@ -657,15 +662,20 @@ def codex_thread(thread):
     """(reasoning_effort, model) of one Codex thread, read-only, from the newest state DB."""
     if text(thread) is None:
         return None
+    path = codex_state_db()
+    if path is None:
+        return None
+    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=0.2)) as db:
+        return db.execute('SELECT reasoning_effort, model FROM threads WHERE id=?', (thread,)).fetchone()
+
+
+def codex_state_db():
     best = None
     for path in itertools.islice(codex_home().glob('state_*.sqlite'), 64):
         m = re.fullmatch(r'state_(\d+)\.sqlite', path.name)
         if m and (best is None or int(m.group(1)) > best[0]):
             best = (int(m.group(1)), path)
-    if best is None:
-        return None
-    with closing(sqlite3.connect(best[1].as_uri() + '?mode=ro', uri=True, timeout=0.2)) as db:
-        return db.execute('SELECT reasoning_effort, model FROM threads WHERE id=?', (thread,)).fetchone()
+    return best[1] if best else None
 
 
 def grok_files(session_id):
@@ -800,16 +810,139 @@ def process_cwd(pid):
 
 
 THREAD_TTL = 7 * 86400 * 1000
+# A TUI creates its first thread right after it starts (about 1-5 s locally, before any hook).
+STARTUP_WINDOW_MS = 20 * 1000
 
 
-def daemon_target(agent, server, panes, procs, payload):
+def output(args):
+    """stdout even on a non-zero exit: lsof exits 1 when one of several PIDs has no match."""
+    return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3).stdout.decode('utf-8', 'replace')
+
+
+def daemon_clients(daemon, pids):
+    """The `pids` holding a connection to the daemon's control socket; None when unknown.
+
+    Only socket endpoints are compared: the daemon's accepted connections (named by the socket
+    path) against each TUI's peer. Nothing is read from the connection.
+    """
+    if not daemon or not pids:
+        return None
+    try:
+        found = clients_from_ss(daemon, pids) if sys.platform.startswith('linux') else clients_from_lsof(daemon, pids)
+    except Exception:
+        return None
+    return found or None
+
+
+def clients_from_lsof(daemon, pids):
+    # macOS: an accepted socket's own address ("d") is the client's peer address ("n->").
+    accepted, device = set(), None
+    for line in output(['lsof', '-b', '-w', '-a', '-U', '-p', str(daemon), '-Fdn']).splitlines():
+        if line.startswith('f'):
+            device = None
+        elif line.startswith('d'):
+            device = line[1:]
+        elif line.startswith('n/') and device:
+            accepted.add(device)
+    found, pid = set(), None
+    if accepted:
+        for line in output(['lsof', '-b', '-w', '-a', '-U', '-p', ','.join(map(str, pids)), '-Fpn']).splitlines():
+            if line.startswith('p'):
+                pid = int(line[1:]) if line[1:].isdigit() else None
+            elif line.startswith('n->') and line[3:] in accepted and pid in pids:
+                found.add(pid)
+    return found
+
+
+SS_UNIX = re.compile(r'^u_str\s+\S+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+\S+\s+(\d+)(.*)$')
+
+
+def clients_from_ss(daemon, pids):
+    # Linux: `ss -x` pairs each socket's inode with its peer's; -p names the owning PIDs.
+    rows = []
+    for line in output(['ss', '-xpn']).splitlines():
+        m = SS_UNIX.match(line.strip())
+        if m:
+            rows.append((m.group(1), m.group(2), m.group(3), {int(x) for x in re.findall(r'pid=(\d+)', m.group(4))}))
+    accepted = {peer for local, _, peer, owners in rows if daemon in owners and local.startswith('/')}
+    return {pid for _, inode, _, owners in rows if inode in accepted for pid in owners if pid in pids}
+
+
+def thread_born(thread):
+    """Creation time (ms) of a UUIDv7 Codex thread ID, or None."""
+    h = thread.replace('-', '').lower()
+    if len(h) != 32 or h[12] != '7' or not all(c in '0123456789abcdef' for c in h):
+        return None
+    return int(h[:12], 16)
+
+
+def known_threads(since):
+    """{id: created ms} of the Codex threads created since `since` that this host can see:
+    loaded (lock file names), remembered by a TUI (marker file names) or saved (state DB IDs).
+
+    Only names and IDs are read. Each source alone misses some threads: an unprompted thread
+    is not saved, and a lock goes away once its thread unloads (e.g. after `/new`).
+    """
+    found = {}
+    def add(thread):
+        thread = thread.lower()
+        born = thread_born(thread) if UUID_TEXT.fullmatch(thread) else None
+        if born is not None and born >= since:
+            found[thread] = born
+    home = codex_home()
+    for folder, suffix in (('thread-writer-locks', '.lock'), ('tui-thread-reference-capabilities', '')):
+        try:
+            for entry in itertools.islice(os.scandir(home / folder), 4096):
+                if entry.name.endswith(suffix):
+                    add(entry.name[:len(entry.name) - len(suffix)])
+        except OSError:
+            pass
+    path = codex_state_db()
+    if path is not None:
+        try:
+            with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=0.2)) as db:
+                for (thread,) in db.execute('SELECT id FROM threads ORDER BY rowid DESC LIMIT 512'):
+                    if isinstance(thread, str):
+                        add(thread)
+        except sqlite3.Error:
+            pass
+    return found
+
+
+def startup_owner(thread, tuis, procs):
+    """The one TUI that created `thread` while starting, or None.
+
+    A TUI opens its first thread right after it starts (before any hook, even unprompted), so
+    `thread` is that TUI's if it was created within STARTUP_WINDOW_MS of the start and no other
+    known thread was created between the two. A thread another source missed can only make
+    this stricter; overlapping starts, a resumed TUI and every later `/new` are left unbound.
+    """
+    born = thread_born(thread)
+    if born is None:
+        return None
+    eligible = [c for c in tuis if isinstance(procs[c[1]].get('started'), int) and not procs[c[1]].get('reuses')
+                and not procs[c[1]].get('threads')
+                # lstart has one-second resolution.
+                and procs[c[1]]['started'] * 1000 <= born < procs[c[1]]['started'] * 1000 + 1000 + STARTUP_WINDOW_MS]
+    if not eligible:
+        return None
+    known = known_threads(min(procs[c[1]]['started'] for c in eligible) * 1000)
+    first = [c for c in eligible
+             if not any(t != thread and procs[c[1]]['started'] * 1000 <= b < born for t, b in known.items())]
+    return first[0] if len(first) == 1 else None
+
+
+def daemon_target(agent, server, panes, procs, payload, daemon=None):
     """The TUI a daemon-run hook belongs to, or None when it cannot be told apart.
 
     The daemon's own environment names whichever pane started it, so TMUX_PANE and the
-    process tree say nothing about the thread. A thread keeps the TUI it was first bound to.
-    An unbound thread binds only to the single Codex TUI whose working directory is the
-    thread's `cwd`. Several TUIs in that directory, none, or no thread ID: the hook is
-    dropped rather than shown in the wrong pane.
+    process tree say nothing about the thread, and Codex exposes no thread-to-client mapping.
+    A thread keeps the TUI it was first bound to. An unbound thread binds to, in order:
+    the single TUI started as `codex resume <thread>`; the single TUI (among the daemon's
+    socket clients when that is readable) whose working directory is the thread's `cwd`; or
+    the TUI whose start created the thread (startup_owner), which must be in that directory
+    when several TUIs are. Anything else (a `/new` or `/resume` among several TUIs of one
+    directory, no thread ID) is dropped rather than shown in the wrong pane.
     """
     thread = payload.get('session_id')
     if not isinstance(thread, str) or not thread or len(thread) > 256:
@@ -825,19 +958,40 @@ def daemon_target(agent, server, panes, procs, payload):
         row = db.execute('SELECT run FROM threads WHERE thread=?', (key,)).fetchone()
     chosen = runs.get(row[0]) if row else None
     if chosen is None:
-        cwd = payload.get('cwd')
-        if not isinstance(cwd, str) or not cwd.startswith('/'):
+        # Outside any transaction: lsof/ss may be slow and other hooks must not wait on the lock.
+        chosen = unbound_target(thread.lower(), candidates, procs, payload, daemon)
+        if chosen is None:
             return None
-        want = os.path.realpath(cwd)
-        # Outside any transaction: lsof may be slow and other hooks must not wait on the lock.
-        matches = [c for c in candidates if process_cwd(c[1]) == want]
-        if len(matches) != 1:
-            return None
-        chosen = matches[0]
     with closing(database()) as db, db:
         db.execute('INSERT OR REPLACE INTO threads VALUES(?,?,?)', (key, chosen[2], now))
     pane, pid, _ = chosen
     return server, pane, procs, pid
+
+
+def unbound_target(thread, candidates, procs, payload, daemon):
+    resumed = [c for c in candidates if thread in procs[c[1]].get('threads', ())]
+    if len(resumed) == 1:
+        return resumed[0]
+    cwd = payload.get('cwd')
+    matches = []
+    if isinstance(cwd, str) and cwd.startswith('/'):
+        want = os.path.realpath(cwd)
+        matches = [c for c in candidates if process_cwd(c[1]) == want]
+    if len(matches) == 1:
+        return matches[0]
+    # Only now the socket table: TUIs of another CODEX_HOME or without the daemon don't count.
+    clients = daemon_clients(daemon, {c[1] for c in candidates})
+    served = [c for c in candidates if clients and c[1] in clients]
+    if not served:
+        return None  # Start order needs every client of the daemon.
+    matches = [c for c in matches if c in served]
+    if len(matches) == 1:
+        return matches[0]
+    owner = startup_owner(thread, served, procs)
+    # Several TUIs in the directory: the owner must be one of them. None there (`codex --cd`): any client.
+    if owner is None or (matches and owner not in matches):
+        return None
+    return owner
 
 
 def resolve(agent, tmux, payload=None):
@@ -851,7 +1005,7 @@ def resolve(agent, tmux, payload=None):
         if procs[pid].get('daemon') == agent:
             if not procs[pid].get('managed') or payload is None:
                 return None
-            return daemon_target(agent, server, panes, procs, payload)
+            return daemon_target(agent, server, panes, procs, payload, pid)
         if procs[pid]['agent']:
             # Stop at the nearest identified CLI, including a different vendor's CLI.
             if pane is None or procs[pid]['agent'] != agent or not descendant(pid, pane['pid'], procs):

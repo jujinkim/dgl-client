@@ -125,8 +125,15 @@ Grok의 `subagentType`·대화 ID와 AGY의 `conversationId`를 분리하며, �
 - **Codex**(0.163.0 이상): 설치된 버전이 **0.171.0 이상**일 때만 `PostModelRequest` 훅을 추가한다. 이후 업데이트했다면 연동을 다시 설치하고 `/hooks`에서 추가된 훅을 검토·신뢰한다.
   0.171.0부터 Codex는 같은 `CODEX_HOME`의 모든 TUI를 `codex app-server` 데몬 하나로 처리하고 훅도 데몬이 실행한다. 데몬 환경의 `TMUX_PANE`은 데몬을 처음 띄운 pane이므로 귀속에 쓰지 않는다.
   TUI 공용 데몬(`--managed-daemon`)이 실행한 훅만 귀속하며, IDE 등 다른 클라이언트의 `app-server` 훅은 버린다. 스레드(`session_id`, SHA-256만 저장)는 처음 귀속된 TUI에 고정하고,
-  처음 보는 스레드는 payload `cwd`와 작업 디렉터리가 같은 Codex TUI가 정확히 하나일 때만 연결한다. 같은 디렉터리에 TUI가 여럿이거나, 없거나(`codex --cd`로 다른 디렉터리를 연 경우 포함),
-  스레드 ID가 없으면 다른 pane에 잘못 붙이지 않고 버린다.
+  Codex는 스레드와 클라이언트 연결의 대응을 외부에 공개하지 않으므로(훅 환경·payload·데몬 파일 모두 확인), 처음 보는 스레드는 아래 순서로 연결한다.
+  1. `codex resume <id>`로 시작한 TUI가 그 스레드 ID를 인자로 가진 경우 그 TUI.
+  2. payload `cwd`와 작업 디렉터리가 같은 Codex TUI가 정확히 하나면 그 TUI.
+  3. 그 외에는 데몬 제어 소켓의 연결 끝점(macOS `lsof -U`, Linux `ss -xp`)으로 이 데몬의 클라이언트인 TUI만 남긴다. 그중 2번 조건을 만족하는 TUI가 하나면 그 TUI다.
+     아니면 **그 TUI가 시작하며 만든 스레드인지**로 정한다. TUI는 시작 직후(로컬 1~5초, 첫 프롬프트 전) 첫 스레드를 만들고, 스레드 ID(UUIDv7)에 생성 시각이 들어 있다.
+     TUI 시작 후 20초 안에 생성됐고 그 사이에 알려진 다른 스레드가 없는 TUI가 정확히 하나일 때만 연결한다.
+     알려진 스레드는 이름과 ID만으로 모은다(로드 중 잠금 파일, TUI 표식 파일, state DB `threads.id`). 출처가 놓친 스레드는 판정을 엄격하게 만들 뿐이다.
+     같은 디렉터리에 TUI가 여럿이면 그중 하나여야 하고, 없으면(`codex --cd`) 이 데몬의 어떤 클라이언트든 된다.
+  소켓 표를 읽지 못하거나, 시작이 겹치거나(같은 초 포함), `resume`·`fork`로 연 TUI이거나, 같은 디렉터리 여러 TUI 중 한 곳의 `/new`·`/resume` 스레드이거나, 스레드 ID가 없으면 다른 pane에 잘못 붙이지 않고 버린다.
   데몬 프로세스는 Codex CLI 관측에서 제외한다(도우미와 Python 없는 기본 조회 모두). 기본 추론 수준을 쓰면 state DB 값이 비어 있어 추론 수준은 표시하지 않는다.
   `input_tokens`는 캐시 포함이므로 미캐시 입력은 input − cached − write(0 미만은 0)로 계산하고, 압축 요청은 제외한다.
   창 크기는 `$CODEX_HOME/models_cache.json`의 `context_window` × `effective_context_window_percent`/100이다.
@@ -198,7 +205,8 @@ AGY 래퍼는 stdin(최대 1 MB)을 한 번 읽어 화이트리스트를 기록�
 - 상태는 화이트리스트 필드만 저장한다. 이메일, 세션·대화 제목, transcript 경로, 프롬프트, 마지막 응답, 압축 요약, cwd·workspace 경로, 원시 세션·조직 ID, 메모리 파일 경로는 저장·전송하지 않는다.
   문자열은 128자(추론 수준 32자, 이름 64자), 한도 16개, 구성 24행으로 제한하고 범위를 벗어난 수치는 버린다. 앱도 같은 경계로 다시 검사해 잘못된 상태만 버리고 나머지 관측은 유지한다.
 - transcript·Codex rollout·Grok `unified.jsonl` 같은 대화 파일과 대화 DB, 인증 정보 파일은 상태 수집에도 읽지 않는다.
-  읽는 파일은 Codex `models_cache.json`·state DB의 두 열(`reasoning_effort`·`model`), Grok 세션의 `signals.json`·`usage.json`, DGL mod가 쓴 파일뿐이다.
+  읽는 파일은 Codex `models_cache.json`·state DB의 세 열(`reasoning_effort`·`model`, 귀속 판정용 `id`), Grok 세션의 `signals.json`·`usage.json`, DGL mod가 쓴 파일뿐이다.
+  Codex 귀속 판정은 `thread-writer-locks`·`tui-thread-reference-capabilities` 폴더의 파일 이름과 데몬 소켓의 연결 끝점만 보고, 연결 내용은 읽지 않는다.
 - 서버 소켓·서버 프로세스 시작 정보·패널·CLI PID/시작 정보로 실행을 구분한다. macOS `ps`의 경로 열 잘림을 피한다.
 - 연결마다 기존 SSH의 독립 exec 채널에 로그인 셸로 도우미를 한 번 실행해 두고, 약 2초마다 요청 한 줄·응답 한 줄로 순차 조회한다. Python이 없거나 도우미가 응답하지 않으면 30초 동안 tmux·`ps` 기본 조회로 대신한 뒤 다시 시작한다. 출력 구독이 없어도 수집하고 조회를 겹치지 않는다. 10초 이상 오래된 관측, 단절, 이벤트 간격 누락은 현재 관측으로 표시하지 않는다. 누락 이전의 관측은 새 훅이 올 때까지 미확인으로 유지한다.
 - 최초 연결·재접속·DB 세대 변경은 기준선만 동기화한다. 과거 이벤트를 새 알림으로 재발송하지 않는다.
@@ -228,7 +236,7 @@ Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다
 | Claude mod 형식 | 생성한 mod를 `claude plugin validate`(Claude Code 2.1.330)로 검사해 통과. 단위 검사는 `claude`가 PATH에 있을 때만 이 검사를 실행하고 없으면 skip으로 남긴다. 작업 중 TypeScript 5.6.3 strict 형식 검사도 한 번 통과했으나 반복 실행 진입점은 없다 |
 | Rust·Kotlin 상태 모델 | `dgl-core` 상태 6개 검사(파싱, 잘못된 상태만 폐기, 창·pane 선택과 계정별 최신 한도, 토큰·시간 표시, `--status` 설치 인자, 설정 기본값)와 계약 fixture의 `agentStatus` 기본값. Kotlin `AgentStatusTest` 3개와 `PreferencesTest` 설정 기본값·부분 입력·재시작 유지 통과 |
 | 상태 HUD 화면 | 상태바·팝오버·사이드바 패널·설정 카드·Android 칩/바텀시트의 실제 GUI 표시는 확인하지 않았다(GUI 미실행) |
-| 실제 CLI 상태 수집 (2026-11-22, 로컬 macOS, 임시 HOME·전용 tmux) | **Claude Code 2.1.330 확인**: `install --status`로 등록한 mod가 대화형 TUI에 로드되어 `$.fs.write`로 PID 파일을 썼고, 모델·컨텍스트·카테고리 분해·캐시(TTL 1h)·비용·5시간/7일 한도·구독 추정이 `serve` poll에서 pane에 붙었다(Rust 역직렬화·validate 통과). **AGY 1.5.14 확인**: statusline 래퍼 호출과 `TMUX_PANE` 상속, 모델·effort·컨텍스트·캐시·`plan_tier`·quota 버킷 수신. **Codex 0.171.0 확인(데몬 귀속 수정 후)**: 두 pane의 TUI가 데몬 하나를 공유해도 각 스레드의 이벤트·모델·컨텍스트(창 475k)·캐시가 자기 pane에 붙었고, 데몬이 고아(부모 launchd)가 된 뒤에도 유지됐다. 수정 전에는 데몬이 첫 TUI 아래면 다른 pane 이벤트가 첫 pane으로 가고, 고아면 모두 버려졌다. Grok·원격 SSH 호스트·API 키 계정은 미검증 |
+| 실제 CLI 상태 수집 (2026-11-22, 로컬 macOS, 임시 HOME·전용 tmux) | **Claude Code 2.1.330 확인**: `install --status`로 등록한 mod가 대화형 TUI에 로드되어 `$.fs.write`로 PID 파일을 썼고, 모델·컨텍스트·카테고리 분해·캐시(TTL 1h)·비용·5시간/7일 한도·구독 추정이 `serve` poll에서 pane에 붙었다(Rust 역직렬화·validate 통과). **AGY 1.5.14 확인**: statusline 래퍼 호출과 `TMUX_PANE` 상속, 모델·effort·컨텍스트·캐시·`plan_tier`·quota 버킷 수신. **Codex 0.171.0 확인(데몬 귀속 수정 후)**: 두 pane의 TUI가 데몬 하나를 공유해도 각 스레드의 이벤트·모델·컨텍스트(창 475k)·캐시가 자기 pane에 붙었고, 데몬이 고아(부모 launchd)가 된 뒤에도 유지됐다. 같은 디렉터리의 TUI 3개를 순서를 섞어 프롬프트해도 각자 자기 pane에 붙었고, 그중 한 TUI의 `/new` 스레드는 버려졌다(소켓 대응은 macOS `lsof`로 확인, Linux `ss`는 합성 출력 단위 검사만). 수정 전에는 데몬이 첫 TUI 아래면 다른 pane 이벤트가 첫 pane으로 가고, 고아면 모두 버려졌다. Grok·원격 SSH 호스트·API 키 계정은 미검증 |
 | Python 도우미 기존 13개 검사 | 기존 5개 회귀, 연결당 도우미의 줄 단위 응답·오류 코드, 화면 문구 미포함과 공식 형식 24개 fixture, 중립 출력·실패 출력, AGY/Grok 설정·사용자 훅 보존, 반복 설치/해제, CLI별 오류 격리, 버전·호환 훅 오인·대화/자식 분리·중복·본문 미저장 통과 |
 | Rust·UniFFI | 관측 3개 검사: 기존 2개 및 네 서비스 wire ID·질문/승인/응답/오류의 공통 알림 경로. 전체 Rust 코어·UniFFI 회귀 통과 |
 | GPUI·Kotlin 실행/이동 | 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단·입력 pane의 CLI 실행 중 차단(코어·Kotlin 단위 검사)·닫힘·포커스 복귀·종료 알림 대상 이동 거부를 회귀 검사한다 |

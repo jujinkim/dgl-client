@@ -48,8 +48,10 @@
 - [ ] Claude 남은 실기: 원격 SSH 호스트, npm 런처 설치, API 키·Bedrock 계정, project·local·managed 설정의 `env`가 같은 키를 덮는 경우, 해제 후 원래 값 복원.
 - [x] 2026-11-22 Codex 0.171.0 데몬 귀속 수정·로컬 확인: 훅을 실행하는 `codex app-server` 데몬을 CLI 관측에서 빼고, 스레드를 작업 디렉터리가 같은 TUI에 묶는다.
   두 pane·고아 데몬 모두 자기 pane에 붙었고 `PostModelRequest`의 모델·컨텍스트·캐시가 들어왔다.
-- [ ] Codex 남은 실기·개선: 원격 Linux 호스트(`/proc` 작업 디렉터리), 같은 디렉터리의 여러 TUI(현재 새 스레드는 버림, 데몬 소켓 연결로 구분하는 방법 검토), `codex --cd`(현재는 버림), IDE·데스크톱 앱이 같은 데몬을 쓰는 경우,
-  추론 수준을 직접 고른 스레드의 state DB 값.
+- [x] 2026-11-22 같은 디렉터리의 여러 Codex TUI 구분(로컬 macOS 실기): 데몬 소켓 연결 끝점으로 클라이언트 TUI를 좁히고, 스레드 UUIDv7 생성 시각을 TUI 시작 시각과 맞춰 시작 스레드를 연결한다.
+  TUI 3개가 각자 자기 pane에 붙고 `/new` 스레드는 버려짐을 확인했다.
+- [ ] Codex 남은 실기·개선: 원격 Linux 호스트(`/proc` 작업 디렉터리, `ss -xp` 소켓 대응은 합성 출력 검사만), 같은 디렉터리 여러 TUI 중 한 곳의 `/new`·`/resume`(현재 버림),
+  `codex --cd`의 이후 `/new`, IDE·데스크톱 앱이 같은 데몬을 쓰는 경우, 추론 수준을 직접 고른 스레드의 state DB 값.
 - [x] 2026-11-22 로컬 macOS 확인: AGY 1.5.14(Google AI Pro)에서 statusline 래퍼가 호출되고 자식 프로세스가 `TMUX_PANE`을 상속해 pane에 연결됐다.
   모델·effort·컨텍스트·캐시·`plan_tier`·quota 버킷(`gemini-5h`, `gemini-weekly`, `3p-5h` 등, `remaining_fraction`)이 들어오고 훅 이벤트도 기록됐다.
 - [ ] AGY 남은 실기: 사용자 statusline이 있을 때 출력 유지, 해제 후 복원, quota 버킷 ID의 사람이 읽을 이름 표시.

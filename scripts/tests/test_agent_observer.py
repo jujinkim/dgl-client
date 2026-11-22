@@ -274,6 +274,7 @@ class AgentObserverTest(unittest.TestCase):
             return observer.poll('/bin/tmux', '', 0, observer.poll('/bin/tmux', '', 0, '')['epoch'])
         with patch.object(observer, 'topology', return_value=('server', panes, procs)), \
                 patch.object(observer, 'process_cwd', side_effect=lambda pid: cwd.get(pid)), \
+                patch.object(observer, 'daemon_clients', return_value=None), \
                 patch.object(observer.os.path, 'realpath', side_effect=lambda p: p), \
                 patch.object(observer.os, 'getppid', return_value=4), \
                 patch.dict(os.environ, {'TMUX': '/socket,10,0', 'TMUX_PANE': '%1'}):
@@ -322,6 +323,94 @@ class AgentObserverTest(unittest.TestCase):
                 patch.object(observer.os, 'getppid', return_value=4), patch.dict(os.environ, {'TMUX': '/socket,10,0', 'TMUX_PANE': '%1'}):
             self.emit('Codex', 'Stop', {'session_id': 'legacy'})
             self.assertEqual(pane_of(poll()['events'][-1]), '%1')
+
+    def test_codex_daemon_hooks_tell_same_directory_tuis_apart_by_socket_and_start_order(self):
+        s0 = 1795356660
+        def v7(ms, n):
+            h = '%012x' % ms
+            return '%s-%s-7%03x-8000-%012x' % (h[:8], h[8:], n, n)
+        ta, tb, tc, tn = v7(s0 * 1000 + 5200, 1), v7(s0 * 1000 + 8250, 2), v7(s0 * 1000 + 16300, 3), v7(s0 * 1000 + 45000, 4)
+        panes = [{'session': '$1', 'window': '@%d' % n, 'pane': '%%%d' % n, 'pid': n * 10} for n in range(1, 7)]
+        procs = {3: {'parent': 12, 'token': 'daemon', 'agent': None, 'daemon': 'Codex', 'managed': True},
+                 4: {'parent': 3, 'token': 'hook-shell', 'agent': None}}
+        # Five TUIs: three in /w (started 0 s, 7 s, 15 s), one outside the daemon, one with --cd.
+        for n, begun in ((1, s0), (2, s0 + 7), (3, s0 + 15), (4, s0 + 16), (5, s0 + 60), (6, s0 + 61)):
+            procs[n * 10] = {'parent': 0, 'token': 'shell-%d' % n, 'agent': None}
+            procs[n * 10 + 2] = {'parent': n * 10, 'token': 'tui-%d' % n, 'agent': 'Codex', 'started': begun,
+                                 'threads': frozenset(), 'reuses': False}
+        cwd = {12: '/w', 22: '/w', 32: '/w', 42: '/w', 52: '/home', 62: '/w'}
+        clients = {12, 22, 32, 52, 62}
+        home = self.root / 'codex-home'
+        # The first TUI's startup thread already unloaded after its `/new`; it is saved, being prompted.
+        (home / 'thread-writer-locks').mkdir(parents=True)
+        for thread in (tb, tc, tn):
+            (home / 'thread-writer-locks' / (thread + '.lock')).touch()
+        with contextlib.closing(sqlite3.connect(home / 'state_5.sqlite')) as db, db:
+            db.execute('CREATE TABLE threads (id TEXT PRIMARY KEY, reasoning_effort TEXT, model TEXT)')
+            db.executemany('INSERT INTO threads(id) VALUES (?)', [(ta,), (tb,), (tn,)])
+        def poll():
+            return observer.poll('/bin/tmux', '', 0, observer.poll('/bin/tmux', '', 0, '')['epoch'])
+        with patch.object(observer, 'topology', return_value=('server', panes, procs)), \
+                patch.object(observer, 'process_cwd', side_effect=lambda pid: cwd.get(pid)), \
+                patch.object(observer, 'daemon_clients', side_effect=lambda daemon, pids: clients & pids if daemon == 3 else None), \
+                patch.object(observer.os.path, 'realpath', side_effect=lambda p: p), \
+                patch.object(observer.os, 'getppid', return_value=4), \
+                patch.dict(os.environ, {'TMUX': '/socket,10,0', 'TMUX_PANE': '%1'}):
+            # Each startup thread goes to the TUI that created it, even prompted out of order.
+            for thread in (tc, ta, tb):
+                self.emit('Codex', 'SessionStart', {'session_id': thread, 'cwd': '/w'})
+            # A later `/new` among several TUIs of the directory has no owner: dropped.
+            self.emit('Codex', 'SessionStart', {'session_id': tn, 'cwd': '/w'})
+            # Overlapping starts (60 s and 61 s) with no known thread between: either TUI could own it.
+            t61 = v7((s0 + 61) * 1000 + 900, 6)
+            self.emit('Codex', 'SessionStart', {'session_id': t61, 'cwd': '/w'})
+            # `codex --cd`: no TUI has the thread's directory, so start order alone decides.
+            tcd = v7((s0 + 60) * 1000 + 500, 5)
+            (home / 'thread-writer-locks' / (tcd + '.lock')).touch()
+            self.emit('Codex', 'SessionStart', {'session_id': tcd, 'cwd': '/elsewhere'})
+            # `codex resume <id>` owns that thread wherever it runs.
+            old = '0190aaaa-0000-7000-8000-000000000001'
+            procs[62].update(threads=frozenset({old}), reuses=True)
+            self.emit('Codex', 'SessionStart', {'session_id': old, 'cwd': '/w'})
+            events = [(e['event'], e['pane']) for e in poll()['events']]
+            self.assertEqual(events, [('SessionStart', '%3'), ('SessionStart', '%1'), ('SessionStart', '%2'),
+                                      ('SessionStart', '%5'), ('SessionStart', '%6')])
+            # A TUI outside the daemon (no socket to it) never takes a thread, even started in time.
+            # Without the socket table, start order is not used at all.
+            clients.clear()
+            self.emit('Codex', 'SessionStart', {'session_id': v7(s0 * 1000 + 16500, 7), 'cwd': '/w'})
+            self.assertEqual(len(poll()['events']), len(events))
+        # The process table keeps only the thread IDs and the reuse flag, never the command line.
+        args = {1: '/opt/bin/codex resume 0190AAAA-0000-7000-8000-000000000001', 2: '/opt/bin/codex fix resume flow'}
+        def ps(argv):
+            if argv[-1] == 'pid=,args=':
+                return '\n'.join('%d %s' % kv for kv in args.items())
+            return '\n'.join('%d 0 Fri Oct 23 12:00:00 2026 /opt/bin/codex' % pid for pid in args)
+        with patch.object(observer, 'run', side_effect=ps):
+            table = observer.processes()
+        self.assertEqual(table[1]['threads'], frozenset({old}))
+        self.assertTrue(table[1]['reuses'])
+        # A prompt word in a later argument never counts as a subcommand.
+        self.assertFalse(table[2]['reuses'])
+
+    def test_codex_daemon_clients_pair_socket_endpoints_only(self):
+        lsof_daemon = 'p7\nf7\nd0xa\nn->0xb\nf32\nd0xlisten\nn/tmp/codex-daemon-1/s\nf37\nd0xc1\nn/tmp/codex-daemon-1/s\nf43\nd0xc2\nn/tmp/codex-daemon-1/s\n'
+        lsof_tuis = 'p20\nf38\nd0xt1\nn->0xc1\np30\nf38\nd0xt3\nn->0xother\np40\nf38\nd0xt4\nn->0xc2\n'
+        with patch.object(observer, 'output', side_effect=lambda a: lsof_daemon if '7' in a else lsof_tuis):
+            self.assertEqual(observer.clients_from_lsof(7, {20, 30}), {20})
+        ss = ('Netid State Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n'
+              'u_str ESTAB 0 0 /tmp/codex-daemon-1/s 100 * 200 users:(("codex",pid=7,fd=37))\n'
+              'u_str ESTAB 0 0 * 200 * 100 users:(("codex",pid=20,fd=38))\n'
+              'u_str ESTAB 0 0 * 300 * 301 users:(("codex",pid=30,fd=38))\n'
+              'u_str ESTAB 0 0 /run/other 301 * 300 users:(("other",pid=9,fd=3))\n')
+        with patch.object(observer, 'output', return_value=ss):
+            self.assertEqual(observer.clients_from_ss(7, {20, 30}), {20})
+        with patch.object(observer, 'clients_from_lsof', side_effect=OSError), patch.object(observer.sys, 'platform', 'darwin'):
+            self.assertIsNone(observer.daemon_clients(7, {20}))
+        self.assertIsNone(observer.daemon_clients(None, {20}))
+        self.assertEqual(observer.thread_born('01a20398-a56d-77c3-b1f7-a0293ac8e9c0'), 0x01a20398a56d)
+        self.assertIsNone(observer.thread_born('thread-a'))
+        self.assertIsNone(observer.thread_born('01a20398-a56d-47c3-b1f7-a0293ac8e9c0'))
 
     def test_new_agents_process_binding_conversations_children_and_deduplication(self):
         pane = {'session': '$1', 'window': '@1', 'pane': '%1', 'pid': 1}
