@@ -231,6 +231,98 @@ class AgentObserverTest(unittest.TestCase):
         with patch.object(observer.sys, 'stdin', stdin):
             observer.record(agent, '/bin/tmux', event if explicit else None)
 
+    def test_codex_app_server_daemon_is_not_a_cli(self):
+        start = 'Fri Oct 23 12:00:00 2026'
+        rows = [f'1 0 {start} /bin/bash bash',
+                f'2 1 {start} /opt/bin/codex /opt/bin/codex',
+                f'3 2 {start} /home/.codex/packages/app-server-daemon/bin/codex /home/.codex/packages/app-server-daemon/bin/codex app-server --listen unix:// --managed-daemon',
+                f'4 3 {start} /opt/bin/codex codex app-server daemon pid-update-loop',
+                f'5 1 {start} /usr/bin/node node /npm/@openai/codex/bin/codex.js app-server --listen unix://',
+                f'6 1 {start} /usr/bin/node node /npm/@openai/codex/bin/codex.js --model app-server',
+                f'7 1 {start} /Users/a_b/codex /Users/a b/.codex/bin/codex app-server --listen unix:// --managed-daemon']
+        def ps(args):
+            if args[-1] == 'pid=,args=':
+                return '\n'.join(r.split(None, 1)[0] + ' ' + r.split(None, 8)[8] for r in rows)
+            return '\n'.join(' '.join(r.split(None, 8)[:8]) for r in rows)
+        with patch.object(observer, 'run', side_effect=ps):
+            procs = observer.processes()
+        self.assertEqual([pid for pid, p in procs.items() if p['agent']], [2, 6])
+        self.assertEqual([pid for pid, p in procs.items() if p['daemon']], [3, 4, 5, 7])
+        # Only the TUIs' managed daemon is attributed; an IDE's own app-server never is.
+        self.assertEqual([pid for pid, p in procs.items() if p['managed']], [3, 7])
+        pane = {'session': '$1', 'window': '@1', 'pane': '%1', 'pid': 1}
+        # Only the TUI and the unrelated launcher; the daemon under the TUI is no second Codex.
+        self.assertEqual([c[1] for c in observer.pane_clis('server', [pane], procs)], [2, 6])
+        with patch.object(observer, 'topology', return_value=('server', [pane], procs)):
+            self.assertEqual([o['agent'] for o in observer.poll('/bin/tmux', '', 0, '')['observations']], ['Codex', 'Codex'])
+
+    def test_codex_daemon_hooks_bind_threads_to_the_tui_by_working_directory(self):
+        panes = [{'session': '$1', 'window': '@1', 'pane': '%1', 'pid': 1},
+                 {'session': '$1', 'window': '@2', 'pane': '%2', 'pid': 10},
+                 {'session': '$1', 'window': '@3', 'pane': '%3', 'pid': 20}]
+        procs = {1: {'parent': 0, 'token': 'shell-1', 'agent': None},
+                 2: {'parent': 1, 'token': 'tui-1', 'agent': 'Codex'},
+                 # The daemon descends from the first TUI and carries that pane's environment.
+                 3: {'parent': 2, 'token': 'daemon', 'agent': None, 'daemon': 'Codex', 'managed': True},
+                 4: {'parent': 3, 'token': 'hook-shell', 'agent': None},
+                 10: {'parent': 0, 'token': 'shell-2', 'agent': None},
+                 11: {'parent': 10, 'token': 'tui-2', 'agent': 'Codex'}}
+        cwd = {2: '/w1', 11: '/w2', 21: '/w2'}
+        def pane_of(event):
+            return event['pane'] if event else None
+        def poll():
+            return observer.poll('/bin/tmux', '', 0, observer.poll('/bin/tmux', '', 0, '')['epoch'])
+        with patch.object(observer, 'topology', return_value=('server', panes, procs)), \
+                patch.object(observer, 'process_cwd', side_effect=lambda pid: cwd.get(pid)), \
+                patch.object(observer.os.path, 'realpath', side_effect=lambda p: p), \
+                patch.object(observer.os, 'getppid', return_value=4), \
+                patch.dict(os.environ, {'TMUX': '/socket,10,0', 'TMUX_PANE': '%1'}):
+            self.emit('Codex', 'SessionStart', {'session_id': 'thread-a', 'cwd': '/w2'})
+            self.emit('Codex', 'SessionStart', {'session_id': 'thread-b', 'cwd': '/w1'})
+            snapshot = poll()
+            self.assertEqual([pane_of(e) for e in snapshot['events']], ['%2', '%1'])
+            self.assertEqual(sorted(o['pane'] for o in snapshot['observations']), ['%1', '%2'])
+            # A bound thread stays with its TUI even if the payload's cwd changes later.
+            self.emit('Codex', 'Stop', {'session_id': 'thread-a', 'cwd': '/elsewhere'})
+            # `/new` in the only TUI of a directory: the new thread joins that TUI's run.
+            self.emit('Codex', 'SessionStart', {'session_id': 'thread-c', 'cwd': '/w2'})
+            # A second TUI in that directory makes an unbound thread ambiguous: dropped, never guessed.
+            procs[20] = {'parent': 0, 'token': 'shell-3', 'agent': None}
+            procs[21] = {'parent': 20, 'token': 'tui-3', 'agent': 'Codex'}
+            self.emit('Codex', 'SessionStart', {'session_id': 'thread-d', 'cwd': '/w2'})
+            # Bound threads keep their pane even then.
+            self.emit('Codex', 'Stop', {'session_id': 'thread-a', 'cwd': '/w2'})
+            # No matching directory or no thread id: dropped.
+            self.emit('Codex', 'SessionStart', {'session_id': 'thread-e', 'cwd': '/nowhere'})
+            self.emit('Codex', 'SessionStart', {'cwd': '/w1'})
+            events = poll()['events']
+            self.assertEqual([(e['event'], pane_of(e)) for e in events],
+                             [('SessionStart', '%2'), ('SessionStart', '%1'), ('Stop', '%2'), ('SessionStart', '%2'), ('Stop', '%2')])
+            # An IDE's own (unmanaged) app-server hook is dropped even when a TUI shares its directory.
+            procs[3]['managed'] = False
+            self.emit('Codex', 'SessionStart', {'session_id': 'ide-thread', 'cwd': '/w1'})
+            self.assertEqual(len(poll()['events']), len(events))
+            procs[3]['managed'] = True
+            # Status-only PostModelRequest follows the same binding.
+            self.emit('Codex', 'PostModelRequest', {'session_id': 'thread-b', 'cwd': '/w1', 'model': 'gpt-x', 'kind': 'sampling',
+                                                    'token_usage': {'input_tokens': 10, 'cached_input_tokens': 4, 'output_tokens': 2, 'total_tokens': 12}})
+            first = next(o for o in poll()['observations'] if o['pane'] == '%1')
+            self.assertEqual(first['status']['cache']['read'], 4)
+        # An orphaned daemon (parent launchd) without TMUX still reaches the bound TUI.
+        procs[3]['parent'] = 0
+        with patch.object(observer, 'topology', return_value=('server', panes, procs)), \
+                patch.object(observer, 'process_cwd', side_effect=lambda pid: cwd.get(pid)), \
+                patch.object(observer.os.path, 'realpath', side_effect=lambda p: p), \
+                patch.object(observer.os, 'getppid', return_value=4), patch.dict(os.environ, {}, clear=True):
+            self.emit('Codex', 'Stop', {'session_id': 'thread-b', 'cwd': '/w1'})
+            self.assertEqual(pane_of(poll()['events'][-1]), '%1')
+        # A legacy in-process hook (no daemon) still needs its own pane.
+        procs[4]['parent'] = 2
+        with patch.object(observer, 'topology', return_value=('server', panes, procs)), \
+                patch.object(observer.os, 'getppid', return_value=4), patch.dict(os.environ, {'TMUX': '/socket,10,0', 'TMUX_PANE': '%1'}):
+            self.emit('Codex', 'Stop', {'session_id': 'legacy'})
+            self.assertEqual(pane_of(poll()['events'][-1]), '%1')
+
     def test_new_agents_process_binding_conversations_children_and_deduplication(self):
         pane = {'session': '$1', 'window': '@1', 'pane': '%1', 'pid': 1}
         procs = {1: {'parent': 0, 'token': 'shell', 'agent': None}, 2: {'parent': 1, 'token': 'grok', 'agent': 'Grok'}}

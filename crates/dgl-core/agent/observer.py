@@ -115,6 +115,9 @@ def run(args):
     return subprocess.check_output(args, stderr=subprocess.DEVNULL, timeout=3).decode('utf-8', 'replace').strip()
 
 
+APP_SERVER = re.compile(r'(?:^|/)codex(?:\.js)? app-server(?:\s|$)')
+
+
 def processes():
     result = {}
     # lstart prevents attaching observations to a recycled PID. No command line leaves memory.
@@ -133,21 +136,34 @@ def processes():
         args = arguments.get(pid, '')
         agent = None
         name = Path(exe).name
-        if name in ('codex', 'claude', 'agy', 'grok'):
-            agent = {'codex': 'Codex', 'claude': 'Claude', 'agy': 'Agy', 'grok': 'Grok'}[name]
-        elif name in ('node', 'nodejs'):
+        launcher = name in ('node', 'nodejs')
+        argv = []
+        if launcher:
             try:
                 argv = shlex.split(args)
             except ValueError:
-                argv = []
+                pass
+        if name in ('codex', 'claude', 'agy', 'grok'):
+            agent = {'codex': 'Codex', 'claude': 'Claude', 'agy': 'Agy', 'grok': 'Grok'}[name]
+        elif launcher:
             # Only the actual entrypoint, never a prompt/argument mentioning a product.
             if len(argv) > 1 and argv[1].startswith('/'):
                 if argv[1].endswith('/@openai/codex/bin/codex.js'):
                     agent = 'Codex'
                 elif argv[1].endswith('/@anthropic-ai/claude-code/cli.js'):
                     agent = 'Claude'
+        daemon = managed = None
+        # Codex 0.171+ serves every TUI of a CODEX_HOME from one `codex app-server` daemon,
+        # which also runs their hooks. No app-server is a CLI in the pane it descends from.
+        # Matched on the raw text so an install path with spaces still counts.
+        if agent == 'Codex' and APP_SERVER.search(args):
+            agent, daemon = None, 'Codex'
+            # Only the TUIs' shared, managed daemon is attributed to a pane. An IDE's or other
+            # client's own app-server is not, even if a TUI shares its directory.
+            managed = '--managed-daemon' in args.split()
         result[pid] = {'parent': parent, 'token': digest(f'{pid}:{start}:{exe}'), 'agent': agent,
-                       'launcher': bool(agent and name in ('node', 'nodejs')), 'started': started(start)}
+                       'launcher': bool(agent and launcher), 'daemon': daemon, 'managed': bool(managed),
+                       'started': started(start)}
     return result
 
 
@@ -218,6 +234,8 @@ def database(timeout=0.8):
     db.execute('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS conversations (run TEXT PRIMARY KEY, conversation TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS status (run TEXT, actor TEXT, agent TEXT, data TEXT, at INTEGER, PRIMARY KEY(run,actor))')
+    # Codex thread -> TUI run bindings for daemon-run hooks; only digests are stored.
+    db.execute('CREATE TABLE IF NOT EXISTS threads (thread TEXT PRIMARY KEY, run TEXT, at INTEGER)')
     db.execute('INSERT OR IGNORE INTO meta VALUES (?, ?)', ('epoch', uuid.uuid4().hex))
     return db
 
@@ -753,19 +771,90 @@ def record(agent, tmux, explicit_event=None):
     return event
 
 
-def resolve(agent, tmux):
+def pane_clis(server, panes, procs):
+    """(pane, pid, run) of each identified CLI process under a pane; one per npm launcher + binary."""
+    found = []
+    for pane in panes:
+        for pid, proc in procs.items():
+            if proc['agent'] and descendant(pid, pane['pid'], procs):
+                # npm launcher + native executable represent one CLI. Prefer deepest process.
+                if proc.get('launcher') and any(other != pid and p['agent'] == proc['agent'] and descendant(other, pid, procs)
+                       for other, p in procs.items()):
+                    continue
+                found.append((pane, pid, run_id(server, pane['pane'], proc['token'])))
+    return found
+
+
+def process_cwd(pid):
+    """A process's working directory, or None. Linux /proc first, then lsof (macOS)."""
+    try:
+        return os.path.realpath(os.readlink('/proc/%d/cwd' % pid))
+    except (OSError, ValueError):
+        pass
+    try:
+        out = run(['lsof', '-b', '-w', '-a', '-d', 'cwd', '-p', str(pid), '-Fn'])
+    except Exception:
+        return None
+    line = next((l for l in out.splitlines() if l.startswith('n/')), None)
+    return os.path.realpath(line[1:]) if line else None
+
+
+THREAD_TTL = 7 * 86400 * 1000
+
+
+def daemon_target(agent, server, panes, procs, payload):
+    """The TUI a daemon-run hook belongs to, or None when it cannot be told apart.
+
+    The daemon's own environment names whichever pane started it, so TMUX_PANE and the
+    process tree say nothing about the thread. A thread keeps the TUI it was first bound to.
+    An unbound thread binds only to the single Codex TUI whose working directory is the
+    thread's `cwd`. Several TUIs in that directory, none, or no thread ID: the hook is
+    dropped rather than shown in the wrong pane.
+    """
+    thread = payload.get('session_id')
+    if not isinstance(thread, str) or not thread or len(thread) > 256:
+        return None
+    candidates = [c for c in pane_clis(server, panes, procs) if procs[c[1]]['agent'] == agent]
+    if not candidates:
+        return None
+    runs = {c[2]: c for c in candidates}
+    key = digest('thread:' + thread)
+    now = now_ms()
+    with closing(database()) as db, db:
+        db.execute('DELETE FROM threads WHERE at < ?', (now - THREAD_TTL,))
+        row = db.execute('SELECT run FROM threads WHERE thread=?', (key,)).fetchone()
+    chosen = runs.get(row[0]) if row else None
+    if chosen is None:
+        cwd = payload.get('cwd')
+        if not isinstance(cwd, str) or not cwd.startswith('/'):
+            return None
+        want = os.path.realpath(cwd)
+        # Outside any transaction: lsof may be slow and other hooks must not wait on the lock.
+        matches = [c for c in candidates if process_cwd(c[1]) == want]
+        if len(matches) != 1:
+            return None
+        chosen = matches[0]
+    with closing(database()) as db, db:
+        db.execute('INSERT OR REPLACE INTO threads VALUES(?,?,?)', (key, chosen[2], now))
+    pane, pid, _ = chosen
+    return server, pane, procs, pid
+
+
+def resolve(agent, tmux, payload=None):
     """(server, pane, procs, pid) of the CLI process that ran this hook or statusline, or None."""
     server, panes, procs = topology(tmux)
     pane = next((p for p in panes if p['pane'] == os.environ.get('TMUX_PANE')), None)
-    if pane is None:
-        return None
     pid = os.getppid()
     seen = set()
     while pid in procs and pid not in seen:
         seen.add(pid)
+        if procs[pid].get('daemon') == agent:
+            if not procs[pid].get('managed') or payload is None:
+                return None
+            return daemon_target(agent, server, panes, procs, payload)
         if procs[pid]['agent']:
             # Stop at the nearest identified CLI, including a different vendor's CLI.
-            if procs[pid]['agent'] != agent or not descendant(pid, pane['pid'], procs):
+            if pane is None or procs[pid]['agent'] != agent or not descendant(pid, pane['pid'], procs):
                 return None
             return server, pane, procs, pid
         pid = procs[pid]['parent']
@@ -774,7 +863,8 @@ def resolve(agent, tmux):
 
 def record_payload(agent, tmux, event, payload):
     status_only = event in STATUS_EVENTS.get(agent, [])
-    if (event not in EVENTS[agent] and not status_only) or not os.environ.get('TMUX'):
+    # A daemon-run Codex hook may lack TMUX; resolve() still requires TMUX_PANE for every other route.
+    if (event not in EVENTS[agent] and not status_only) or (not os.environ.get('TMUX') and agent != 'Codex'):
         return
     event_kind = None if status_only else kind(agent, event, payload)
     if event_kind is None and not status_only:
@@ -786,7 +876,7 @@ def record_payload(agent, tmux, event, payload):
             return
         if agent == 'Agy' and '/antigravity-cli/brain/' not in payload.get('transcriptPath', ''):
             return
-    resolved = resolve(agent, tmux)
+    resolved = resolve(agent, tmux, payload)
     if resolved is None:
         return
     server, pane, procs, pid = resolved
@@ -957,19 +1047,12 @@ def poll(tmux, session, after, epoch):
     server, panes, procs = topology(tmux, session)
     observations = []
     pids = {}
-    for pane in panes:
-        for pid, proc in procs.items():
-            if proc['agent'] and descendant(pid, pane['pid'], procs):
-                # npm launcher + native executable represent one CLI. Prefer deepest process.
-                if proc.get('launcher') and any(other != pid and p['agent'] == proc['agent'] and descendant(other, pid, procs)
-                       for other, p in procs.items()):
-                    continue
-                run_key = run_id(server, pane['pane'], proc['token'])
-                # The pid stays internal: it only maps a Claude mod file to its pane.
-                pids[run_key] = pid
-                observations.append(dict(session=pane['session'], window=pane['window'], pane=pane['pane'],
-                                         run=run_key, agent=proc['agent'],
-                                         actor='parent', last=None, supported=[]))
+    for pane, pid, run_key in pane_clis(server, panes, procs):
+        # The pid stays internal: it only maps a Claude mod file to its pane.
+        pids[run_key] = pid
+        observations.append(dict(session=pane['session'], window=pane['window'], pane=pane['pane'],
+                                 run=run_key, agent=procs[pid]['agent'],
+                                 actor='parent', last=None, supported=[]))
     result = dict(server=server, epoch='', cursor=0, gap=False, observations=observations, events=[])
     statuses = {}
     if DB.exists():
@@ -1745,6 +1828,7 @@ def configure(tmux, token, install, source, status=False):
             with database() as db:
                 db.execute('DELETE FROM latest')
                 db.execute('DELETE FROM status')
+                db.execute('DELETE FROM threads')
                 db.execute("UPDATE meta SET value=? WHERE key='epoch'", (uuid.uuid4().hex,))
         return inspect(tmux)
     finally:

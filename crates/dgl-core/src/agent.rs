@@ -743,6 +743,28 @@ impl Observer {
     }
 }
 
+/// PIDs of `codex app-server ...` processes in `ps -o pid=,args=` output. Matched on the
+/// raw text (like the helper's `APP_SERVER`) so an install path with spaces still counts.
+fn codex_daemons(ps: &str) -> HashSet<u32> {
+    ps.lines()
+        .filter_map(|line| {
+            let line = line.trim_start();
+            let (pid, rest) = line.split_once(char::is_whitespace)?;
+            let pid = pid.parse().ok()?;
+            ["codex app-server", "codex.js app-server"]
+                .iter()
+                .any(|needle| {
+                    rest.match_indices(needle).any(|(at, _)| {
+                        let before = rest[..at].chars().next_back();
+                        let after = rest[at + needle.len()..].chars().next();
+                        before.is_none_or(|c| c == '/') && after.is_none_or(char::is_whitespace)
+                    })
+                })
+                .then_some(pid)
+        })
+        .collect()
+}
+
 /// Python is optional for basic process identification. No screen, spinner, CPU or
 /// generic `node` heuristics are used by this conservative POSIX fallback. Like the
 /// helper, it covers every session of the tmux server.
@@ -762,6 +784,13 @@ pub async fn basic_snapshot(ssh: &Ssh) -> Result<Snapshot> {
     if code != 0 {
         return Err(Error::NotReady);
     }
+    // `codex app-server` (0.171+) serves every Codex TUI of a CODEX_HOME. It is not a CLI
+    // in the pane it happens to descend from; Linux `comm` would still name it `codex`.
+    let (code, args) = ssh.execute("LC_ALL=C ps -ww -axo pid=,args=").await?;
+    if code != 0 {
+        return Err(Error::NotReady);
+    }
+    let daemons = codex_daemons(&String::from_utf8_lossy(&args));
     let procs: HashMap<u32, (u32, String, Option<Agent>)> = String::from_utf8_lossy(&ps)
         .lines()
         .filter_map(|line| {
@@ -769,11 +798,9 @@ pub async fn basic_snapshot(ssh: &Ssh) -> Result<Snapshot> {
             if p.len() != 8 {
                 return None;
             }
-            let agent = Agent::from_command(p[7]);
-            Some((
-                p[0].parse().ok()?,
-                (p[1].parse().ok()?, p[2..7].join("-"), agent),
-            ))
+            let pid: u32 = p[0].parse().ok()?;
+            let agent = Agent::from_command(p[7]).filter(|_| !daemons.contains(&pid));
+            Some((pid, (p[1].parse().ok()?, p[2..7].join("-"), agent)))
         })
         .collect();
     let mut snapshot = Snapshot::default();
@@ -1258,6 +1285,11 @@ mod tests {
                 .tick([("host", &third)], &none, &settings, 8001)
                 .is_empty()
         );
+    }
+    #[test]
+    fn basic_fallback_skips_the_codex_app_server_daemon() {
+        let ps = "  2 /opt/bin/codex\n  3 /home/u/.codex/packages/app-server-daemon/bin/codex app-server --listen unix://\n  4 codex app-server daemon pid-update-loop\n  5 /opt/bin/codex --model app-server\n  6 /opt/bin/claude app-server\n  7 /Users/a b/.codex/bin/codex app-server --managed-daemon\n  8 node /npm/@openai/codex/bin/codex.js app-server\n  9 /opt/bin/codex exec fix-mycodex app-server\n 10 /opt/bin/codex app-servers\n";
+        assert_eq!(codex_daemons(ps), HashSet::from([3, 4, 7, 8]));
     }
     #[test]
     fn all_agents_keep_wire_identity_and_share_notification_routes() {
