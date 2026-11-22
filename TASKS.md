@@ -42,13 +42,16 @@
 
 단위 검사는 합성 입력과 임시 HOME만 사용했습니다. 아래 실기 항목은 확인 전까지 미검증으로 둡니다([에이전트 상태](docs/AGENT_STATUS.md#에이전트-상태-hud)).
 
-- [ ] 실제 Claude Code(2.1.310 이상)에서 상세 상태 수집 설치·재시작 후 `env.CLAUDE_CODE_PLUGIN_DIRS`의 DGL mod가 로드되는지 확인.
-  user 계층 mod의 `$.fs.write`(`~/.local/share/dgl-agent/v1/claude/<pid>.json`)·`$.session.identity()` 허용 여부, mod의 `CLAUDE_PID`와
-  관측 PID 일치(npm 런처·네이티브 바이너리), 구독·API 키 계정의 한도·계정 표시, 컨텍스트 구성·TTL 값, project·local·managed 설정의
-  `env`가 같은 키를 덮는 경우를 포함한다. 해제 후 `settings.json` 원래 값 복원도 확인한다.
-- [ ] 실제 Codex 0.171.0 이상에서 `PostModelRequest` 수신, 추가 훅의 `/hooks` 재신뢰, `models_cache.json` 창 크기와 state DB 추론 수준 확인.
-- [ ] 로그인한 AGY에서 statusline 설정 위치(`~/.gemini/antigravity-cli/settings.json`)·실제 입력(quota 버킷 ID·`reset_time` 형식·`plan_tier` 값),
-  statusline 자식 프로세스의 `TMUX_PANE` 상속, 사용자 statusline 출력 유지와 `stack_with_default`, 해제 후 복원 확인. 값은 비식별 fixture로 남긴다.
+- [x] 2026-11-22 로컬 macOS 확인(임시 HOME·전용 tmux 소켓, `observer.py install --status` 실제 경로, 모델 호출 소량): Claude Code 2.1.330 구독 계정에서
+  `env.CLAUDE_CODE_PLUGIN_DIRS`의 DGL mod가 대화형 TUI에 로드되어 `$.fs.write`로 `<pid>.json`을 썼다. 모델·컨텍스트 %·카테고리 분해 9행·캐시(1h TTL, 두 번째 요청 적중률 99.8%)·비용·
+  5시간/7일 한도·구독 추정이 들어왔고, `serve` poll이 네이티브 바이너리 PID로 pane에 붙였으며 훅의 effort와 합쳐졌다. Rust `Snapshot` 역직렬화·validate 통과.
+- [ ] Claude 남은 실기: 원격 SSH 호스트, npm 런처 설치, API 키·Bedrock 계정, project·local·managed 설정의 `env`가 같은 키를 덮는 경우, 해제 후 원래 값 복원.
+- [ ] **Codex 0.171.0 귀속 실패(기존 관측 포함)**: 2026-11-22 로컬 확인에서 훅(`PostModelRequest` 포함)은 정상 신뢰·실행됐지만 TUI와 분리된
+  app-server 데몬(부모 launchd)이 훅을 실행해, pane 프로세스 계보 검사에서 모두 버려졌다. 0.171에서는 상태 이벤트와 상세 상태가 표시되지 않는다.
+  세션 ID·데몬 연결 기반 귀속 방식 설계 필요. `models_cache.json` 창 크기·state DB 추론 수준도 이 문제 해결 뒤 확인.
+- [x] 2026-11-22 로컬 macOS 확인: AGY 1.5.14(Google AI Pro)에서 statusline 래퍼가 호출되고 자식 프로세스가 `TMUX_PANE`을 상속해 pane에 연결됐다.
+  모델·effort·컨텍스트·캐시·`plan_tier`·quota 버킷(`gemini-5h`, `gemini-weekly`, `3p-5h` 등, `remaining_fraction`)이 들어오고 훅 이벤트도 기록됐다.
+- [ ] AGY 남은 실기: 사용자 statusline이 있을 때 출력 유지, 해제 후 복원, quota 버킷 ID의 사람이 읽을 이름 표시.
 - [ ] 실제 Grok Build 세션 폴더의 `signals.json`·`usage.json` 구조와 `StopFailure`의 `errorType`/`error` 키 확인.
 - [ ] 상태바 칩·팝오버·사이드바 패널·설정 카드와 Android 칩·바텀시트를 macOS·Windows·Android 실제 화면에서 확인.
   Windows MSVC 빌드와 좁은 폭에서 항목 생략 순서 포함. 자동 UI 검사로 실기 표시를 대체하지 않는다.

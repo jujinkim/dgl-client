@@ -123,6 +123,7 @@ Grok의 `subagentType`·대화 ID와 AGY의 `conversationId`를 분리하며, �
   구성 행은 범주·이름·토큰·종류만 남기고 메모리 파일 경로·MCP 도구·에이전트 목록은 버린다. `claude auth status`는 호출하지 않는다.
   상세 수집 없이도 훅으로 모델(`PostModelSwitch`)·추론 수준·경보는 수집한다.
 - **Codex**(0.163.0 이상): 설치된 버전이 **0.171.0 이상**일 때만 `PostModelRequest` 훅을 추가한다. 이후 업데이트했다면 연동을 다시 설치하고 `/hooks`에서 추가된 훅을 검토·신뢰한다.
+  **알려진 문제(0.171.0 로컬 확인)**: 훅을 TUI와 분리된 app-server 데몬이 실행하므로 현재 pane 귀속 검사를 통과하지 못해 상태 이벤트와 상세 상태가 표시되지 않는다.
   `input_tokens`는 캐시 포함이므로 미캐시 입력은 input − cached − write(0 미만은 0)로 계산하고, 압축 요청은 제외한다.
   창 크기는 `$CODEX_HOME/models_cache.json`의 `context_window` × `effective_context_window_percent`/100이다.
   추론 수준은 가장 높은 번호의 `$CODEX_HOME/state_*.sqlite`를 읽기 전용·0.2초 제한으로 열어 해당 스레드의 `reasoning_effort`·`model` 두 열만 읽는다. 비공개 형식이라 실패하면 생략한다.
@@ -223,7 +224,7 @@ Android는 앱 프로세스와 SSH 연결이 유지되는 동안만 수신한다
 | Claude mod 형식 | 생성한 mod를 `claude plugin validate`(Claude Code 2.1.330)로 검사해 통과. 단위 검사는 `claude`가 PATH에 있을 때만 이 검사를 실행하고 없으면 skip으로 남긴다. 작업 중 TypeScript 5.6.3 strict 형식 검사도 한 번 통과했으나 반복 실행 진입점은 없다 |
 | Rust·Kotlin 상태 모델 | `dgl-core` 상태 6개 검사(파싱, 잘못된 상태만 폐기, 창·pane 선택과 계정별 최신 한도, 토큰·시간 표시, `--status` 설치 인자, 설정 기본값)와 계약 fixture의 `agentStatus` 기본값. Kotlin `AgentStatusTest` 3개와 `PreferencesTest` 설정 기본값·부분 입력·재시작 유지 통과 |
 | 상태 HUD 화면 | 상태바·팝오버·사이드바 패널·설정 카드·Android 칩/바텀시트의 실제 GUI 표시는 확인하지 않았다(GUI 미실행) |
-| 실제 CLI 상태 수집 | 미검증. 실제 세션의 mod 로딩(`CLAUDE_CODE_PLUGIN_DIRS`), mod의 `$.fs.write`·`$.session.identity()` 허용 여부, mod의 `CLAUDE_PID`와 관측 PID 일치, Codex 0.171 `PostModelRequest` 수신, AGY statusline 실제 입력·quota 버킷·`TMUX_PANE` 상속, Grok 세션 파일 실제 구조를 확인하지 않았다 |
+| 실제 CLI 상태 수집 (2026-11-22, 로컬 macOS, 임시 HOME·전용 tmux) | **Claude Code 2.1.330 확인**: `install --status`로 등록한 mod가 대화형 TUI에 로드되어 `$.fs.write`로 PID 파일을 썼고, 모델·컨텍스트·카테고리 분해·캐시(TTL 1h)·비용·5시간/7일 한도·구독 추정이 `serve` poll에서 pane에 붙었다(Rust 역직렬화·validate 통과). **AGY 1.5.14 확인**: statusline 래퍼 호출과 `TMUX_PANE` 상속, 모델·effort·컨텍스트·캐시·`plan_tier`·quota 버킷 수신. **Codex 0.171.0 실패**: 훅은 신뢰·실행됐지만 TUI와 분리된 app-server 데몬이 실행해 pane 귀속 검사에서 모두 버려졌다(기존 상태 이벤트 포함, [TASKS.md](../TASKS.md)). Grok·원격 SSH 호스트·API 키 계정은 미검증 |
 | Python 도우미 기존 13개 검사 | 기존 5개 회귀, 연결당 도우미의 줄 단위 응답·오류 코드, 화면 문구 미포함과 공식 형식 24개 fixture, 중립 출력·실패 출력, AGY/Grok 설정·사용자 훅 보존, 반복 설치/해제, CLI별 오류 격리, 버전·호환 훅 오인·대화/자식 분리·중복·본문 미저장 통과 |
 | Rust·UniFFI | 관측 3개 검사: 기존 2개 및 네 서비스 wire ID·질문/승인/응답/오류의 공통 알림 경로. 전체 Rust 코어·UniFFI 회귀 통과 |
 | GPUI·Kotlin 실행/이동 | 실행 명령 8개 바이트·한 번 전송·대상/재연결 변경 차단·입력 pane의 CLI 실행 중 차단(코어·Kotlin 단위 검사)·닫힘·포커스 복귀·종료 알림 대상 이동 거부를 회귀 검사한다 |
