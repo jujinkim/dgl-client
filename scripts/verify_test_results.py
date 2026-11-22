@@ -100,7 +100,15 @@ TESTS = {
                                'emptyInvalidAndUtf8SizeLimits', 'oldPreferencesAndIndependentBindingsRoundTrip'],
     'PreferencesTest': ['androidKeyboardModesSurviveRestartAndLegacyUnknownUseAuto', 'alwaysVisibleKeyboardPreservesModeAndSurvivesRestart',
                         'repositoryRestoresMacrosAndLegacySettings', 'accentValidationFallbackContrastAndStoredChoice',
-                        'languageChoiceSurvivesRestartAndLegacySettingsUseSystem'],
+                        'languageChoiceSurvivesRestartAndLegacySettingsUseSystem',
+                        'agentStatusChoicesDefaultFillPartialAndSurviveRestart'],
+    'core.AgentStatusTest': ['fullSampleParsesWithWireNamesAndUnknownFieldsAreIgnored',
+                             'statusesFilterByTargetAndLimitsFollowTheNewestAccountSample',
+                             'tokenAndDurationFormatsMatchTheCore'],
+    'AgentStatusUiTest': ['chipShowsEnabledKnownPartsAndDropsThemInOrderWhenNarrow',
+                          'focusPrefersTheFocusedPaneParentThenAnyStatus',
+                          'missingItemsExplainWhetherTheyAreUnknownUncollectedOrUnsupported',
+                          'breakdownSharesUseTheWindowAndNeverExceedIt'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification
         unicodeMaySpanOutputEvents extendedOutputAndEmptyOutput malformedAndOversizedMessagesFailClosed
         inputIsHexAndNamesAreQuoted captureEscapingDiffersFromLiveOutput retryAndInputGates

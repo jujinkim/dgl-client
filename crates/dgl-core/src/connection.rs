@@ -238,6 +238,9 @@ pub enum Action {
     AgentSetup {
         operation: String,
         token: Option<String>,
+        /// `install` only: also install detailed status collection (`--status`).
+        #[serde(default)]
+        status: bool,
     },
     Refresh,
     Snapshot,
@@ -869,7 +872,10 @@ impl Connection {
             Action::Manage { operation } => {
                 Command::new(operation)?;
             }
-            Action::AgentSetup { operation, token } => {
+            // `status` only adds `--status` to an install; other operations ignore it.
+            Action::AgentSetup {
+                operation, token, ..
+            } => {
                 if !["inspect", "install", "remove"].contains(&operation.as_str()) {
                     return Err(Error::InvalidArgument);
                 }
@@ -2687,11 +2693,12 @@ impl Actor<'_> {
                 Ok(())
             }
             Action::Manage { operation } => self.manage(operation).await,
-            Action::AgentSetup { operation, token } => {
-                let mut args = vec![operation.as_str()];
-                if let Some(token) = token {
-                    args.extend(["--token", token]);
-                }
+            Action::AgentSetup {
+                operation,
+                token,
+                status,
+            } => {
+                let args = crate::agent::setup_args(operation, token.as_deref(), *status);
                 let result = crate::agent::setup(self.ssh.as_ssh().ok_or(Error::NotReady)?, &args)
                     .await
                     .unwrap_or_else(

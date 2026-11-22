@@ -62,9 +62,24 @@ impl Desktop {
                     .track_scroll(&self.modal.scroll)
                     .child(self.recent_agents(cx)),
             );
+        self.popover_overlay(
+            "notification-overlay",
+            panel.into_any_element(),
+            self.agents.anchor.clone(),
+            cx,
+        )
+    }
+    /// A click-away layer holding `panel` above the control whose bounds `anchor` tracks.
+    pub(super) fn popover_overlay(
+        &self,
+        id: &'static str,
+        panel: AnyElement,
+        anchor: Rc<RefCell<Bounds<Pixels>>>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         div()
-            .id("notification-overlay")
-            .debug_selector(|| "notification-overlay".into())
+            .id(id)
+            .debug_selector(move || id.into())
             .absolute()
             .inset_0()
             .occlude()
@@ -88,8 +103,8 @@ impl Desktop {
             )
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .child(AtNotificationButton {
-                child: panel.into_any_element(),
-                anchor: self.agents.anchor.clone(),
+                child: panel,
+                anchor,
             })
     }
 }

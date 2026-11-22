@@ -108,6 +108,8 @@ pub struct Preferences {
     pub terminal_shortcuts: Vec<crate::input::TerminalShortcut>,
     pub volume_keys_enabled: bool,
     pub agent_notifications: crate::agent::NotificationSettings,
+    /// Where and which agent status parts are shown. Stays on this device.
+    pub agent_status: crate::agent::AgentStatusSettings,
     pub volume_up: crate::input::VolumeBinding,
     pub volume_down: crate::input::VolumeBinding,
     pub smooth_terminal_transitions: bool,
@@ -134,6 +136,7 @@ impl Default for Preferences {
             terminal_shortcuts: crate::input::TerminalShortcut::defaults(),
             volume_keys_enabled: false,
             agent_notifications: Default::default(),
+            agent_status: Default::default(),
             volume_up: Default::default(),
             volume_down: Default::default(),
             smooth_terminal_transitions: false,

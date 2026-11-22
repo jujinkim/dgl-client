@@ -100,6 +100,23 @@ class PreferencesTest {
             }
         } finally { directory.deleteRecursively() }
     }
+    @Test fun agentStatusChoicesDefaultFillPartialAndSurviveRestart() {
+        val directory = Files.createTempDirectory("dgl-agent-status-").toFile()
+        try {
+            directory.resolve("settings.json").writeText("""{"preferences":{"fontSize":19}}""")
+            val repository = LocalRepository(directory)
+            val legacy = repository.read().preferences.agentStatus
+            assertEquals(AgentStatusSettings(), legacy)
+            assertTrue(legacy.statusBar && legacy.sidebar && legacy.breakdown && legacy.effort)
+            assertFalse(legacy.cost)
+            directory.resolve("settings.json").writeText("""{"preferences":{"agentStatus":{"cost":true,"statusBar":false,"future":1}}}""")
+            val partial = repository.read().preferences.agentStatus
+            assertEquals(AgentStatusSettings(cost = true, statusBar = false), partial)
+            val state = repository.read().let { it.copy(preferences = it.preferences.copy(agentStatus = partial.copy(sidebar = false, cache = false))) }
+            repository.save(state)
+            assertEquals(state, LocalRepository(directory).read())
+        } finally { directory.deleteRecursively() }
+    }
     @Test fun repositoryRestoresMacrosAndLegacySettings() {
         val directory = Files.createTempDirectory("dgl-preferences-").toFile()
         try {

@@ -93,7 +93,7 @@ pub struct AgentEvent {
     pub event: String,
     pub at: u64,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Observation {
     pub session: String,
     pub window: String,
@@ -103,6 +103,349 @@ pub struct Observation {
     pub agent: Agent,
     pub last: Option<AgentEvent>,
     pub supported: Vec<Kind>,
+    /// Account, usage, context and model the helper collected for this run. A status that
+    /// does not parse or fails `AgentStatus::is_valid` becomes `None`; the rest of the
+    /// snapshot is kept.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient_status"
+    )]
+    pub status: Option<AgentStatus>,
+}
+fn lenient_status<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<AgentStatus>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value
+        .and_then(|v| serde_json::from_value::<AgentStatus>(v).ok())
+        .filter(AgentStatus::is_valid))
+}
+
+/// Status values the helper reported. `None` is unknown and never means zero.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentStatus {
+    /// Milliseconds since the epoch of the newest contributing sample.
+    pub at: Option<u64>,
+    /// Collectors that contributed: `mod`, `statusline`, `hook`, `file`, `command`.
+    pub sources: Vec<String>,
+    pub model: Option<ModelInfo>,
+    pub effort: Option<String>,
+    pub thinking: Option<bool>,
+    pub context: Option<ContextUsage>,
+    pub cache: Option<CacheUsage>,
+    pub cost_usd: Option<f64>,
+    pub account: Option<AccountInfo>,
+    pub limits: Vec<UsageLimit>,
+    /// Milliseconds since the epoch when `limits` were sampled; `at` covers every key.
+    pub limits_at: Option<u64>,
+    /// `rate_limit`, `billing_error` or `authentication_failed` from a failure hook.
+    pub alert: Option<String>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModelInfo {
+    pub id: Option<String>,
+    pub name: Option<String>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContextUsage {
+    pub used: Option<u64>,
+    pub size: Option<u64>,
+    /// 0..=100; the CLI's own figure when it reports one.
+    pub percent: Option<f64>,
+    /// Auto-compact threshold in percent, when known.
+    pub compact_percent: Option<f64>,
+    /// Only from a real per-category source (the Claude Code mod).
+    pub breakdown: Vec<ContextPart>,
+    pub breakdown_total: Option<u64>,
+    pub breakdown_window: Option<u64>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContextPart {
+    /// One of `CONTEXT_CATEGORIES`; anything else is shown as `other` with `name`.
+    pub category: String,
+    pub name: Option<String>,
+    pub tokens: Option<u64>,
+    pub kind: Option<String>,
+}
+/// Provider-side prompt cache of the last request.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CacheUsage {
+    /// Uncached input tokens.
+    pub input: Option<u64>,
+    pub read: Option<u64>,
+    pub write: Option<u64>,
+    pub output: Option<u64>,
+    /// `5m` or `1h` (Claude only).
+    pub ttl: Option<String>,
+    /// Milliseconds since the epoch when that request completed.
+    pub last_at: Option<u64>,
+    pub hit_ratio: Option<f64>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AccountInfo {
+    /// `subscription`, `api_key`, `cloud`, `enterprise` or `other`.
+    pub kind: Option<String>,
+    pub plan: Option<String>,
+    /// Hash of non-secret identity; only groups limit samples of one account.
+    pub key: Option<String>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UsageLimit {
+    /// `five_hour`, `seven_day`, `spend_limit` or a CLI's own bucket id.
+    pub id: String,
+    pub label: Option<String>,
+    /// May exceed 100 for an exceeded spend limit.
+    pub used_percent: Option<f64>,
+    pub remaining_fraction: Option<f64>,
+    /// Seconds since the epoch.
+    pub resets_at: Option<u64>,
+}
+
+pub const CONTEXT_CATEGORIES: [&str; 11] = [
+    "system_prompt",
+    "system_tools",
+    "mcp_tools",
+    "custom_agents",
+    "memory_files",
+    "skills",
+    "messages",
+    "autocompact_buffer",
+    "free",
+    "deferred",
+    "other",
+];
+/// A status sample older than this is shown as stale.
+pub const STATUS_STALE_MS: u64 = 60 * 60 * 1000;
+
+fn text_ok(value: &str, max: usize) -> bool {
+    value.chars().count() <= max && !value.chars().any(char::is_control)
+}
+fn optional_text(value: &Option<String>, max: usize) -> bool {
+    value.as_deref().is_none_or(|v| text_ok(v, max))
+}
+fn in_range(value: Option<f64>, max: f64) -> bool {
+    value.is_none_or(|v| v.is_finite() && (0.0..=max).contains(&v))
+}
+impl AgentStatus {
+    /// Bounds for remote data. A failing status is dropped, never the snapshot.
+    pub fn is_valid(&self) -> bool {
+        let model = self
+            .model
+            .as_ref()
+            .is_none_or(|m| optional_text(&m.id, 128) && optional_text(&m.name, 64));
+        let context = self.context.as_ref().is_none_or(|c| {
+            in_range(c.percent, 100.0)
+                && in_range(c.compact_percent, 100.0)
+                && c.breakdown.len() <= 24
+                && c.breakdown.iter().all(|p| {
+                    text_ok(&p.category, 32)
+                        && optional_text(&p.name, 64)
+                        && optional_text(&p.kind, 32)
+                })
+        });
+        let cache = self
+            .cache
+            .as_ref()
+            .is_none_or(|c| optional_text(&c.ttl, 16) && in_range(c.hit_ratio, 1.0));
+        let account = self.account.as_ref().is_none_or(|a| {
+            optional_text(&a.kind, 32) && optional_text(&a.plan, 64) && optional_text(&a.key, 128)
+        });
+        let limits = self.limits.len() <= 16
+            && self.limits.iter().all(|l| {
+                text_ok(&l.id, 128)
+                    && optional_text(&l.label, 64)
+                    && in_range(l.used_percent, 1000.0)
+                    && in_range(l.remaining_fraction, 1.0)
+            });
+        self.sources.len() <= 8
+            && self.sources.iter().all(|s| text_ok(s, 32))
+            && optional_text(&self.effort, 32)
+            && optional_text(&self.alert, 64)
+            && self.cost_usd.is_none_or(|v| v.is_finite() && v >= 0.0)
+            && model
+            && context
+            && cache
+            && account
+            && limits
+    }
+    /// The CLI's own percentage, else `used / size`. Unknown stays `None`.
+    pub fn context_percent(&self) -> Option<f64> {
+        let c = self.context.as_ref()?;
+        c.percent.or_else(|| match (c.used, c.size) {
+            (Some(used), Some(size)) if size > 0 => {
+                Some((used as f64 * 100.0 / size as f64).clamp(0.0, 100.0))
+            }
+            _ => None,
+        })
+    }
+    /// The reported ratio, else `read / (input + read + write)` when computable.
+    pub fn cache_hit_ratio(&self) -> Option<f64> {
+        let c = self.cache.as_ref()?;
+        c.hit_ratio.or_else(|| {
+            let (input, read) = (c.input?, c.read?);
+            let total = input + read + c.write.unwrap_or(0);
+            (total > 0).then(|| read as f64 / total as f64)
+        })
+    }
+    pub fn account_key(&self) -> Option<&str> {
+        self.account.as_ref()?.key.as_deref()
+    }
+    /// When the limits were sampled: `limits_at`, else the newest sample of any key.
+    pub fn limits_sampled_at(&self) -> u64 {
+        self.limits_at.or(self.at).unwrap_or(0)
+    }
+    pub fn is_stale(&self, now_ms: u64) -> bool {
+        self.at
+            .is_none_or(|at| now_ms.saturating_sub(at) >= STATUS_STALE_MS)
+    }
+}
+impl ContextPart {
+    /// The vocabulary key used for the label and colour; unknown categories are `other`.
+    pub fn category_key(&self) -> &'static str {
+        CONTEXT_CATEGORIES
+            .into_iter()
+            .find(|c| *c == self.category)
+            .unwrap_or("other")
+    }
+    pub fn label(&self) -> String {
+        let key = match self.category_key() {
+            "system_prompt" => "agent_status.category.system_prompt",
+            "system_tools" => "agent_status.category.system_tools",
+            "mcp_tools" => "agent_status.category.mcp_tools",
+            "custom_agents" => "agent_status.category.custom_agents",
+            "memory_files" => "agent_status.category.memory_files",
+            "skills" => "agent_status.category.skills",
+            "messages" => "agent_status.category.messages",
+            "autocompact_buffer" => "agent_status.category.autocompact_buffer",
+            "free" => "agent_status.category.free",
+            "deferred" => "agent_status.category.deferred",
+            _ => {
+                return self
+                    .name
+                    .clone()
+                    .filter(|n| !n.trim().is_empty())
+                    .unwrap_or_else(|| t("agent_status.category.other").into());
+            }
+        };
+        t(key).into()
+    }
+}
+impl CacheUsage {
+    /// `5m`, `1h`, `30s` style TTLs in milliseconds.
+    pub fn ttl_ms(&self) -> Option<u64> {
+        let ttl = self.ttl.as_deref()?.trim();
+        let unit = ttl.chars().last()?;
+        let number: u64 = ttl[..ttl.len() - unit.len_utf8()].parse().ok()?;
+        let unit = match unit {
+            's' => 1_000,
+            'm' => 60_000,
+            'h' => 3_600_000,
+            _ => return None,
+        };
+        number.checked_mul(unit)
+    }
+    /// Estimated: the provider does not report expiry, so this is `last_at + ttl`.
+    pub fn estimated_expiry_ms(&self) -> Option<u64> {
+        self.last_at?.checked_add(self.ttl_ms()?)
+    }
+}
+impl AccountInfo {
+    pub fn kind_label(&self) -> Option<&'static str> {
+        Some(match self.kind.as_deref()? {
+            "subscription" => t("agent_status.account.subscription"),
+            "api_key" => t("agent_status.account.api_key"),
+            "cloud" => t("agent_status.account.cloud"),
+            "enterprise" => t("agent_status.account.enterprise"),
+            _ => t("agent_status.account.other"),
+        })
+    }
+}
+impl UsageLimit {
+    /// Used percentage, from `remaining_fraction` when only that is reported.
+    pub fn used(&self) -> Option<f64> {
+        self.used_percent
+            .or_else(|| self.remaining_fraction.map(|f| 100.0 * (1.0 - f)))
+    }
+    pub fn title(&self) -> String {
+        match self.id.as_str() {
+            "five_hour" => t("agent_status.limit.five_hour").into(),
+            "seven_day" => t("agent_status.limit.seven_day").into(),
+            "spend_limit" => t("agent_status.limit.spend_limit").into(),
+            id => self
+                .label
+                .clone()
+                .filter(|l| !l.trim().is_empty())
+                .unwrap_or_else(|| id.into()),
+        }
+    }
+    /// Seconds until the reset, computed locally; `None` when unknown.
+    pub fn resets_in_s(&self, now_ms: u64) -> Option<u64> {
+        Some(self.resets_at?.saturating_sub(now_ms / 1000))
+    }
+}
+pub fn alert_label(alert: &str) -> Option<&'static str> {
+    Some(match alert {
+        "rate_limit" => t("agent_status.alert.rate_limit"),
+        "billing_error" => t("agent_status.alert.billing_error"),
+        "authentication_failed" => t("agent_status.alert.authentication_failed"),
+        _ => return None,
+    })
+}
+/// Compact token count: `950`, `1.2k`, `84k`, `1.2M`, `12M`.
+pub fn format_tokens(n: u64) -> String {
+    fn tenths(value: u64, unit: &str) -> String {
+        if value.is_multiple_of(10) {
+            format!("{}{unit}", value / 10)
+        } else {
+            format!("{}.{}{unit}", value / 10, value % 10)
+        }
+    }
+    if n < 1_000 {
+        return n.to_string();
+    }
+    let k = (n + 50) / 100;
+    if k < 100 {
+        return tenths(k, "k");
+    }
+    let k = (n + 500) / 1_000;
+    if k < 1_000 {
+        return format!("{k}k");
+    }
+    let m = (n + 50_000) / 100_000;
+    if m < 100 {
+        return tenths(m, "M");
+    }
+    format!("{}M", (n + 500_000) / 1_000_000)
+}
+/// Compact duration: `45s`, `3m`, `2h 5m`, `4d`, `4d 3h`.
+pub fn format_duration_s(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3_600 {
+        format!("{}m", secs / 60)
+    } else if secs < 86_400 {
+        let (h, m) = (secs / 3_600, secs % 3_600 / 60);
+        if m == 0 {
+            format!("{h}h")
+        } else {
+            format!("{h}h {m}m")
+        }
+    } else {
+        let (d, h) = (secs / 86_400, secs % 86_400 / 3_600);
+        if h == 0 {
+            format!("{d}d")
+        } else {
+            format!("{d}d {h}h")
+        }
+    }
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -192,6 +535,48 @@ impl Snapshot {
             .count();
         format!("{agents} · {} {count}", last.kind.label())
     }
+    /// Observations carrying a status, in snapshot order. `filter` is a window (`@ID`),
+    /// session (`$ID`) or pane (`%ID`); `None` takes every observation.
+    pub fn statuses(&self, filter: Option<&str>) -> Vec<&Observation> {
+        self.observations
+            .iter()
+            .filter(|o| o.status.is_some())
+            .filter(|o| match filter {
+                None => true,
+                Some(f) if f.starts_with('@') => o.window == f,
+                Some(f) if f.starts_with('$') => o.session == f,
+                Some(f) => o.pane == f,
+            })
+            .collect()
+    }
+    /// Usage is per account, so every pane of one account shares the newest sample
+    /// (largest `limits_at`, else `at`) that carries limits.
+    pub fn freshest_limits(&self, agent: Agent, key: &str) -> &[UsageLimit] {
+        self.observations
+            .iter()
+            .filter(|o| o.agent == agent)
+            .filter_map(|o| o.status.as_ref())
+            .filter(|s| s.account_key() == Some(key) && !s.limits.is_empty())
+            .max_by_key(|s| s.limits_sampled_at())
+            .map_or(&[], |s| s.limits.as_slice())
+    }
+    /// Limits shown for `observation`: its account's newest sample, else its own.
+    pub fn limits_for<'a>(&'a self, observation: &'a Observation) -> &'a [UsageLimit] {
+        let Some(status) = observation.status.as_ref() else {
+            return &[];
+        };
+        match status.account_key() {
+            Some(key) => {
+                let shared = self.freshest_limits(observation.agent, key);
+                if shared.is_empty() {
+                    &status.limits
+                } else {
+                    shared
+                }
+            }
+            None => &status.limits,
+        }
+    }
     pub fn validate(&self) -> Result<()> {
         if self.observations.len() > 2048 || self.events.len() > 2048 {
             return Err(Error::Protocol);
@@ -259,6 +644,17 @@ pub async fn setup(ssh: &Ssh, args: &[&str]) -> Result<serde_json::Value> {
         .ok_or(Error::Protocol)?;
     let value = serde_json::from_slice(line).map_err(|_| Error::Protocol)?;
     Ok(localize_setup(value))
+}
+/// Helper arguments for `Action::AgentSetup`; `--status` is passed for an install only.
+pub fn setup_args<'a>(operation: &'a str, token: Option<&'a str>, status: bool) -> Vec<&'a str> {
+    let mut args = vec![operation];
+    if let Some(token) = token {
+        args.extend(["--token", token]);
+    }
+    if status && operation == "install" {
+        args.push("--status");
+    }
+    args
 }
 fn limitations(agent: &str) -> &'static str {
     match agent {
@@ -404,6 +800,7 @@ pub async fn basic_snapshot(ssh: &Ssh) -> Result<Snapshot> {
                         agent: *agent,
                         last: None,
                         supported: vec![],
+                        status: None,
                     });
                     break;
                 }
@@ -418,6 +815,37 @@ pub async fn basic_snapshot(ssh: &Ssh) -> Result<Snapshot> {
     Ok(snapshot)
 }
 
+/// Which agent status parts the app shows. Stays on this device.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AgentStatusSettings {
+    pub status_bar: bool,
+    pub sidebar: bool,
+    pub account: bool,
+    pub usage: bool,
+    pub context: bool,
+    pub breakdown: bool,
+    pub cache: bool,
+    pub model: bool,
+    pub effort: bool,
+    pub cost: bool,
+}
+impl Default for AgentStatusSettings {
+    fn default() -> Self {
+        Self {
+            status_bar: true,
+            sidebar: true,
+            account: true,
+            usage: true,
+            context: true,
+            breakdown: true,
+            cache: true,
+            model: true,
+            effort: true,
+            cost: false,
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct NotificationSettings {
@@ -624,6 +1052,7 @@ mod tests {
                 agent: Agent::Codex,
                 last: Some(e.clone()),
                 supported: vec![Kind::Response],
+                status: None,
             }],
             events: vec![e],
             ..Default::default()
@@ -698,6 +1127,7 @@ mod tests {
                 // A process without any received hook still counts.
                 last: None,
                 supported: vec![],
+                status: None,
             }],
             ..Default::default()
         };
@@ -783,6 +1213,7 @@ mod tests {
             agent: Agent::Codex,
             last: None,
             supported: vec![],
+            status: None,
         };
         let snapshot = |id: &str| Snapshot {
             server: "server".into(),
@@ -865,5 +1296,286 @@ mod tests {
                 assert_eq!(deliver[0].event.kind, kind);
             }
         }
+    }
+
+    fn status_observation(
+        pane: &str,
+        agent: Agent,
+        status: serde_json::Value,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "session": "$1", "window": "@1", "pane": pane, "run": format!("run{pane}"),
+            "actor": "parent", "agent": agent, "last": null, "supported": [],
+            "status": status,
+        })
+    }
+    #[test]
+    fn status_parses_every_field_and_keeps_unknown_as_none() {
+        let full = serde_json::json!({
+            "at": 1_763_790_000_000u64,
+            "sources": ["mod", "hook"],
+            "model": {"id": "claude-opus-4-x", "name": "Opus 4.x"},
+            "effort": "high",
+            "thinking": true,
+            "context": {
+                "used": 84000, "size": 200000, "percent": 42.0, "compact_percent": 85.0,
+                "breakdown": [
+                    {"category": "messages", "name": "Messages", "tokens": 30000, "kind": "used"},
+                    {"category": "future_kind", "name": "Plugin data", "tokens": 10},
+                ],
+                "breakdown_total": 120000, "breakdown_window": 200000,
+                "future_field": 1,
+            },
+            "cache": {"input": 1200, "read": 80000, "write": 2800, "output": 900,
+                      "ttl": "5m", "last_at": 1_763_790_000_000u64},
+            "cost_usd": 1.23,
+            "account": {"kind": "subscription", "plan": "max", "key": "abc"},
+            "limits": [{"id": "five_hour", "used_percent": 63.0, "resets_at": 1_763_795_000u64},
+                       {"id": "gemini-pro", "label": "Gemini Pro", "remaining_fraction": 0.25}],
+            "alert": "rate_limit",
+            "unknown_top_level": {"x": 1},
+        });
+        let snapshot: Snapshot = serde_json::from_value(serde_json::json!({
+            "server": "s", "valid": true,
+            "observations": [status_observation("%1", Agent::Claude, full),
+                             status_observation("%2", Agent::Codex, serde_json::json!({}))],
+        }))
+        .unwrap();
+        snapshot.validate().unwrap();
+        let status = snapshot.observations[0].status.as_ref().unwrap();
+        assert_eq!(
+            status.model.as_ref().unwrap().name.as_deref(),
+            Some("Opus 4.x")
+        );
+        assert_eq!(status.context_percent(), Some(42.0));
+        let ratio = status.cache_hit_ratio().unwrap();
+        assert!((ratio - 80000.0 / 84000.0).abs() < 1e-9);
+        let cache = status.cache.as_ref().unwrap();
+        assert_eq!(cache.ttl_ms(), Some(300_000));
+        assert_eq!(cache.estimated_expiry_ms(), Some(1_763_790_300_000));
+        let parts = &status.context.as_ref().unwrap().breakdown;
+        assert_eq!(parts[0].category_key(), "messages");
+        assert_eq!(parts[0].label(), t("agent_status.category.messages"));
+        assert_eq!(parts[1].category_key(), "other");
+        assert_eq!(parts[1].label(), "Plugin data");
+        assert_eq!(status.limits[0].used(), Some(63.0));
+        assert_eq!(status.limits[0].title(), t("agent_status.limit.five_hour"));
+        assert_eq!(status.limits[0].resets_in_s(1_763_794_000_000), Some(1000));
+        assert_eq!(status.limits[1].used(), Some(75.0));
+        assert_eq!(status.limits[1].title(), "Gemini Pro");
+        assert_eq!(
+            status.account.as_ref().unwrap().kind_label(),
+            Some(t("agent_status.account.subscription"))
+        );
+        assert_eq!(
+            alert_label("rate_limit"),
+            Some(t("agent_status.alert.rate_limit"))
+        );
+        assert_eq!(alert_label("x"), None);
+        assert!(!status.is_stale(1_763_790_000_000 + 1000));
+        assert!(status.is_stale(1_763_790_000_000 + STATUS_STALE_MS));
+        // An empty status is all unknown: nothing becomes zero.
+        let empty = snapshot.observations[1].status.as_ref().unwrap();
+        assert_eq!(empty, &AgentStatus::default());
+        assert_eq!(empty.context_percent(), None);
+        assert_eq!(empty.cache_hit_ratio(), None);
+        assert!(empty.is_stale(0));
+        // Round trip keeps wire names; an observation without status omits the key.
+        let wire = serde_json::to_value(&snapshot.observations[0]).unwrap();
+        assert_eq!(wire["status"]["context"]["compact_percent"], 85.0);
+        assert_eq!(wire["status"]["limits"][0]["resets_at"], 1_763_795_000u64);
+        let mut bare = snapshot.observations[0].clone();
+        bare.status = None;
+        assert!(serde_json::to_value(&bare).unwrap().get("status").is_none());
+    }
+    #[test]
+    fn invalid_status_is_dropped_without_rejecting_the_snapshot() {
+        let long = "x".repeat(129);
+        for bad in [
+            serde_json::json!({"context": {"percent": 101.0}}),
+            serde_json::json!({"context": {"percent": -1.0}}),
+            serde_json::json!({"context": {"compact_percent": 200.0}}),
+            serde_json::json!({"context": {"breakdown": vec![serde_json::json!({"category": "free"}); 25]}}),
+            serde_json::json!({"context": {"breakdown": [{"category": "other", "name": "n".repeat(65)}]}}),
+            serde_json::json!({"cache": {"hit_ratio": 1.5}}),
+            serde_json::json!({"limits": vec![serde_json::json!({"id": "a"}); 17]}),
+            serde_json::json!({"limits": [{"id": "a", "used_percent": 1001.0}]}),
+            serde_json::json!({"limits": [{"id": "a", "remaining_fraction": 2.0}]}),
+            serde_json::json!({"limits": [{"id": long}]}),
+            serde_json::json!({"effort": "e".repeat(33)}),
+            serde_json::json!({"model": {"id": "a\nb"}}),
+            serde_json::json!({"sources": ["a", "b", "c", "d", "e", "f", "g", "h", "i"]}),
+            serde_json::json!({"cost_usd": -1.0}),
+            // Wrong types fail to parse and are dropped the same way.
+            serde_json::json!({"context": {"used": "many"}}),
+            serde_json::json!({"limits": {"id": "a"}}),
+            serde_json::json!("status"),
+        ] {
+            let snapshot: Snapshot = serde_json::from_value(serde_json::json!({
+                "server": "s", "valid": true,
+                "observations": [status_observation("%1", Agent::Claude, bad.clone())],
+            }))
+            .unwrap();
+            snapshot.validate().unwrap();
+            assert_eq!(snapshot.observations.len(), 1, "{bad}");
+            assert!(snapshot.observations[0].status.is_none(), "{bad}");
+        }
+        // Exceeded spend limits may report more than 100 %.
+        let ok: Snapshot = serde_json::from_value(serde_json::json!({
+            "observations": [status_observation("%1", Agent::Claude,
+                serde_json::json!({"limits": [{"id": "spend_limit", "used_percent": 140.0}]}))],
+        }))
+        .unwrap();
+        assert!(ok.observations[0].status.is_some());
+        // Absent and null status are both none.
+        let none: Snapshot = serde_json::from_value(serde_json::json!({
+            "observations": [status_observation("%1", Agent::Claude, serde_json::Value::Null),
+                {"session": "$1", "window": "@1", "pane": "%2", "run": "r", "actor": "parent",
+                 "agent": "Codex", "last": null, "supported": []}],
+        }))
+        .unwrap();
+        assert!(none.observations.iter().all(|o| o.status.is_none()));
+    }
+    #[test]
+    fn statuses_filter_by_target_and_limits_follow_the_newest_account_sample() {
+        let mut first = status_observation(
+            "%1",
+            Agent::Claude,
+            // A newer hook moves `at`, but its limits are older than the other pane's.
+            serde_json::json!({"at": 50, "limits_at": 10, "account": {"key": "k"},
+                "limits": [{"id": "five_hour", "used_percent": 10.0}],
+                "context": {"used": 50, "size": 200}}),
+        );
+        first["window"] = "@1".into();
+        let mut second = status_observation(
+            "%2",
+            Agent::Claude,
+            serde_json::json!({"at": 20, "account": {"key": "k"},
+                "limits": [{"id": "five_hour", "used_percent": 30.0}]}),
+        );
+        second["window"] = "@2".into();
+        let other_account = status_observation(
+            "%3",
+            Agent::Claude,
+            serde_json::json!({"at": 30, "account": {"key": "other"},
+                "limits": [{"id": "five_hour", "used_percent": 90.0}]}),
+        );
+        let no_key = status_observation(
+            "%4",
+            Agent::Codex,
+            serde_json::json!({"at": 40, "limits": [{"id": "x", "used_percent": 5.0}]}),
+        );
+        let mut without = status_observation("%5", Agent::Claude, serde_json::Value::Null);
+        without["window"] = "@2".into();
+        let snapshot: Snapshot = serde_json::from_value(serde_json::json!({
+            "observations": [first, second, other_account, no_key, without],
+        }))
+        .unwrap();
+        let panes = |f: Option<&str>| {
+            snapshot
+                .statuses(f)
+                .into_iter()
+                .map(|o| o.pane.as_str())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(panes(None), ["%1", "%2", "%3", "%4"]);
+        assert_eq!(panes(Some("@2")), ["%2"]);
+        assert_eq!(panes(Some("%3")), ["%3"]);
+        assert_eq!(panes(Some("$1")), ["%1", "%2", "%3", "%4"]);
+        assert!(panes(Some("%5")).is_empty());
+        assert_eq!(
+            snapshot.freshest_limits(Agent::Claude, "k")[0].used_percent,
+            Some(30.0)
+        );
+        assert!(snapshot.freshest_limits(Agent::Codex, "k").is_empty());
+        let o = &snapshot.observations;
+        assert_eq!(snapshot.limits_for(&o[0])[0].used_percent, Some(30.0));
+        assert_eq!(snapshot.limits_for(&o[2])[0].used_percent, Some(90.0));
+        assert_eq!(snapshot.limits_for(&o[3])[0].used_percent, Some(5.0));
+        assert!(snapshot.limits_for(&o[4]).is_empty());
+        assert_eq!(o[0].status.as_ref().unwrap().context_percent(), Some(25.0));
+    }
+    #[test]
+    fn token_and_duration_formats_are_compact() {
+        for (n, text) in [
+            (0, "0"),
+            (999, "999"),
+            (1_000, "1k"),
+            (1_250, "1.3k"),
+            (9_949, "9.9k"),
+            (9_950, "10k"),
+            (84_000, "84k"),
+            (999_499, "999k"),
+            (999_500, "1M"),
+            (1_200_000, "1.2M"),
+            (9_960_000, "10M"),
+            (12_400_000, "12M"),
+        ] {
+            assert_eq!(format_tokens(n), text, "{n}");
+        }
+        for (s, text) in [
+            (0, "0s"),
+            (59, "59s"),
+            (60, "1m"),
+            (180, "3m"),
+            (3_600, "1h"),
+            (7_500, "2h 5m"),
+            (86_400, "1d"),
+            (4 * 86_400, "4d"),
+            (4 * 86_400 + 3 * 3_600 + 59, "4d 3h"),
+        ] {
+            assert_eq!(format_duration_s(s), text, "{s}");
+        }
+        let ttl = |v: &str| {
+            CacheUsage {
+                ttl: Some(v.into()),
+                ..Default::default()
+            }
+            .ttl_ms()
+        };
+        assert_eq!(ttl("1h"), Some(3_600_000));
+        assert_eq!(ttl("5분"), None);
+        assert_eq!(ttl("m"), None);
+    }
+    #[test]
+    fn setup_adds_status_collection_to_install_only() {
+        assert_eq!(setup_args("inspect", None, true), ["inspect"]);
+        assert_eq!(
+            setup_args("install", Some("t"), true),
+            ["install", "--token", "t", "--status"]
+        );
+        assert_eq!(
+            setup_args("install", Some("t"), false),
+            ["install", "--token", "t"]
+        );
+        assert_eq!(
+            setup_args("remove", Some("t"), true),
+            ["remove", "--token", "t"]
+        );
+        use crate::connection::Action;
+        let Action::AgentSetup { status, .. } = serde_json::from_value(
+            serde_json::json!({"action": "agentSetup", "operation": "inspect"}),
+        )
+        .unwrap() else {
+            panic!("agentSetup action");
+        };
+        assert!(!status);
+        let Action::AgentSetup { status, .. } = serde_json::from_value(serde_json::json!(
+            {"action": "agentSetup", "operation": "install", "token": "t", "status": true}
+        ))
+        .unwrap() else {
+            panic!("agentSetup action");
+        };
+        assert!(status);
+    }
+    #[test]
+    fn status_settings_default_to_everything_but_cost() {
+        let settings: AgentStatusSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(settings, AgentStatusSettings::default());
+        assert!(settings.status_bar && settings.sidebar && settings.breakdown);
+        assert!(!settings.cost);
+        let wire = serde_json::to_value(&settings).unwrap();
+        assert_eq!(wire["statusBar"], true);
+        assert_eq!(wire["cost"], false);
     }
 }

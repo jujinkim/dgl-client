@@ -1217,6 +1217,7 @@ fn panel_details_keep_all_runs_and_exclude_other_panes(cx: &mut TestAppContext) 
             agent: e.agent,
             last: Some(e),
             supported: vec![],
+            status: None,
         })
         .collect(),
         ..Default::default()
@@ -3325,4 +3326,274 @@ fn chrome_parts_repaint_for_desktop_changes_not_for_terminal_output(cx: &mut Tes
         assert_eq!(s.chrome.renders(Part::GroupHeader(gone)), 0);
         assert!(!s.chrome.toolbar_heights.contains_key(&gone));
     });
+}
+
+fn agent_status_snapshot() -> dgl_core::agent::Snapshot {
+    use dgl_core::agent::{
+        AccountInfo, Agent, AgentStatus, CacheUsage, ContextPart, ContextUsage, ModelInfo,
+        Observation, Snapshot, UsageLimit, now_ms,
+    };
+    let now = now_ms();
+    let observation = |pane: &str, agent, status| Observation {
+        session: "$1".into(),
+        window: "@1".into(),
+        pane: pane.into(),
+        run: format!("run{pane}"),
+        actor: "parent".into(),
+        agent,
+        last: None,
+        supported: vec![],
+        status,
+    };
+    let part = |category: &str, tokens| ContextPart {
+        category: category.into(),
+        name: None,
+        tokens: Some(tokens),
+        kind: None,
+    };
+    let claude = AgentStatus {
+        at: Some(now),
+        sources: vec!["mod".into(), "hook".into()],
+        model: Some(ModelInfo {
+            id: Some("claude-opus".into()),
+            name: Some("Opus 4.x".into()),
+        }),
+        effort: Some("high".into()),
+        thinking: Some(true),
+        context: Some(ContextUsage {
+            used: Some(84_000),
+            size: Some(200_000),
+            percent: Some(42.),
+            compact_percent: Some(85.),
+            breakdown: vec![
+                part("system_prompt", 3_000),
+                part("messages", 60_000),
+                part("free", 116_000),
+            ],
+            breakdown_total: Some(84_000),
+            breakdown_window: Some(200_000),
+        }),
+        cache: Some(CacheUsage {
+            input: Some(1_200),
+            read: Some(80_000),
+            write: Some(2_800),
+            output: Some(900),
+            ttl: Some("5m".into()),
+            last_at: Some(now - 60_000),
+            hit_ratio: None,
+        }),
+        cost_usd: Some(1.23),
+        account: Some(AccountInfo {
+            kind: Some("subscription".into()),
+            plan: Some("max".into()),
+            key: Some("a".repeat(64)),
+        }),
+        limits: vec![
+            UsageLimit {
+                id: "five_hour".into(),
+                used_percent: Some(63.),
+                resets_at: Some(now / 1000 + 7_500),
+                ..Default::default()
+            },
+            UsageLimit {
+                id: "seven_day".into(),
+                used_percent: Some(95.),
+                resets_at: Some(now / 1000 + 4 * 86_400),
+                ..Default::default()
+            },
+        ],
+        limits_at: None,
+        alert: None,
+    };
+    Snapshot {
+        valid: true,
+        observed_at: now,
+        observations: vec![
+            observation("%1", Agent::Claude, Some(claude)),
+            observation("%2", Agent::Codex, None),
+        ],
+        ..Default::default()
+    }
+}
+
+#[gpui::test]
+fn agent_status_chip_fits_the_status_bar_and_opens_details(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    let terminal = add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        s.agents.hud.snapshot = Some(agent_status_snapshot());
+        cx.notify();
+    });
+    let mut widths = vec![];
+    for width in [420., 640., 1200.] {
+        ui.simulate_resize(gpui::size(px(width), px(800.)));
+        redraw(ui);
+        let bar = ui.debug_bounds("status-bar").unwrap();
+        let status = ui.debug_bounds("connection-status").unwrap();
+        let chip = ui.debug_bounds("agent-status-chip").unwrap();
+        let actions = ui.debug_bounds("status-actions").unwrap();
+        assert_eq!(bar.size.height, px(26.));
+        assert_eq!(actions.right(), bar.right() - px(12.));
+        assert!(status.right() <= chip.left(), "{width}");
+        assert!(chip.right() <= actions.left(), "{width}");
+        assert!(chip.top() >= bar.top() && chip.bottom() <= bar.bottom());
+        assert!(
+            chip.size.width <= px(super::agent_status_ui::chip_budget(width)),
+            "{width}"
+        );
+        widths.push(chip.size.width);
+    }
+    // Narrow bars drop parts instead of overflowing.
+    assert!(
+        widths[0] <= widths[1] && widths[1] <= widths[2] && widths[0] < widths[2],
+        "{widths:?}"
+    );
+    // The chip's popover lists every agent with visible values and explicit gaps.
+    ui.update(|w, cx| w.focus(&terminal.focus_handle(cx)));
+    let chip = ui.debug_bounds("agent-status-chip").unwrap();
+    ui.simulate_click(chip.center(), Modifiers::default());
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| matches!(s.dialog, Some(Dialog::AgentStatus))));
+    let popover = ui.debug_bounds("agent-status-popover").unwrap();
+    assert!(popover.bottom() <= chip.top());
+    assert!(popover.left() >= px(0.) && popover.right() <= px(1200.));
+    for selector in [
+        "agent-status-limit-five_hour",
+        "agent-status-limit-seven_day",
+        "agent-status-context-gauge",
+        "agent-status-breakdown",
+        "agent-status-cache",
+    ] {
+        assert!(ui.debug_bounds(selector).is_some(), "{selector}");
+    }
+    // The breakdown is its own setting: it stays without the context figures, which leave
+    // the popover (debug bounds outlive removed elements, so the bar's move is the proof).
+    let with_figures = ui.debug_bounds("agent-status-breakdown").unwrap();
+    view.update(ui, |s, cx| {
+        s.local.preferences.agent_status.context = false;
+        cx.notify();
+    });
+    redraw(ui);
+    let alone = ui.debug_bounds("agent-status-breakdown").unwrap();
+    assert!(
+        alone.top() < with_figures.top(),
+        "{alone:?} {with_figures:?}"
+    );
+    view.update(ui, |s, cx| {
+        s.local.preferences.agent_status.context = true;
+        cx.notify();
+    });
+    redraw(ui);
+    cx_input_is_blocked(ui, &terminal);
+    ui.simulate_keystrokes("escape");
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.dialog.is_none()));
+    assert!(ui.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+    // Turning the status-bar place off removes the chip; the bar keeps its layout.
+    view.update(ui, |s, cx| {
+        s.local.preferences.agent_status.status_bar = false;
+        cx.notify();
+    });
+    redraw(ui);
+    let status = ui.debug_bounds("connection-status").unwrap();
+    let actions = ui.debug_bounds("status-actions").unwrap();
+    assert!((f32::from(actions.left() - status.right())).abs() <= 1.);
+}
+
+fn cx_input_is_blocked(ui: &mut VisualTestContext, terminal: &Entity<Terminal>) {
+    ui.simulate_keystrokes("a");
+    ui.simulate_input("차단");
+    redraw(ui);
+    assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
+}
+
+#[gpui::test]
+fn agent_status_sidebar_panel_folds_and_settings_toggle_fields(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    add_terminal(&view, ui);
+    ui.simulate_resize(gpui::size(px(1200.), px(800.)));
+    view.update(ui, |s, cx| {
+        s.agents.hud.snapshot = Some(agent_status_snapshot());
+        cx.notify();
+    });
+    redraw(ui);
+    let sidebar = ui.debug_bounds("session-sidebar").unwrap();
+    let panel = ui.debug_bounds("agent-status-panel").unwrap();
+    let hosts = ui.debug_bounds("host-section").unwrap();
+    assert!(panel.top() >= hosts.bottom());
+    assert!(panel.bottom() <= sidebar.bottom() && panel.right() <= sidebar.right());
+    for row in [
+        "agent-status-row-run%1-parent",
+        "agent-status-row-run%2-parent",
+    ] {
+        let bounds = ui.debug_bounds(row).unwrap();
+        assert!(
+            bounds.left() >= panel.left() && bounds.right() <= panel.right(),
+            "{row}"
+        );
+    }
+    let open = panel.size.height;
+    let toggle = ui.debug_bounds("agent-status-toggle").unwrap();
+    ui.simulate_click(toggle.center(), Modifiers::default());
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.agents.hud.collapsed));
+    let folded = ui.debug_bounds("agent-status-panel").unwrap();
+    assert!(folded.size.height < open);
+    assert_eq!(folded.bottom(), sidebar.bottom());
+    // A row of the open panel shows the same details as the chip.
+    let toggle = ui.debug_bounds("agent-status-toggle").unwrap();
+    ui.simulate_click(toggle.center(), Modifiers::default());
+    redraw(ui);
+    assert!(!view.read_with(ui, |s, _| s.agents.hud.collapsed));
+    let row = ui.debug_bounds("agent-status-row-run%1-parent").unwrap();
+    ui.simulate_click(row.center(), Modifiers::default());
+    redraw(ui);
+    view.read_with(ui, |s, _| {
+        assert!(matches!(s.dialog, Some(Dialog::AgentStatus)));
+        assert!(s.agents.hud.from_sidebar);
+    });
+    assert!(ui.debug_bounds("agent-status-popover").is_some());
+    let close = ui.debug_bounds("close-agent-status").unwrap();
+    ui.simulate_click(close.center(), Modifiers::default());
+    redraw(ui);
+    assert!(view.read_with(ui, |s, _| s.dialog.is_none()));
+    // The settings card flips each field and saves it on this device.
+    view.update(ui, |s, cx| {
+        s.dialog = Some(Dialog::Settings);
+        cx.notify();
+    });
+    redraw(ui);
+    let entry = ui.debug_bounds("agent-status-setting-9").unwrap();
+    view.update(ui, |s, cx| {
+        let body = s.modal.scroll.bounds();
+        s.modal.scroll.set_offset(point(
+            px(0.),
+            -(entry.bottom() - body.bottom() + px(16.)).max(px(0.)),
+        ));
+        cx.notify();
+    });
+    redraw(ui);
+    for i in 0..10 {
+        let selector: &'static str =
+            Box::leak(format!("agent-status-setting-{i}").into_boxed_str());
+        assert!(ui.debug_bounds(selector).is_some(), "{selector}");
+    }
+    let cost = ui.debug_bounds("agent-status-setting-9").unwrap();
+    ui.simulate_click(cost.center(), Modifiers::default());
+    redraw(ui);
+    let path = view.read_with(ui, |s, _| {
+        assert!(s.local.preferences.agent_status.cost);
+        s.path.clone()
+    });
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(saved["preferences"]["agentStatus"]["cost"], true);
+    // Hiding the panel leaves the host list to the sidebar's bottom.
+    view.update(ui, |s, cx| {
+        s.dialog = None;
+        s.local.preferences.agent_status.sidebar = false;
+        cx.notify();
+    });
+    redraw(ui);
+    let hosts = ui.debug_bounds("host-section").unwrap();
+    assert_eq!(hosts.bottom(), sidebar.bottom());
 }

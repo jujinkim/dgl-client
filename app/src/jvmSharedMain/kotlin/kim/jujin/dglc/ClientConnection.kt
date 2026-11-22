@@ -10,7 +10,8 @@ interface ClientConnection {
     /** Snapshot the notification inbox may ingest: empty unless the core is observing agents. */
     val observedAgents: AgentSnapshot get() = agents.value
     val agentSetup: MutableStateFlow<String?> get() = MutableStateFlow(null)
-    fun configureAgents(operation: String, token: String? = null) {}
+    /** `status` adds detailed status collection to an `install`; other operations ignore it. */
+    fun configureAgents(operation: String, token: String? = null, status: Boolean = false) {}
     val refreshing: MutableStateFlow<Boolean>
     val host: HostProfile
     val status: MutableStateFlow<ConnectionStatus>

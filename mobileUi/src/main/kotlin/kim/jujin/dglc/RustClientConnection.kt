@@ -27,9 +27,9 @@ class RustClientConnection(
 ) : ClientConnection {
     override val agents = MutableStateFlow(AgentSnapshot())
     override val agentSetup = MutableStateFlow<String?>(null)
-    override fun configureAgents(operation: String, token: String?) {
+    override fun configureAgents(operation: String, token: String?, status: Boolean) {
         agentSetup.value = null
-        action(buildJsonObject { put("action", "agentSetup"); put("operation", operation); token?.let { put("token", it) } })
+        action(buildJsonObject { put("action", "agentSetup"); put("operation", operation); token?.let { put("token", it) }; put("status", status) })
     }
     override val refreshing = MutableStateFlow(false)
     @Volatile private var refreshRequest: ULong? = null

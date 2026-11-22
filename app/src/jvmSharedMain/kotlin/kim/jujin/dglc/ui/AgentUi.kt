@@ -2,10 +2,12 @@ package kim.jujin.dglc.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,11 @@ import kotlinx.serialization.json.*
     var inspected by remember { mutableStateOf(false) }
     val preview = setup?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }
     val token = preview?.get("token")?.jsonPrimitive?.content
+    val collections = preview?.get("configs")?.jsonArray.orEmpty().mapNotNull { runCatching { it.jsonObject["status_collection"]?.jsonObject }.getOrNull() }
+    fun flag(o: JsonObject, name: String) = o[name]?.jsonPrimitive?.booleanOrNull == true
+    val collectable = collections.any { flag(it, "supported") }
+    // Install without the flag removes detailed collection, so the box starts as it is installed now.
+    var collect by remember(token) { mutableStateOf(collections.any { flag(it, "installed") }) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(tr("agent.integration_named", client.host.alias)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(t("agent.last_observed_note"))
@@ -71,9 +78,23 @@ import kotlinx.serialization.json.*
                     c["error"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     Text(tr("agent.available_event_types", c["capabilities"]?.jsonArray?.joinToString { it.jsonPrimitive.content }))
                     c["limitations"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() }?.let { Text(it) }
+                    c["status_collection"]?.let { runCatching { it.jsonObject }.getOrNull() }?.let { sc ->
+                        agentCollectionKey(flag(sc, "supported"), flag(sc, "installed"), flag(sc, "replaced"))?.let {
+                            Text(t(it), color = if (flag(sc, "replaced")) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
+                        }
+                    }
                 }
                 Text(t("agent.codex_trust_hooks"))
-                BorderedButton({ client.configureAgents("install", token) }) { Text(t("agent.install_integration")) }
+                if (collectable) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(collect, role = Role.Checkbox) { collect = it },
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        AccentCheckbox(collect, null)
+                        Text(t("agent_status.collect"), Modifier.padding(start = 4.dp))
+                    }
+                    Text(t("agent_status.collect_description"), style = MaterialTheme.typography.bodySmall)
+                    Text(t("agent_status.collect.restart"), style = MaterialTheme.typography.bodySmall)
+                }
+                BorderedButton({ client.configureAgents("install", token, collectable && collect) }) { Text(t("agent.install_integration")) }
                 BorderedButton({ client.configureAgents("remove", token) }) { Text(t("agent.remove_dagali_hooks_only")) }
             }
             }

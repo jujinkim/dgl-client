@@ -1,0 +1,1305 @@
+//! Agent status HUD: the status-bar chip, its popover, the sidebar panel and the
+//! settings card. Values the helper did not report stay unknown and are never shown as 0.
+use super::*;
+use dgl_core::agent::{
+    self, Agent, AgentStatus, AgentStatusSettings, Observation, Snapshot, UsageLimit,
+};
+
+const POPOVER_WIDTH: f32 = 400.;
+const STATUS_TEXT_SIZE: f32 = 12.;
+/// Status-bar padding (12 + 12) and the notification and settings buttons (56 + 28).
+const STATUS_BAR_RESERVED: f32 = 24. + 84. + 8.;
+/// Chip icon, gap and padding around its text.
+const CHIP_CHROME: f32 = 40.;
+
+/// HUD state that is not a preference. It stays on this device for this run only.
+#[derive(Default)]
+pub(crate) struct Hud {
+    /// Where the status-bar chip and the sidebar panel last painted, to place the popover.
+    pub chip: Rc<RefCell<Bounds<Pixels>>>,
+    pub panel: Rc<RefCell<Bounds<Pixels>>>,
+    /// The open popover belongs to the sidebar panel rather than the chip.
+    pub from_sidebar: bool,
+    /// The sidebar panel is folded.
+    pub collapsed: bool,
+    /// "Include detailed status collection" in the integration dialog; `None` follows inspect.
+    pub collect: Option<bool>,
+    /// Replaces the active connection's agents in UI tests, which cannot poll a host.
+    #[cfg(test)]
+    pub snapshot: Option<Snapshot>,
+}
+
+/// The chip's parts, in display order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ChipPart {
+    Model,
+    Effort,
+    Context,
+    Limit,
+    Cache,
+    Cost,
+}
+/// Parts dropped first to last when the status bar is narrow.
+const DROP_ORDER: [ChipPart; 6] = [
+    ChipPart::Cost,
+    ChipPart::Cache,
+    ChipPart::Effort,
+    ChipPart::Limit,
+    ChipPart::Model,
+    ChipPart::Context,
+];
+
+/// A poll young enough to trust, the badge's rule: valid and under 10 s old. An event gap
+/// does not matter, status values come with every poll.
+pub(crate) fn fresh(snapshot: &Snapshot, now: u64) -> bool {
+    snapshot.valid && now.saturating_sub(snapshot.observed_at) < 10_000
+}
+
+/// The agent the chip summarizes: the focused pane's (its parent before subagents and
+/// one with a status first), else the first observation with a status, else any.
+pub(crate) fn focused<'a>(snapshot: &'a Snapshot, pane: Option<&str>) -> Option<&'a Observation> {
+    snapshot
+        .observations
+        .iter()
+        .filter(|o| pane.is_some_and(|p| o.pane == p))
+        .min_by_key(|o| (o.status.is_none(), o.actor != "parent"))
+        .or_else(|| snapshot.observations.iter().find(|o| o.status.is_some()))
+        .or_else(|| snapshot.observations.first())
+}
+
+fn percent(value: f64) -> String {
+    format!("{value:.0}")
+}
+
+/// The most used limit, the one worth a glance.
+pub(crate) fn top_limit(limits: &[UsageLimit]) -> Option<(&UsageLimit, f64)> {
+    limits
+        .iter()
+        .filter_map(|l| Some((l, l.used()?)))
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+}
+
+/// Enabled and known parts only, in display order.
+pub(crate) fn chip_parts(
+    status: &AgentStatus,
+    limits: &[UsageLimit],
+    settings: &AgentStatusSettings,
+) -> Vec<(ChipPart, String)> {
+    let mut parts = Vec::new();
+    if settings.model
+        && let Some(model) = status
+            .model
+            .as_ref()
+            .and_then(|m| m.name.as_deref().or(m.id.as_deref()))
+            .filter(|m| !m.trim().is_empty())
+    {
+        parts.push((ChipPart::Model, model.to_owned()));
+    }
+    if settings.effort
+        && let Some(effort) = status.effort.as_deref().filter(|e| !e.trim().is_empty())
+    {
+        parts.push((ChipPart::Effort, effort.to_owned()));
+    }
+    if settings.context
+        && let Some(value) = status.context_percent()
+    {
+        parts.push((ChipPart::Context, format!("ctx {}%", percent(value))));
+    }
+    if settings.usage
+        && let Some((limit, used)) = top_limit(limits)
+    {
+        parts.push((
+            ChipPart::Limit,
+            format!("{} {}%", limit.title(), percent(used)),
+        ));
+    }
+    if settings.cache
+        && let Some(ratio) = status.cache_hit_ratio()
+    {
+        parts.push((
+            ChipPart::Cache,
+            tr!("agent_status.cache.hit_ratio", percent(ratio * 100.)),
+        ));
+    }
+    if settings.cost
+        && let Some(cost) = status.cost_usd
+    {
+        parts.push((
+            ChipPart::Cost,
+            tr!("agent_status.cost", format!("{cost:.2}")),
+        ));
+    }
+    parts
+}
+
+fn join(parts: &[(ChipPart, String)]) -> String {
+    parts
+        .iter()
+        .map(|(_, s)| s.as_str())
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// Drops parts in `DROP_ORDER` until the text fits; at least one part stays.
+pub(crate) fn fit_chip(mut parts: Vec<(ChipPart, String)>, fits: impl Fn(&str) -> bool) -> String {
+    for drop in DROP_ORDER {
+        if parts.len() <= 1 || fits(&join(&parts)) {
+            break;
+        }
+        parts.retain(|(part, _)| *part != drop);
+    }
+    join(&parts)
+}
+
+/// Width the chip may take in a status bar `bar` wide; the connection status keeps the rest.
+pub(crate) fn chip_budget(bar: f32) -> f32 {
+    ((bar - STATUS_BAR_RESERVED) * 0.55).clamp(0., 520.)
+}
+
+/// A value the helper reports, or why it is missing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Field {
+    Account,
+    Usage,
+    Context,
+    Breakdown,
+    Cache,
+    Cost,
+}
+/// Why a field has no value: the CLI has no source for it, the opt-in collector is missing,
+/// or the value is simply unknown right now.
+pub(crate) fn missing(agent: Agent, status: Option<&AgentStatus>, field: Field) -> &'static str {
+    let sources = status.map_or(&[][..], |s| s.sources.as_slice());
+    let rich = |source: &str| sources.iter().any(|s| s == source);
+    match (agent, field) {
+        (Agent::Codex | Agent::Grok, Field::Account | Field::Usage) => {
+            t("agent_status.not_supported")
+        }
+        (Agent::Codex | Agent::Grok | Agent::Agy, Field::Breakdown) => {
+            t("agent_status.no_breakdown")
+        }
+        (Agent::Codex, Field::Cost) => t("agent_status.not_supported"),
+        (Agent::Claude, _) if !rich("mod") => t("agent_status.not_collected"),
+        (Agent::Agy, _) if !rich("statusline") => t("agent_status.not_collected"),
+        (Agent::Claude | Agent::Agy, Field::Usage)
+            if status
+                .and_then(|s| s.account.as_ref())
+                .is_some_and(|a| a.kind.as_deref() != Some("subscription")) =>
+        {
+            t("agent_status.limit.none")
+        }
+        _ => t("agent_status.unknown"),
+    }
+}
+
+/// Breakdown colours by category; `free` is the bar's empty track.
+fn category_color(category: &str, palette: &theme::Palette) -> u32 {
+    let base = match category {
+        "system_prompt" => 0x8e6bd8,
+        "system_tools" => 0x3a8fd9,
+        "mcp_tools" => 0x1fa59a,
+        "custom_agents" => 0xd9822b,
+        "memory_files" => 0xc9a227,
+        "skills" => 0x5aa846,
+        "messages" => 0xd2508a,
+        "autocompact_buffer" => 0x8a8f99,
+        "deferred" => 0x6d7fb0,
+        "free" => return palette.line,
+        _ => 0xa86b4f,
+    };
+    dgl_core::accent::readable(base, &[palette.panel], 3.)
+}
+fn warning_color(palette: &theme::Palette) -> u32 {
+    dgl_core::accent::readable(0xd64545, &[palette.panel], 4.5)
+}
+
+fn text_width(window: &Window, text: &str) -> f32 {
+    let run = TextRun {
+        len: text.len(),
+        font: font(platform::UI_FONT),
+        color: black(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    f32::from(
+        window
+            .text_system()
+            .shape_line(
+                SharedString::from(text.to_owned()),
+                px(STATUS_TEXT_SIZE),
+                &[run],
+                None,
+            )
+            .width,
+    )
+}
+
+impl Desktop {
+    /// The active tab's connection state, the HUD's single source.
+    pub(crate) fn hud_state(&self) -> Option<Arc<dgl_core::connection::State>> {
+        let state = self.active_tab()?.connection.state();
+        #[cfg(test)]
+        if let Some(snapshot) = &self.agents.hud.snapshot {
+            let mut state = (*state).clone();
+            state.agents = snapshot.clone();
+            return Some(Arc::new(state));
+        }
+        Some(state)
+    }
+    fn toggle_agent_status(&mut self, from_sidebar: bool) {
+        let open = matches!(self.dialog, Some(Dialog::AgentStatus))
+            && self.agents.hud.from_sidebar == from_sidebar;
+        self.agents.hud.from_sidebar = from_sidebar;
+        self.dialog = (!open).then_some(Dialog::AgentStatus);
+    }
+    fn gauge(&self, fraction: f64, color: u32, width: Option<f32>) -> Div {
+        div()
+            .h(px(6.))
+            .when_some(width, |d, w| d.w(px(w)).flex_shrink_0())
+            .when(width.is_none(), |d| d.w_full())
+            .rounded_full()
+            .overflow_hidden()
+            .bg(rgb(self.palette.line))
+            .child(
+                div()
+                    .h_full()
+                    .w(relative(fraction.clamp(0., 1.) as f32))
+                    .rounded_full()
+                    .bg(rgb(color)),
+            )
+    }
+    fn limit_color(&self, used: f64) -> u32 {
+        if used >= 90. {
+            warning_color(&self.palette)
+        } else {
+            self.palette.accent
+        }
+    }
+    fn agent_icon(&self, agent: Agent, size: f32) -> Svg {
+        svg()
+            .path(agent.icon())
+            .size(px(size))
+            .flex_shrink_0()
+            .text_color(rgb(self.palette.fg))
+    }
+
+    /// The status-bar chip for the focused pane's agent, `None` when nothing is shown.
+    pub(crate) fn agent_status_chip(
+        &self,
+        bar_width: f32,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Stateful<Div>> {
+        let settings = &self.local.preferences.agent_status;
+        if !settings.status_bar {
+            return None;
+        }
+        let state = self.hud_state()?;
+        let now = agent::now_ms();
+        if !fresh(&state.agents, now) {
+            return None;
+        }
+        let observation = focused(&state.agents, state.pane.as_deref())?;
+        let budget = chip_budget(bar_width);
+        let status = observation.status.as_ref();
+        let parts = status.map_or_else(Vec::new, |s| {
+            chip_parts(s, state.agents.limits_for(observation), settings)
+        });
+        let full = join(&parts);
+        let text = if parts.is_empty() {
+            t("agent_status.unknown").to_owned()
+        } else {
+            fit_chip(parts, |text| {
+                text_width(window, text) + CHIP_CHROME <= budget
+            })
+        };
+        let dim = status.is_none_or(|s| s.is_stale(now));
+        let alert = status
+            .and_then(|s| s.alert.as_deref())
+            .and_then(agent::alert_label);
+        let p = self.palette;
+        let tip = [
+            observation.agent.label().to_owned(),
+            full,
+            alert.unwrap_or_default().to_owned(),
+            t("agent_status.open_details").to_owned(),
+        ]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+        Some(
+            self.button_base("agent-status-chip", cx, |s, _, _| {
+                s.toggle_agent_status(false)
+            })
+            // Preserve the prior focus until the modal records it.
+            .on_mouse_down(MouseButton::Left, |_, w, _| w.prevent_default())
+            .child(
+                canvas(
+                    {
+                        let anchor = self.agents.hud.chip.clone();
+                        move |bounds, _, _| *anchor.borrow_mut() = bounds.dilate(px(1.))
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .relative()
+            .h(px(24.))
+            .min_w_0()
+            .max_w(px(budget))
+            .flex_shrink()
+            .overflow_hidden()
+            .flex()
+            .items_center()
+            .gap_1()
+            .text_size(px(STATUS_TEXT_SIZE))
+            .text_color(rgb(if dim { p.muted } else { p.fg }))
+            .native_tooltip(tip)
+            .child(self.agent_icon(observation.agent, 14.))
+            .when(alert.is_some(), |d| {
+                d.child(UiIcon::Error.render(warning_color(&p)).size(px(14.)))
+            })
+            .child(
+                div()
+                    .debug_selector(|| "agent-status-chip-text".into())
+                    .min_w_0()
+                    .truncate()
+                    .child(text),
+            ),
+        )
+    }
+
+    /// The popover listing every agent of the active connection.
+    pub(super) fn render_agent_status_panel(
+        &self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let viewport = window.viewport_size();
+        let panel = div()
+            .id("agent-status-popover")
+            .debug_selector(|| "agent-status-popover".into())
+            .w(px(
+                POPOVER_WIDTH.min((f32::from(viewport.width) - 16.).max(0.))
+            ))
+            .max_h(px((f32::from(viewport.height) - 60.).max(0.)))
+            .flex()
+            .flex_col()
+            .min_h_0()
+            .p_3()
+            .gap_2()
+            .bg(rgb(self.palette.panel))
+            .border_1()
+            .border_color(rgb(self.palette.line))
+            .rounded_lg()
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, w, cx| {
+                w.prevent_default();
+                cx.stop_propagation();
+            })
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .flex_shrink_0()
+                    .child(div().text_lg().flex_1().child(t("agent_status.title")))
+                    .child(
+                        self.button("close-agent-status", t("common.close"), cx, |s, _, cx| {
+                            s.dismiss_dialog(cx)
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .id("agent-status-list")
+                    .debug_selector(|| "agent-status-list".into())
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.modal.scroll)
+                    .child(self.agent_status_details()),
+            );
+        let anchor = if self.agents.hud.from_sidebar {
+            self.agents.hud.panel.clone()
+        } else {
+            self.agents.hud.chip.clone()
+        };
+        self.popover_overlay("agent-status-overlay", panel.into_any_element(), anchor, cx)
+    }
+
+    fn muted_line(&self, text: impl Into<SharedString>) -> Div {
+        div()
+            .text_xs()
+            .text_color(rgb(self.palette.muted))
+            .child(text.into())
+    }
+    fn field_line(&self, label: &str, value: impl Into<SharedString>) -> Div {
+        div()
+            .flex()
+            .flex_wrap()
+            .gap_1()
+            .text_sm()
+            .child(
+                div()
+                    .text_color(rgb(self.palette.muted))
+                    .child(format!("{label}:")),
+            )
+            .child(value.into())
+    }
+    fn section(&self, title: &str) -> Div {
+        div().flex().flex_col().gap_1().pt_1().child(
+            div()
+                .text_sm()
+                .text_color(rgb(self.palette.accent))
+                .child(title.to_owned()),
+        )
+    }
+
+    /// Every agent of the active connection, with the explicit no-data states.
+    fn agent_status_details(&self) -> Div {
+        let body = div().flex().flex_col().gap_3();
+        let Some(state) = self.hud_state() else {
+            return body.child(self.muted_line(t("agent_status.none")));
+        };
+        let now = agent::now_ms();
+        let snapshot = &state.agents;
+        if !snapshot.valid {
+            return body.child(self.muted_line(t("agent_status.unknown")));
+        }
+        if !fresh(snapshot, now) {
+            return body.child(self.muted_line(t("agent_status.stale")));
+        }
+        if snapshot.observations.is_empty() {
+            return body.child(self.muted_line(t("agent_status.none")));
+        }
+        snapshot.observations.iter().fold(body, |body, o| {
+            body.child(self.observation_status(&state, o, now))
+        })
+    }
+
+    fn observation_status(
+        &self,
+        state: &dgl_core::connection::State,
+        o: &Observation,
+        now: u64,
+    ) -> Stateful<Div> {
+        let p = self.palette;
+        let settings = &self.local.preferences.agent_status;
+        let status = o.status.as_ref();
+        let mut block = div()
+            .id(SharedString::from(format!(
+                "agent-status-{}-{}",
+                o.run, o.actor
+            )))
+            .flex()
+            .flex_col()
+            .gap_1()
+            .pb_2()
+            .border_b_1()
+            .border_color(rgb(p.line))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(self.agent_icon(o.agent, 15.))
+                    .child(div().flex_1().min_w_0().truncate().child(format!(
+                        "{} · {}{}",
+                        o.agent.label(),
+                        hierarchy::target_label(&state.remote, Some(&o.session), Some(&o.pane)),
+                        if o.actor != "parent" {
+                            t("agent.subagent_suffix")
+                        } else {
+                            ""
+                        }
+                    ))),
+            );
+        let Some(status) = status else {
+            let text = match o.agent {
+                Agent::Claude | Agent::Agy => t("agent_status.not_collected"),
+                Agent::Codex | Agent::Grok => t("agent_status.unknown"),
+            };
+            return block.child(self.muted_line(text));
+        };
+        if let Some(at) = status.at {
+            block = block.child(self.muted_line(tr!(
+                "agent_status.observed_ago",
+                agent::format_duration_s(now.saturating_sub(at) / 1000)
+            )));
+        }
+        if status.is_stale(now) {
+            block = block.child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(warning_color(&p)))
+                    .child(t("agent_status.stale")),
+            );
+        }
+        if let Some(alert) = status.alert.as_deref().and_then(agent::alert_label) {
+            block = block.child(
+                div()
+                    .debug_selector(|| "agent-status-alert".into())
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .text_sm()
+                    .text_color(rgb(warning_color(&p)))
+                    .child(UiIcon::Error.render(warning_color(&p)))
+                    .child(alert),
+            );
+        }
+        if settings.model {
+            let model = status
+                .model
+                .as_ref()
+                .and_then(|m| m.name.as_deref().or(m.id.as_deref()))
+                .unwrap_or(t("agent_status.unknown"));
+            let thinking = if status.thinking == Some(true) {
+                format!(" · {}", t("agent_status.thinking"))
+            } else {
+                String::new()
+            };
+            block = block.child(
+                self.field_line(t("agent_status.field.model"), format!("{model}{thinking}")),
+            );
+        }
+        if settings.effort {
+            block = block.child(
+                self.field_line(
+                    t("agent_status.field.effort"),
+                    status
+                        .effort
+                        .clone()
+                        .unwrap_or_else(|| t("agent_status.unknown").into()),
+                ),
+            );
+        }
+        if settings.account {
+            let value = status
+                .account
+                .as_ref()
+                .and_then(|a| {
+                    let kind = a.kind_label();
+                    let parts: Vec<&str> = kind
+                        .into_iter()
+                        .chain(a.plan.as_deref().filter(|p| !p.trim().is_empty()))
+                        .collect();
+                    (!parts.is_empty()).then(|| parts.join(" · "))
+                })
+                .unwrap_or_else(|| missing(o.agent, Some(status), Field::Account).into());
+            block = block.child(self.field_line(t("agent_status.field.account"), value));
+        }
+        if settings.usage {
+            block = block.child(self.usage_section(state, o, status, now));
+        }
+        // The breakdown is its own setting: it shows even with the context figures off.
+        if settings.context || settings.breakdown {
+            block =
+                block.child(self.context_section(o, status, settings.context, settings.breakdown));
+        }
+        if settings.cache {
+            block = block.child(self.cache_section(o, status, now));
+        }
+        if settings.cost {
+            block = block.child(self.field_line(
+                t("agent_status.field.cost"),
+                status.cost_usd.map_or_else(
+                    || missing(o.agent, Some(status), Field::Cost).into(),
+                    |c| tr!("agent_status.cost", format!("{c:.2}")),
+                ),
+            ));
+        }
+        block
+    }
+
+    fn usage_section(
+        &self,
+        state: &dgl_core::connection::State,
+        o: &Observation,
+        status: &AgentStatus,
+        now: u64,
+    ) -> Div {
+        let mut section = self.section(t("agent_status.field.usage"));
+        let limits = state.agents.limits_for(o);
+        if limits.is_empty() {
+            return section.child(self.muted_line(missing(o.agent, Some(status), Field::Usage)));
+        }
+        for limit in limits {
+            let used = limit.used();
+            let id = limit.id.clone();
+            section = section.child(
+                div()
+                    .debug_selector(move || format!("agent-status-limit-{id}"))
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .text_sm()
+                            .child(div().flex_1().min_w_0().truncate().child(limit.title()))
+                            .child(used.map_or_else(
+                                || t("agent_status.unknown").to_owned(),
+                                |u| tr!("agent_status.limit.used", percent(u)),
+                            ))
+                            .when_some(limit.resets_in_s(now), |d, secs| {
+                                d.child(div().text_color(rgb(self.palette.muted)).child(tr!(
+                                    "agent_status.limit.resets_in",
+                                    agent::format_duration_s(secs)
+                                )))
+                            }),
+                    )
+                    .when_some(used, |d, used| {
+                        d.child(self.gauge(used / 100., self.limit_color(used), None))
+                    }),
+            );
+        }
+        section
+    }
+
+    fn context_section(
+        &self,
+        o: &Observation,
+        status: &AgentStatus,
+        figures: bool,
+        breakdown: bool,
+    ) -> Div {
+        let p = self.palette;
+        let mut section = self.section(t(if figures {
+            "agent_status.field.context"
+        } else {
+            "agent_status.field.breakdown"
+        }));
+        let context = status.context.as_ref();
+        match status.context_percent().filter(|_| figures) {
+            Some(value) => {
+                section = section
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .text_sm()
+                            .child(format!("{}%", percent(value)))
+                            .when_some(
+                                context.and_then(|c| Some((c.used?, c.size?))),
+                                |d, (used, size)| {
+                                    d.child(tr!(
+                                        "agent_status.context.tokens",
+                                        agent::format_tokens(used),
+                                        agent::format_tokens(size)
+                                    ))
+                                },
+                            ),
+                    )
+                    .child(
+                        self.gauge(value / 100., p.accent, None)
+                            .debug_selector(|| "agent-status-context-gauge".into()),
+                    );
+            }
+            None if figures => {
+                section =
+                    section.child(self.muted_line(missing(o.agent, Some(status), Field::Context)));
+            }
+            None => {}
+        }
+        if let Some(compact) = context.and_then(|c| c.compact_percent).filter(|_| figures) {
+            section = section
+                .child(self.muted_line(tr!("agent_status.context.compact_at", percent(compact))));
+        }
+        if !breakdown {
+            return section;
+        }
+        let parts = context.map_or(&[][..], |c| c.breakdown.as_slice());
+        if parts.is_empty() {
+            return section.child(self.muted_line(missing(
+                o.agent,
+                Some(status),
+                Field::Breakdown,
+            )));
+        }
+        let window = context
+            .and_then(|c| c.breakdown_window.or(c.size))
+            .filter(|w| *w > 0)
+            .unwrap_or_else(|| parts.iter().filter_map(|p| p.tokens).sum::<u64>().max(1));
+        let mut bar = div()
+            .debug_selector(|| "agent-status-breakdown".into())
+            .flex()
+            .w_full()
+            .h(px(8.))
+            .rounded_sm()
+            .overflow_hidden()
+            .bg(rgb(p.line));
+        let mut legend = div().flex().flex_col().gap_1().text_xs();
+        for part in parts {
+            let key = part.category_key();
+            let color = category_color(key, &p);
+            let share = part.tokens.map(|n| n as f64 / window as f64);
+            if key != "free"
+                && let Some(share) = share
+            {
+                bar = bar.child(
+                    div()
+                        .h_full()
+                        .flex_shrink_0()
+                        .w(relative(share.clamp(0., 1.) as f32))
+                        .bg(rgb(color)),
+                );
+            }
+            legend = legend.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        div()
+                            .size(px(8.))
+                            .flex_shrink_0()
+                            .rounded_sm()
+                            .border_1()
+                            .border_color(rgb(p.control_border))
+                            .bg(rgb(color)),
+                    )
+                    .child(div().flex_1().min_w_0().truncate().child(part.label()))
+                    .child(part.tokens.map_or_else(
+                        || t("agent_status.unknown").to_owned(),
+                        |n| {
+                            format!(
+                                "{} · {}%",
+                                agent::format_tokens(n),
+                                percent(share.unwrap_or(0.) * 100.)
+                            )
+                        },
+                    )),
+            );
+        }
+        if figures {
+            section = section.child(self.muted_line(t("agent_status.field.breakdown")));
+        }
+        section.child(bar).child(legend)
+    }
+
+    fn cache_section(&self, o: &Observation, status: &AgentStatus, now: u64) -> Div {
+        let mut section = self
+            .section(t("agent_status.field.cache"))
+            .child(self.muted_line(t("agent_status.cache.server_side")));
+        let Some(cache) = status.cache.as_ref() else {
+            return section.child(self.muted_line(missing(o.agent, Some(status), Field::Cache)));
+        };
+        let counts: Vec<String> = [
+            ("agent_status.cache.input", cache.input),
+            ("agent_status.cache.read", cache.read),
+            ("agent_status.cache.write", cache.write),
+            ("agent_status.cache.output", cache.output),
+        ]
+        .into_iter()
+        .filter_map(|(key, n)| Some(format!("{} {}", t(key), agent::format_tokens(n?))))
+        .collect();
+        if !counts.is_empty() {
+            section = section.child(
+                div()
+                    .debug_selector(|| "agent-status-cache".into())
+                    .text_sm()
+                    .child(counts.join(" · ")),
+            );
+        }
+        if let Some(ratio) = status.cache_hit_ratio() {
+            section = section.child(
+                div()
+                    .text_sm()
+                    .child(tr!("agent_status.cache.hit_ratio", percent(ratio * 100.))),
+            );
+        }
+        if let Some(at) = cache.last_at {
+            section = section.child(self.muted_line(tr!(
+                "agent_status.cache.last_request",
+                agent::format_duration_s(now.saturating_sub(at) / 1000)
+            )));
+        }
+        if let (Some(ttl), Some(expiry)) = (cache.ttl.as_deref(), cache.estimated_expiry_ms()) {
+            section = section.child(self.muted_line(if expiry > now {
+                tr!(
+                    "agent_status.cache.expires_in",
+                    ttl,
+                    agent::format_duration_s((expiry - now).div_ceil(1000))
+                )
+            } else {
+                tr!("agent_status.cache.expired", ttl)
+            }));
+        }
+        section
+    }
+
+    /// The collapsible panel under the host list: one line per agent with mini gauges.
+    pub(crate) fn agent_status_sidebar(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if !self.local.preferences.agent_status.sidebar {
+            return None;
+        }
+        let p = self.palette;
+        let collapsed = self.agents.hud.collapsed;
+        let header = div()
+            .relative()
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_1()
+            .child(
+                canvas(
+                    {
+                        let anchor = self.agents.hud.panel.clone();
+                        move |bounds, _, _| *anchor.borrow_mut() = bounds
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .child(
+                self.button_base("agent-status-toggle", cx, |s, _, _| {
+                    s.agents.hud.collapsed = !s.agents.hud.collapsed;
+                })
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .items_center()
+                .gap_1()
+                .text_sm()
+                .text_color(rgb(p.muted))
+                .child(
+                    if collapsed {
+                        UiIcon::ChevronRight
+                    } else {
+                        UiIcon::ChevronDown
+                    }
+                    .render(p.muted),
+                )
+                .child(div().min_w_0().truncate().child(t("agent_status.title"))),
+            )
+            .child(
+                self.button("agent-status-open", UiIcon::Info, cx, |s, _, _| {
+                    s.toggle_agent_status(true)
+                })
+                .native_tooltip(t("agent_status.open_details")),
+            );
+        let mut panel = div()
+            .debug_selector(|| "agent-status-panel".into())
+            .flex_shrink_0()
+            .flex()
+            .flex_col()
+            .border_t_1()
+            .border_color(rgb(p.line))
+            .py_1()
+            .child(header);
+        if collapsed {
+            return Some(panel);
+        }
+        let mut list = div()
+            .id("agent-status-panel-list")
+            .max_h(px(160.))
+            .overflow_y_scroll()
+            .flex()
+            .flex_col()
+            .px_2()
+            .pb_1()
+            .text_xs();
+        let now = agent::now_ms();
+        let state = self.hud_state();
+        let observations = state
+            .as_ref()
+            .filter(|s| fresh(&s.agents, now))
+            .map_or(&[][..], |s| s.agents.observations.as_slice());
+        if observations.is_empty() {
+            list = list.child(
+                div().py_1().text_color(rgb(p.muted)).child(
+                    if state
+                        .as_ref()
+                        .is_some_and(|s| s.agents.valid && !fresh(&s.agents, now))
+                    {
+                        t("agent_status.stale")
+                    } else {
+                        t("agent_status.none")
+                    },
+                ),
+            );
+        }
+        let settings = &self.local.preferences.agent_status;
+        for o in observations {
+            let status = o.status.as_ref();
+            let model = status
+                .filter(|_| settings.model)
+                .and_then(|s| s.model.as_ref())
+                .and_then(|m| m.name.as_deref().or(m.id.as_deref()));
+            let context = status
+                .filter(|_| settings.context)
+                .and_then(AgentStatus::context_percent);
+            let limit = state
+                .as_ref()
+                .filter(|_| settings.usage)
+                .and_then(|s| top_limit(s.agents.limits_for(o)).map(|(l, u)| (l.title(), u)));
+            let dim = status.is_none_or(|s| s.is_stale(now));
+            let mut row = self
+                .button_base(
+                    format!("agent-status-row-{}-{}", o.run, o.actor),
+                    cx,
+                    |s, _, _| s.toggle_agent_status(true),
+                )
+                .flex()
+                .items_center()
+                .gap_1()
+                .px_1()
+                .text_color(rgb(if dim { p.muted } else { p.fg }))
+                .child(self.agent_icon(o.agent, 13.))
+                .child(div().flex_1().min_w_0().truncate().child(match model {
+                    Some(model) => format!("{} · {model}", o.agent.label()),
+                    None => o.agent.label().to_owned(),
+                }));
+            if let Some(value) = context {
+                row = row
+                    .child(self.gauge(value / 100., p.accent, Some(28.)))
+                    .child(div().flex_shrink_0().child(format!("{}%", percent(value))));
+            }
+            if let Some((title, used)) = limit {
+                row = row
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .max_w(px(48.))
+                            .truncate()
+                            .text_color(rgb(p.muted))
+                            .child(title),
+                    )
+                    .child(self.gauge(used / 100., self.limit_color(used), Some(28.)))
+                    .child(div().flex_shrink_0().child(format!("{}%", percent(used))));
+            }
+            if status.is_none() {
+                row = row.child(
+                    div()
+                        .flex_shrink_0()
+                        .text_color(rgb(p.muted))
+                        .child(t("agent_status.unknown")),
+                );
+            }
+            list = list.child(row);
+        }
+        panel = panel.child(list);
+        Some(panel)
+    }
+
+    /// The settings card body: where the HUD shows and which values it lists.
+    pub(crate) fn agent_status_settings(&self, cx: &mut Context<Self>) -> Div {
+        let s = &self.local.preferences.agent_status;
+        let mut body = div()
+            .flex()
+            .flex_col()
+            .child(self.muted_line(t("agent_status.description")));
+        let check = |on: bool| {
+            if on {
+                UiIcon::CheckboxChecked
+            } else {
+                UiIcon::Checkbox
+            }
+        };
+        let rows = [
+            (0, t("agent_status.show_status_bar"), s.status_bar),
+            (1, t("agent_status.show_sidebar"), s.sidebar),
+            (2, t("agent_status.field.account"), s.account),
+            (3, t("agent_status.field.usage"), s.usage),
+            (4, t("agent_status.field.context"), s.context),
+            (5, t("agent_status.field.breakdown"), s.breakdown),
+            (6, t("agent_status.field.cache"), s.cache),
+            (7, t("agent_status.field.model"), s.model),
+            (8, t("agent_status.field.effort"), s.effort),
+            (9, t("agent_status.field.cost"), s.cost),
+        ];
+        for (i, label, enabled) in rows {
+            if i == 2 {
+                body = body.child(div().pt_2().child(t("agent_status.fields")));
+            }
+            body = body.child(self.button(
+                format!("agent-status-setting-{i}"),
+                (check(enabled), label),
+                cx,
+                move |s, _, _| {
+                    let settings = &mut s.local.preferences.agent_status;
+                    let field = match i {
+                        0 => &mut settings.status_bar,
+                        1 => &mut settings.sidebar,
+                        2 => &mut settings.account,
+                        3 => &mut settings.usage,
+                        4 => &mut settings.context,
+                        5 => &mut settings.breakdown,
+                        6 => &mut settings.cache,
+                        7 => &mut settings.model,
+                        8 => &mut settings.effort,
+                        _ => &mut settings.cost,
+                    };
+                    *field = !*field;
+                    s.save();
+                },
+            ));
+        }
+        body
+    }
+
+    /// The integration dialog's choice to install the detailed status collectors.
+    pub(crate) fn collect_choice(&self, preview: &serde_json::Value) -> bool {
+        self.agents
+            .hud
+            .collect
+            .unwrap_or_else(|| installed_collection(preview))
+    }
+}
+
+/// Whether inspect found a status collector of ours already installed.
+pub(crate) fn installed_collection(preview: &serde_json::Value) -> bool {
+    preview["configs"].as_array().is_some_and(|configs| {
+        configs
+            .iter()
+            .any(|c| c["status_collection"]["installed"].as_bool() == Some(true))
+    })
+}
+
+/// A CLI's detailed collection state from inspect, `None` when it has nothing to install.
+pub(crate) fn collection_state(config: &serde_json::Value) -> Option<String> {
+    let state = &config["status_collection"];
+    if state["supported"].as_bool() != Some(true) {
+        return None;
+    }
+    Some(if state["replaced"].as_bool() == Some(true) {
+        t("agent_status.collect.replaced").to_owned()
+    } else if state["installed"].as_bool() == Some(true) {
+        format!(
+            "{} · {}",
+            t("agent_status.collect.installed"),
+            t("agent_status.collect.restart")
+        )
+    } else {
+        t("agent_status.not_collected").to_owned()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    // Not `super::*`: GPUI's `test` attribute would replace the standard one.
+    use super::{
+        Agent, AgentStatus, AgentStatusSettings, ChipPart, Field, Observation, Snapshot,
+        UsageLimit, chip_budget, chip_parts, collection_state, fit_chip, focused, fresh,
+        installed_collection, missing, t,
+    };
+    use dgl_core::agent::{AccountInfo, CacheUsage, ContextUsage, ModelInfo};
+
+    fn observation(pane: &str, actor: &str, status: Option<AgentStatus>) -> Observation {
+        Observation {
+            session: "$1".into(),
+            window: "@1".into(),
+            pane: pane.into(),
+            run: format!("run{pane}{actor}"),
+            actor: actor.into(),
+            agent: Agent::Claude,
+            last: None,
+            supported: vec![],
+            status,
+        }
+    }
+    fn full_status() -> AgentStatus {
+        AgentStatus {
+            at: Some(1_000),
+            sources: vec!["mod".into()],
+            model: Some(ModelInfo {
+                id: Some("claude-opus".into()),
+                name: Some("Opus".into()),
+            }),
+            effort: Some("high".into()),
+            context: Some(ContextUsage {
+                percent: Some(42.),
+                ..Default::default()
+            }),
+            cache: Some(CacheUsage {
+                hit_ratio: Some(0.96),
+                ..Default::default()
+            }),
+            cost_usd: Some(1.5),
+            account: Some(AccountInfo {
+                kind: Some("subscription".into()),
+                ..Default::default()
+            }),
+            limits: vec![
+                UsageLimit {
+                    id: "five_hour".into(),
+                    used_percent: Some(63.),
+                    ..Default::default()
+                },
+                UsageLimit {
+                    id: "seven_day".into(),
+                    used_percent: Some(20.),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn chip_shows_enabled_known_parts_and_drops_them_in_priority_order() {
+        let status = full_status();
+        let mut settings = AgentStatusSettings {
+            cost: true,
+            ..Default::default()
+        };
+        let parts = chip_parts(&status, &status.limits, &settings);
+        let kinds: Vec<_> = parts.iter().map(|(k, _)| *k).collect();
+        assert_eq!(
+            kinds,
+            [
+                ChipPart::Model,
+                ChipPart::Effort,
+                ChipPart::Context,
+                ChipPart::Limit,
+                ChipPart::Cache,
+                ChipPart::Cost
+            ]
+        );
+        // The most used limit is the one shown.
+        assert!(parts[3].1.ends_with(" 63%"), "{}", parts[3].1);
+        assert_eq!(parts[2].1, "ctx 42%");
+        // Narrowing drops cost, cache, effort, limits, model, and never the last part.
+        let all = parts.len();
+        let mut seen = vec![];
+        for keep in (1..=all).rev() {
+            let text = fit_chip(parts.clone(), |t| t.matches(" · ").count() < keep);
+            seen.push(text);
+        }
+        assert_eq!(seen.last().unwrap(), "ctx 42%");
+        assert!(seen[1].starts_with("Opus · high · ctx 42% · "));
+        assert!(!seen[1].contains('$'));
+        assert_eq!(
+            seen[3],
+            format!("Opus · ctx 42% · {} 63%", status.limits[0].title())
+        );
+        assert_eq!(seen[4], "Opus · ctx 42%");
+        // Nothing fits: one part stays.
+        assert_eq!(fit_chip(parts.clone(), |_| false), "ctx 42%");
+        // Disabled and unknown parts are not shown; unknown is never 0.
+        settings.model = false;
+        settings.cost = false;
+        let unknown = AgentStatus {
+            effort: None,
+            context: None,
+            ..status.clone()
+        };
+        let kinds: Vec<_> = chip_parts(&unknown, &[], &settings)
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+        assert_eq!(kinds, [ChipPart::Cache]);
+        assert!(chip_parts(&AgentStatus::default(), &[], &settings).is_empty());
+    }
+
+    #[test]
+    fn focus_prefers_the_pane_parent_then_any_status() {
+        let snapshot = Snapshot {
+            valid: true,
+            observed_at: 1_000,
+            observations: vec![
+                observation("%1", "parent", None),
+                observation("%2", "sub", Some(full_status())),
+                observation("%2", "parent", Some(full_status())),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(focused(&snapshot, Some("%2")).unwrap().actor, "parent");
+        // The pane's own agent wins even without a status.
+        assert_eq!(focused(&snapshot, Some("%1")).unwrap().pane, "%1");
+        // Elsewhere: the first agent that has a status.
+        let other = focused(&snapshot, Some("%9")).unwrap();
+        assert_eq!((other.pane.as_str(), other.actor.as_str()), ("%2", "sub"));
+        assert!(focused(&Snapshot::default(), None).is_none());
+        assert!(fresh(&snapshot, 10_999));
+        assert!(!fresh(&snapshot, 11_000));
+        assert!(!fresh(
+            &Snapshot {
+                valid: false,
+                ..snapshot
+            },
+            1_000
+        ));
+    }
+
+    #[test]
+    fn budget_and_missing_reasons_are_explicit() {
+        assert!(chip_budget(420.) < chip_budget(640.));
+        assert!(chip_budget(640.) < chip_budget(1200.));
+        assert_eq!(chip_budget(1200.), 520.);
+        assert_eq!(chip_budget(50.), 0.);
+        let hooks_only = AgentStatus {
+            sources: vec!["hook".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            missing(Agent::Claude, Some(&hooks_only), Field::Usage),
+            t("agent_status.not_collected")
+        );
+        assert_eq!(
+            missing(Agent::Agy, Some(&hooks_only), Field::Breakdown),
+            t("agent_status.no_breakdown")
+        );
+        assert_eq!(
+            missing(Agent::Codex, Some(&hooks_only), Field::Usage),
+            t("agent_status.not_supported")
+        );
+        assert_eq!(
+            missing(Agent::Codex, Some(&hooks_only), Field::Cost),
+            t("agent_status.not_supported")
+        );
+        assert_eq!(
+            missing(Agent::Grok, Some(&hooks_only), Field::Cost),
+            t("agent_status.unknown")
+        );
+        let api = AgentStatus {
+            sources: vec!["mod".into()],
+            account: Some(AccountInfo {
+                kind: Some("api_key".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            missing(Agent::Claude, Some(&api), Field::Usage),
+            t("agent_status.limit.none")
+        );
+        assert_eq!(
+            missing(Agent::Claude, Some(&api), Field::Breakdown),
+            t("agent_status.unknown")
+        );
+    }
+
+    #[test]
+    fn integration_dialog_reads_status_collection_from_inspect() {
+        let preview = serde_json::json!({"configs": [
+            {"agent": "Codex", "status_collection": {"supported": false, "installed": false, "replaced": false, "kind": "hooks"}},
+            {"agent": "Claude", "status_collection": {"supported": true, "installed": true, "replaced": false, "kind": "mod"}},
+            {"agent": "Agy", "status_collection": {"supported": true, "installed": false, "replaced": true, "kind": "statusline"}},
+            {"agent": "Grok"}
+        ]});
+        assert!(installed_collection(&preview));
+        let configs = preview["configs"].as_array().unwrap();
+        assert_eq!(collection_state(&configs[0]), None);
+        assert!(
+            collection_state(&configs[1])
+                .unwrap()
+                .contains(t("agent_status.collect.restart"))
+        );
+        assert_eq!(
+            collection_state(&configs[2]).as_deref(),
+            Some(t("agent_status.collect.replaced"))
+        );
+        assert_eq!(collection_state(&configs[3]), None);
+        assert!(!installed_collection(&serde_json::json!({})));
+    }
+}

@@ -294,6 +294,9 @@ impl Desktop {
         let alerts = self
             .settings_card("common.notifications", "settings.notifications_description")
             .child(self.agent_settings(cx));
+        let agent_status = self
+            .settings_card("agent_status.title", "agent_status.description")
+            .child(self.agent_status_settings(cx));
         let sync = self
             .button(
                 "export-sync",
@@ -335,6 +338,7 @@ impl Desktop {
             .child(terminal)
             .child(workspace)
             .child(alerts)
+            .child(agent_status)
             .child(sync)
             .child(security)
             .child(

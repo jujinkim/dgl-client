@@ -79,6 +79,9 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     var settings by remember { mutableStateOf<SettingsPage?>(null) }
     var agentDetails by remember { mutableStateOf<Pair<ClientConnection, String?>?>(null) }
     var notifications by remember { mutableStateOf(false) }
+    // The connection whose agent status panel is open (dialog on wide screens, sheet on phones).
+    var agentStatus by remember { mutableStateOf<ClientConnection?>(null) }
+    LaunchedEffect(connections) { if (agentStatus?.let { it !in connections } == true) agentStatus = null }
     val mobileTabState = rememberLazyListState()
     val captureFocus = rememberAppFocusCapture()
     var restoreNotificationFocus by remember { mutableStateOf<() -> Unit>({}) }
@@ -93,12 +96,12 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     SideEffect { model.hostEditing = adding || edit != null || deletion != null }
     LaunchedEffect(agentNav) {
         if (agentNav > 0) {
-            explorer = false; notifications = false; agentDetails = null; tmuxNavigationClient = null
+            explorer = false; notifications = false; agentDetails = null; tmuxNavigationClient = null; agentStatus = null
             settings = null; adding = false; edit = null; deletion = null; error = null
         }
     }
     DisposableEffect(model) { onDispose { model.visibleConnection = null; model.visibleConnections = emptySet(); model.hostEditing = false; model.blockInput(appInputOwner, false) } }
-    val appModal = notifications || agentError != null || agentDetails != null || settings != null || adding || edit != null || deletion != null || error != null
+    val appModal = notifications || agentStatus != null || agentError != null || agentDetails != null || settings != null || adding || edit != null || deletion != null || error != null
     SideEffect { model.blockInput(appInputOwner, appModal) }
     val colors = if (dark) darkColorScheme(
         primary = Color(0xff75aaff), secondary = Color(0xff75aaff),
@@ -176,6 +179,12 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                             }) { anchor ->
                                 if (notifications) MobileAgentNotifications(model, availableBounds, anchor, restoreNotificationFocus) { notifications = false }
                             }
+                        }, status = {
+                            val client = selected
+                            if (client != null && local.preferences.agentStatus.statusBar) key(client) {
+                                AgentStatusChip(client, local.preferences.agentStatus, { agentStatus = client },
+                                    Modifier.weight(1f, fill = false).padding(end = 8.dp))
+                            }
                         })
                 }
                 val maintenanceError by model.backgroundConnectionError.collectAsState()
@@ -236,6 +245,10 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                         }
                                     }
                                 }
+                                if (wide && local.preferences.agentStatus.sidebar) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                    key(selected) { AgentStatusSidebar(selected, local.preferences.agentStatus) { agentStatus = selected } }
+                                }
                             }
                             if (wide) VerticalDivider(color = MaterialTheme.colorScheme.outline)
                         }
@@ -251,7 +264,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                                         openNavigation = tmuxNavigationClient === client, onNavigationOpened = { tmuxNavigationClient = null },
                                         openShortcutSettings = { settings = SettingsPage.Shortcuts }) {
                                         model.selected.value === client && (wide || !explorer) &&
-                                            !notifications && agentError == null && agentDetails == null && settings == null && !adding && edit == null && deletion == null && error == null
+                                            !notifications && agentStatus == null && agentError == null && agentDetails == null && settings == null && !adding && edit == null && deletion == null && error == null
                                     }
                                 }
                                 else Column(Modifier.align(Alignment.Center).padding(24.dp)) {
@@ -273,14 +286,22 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
                         remote.targetLabel(session, pane)
                     }, status?.message?.takeIf { status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) }).filter { it.isNotEmpty() }.distinct().joinToString(" · "),
                         Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                    selected?.takeIf { local.preferences.agentStatus.statusBar }?.let { client -> key(client) {
+                        AgentStatusChip(client, local.preferences.agentStatus, { agentStatus = client },
+                            Modifier.weight(1f, fill = false).widthIn(max = 360.dp).padding(horizontal = 4.dp))
+                    } }
                     selected?.let { HostConnectionMenu(it, model) }
                     BorderedButton({ notifications = true }) { Text(tr("mobile.notifications_count", agentNotices.count { !it.read })) }
                     BorderedButton({ settings = SettingsPage.Main }) { Text(t("common.settings")) }
                 }
             }
-        if (selected == null || explorer || settings != null || notifications || agentDetails != null) SideEffect { model.visibleConnection = null }
+        if (selected == null || explorer || settings != null || notifications || agentStatus != null || agentDetails != null) SideEffect { model.visibleConnection = null }
         agentDetails?.let { (client, pane) -> AgentDetails(client, model, pane) { agentDetails = null } }
         if (notifications && !mobileLayout) AgentNotifications(model) { notifications = false }
+        agentStatus?.takeIf { it in connections }?.let { client ->
+            if (mobileLayout) AgentStatusSheet(client, local.preferences.agentStatus) { agentStatus = null }
+            else AgentStatusDialog(client, local.preferences.agentStatus) { agentStatus = null }
+        }
         agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ model.agentNavigationError.value = null }) { Text(t("common.close")) } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
         settings?.let { SettingsDialog(model, mobileLayout, it) { settings = null } }
@@ -735,6 +756,7 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
             }
             SettingsCard(t("settings.connection"), t("settings.connection_description")) { PlatformConnectionSettings(model) }
             SettingsCard(t("common.notifications"), t("settings.notifications_description")) { AgentNotificationSettingsUi(model) }
+            SettingsCard(t("agent_status.title"), t("agent_status.description")) { AgentStatusSettingsUi(model) }
             BorderedButton({ entryFocus = syncFocus; page = SettingsPage.ExportSync },
                 modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(syncFocus)) {
                 Text(t("sync.export_and_sync"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)

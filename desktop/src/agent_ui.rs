@@ -8,6 +8,7 @@ pub(crate) struct AgentState {
     pub tick: u64,
     pub status: String,
     pub anchor: Rc<RefCell<Bounds<Pixels>>>,
+    pub hud: crate::agent_status_ui::Hud,
     #[cfg(debug_assertions)]
     pub probe_at: Option<u64>,
 }
@@ -418,11 +419,13 @@ impl Desktop {
             t("agent.inspect_before_install"),
             cx,
             move |s, _, _| {
+                s.agents.hud.collect = None;
                 s.submit(
                     &c,
                     Action::AgentSetup {
                         operation: "inspect".into(),
                         token: None,
+                        status: false,
                     },
                 );
             },
@@ -457,6 +460,16 @@ impl Desktop {
                             },
                             c["events"]
                         ));
+                        if let Some(collection) = crate::agent_status_ui::collection_state(c) {
+                            body = body.child(
+                                div()
+                                    .id(SharedString::from(format!(
+                                        "agent-status-collection-{}",
+                                        c["agent"].as_str().unwrap_or("")
+                                    )))
+                                    .child(collection),
+                            );
+                        }
                         if c["experimental"].as_bool() == Some(true) {
                             body = body.child(t("agent.experimental_unverified"));
                         }
@@ -477,6 +490,27 @@ impl Desktop {
                         .child(t("agent.codex_trust_hooks_install"))
                         .native_tooltip(t("agent.codex_trust_hooks_real_event")),
                 );
+                let collect = self.collect_choice(preview);
+                body = body
+                    .child(self.button(
+                        "agent-status-collect",
+                        (
+                            if collect {
+                                UiIcon::CheckboxChecked
+                            } else {
+                                UiIcon::Checkbox
+                            },
+                            t("agent_status.collect"),
+                        ),
+                        cx,
+                        move |s, _, _| s.agents.hud.collect = Some(!collect),
+                    ))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(self.palette.muted))
+                            .child(t("agent_status.collect_description")),
+                    );
                 for (op, label) in [
                     ("install", t("agent.install_integration")),
                     ("remove", t("agent.remove_dagali_hooks_only")),
@@ -493,6 +527,7 @@ impl Desktop {
                                 Action::AgentSetup {
                                     operation: op.into(),
                                     token: Some(token.clone()),
+                                    status: op == "install" && collect,
                                 },
                             );
                         },
@@ -672,6 +707,7 @@ mod tests {
                 agent: event.agent,
                 last: Some(event.clone()),
                 supported: vec![],
+                status: None,
             }],
             ..Default::default()
         };
@@ -726,6 +762,7 @@ mod tests {
             agent: Agent::Claude,
             last: None,
             supported: vec![],
+            status: None,
         };
         let mut snapshot = Snapshot {
             valid: true,

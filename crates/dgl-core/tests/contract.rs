@@ -264,7 +264,17 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
     state.preferences.mobile_shortcut_bar_two_rows = false;
     assert!(!state.preferences.smooth_terminal_transitions);
     state.preferences.smooth_terminal_transitions = true;
+    // Agent status display choices: everything but cost by default, kept on this device.
+    assert!(state.preferences.agent_status.status_bar);
+    assert!(!state.preferences.agent_status.cost);
+    state.preferences.agent_status.cost = true;
+    state.preferences.agent_status.sidebar = false;
     state.save(&path).unwrap();
+    let status = model::LocalState::read(&path)
+        .unwrap()
+        .preferences
+        .agent_status;
+    assert!(status.cost && !status.sidebar && status.breakdown);
     assert!(
         !model::LocalState::read(&path)
             .unwrap()
@@ -295,6 +305,14 @@ fn settings_atomic_round_trip_and_invalid_original_preserved() {
             .preferences
             .smooth_terminal_transitions
     );
+    // A partial or legacy `agentStatus` object fills only the missing choices.
+    let partial = model::LocalState::decode(
+        br#"{"preferences":{"agentStatus":{"cost":true,"statusBar":false,"future":1}}}"#,
+    )
+    .unwrap()
+    .preferences
+    .agent_status;
+    assert!(partial.cost && !partial.status_bar && partial.sidebar && partial.effort);
     std::fs::remove_dir_all(dir).unwrap();
 }
 

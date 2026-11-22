@@ -25,7 +25,7 @@ struct PartView {
     renders: std::rc::Rc<std::cell::Cell<usize>>,
 }
 impl Render for PartView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let part = self.part;
         #[cfg(test)]
         {
@@ -37,7 +37,7 @@ impl Render for PartView {
                 Part::GroupHeader(id) => desktop.render_group_header(id, cx).into_any_element(),
                 Part::PaneToolbar(id) => desktop.render_group_pane_toolbar(id, cx),
                 Part::InputTools => desktop.render_input_tools(cx).into_any_element(),
-                Part::StatusBar => desktop.render_status_bar(cx).into_any_element(),
+                Part::StatusBar => desktop.render_status_bar(window, cx).into_any_element(),
             })
             .unwrap_or_else(|_| Empty.into_any_element())
     }

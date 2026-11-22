@@ -45,6 +45,8 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val terminalShortcuts: List<TerminalShortcut> = TerminalShortcut.defaultShortcuts,
     val volumeKeysEnabled: Boolean = false,
     val agentNotifications: AgentNotificationSettings = AgentNotificationSettings(),
+    /** Where and which agent status parts are shown. Not synced. */
+    val agentStatus: AgentStatusSettings = AgentStatusSettings(),
     val volumeUp: VolumeBinding = VolumeBinding(),
     val volumeDown: VolumeBinding = VolumeBinding(),
     val smoothTerminalTransitions: Boolean = false,

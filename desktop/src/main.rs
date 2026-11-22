@@ -4,6 +4,7 @@
 )]
 
 mod accent_ui;
+mod agent_status_ui;
 mod agent_ui;
 mod app_info;
 mod appearance;
@@ -143,6 +144,8 @@ enum Dialog {
     About,
     Agents(Arc<Connection>, String, Option<String>),
     Notifications,
+    /// The agent status popover of the active connection.
+    AgentStatus,
     Compose(TabId),
 }
 struct Desktop {
@@ -880,9 +883,12 @@ impl Desktop {
         let id = id.into();
         let palette = self.palette;
         let focus = self.modal.building.then(|| self.modal.button(&id, cx));
-        let reveal = focus
-            .clone()
-            .filter(|_| id != "cancel-dialog" && id != "save-host" && id != "close-notifications");
+        let reveal = focus.clone().filter(|_| {
+            !matches!(
+                id.as_ref(),
+                "cancel-dialog" | "save-host" | "close-notifications" | "close-agent-status"
+            )
+        });
         div()
             .when_some(reveal, |d, focus| {
                 d.on_children_prepainted(self.modal.reveal_on_focus(focus))
@@ -1069,6 +1075,7 @@ impl Render for Desktop {
                 Dialog::About => ("about", vec![]),
                 Dialog::Agents(..) => ("agents", vec![]),
                 Dialog::Notifications => ("notifications", vec![]),
+                Dialog::AgentStatus => ("agent-status", vec![]),
                 Dialog::Compose(id) => ("compose", vec![self.composers[id].input.clone()]),
             };
             for input in &inputs {
@@ -1082,6 +1089,8 @@ impl Render for Desktop {
             );
             if matches!(dialog, Dialog::Notifications) {
                 root = root.child(self.render_notification_panel(window, cx));
+            } else if matches!(dialog, Dialog::AgentStatus) {
+                root = root.child(self.render_agent_status_panel(window, cx));
             } else {
                 let mut body = div()
                     .id("dialog-body")
@@ -1158,7 +1167,7 @@ impl Render for Desktop {
                         body =
                             body.child(self.agent_details(connection, alias, pane.as_deref(), cx));
                     }
-                    Dialog::Notifications => unreachable!(),
+                    Dialog::Notifications | Dialog::AgentStatus => unreachable!(),
                     Dialog::Compose(id) => {
                         body = body.child(self.render_composer(id, cx));
                         let composer = &self.composers[&id];

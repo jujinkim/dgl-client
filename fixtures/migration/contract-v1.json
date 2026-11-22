@@ -641,6 +641,18 @@
             "errors": true,
             "os": false
           },
+          "agentStatus": {
+            "statusBar": true,
+            "sidebar": true,
+            "account": true,
+            "usage": true,
+            "context": true,
+            "breakdown": true,
+            "cache": true,
+            "model": true,
+            "effort": true,
+            "cost": false
+          },
           "terminalShortcuts": [
             "Ctrl",
             "Shift",
@@ -710,6 +722,18 @@
             "errors": true,
             "os": false
           },
+          "agentStatus": {
+            "statusBar": true,
+            "sidebar": true,
+            "account": true,
+            "usage": true,
+            "context": true,
+            "breakdown": true,
+            "cache": true,
+            "model": true,
+            "effort": true,
+            "cost": false
+          },
           "terminalShortcuts": [
             "Ctrl",
             "Shift",
@@ -777,6 +801,18 @@
             "responses": true,
             "errors": true,
             "os": false
+          },
+          "agentStatus": {
+            "statusBar": true,
+            "sidebar": true,
+            "account": true,
+            "usage": true,
+            "context": true,
+            "breakdown": true,
+            "cache": true,
+            "model": true,
+            "effort": true,
+            "cost": false
           },
           "terminalShortcuts": [
             "Ctrl",
@@ -913,6 +949,18 @@
             "errors": true,
             "os": false
           },
+          "agentStatus": {
+            "statusBar": true,
+            "sidebar": true,
+            "account": true,
+            "usage": true,
+            "context": true,
+            "breakdown": true,
+            "cache": true,
+            "model": true,
+            "effort": true,
+            "cost": false
+          },
           "terminalShortcuts": [
             "Ctrl",
             "Shift",
@@ -1005,6 +1053,18 @@
             "responses": true,
             "errors": true,
             "os": false
+          },
+          "agentStatus": {
+            "statusBar": true,
+            "sidebar": true,
+            "account": true,
+            "usage": true,
+            "context": true,
+            "breakdown": true,
+            "cache": true,
+            "model": true,
+            "effort": true,
+            "cost": false
           },
           "terminalShortcuts": [
             "Ctrl",
@@ -1136,6 +1196,18 @@
             "errors": true,
             "os": false
           },
+          "agentStatus": {
+            "statusBar": true,
+            "sidebar": true,
+            "account": true,
+            "usage": true,
+            "context": true,
+            "breakdown": true,
+            "cache": true,
+            "model": true,
+            "effort": true,
+            "cost": false
+          },
           "terminalShortcuts": [
             "Enter",
             "ShiftLeft",
@@ -1190,6 +1262,18 @@
             "errors": true,
             "os": false
           },
+          "agentStatus": {
+            "statusBar": true,
+            "sidebar": true,
+            "account": true,
+            "usage": true,
+            "context": true,
+            "breakdown": true,
+            "cache": true,
+            "model": true,
+            "effort": true,
+            "cost": false
+          },
           "terminalShortcuts": [],
           "smoothTerminalTransitions": false,
           "keepConnectionsInBackground": true,
@@ -1238,6 +1322,18 @@
             "responses": true,
             "errors": true,
             "os": false
+          },
+          "agentStatus": {
+            "statusBar": true,
+            "sidebar": true,
+            "account": true,
+            "usage": true,
+            "context": true,
+            "breakdown": true,
+            "cache": true,
+            "model": true,
+            "effort": true,
+            "cost": false
           },
           "terminalShortcuts": [
             "Ctrl",

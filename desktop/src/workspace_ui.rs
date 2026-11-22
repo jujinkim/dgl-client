@@ -738,6 +738,9 @@ impl Desktop {
                 .child(hosts_header)
                 .child(explorer),
         );
+        if let Some(panel) = self.agent_status_sidebar(cx) {
+            sidebar = sidebar.child(panel);
+        }
         sidebar
     }
     /// The composer button, terminal shortcut keys and CLI launcher under the workspace.
@@ -806,10 +809,12 @@ impl Desktop {
             .child(shortcuts)
             .child(self.launcher_button(cx))
     }
-    /// The connection status line and its actions. A cached view of its own
-    /// (`chrome::Part::StatusBar`).
-    pub(crate) fn render_status_bar(&mut self, cx: &mut Context<Self>) -> Div {
+    /// The connection status line, the focused agent's status chip and the actions. A
+    /// cached view of its own (`chrome::Part::StatusBar`); it spans the window, so a
+    /// resize renders it again and the chip can fit its parts to the width.
+    pub(crate) fn render_status_bar(&mut self, window: &Window, cx: &mut Context<Self>) -> Div {
         let p = self.palette;
+        let chip = self.agent_status_chip(f32::from(window.viewport_size().width), window, cx);
         let unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
         let status = self
             .active_tab()
@@ -866,6 +871,7 @@ impl Desktop {
                     })
                     .child(div().flex_1().min_w_0().truncate().child(status_detail)),
             )
+            .when_some(chip, |d, chip| d.child(chip.ml_2()))
             .child(
                 div()
                     .debug_selector(|| "status-actions".into())

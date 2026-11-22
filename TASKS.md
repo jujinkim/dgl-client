@@ -1,6 +1,6 @@
 # 남은 작업
 
-2026-11-16 기준. 현재 실행 구조는 Rust 단일 엔진이며 기본 검증은 기능 검사와 유닛 테스트입니다.
+2026-11-22 기준. 현재 실행 구조는 Rust 단일 엔진이며 기본 검증은 기능 검사와 유닛 테스트입니다.
 작업·커밋은 `main`에서 진행합니다. 완료 이력을 여기에 누적하지 않고 [HISTORY.md](docs/HISTORY.md)와 Git 이력을 사용합니다.
 
 ## 기능 인수
@@ -37,6 +37,24 @@
   격리 SSH/tmux 통합 검사는 두 control client 수준의 근거이며 GUI 포커스 인수를 대신하지 않는다.
 - [ ] 각 플랫폼의 생성·이름 변경·삭제 취소, 빈 목록·오류·복구 화면과 보호 저장 실패 상태를 실제 화면에서 인수.
 - [ ] 데스크톱 OS 접근성 브리지·스크린리더 지원 검토. GPUI 자동화를 실기 접근성 통과로 계산하지 않는다.
+
+## 에이전트 상태 HUD
+
+단위 검사는 합성 입력과 임시 HOME만 사용했습니다. 아래 실기 항목은 확인 전까지 미검증으로 둡니다([에이전트 상태](docs/AGENT_STATUS.md#에이전트-상태-hud)).
+
+- [ ] 실제 Claude Code(2.1.310 이상)에서 상세 상태 수집 설치·재시작 후 `env.CLAUDE_CODE_PLUGIN_DIRS`의 DGL mod가 로드되는지 확인.
+  user 계층 mod의 `$.fs.write`(`~/.local/share/dgl-agent/v1/claude/<pid>.json`)·`$.session.identity()` 허용 여부, mod의 `CLAUDE_PID`와
+  관측 PID 일치(npm 런처·네이티브 바이너리), 구독·API 키 계정의 한도·계정 표시, 컨텍스트 구성·TTL 값, project·local·managed 설정의
+  `env`가 같은 키를 덮는 경우를 포함한다. 해제 후 `settings.json` 원래 값 복원도 확인한다.
+- [ ] 실제 Codex 0.171.0 이상에서 `PostModelRequest` 수신, 추가 훅의 `/hooks` 재신뢰, `models_cache.json` 창 크기와 state DB 추론 수준 확인.
+- [ ] 로그인한 AGY에서 statusline 설정 위치(`~/.gemini/antigravity-cli/settings.json`)·실제 입력(quota 버킷 ID·`reset_time` 형식·`plan_tier` 값),
+  statusline 자식 프로세스의 `TMUX_PANE` 상속, 사용자 statusline 출력 유지와 `stack_with_default`, 해제 후 복원 확인. 값은 비식별 fixture로 남긴다.
+- [ ] 실제 Grok Build 세션 폴더의 `signals.json`·`usage.json` 구조와 `StopFailure`의 `errorType`/`error` 키 확인.
+- [ ] 상태바 칩·팝오버·사이드바 패널·설정 카드와 Android 칩·바텀시트를 macOS·Windows·Android 실제 화면에서 확인.
+  Windows MSVC 빌드와 좁은 폭에서 항목 생략 순서 포함. 자동 UI 검사로 실기 표시를 대체하지 않는다.
+- [ ] 4단계(선택 소스, 미구현): Codex 한도·계정(rollout `token_count` 줄 읽기 또는 `app-server` 저속 조회), AGY `agy -p /usage` 저속·수동 조회,
+  Grok `config.toml` statusline과 `unified.jsonl` credits, Codex MCP statusline 공급자(실험). 대화 파일을 읽지 않는 현재 약속을 바꾸는 소스는
+  별도 opt-in과 문서 공개가 필요하다.
 
 ## 배포 전
 

@@ -13,7 +13,7 @@
 | 키보드·마우스·모바일 텍스트 작성 | [터미널 입력](TERMINAL_INPUT.md) |
 | 설정 내보내기·가져오기·동기화 | [내보내기 및 파일 동기화](CLOUD_SYNC.md) |
 | 테마·강조 색상·제목 표시줄 | [앱 스타일](APPEARANCE.md) |
-| CLI 프로세스·훅·알림 | [에이전트 상태](AGENT_STATUS.md) |
+| CLI 프로세스·훅·알림·상태 HUD | [에이전트 상태](AGENT_STATUS.md) |
 | 빌드·기본 검사·CI | [개발 안내](DEVELOPMENT.md), [Windows](WINDOWS.md), [스크립트](../scripts/README.md) |
 | 모듈과 계약 | [아키텍처](ARCHITECTURE.md), [코어 API](CORE_API.md), [화면 복원 ADR](decisions/002-terminal-restoration.md) |
 | 검증 범위·미검증 항목 | [검증](VALIDATION.md), [남은 작업](../TASKS.md) |
