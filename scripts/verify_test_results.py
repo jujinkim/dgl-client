@@ -106,8 +106,8 @@ TESTS = {
     'core.AgentStatusTest': ['fullSampleParsesWithWireNamesAndUnknownFieldsAreIgnored',
                              'statusesFilterByTargetAndLimitsFollowTheNewestAccountSample',
                              'tokenAndDurationFormatsMatchTheCore'],
-    'AgentStatusUiTest': ['chipShowsEnabledKnownPartsAndDropsThemInOrderWhenNarrow',
-                          'focusPrefersTheFocusedPaneParentThenAnyStatus',
+    'AgentStatusUiTest': ['statusButtonDescriptionIncludesEnabledKnownValues',
+                          'statusChipFollowsTheSelectedSessionAndPrefersItsFocusedPane',
                           'missingItemsExplainWhetherTheyAreUnknownUncollectedOrUnsupported',
                           'breakdownSharesUseTheWindowAndNeverExceedIt'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification

@@ -12,47 +12,36 @@ class AgentStatusUiTest {
         try { I18n.configure("en", "ko"); return block() } finally { I18n.configure(previous.code, "ko") }
     }
 
-    @Test fun chipShowsEnabledKnownPartsAndDropsThemInOrderWhenNarrow() = english {
+    @Test fun statusButtonDescriptionIncludesEnabledKnownValues() = english {
         val status = AgentStatus(at = 1, model = ModelInfo("claude-opus", "Opus"), effort = "high",
             context = ContextUsage(percent = 42.4), cache = CacheUsage(input = 10, read = 90, write = 0), cost_usd = 1.234,
             limits = listOf(UsageLimit("five_hour", used_percent = 63.0), UsageLimit("seven_day", used_percent = 20.0), UsageLimit("x")))
-        val o = observation("%1", status = status)
         val all = AgentStatusSettings(cost = true)
-        val parts = agentStatusChipParts(o, status.limits, all)
-        assertEquals(listOf("model", "effort", "context", "usage", "cache", "cost"), parts.map { it.field })
-        assertEquals("Opus · high · Context 42% · 5h 63% · Hit ratio 90% · Est. cost \$1.23", agentStatusChipVariants(parts).first())
-        assertEquals(listOf(
-            "Opus · high · Context 42% · 5h 63% · Hit ratio 90% · Est. cost \$1.23",
-            "Opus · high · Context 42% · 5h 63% · Hit ratio 90%",
-            "Opus · high · Context 42% · 5h 63%",
-            "Opus · Context 42% · 5h 63%",
-            "Opus · Context 42%",
-            "Context 42%",
-            ""), agentStatusChipVariants(parts))
-        // Defaults hide cost; disabled and unknown items never appear, and nothing is filled with 0.
-        assertEquals(listOf("model", "effort", "context", "usage", "cache"), agentStatusChipParts(o, status.limits, AgentStatusSettings()).map { it.field })
-        assertEquals(listOf("Context 42%", ""), agentStatusChipVariants(agentStatusChipParts(observation("%2", status = AgentStatus(context = ContextUsage(percent = 42.0))),
-            emptyList(), AgentStatusSettings(model = false))))
-        assertEquals(emptyList(), agentStatusChipParts(observation("%3"), emptyList(), all))
-        assertEquals("Thinking", agentStatusChipParts(observation("%4", status = AgentStatus(thinking = true)), emptyList(), all).single().text)
+        val standard = "Opus · high · Context 42% · 5h 63% · Hit ratio 90%"
+        assertEquals("$standard · Est. cost \$1.23", agentStatusSummary(status, status.limits, all))
+        assertEquals(standard, agentStatusSummary(status, status.limits, AgentStatusSettings()))
+        assertEquals("Context 42%", agentStatusSummary(status.copy(model = null, effort = null, cache = null), emptyList(), AgentStatusSettings()))
+        assertEquals("", agentStatusSummary(null, emptyList(), all))
+        assertEquals("Thinking", agentStatusSummary(AgentStatus(thinking = true), emptyList(), all))
         assertEquals("five_hour", agentTopLimit(status.limits)?.id)
         assertNull(agentTopLimit(listOf(UsageLimit("x"))))
     }
 
-    @Test fun focusPrefersTheFocusedPaneParentThenAnyStatus() {
+    @Test fun statusChipFollowsTheSelectedSessionAndPrefersItsFocusedPane() {
         val status = AgentStatus(at = 1)
+        val outside = observation("%8", "Grok", status).copy(session = "$2", window = "@2")
         val snapshot = AgentSnapshot(valid = true, observations = listOf(
+            outside,
             observation("%1", "Codex"), observation("%2", "Claude", status, actor = "sub"), observation("%2", "Claude", status),
             observation("%3", "Agy", status)))
-        assertEquals(observation("%2", "Claude", status), agentStatusFocus(snapshot, "%2"))
-        // A focused pane without a status falls back to the first parent observation that has one.
-        assertEquals(observation("%2", "Claude", status), agentStatusFocus(snapshot, "%1"))
-        assertEquals(observation("%2", "Claude", status), agentStatusFocus(snapshot, null))
-        assertEquals("%3", agentStatusFocus(AgentSnapshot(valid = true, observations = listOf(observation("%1", "Codex"),
-            observation("%2", "Claude", status, actor = "sub"), observation("%3", "Agy", status))), "%1")?.pane)
-        assertEquals("%1", agentStatusFocus(AgentSnapshot(valid = true, observations = listOf(observation("%1", "Codex"))), "%9")?.pane)
-        assertNull(agentStatusFocus(AgentSnapshot(valid = true), "%1"))
-        assertEquals(listOf("%2", "%2", "%1", "%3"), agentStatusOrder(snapshot, "%2").map { it.pane })
+        assertEquals(observation("%2", "Claude", status), agentStatusFocus(snapshot, "$1", "%2"))
+        assertEquals(observation("%1", "Codex"), agentStatusFocus(snapshot, "$1", "%1"))
+        assertEquals(observation("%2", "Claude", status), agentStatusFocus(snapshot, "$1", "%9"))
+        assertEquals(outside, agentStatusFocus(snapshot, "$2", "%8"))
+        assertNull(agentStatusFocus(snapshot, "$3", "%8"))
+        assertNull(agentStatusFocus(snapshot, null, "%8"))
+        assertEquals(listOf("%2", "%2", "%1", "%3"), agentStatusOrder(snapshot.inSession("$1"), "%2").map { it.pane })
+        assertEquals(5, agentStatusOrder(snapshot.observations, "%2").size)
     }
 
     @Test fun missingItemsExplainWhetherTheyAreUnknownUncollectedOrUnsupported() {

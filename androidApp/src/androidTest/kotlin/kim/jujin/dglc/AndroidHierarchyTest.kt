@@ -88,12 +88,43 @@ class AndroidHierarchyTest {
                         first.agents.value = AgentSnapshot(server = "server", valid = true, observed_at = System.currentTimeMillis(),
                             observations = listOf(observation))
                     }
-                    val label = observation.status?.model?.name ?: "Claude"
-                    awaitPrefix("에이전트 상태 자세히 · Claude · $label")
+                    val prefix = "에이전트 상태 자세히 · Claude" + observation.status?.model?.name?.let { " · $it" }.orEmpty()
+                    val button = awaitPrefix(prefix)
+                    assertTrue(button.isClickable)
+                    assertNull(find(button) { !it.text.isNullOrBlank() })
+                    assertEquals(bounds(button).height(), bounds(button).width())
                     assertRightEdge(await("tmux 관리"))
                 }
                 checkChip(process)
                 checkChip(process.copy(status = AgentStatus(at = System.currentTimeMillis(), model = ModelInfo(name = "긴 모델 이름 ".repeat(6).trim()))))
+                // Both connections poll the same tmux server. Only the selected tab owns the header.
+                scenario.onActivity {
+                    second.session.value = "$2"
+                    second.pane.value = "%2"
+                    second.remote.value = RemoteState(
+                        listOf(RemoteSession("$2", "검토", 1)), listOf(RemoteWindow("@2", "$2", "셸", true, "layout", 0)),
+                        listOf(RemotePane("%2", "@2", 80, 24, true, "", "sh", "셸")))
+                    second.agents.value = first.agents.value
+                }
+                click("연결 둘 · 검토")
+                await("현재 호스트 연결 둘 연결 메뉴")
+                instrumentation.uiAutomation.waitForIdle(100, 5000)
+                instrumentation.uiAutomation.clearCache()
+                assertNull(find(instrumentation.uiAutomation.rootInActiveWindow) { it.contentDescription?.startsWith("에이전트 상태 자세히") == true })
+                scenario.onActivity {
+                    val codex = AgentObservation("$2", "@2", "%2", "other-session", "parent", "Codex",
+                        status = AgentStatus(at = System.currentTimeMillis(), model = ModelInfo(name = "검토 모델")))
+                    val poll = first.agents.value.copy(observed_at = System.currentTimeMillis(), observations = listOf(process, codex))
+                    first.agents.value = poll
+                    second.agents.value = poll
+                }
+                val codexChip = awaitPrefix("에이전트 상태 자세히 · Codex · 검토 모델")
+                clickNode(codexChip)
+                await("Codex")
+                assertNull(node("Claude"))
+                click("닫기")
+                click("연결 하나 · 개발")
+                awaitPrefix("에이전트 상태 자세히 · Claude")
                 click("호스트")
                 click("tmux 관리")
                 val compact = "개발\n3: 편집 · 작업\n패널 1개"

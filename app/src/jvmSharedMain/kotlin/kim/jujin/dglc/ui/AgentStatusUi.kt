@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kim.jujin.dglc.*
@@ -24,12 +23,6 @@ import kotlin.math.roundToLong
 // Agent status HUD: the status chip, the full panel (dialog on wide screens, bottom sheet on
 // phones), the sidebar summary and the settings card body. Unknown values are never shown as 0.
 
-/** One visible chip part; [field] names the [AgentStatusSettings] item it belongs to. */
-internal data class AgentChipPart(val field: String, val text: String)
-
-/** Parts dropped first when the chip is narrow; the context part is kept the longest. */
-internal val AGENT_STATUS_CHIP_DROP_ORDER = listOf("cost", "cache", "effort", "usage", "model", "context")
-
 /** Why a status item has no value. */
 internal enum class AgentFieldState { Shown, Unknown, NotCollected, NotSupported, NoLimits }
 
@@ -38,47 +31,29 @@ internal fun agentPercentText(value: Double): String = value.roundToLong().toStr
 /** The limit closest to exhaustion; limits with an unknown figure are skipped. */
 internal fun agentTopLimit(limits: List<UsageLimit>): UsageLimit? = limits.filter { it.used() != null }.maxByOrNull { it.used()!! }
 
-/**
- * The status the chip summarizes: the focused pane's agent (parent first), else the first observation
- * with a status, else any observation so its "not collected" state stays reachable.
- */
-internal fun agentStatusFocus(snapshot: AgentSnapshot, pane: String?): AgentObservation? {
-    val inPane = snapshot.observations.filter { pane != null && it.pane == pane }
-        .sortedWith(compareByDescending<AgentObservation> { it.status != null }.thenByDescending { it.actor == "parent" })
-    return inPane.firstOrNull { it.status != null }
-        ?: snapshot.observations.filter { it.status != null }.sortedByDescending { it.actor == "parent" }.firstOrNull()
-        ?: inPane.firstOrNull() ?: snapshot.observations.firstOrNull()
-}
+/** The observer polls the whole tmux server. The status chip belongs to one tab's session. */
+internal fun AgentSnapshot.inSession(session: String?) = observations.filter { it.session == session }
+
+internal fun agentStatusFocus(snapshot: AgentSnapshot, session: String?, pane: String?): AgentObservation? =
+    snapshot.inSession(session).minWithOrNull(compareBy<AgentObservation> { it.pane != pane }
+        .thenBy { it.status == null }.thenBy { it.actor != "parent" })
 
 /** Panel order: the focused pane's agents first, then the rest in snapshot order. */
-internal fun agentStatusOrder(snapshot: AgentSnapshot, pane: String?): List<AgentObservation> =
-    snapshot.observations.sortedByDescending { pane != null && it.pane == pane }
+internal fun agentStatusOrder(observations: List<AgentObservation>, pane: String?): List<AgentObservation> =
+    observations.sortedByDescending { it.pane == pane }
 
-/** Chip parts in display order, only enabled items with a known value. */
-internal fun agentStatusChipParts(observation: AgentObservation, limits: List<UsageLimit>, settings: AgentStatusSettings): List<AgentChipPart> {
-    val s = observation.status ?: return emptyList()
+/** Known, enabled status values for the status button's accessibility description. */
+internal fun agentStatusSummary(status: AgentStatus?, limits: List<UsageLimit>, settings: AgentStatusSettings): String {
+    val s = status ?: return ""
     return buildList {
-        if (settings.model) (s.model?.name ?: s.model?.id)?.takeIf { it.isNotBlank() }?.let { add(AgentChipPart("model", it)) }
+        if (settings.model) (s.model?.name ?: s.model?.id)?.takeIf { it.isNotBlank() }?.let { add(it) }
         if (settings.effort) (s.effort?.takeIf { it.isNotBlank() } ?: t("agent_status.thinking").takeIf { s.thinking == true })
-            ?.let { add(AgentChipPart("effort", it)) }
-        if (settings.context) s.contextPercent()?.let { add(AgentChipPart("context", "${t("agent_status.field.context")} ${agentPercentText(it)}%")) }
-        if (settings.usage) agentTopLimit(limits)?.let { add(AgentChipPart("usage", "${it.title()} ${agentPercentText(it.used()!!)}%")) }
-        if (settings.cache) s.cacheHitRatio()?.let { add(AgentChipPart("cache", tr("agent_status.cache.hit_ratio", agentPercentText(it * 100)))) }
-        if (settings.cost) s.cost_usd?.let { add(AgentChipPart("cost", tr("agent_status.cost", agentCostText(it)))) }
-    }
-}
-
-/** The full chip text, then shorter texts that drop parts in [AGENT_STATUS_CHIP_DROP_ORDER]; ends with "". */
-internal fun agentStatusChipVariants(parts: List<AgentChipPart>): List<String> {
-    var remaining = parts
-    val variants = mutableListOf(remaining.joinToString(" · ") { it.text })
-    for (field in AGENT_STATUS_CHIP_DROP_ORDER) {
-        if (remaining.none { it.field == field }) continue
-        remaining = remaining.filter { it.field != field }
-        variants += remaining.joinToString(" · ") { it.text }
-    }
-    if (variants.last().isNotEmpty()) variants += ""
-    return variants.distinct()
+            ?.let { add(it) }
+        if (settings.context) s.contextPercent()?.let { add("${t("agent_status.field.context")} ${agentPercentText(it)}%") }
+        if (settings.usage) agentTopLimit(limits)?.let { add("${it.title()} ${agentPercentText(it.used()!!)}%") }
+        if (settings.cache) s.cacheHitRatio()?.let { add(tr("agent_status.cache.hit_ratio", agentPercentText(it * 100))) }
+        if (settings.cost) s.cost_usd?.let { add(tr("agent_status.cost", agentCostText(it))) }
+    }.joinToString(" · ")
 }
 
 internal fun agentCostText(cost: Double): String = String.format(java.util.Locale.ROOT, "%.2f", cost)
@@ -171,42 +146,36 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
 @Composable private fun gaugeColor(percent: Double): Color =
     if (percent >= 90.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
-/** Compact summary of the focused agent; hidden when the connection observes no agent. */
-@Composable internal fun AgentStatusChip(client: ClientConnection, settings: AgentStatusSettings, open: () -> Unit, modifier: Modifier = Modifier) {
+/** Compact summary of the selected tab's agent. */
+@Composable internal fun AgentStatusChip(client: ClientConnection, settings: AgentStatusSettings, open: () -> Unit) {
     val snapshot by client.agents.collectAsState()
+    val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
     val now = System.currentTimeMillis()
-    val focus = agentStatusFocus(snapshot, pane) ?: return
+    val focus = agentStatusFocus(snapshot, session, pane) ?: return
     val status = focus.status
     val stale = !snapshot.current(now) || status?.isStale(now) == true
-    val parts = agentStatusChipParts(focus, snapshot.limitsFor(focus), settings)
-    val variants = if (parts.isEmpty()) listOf(agentName(focus.agent), "") else agentStatusChipVariants(parts)
+    val summary = agentStatusSummary(status, snapshot.limitsFor(focus), settings)
     val alert = status?.alert?.let(::agentAlertLabel)
-    val description = listOfNotNull(t("agent_status.open_details"), agentName(focus.agent), variants.first().takeIf { it.isNotEmpty() },
+    val description = listOfNotNull(t("agent_status.open_details"), agentName(focus.agent), summary.takeIf { it.isNotEmpty() },
         alert, if (stale) t("agent_status.stale") else null, if (status == null) t(agentNoStatusKey(focus.agent)) else null).joinToString(" · ")
-    val color = if (stale) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-    val style = MaterialTheme.typography.labelMedium
-    val measurer = rememberTextMeasurer()
-    BorderedButton(open, modifier.semantics { contentDescription = description }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-        Icon(LauncherIcons.agent(focus.agent), null, Modifier.size(16.dp), tint = color)
-        if (alert != null) UiGlyph(UiIcons.error, Modifier.padding(start = 4.dp).size(16.dp), tint = MaterialTheme.colorScheme.error)
-        BoxWithConstraints(Modifier.weight(1f, fill = false).clearAndSetSemantics {}) {
-            // The gap before the text is part of the measured width.
-            val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 6.dp.roundToPx() }
-            val text = if (!constraints.hasBoundedWidth) variants.first()
-                else variants.firstOrNull { it.isEmpty() || measurer.measure(it, style, maxLines = 1).size.width + gap <= constraints.maxWidth } ?: ""
-            if (text.isNotEmpty()) Text(text, Modifier.padding(start = 6.dp), color = color, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+    val color = when {
+        alert != null -> MaterialTheme.colorScheme.error
+        stale -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    IconButton(open, Modifier.size(48.dp).semantics { contentDescription = description }) {
+        Icon(LauncherIcons.agent(focus.agent), null, Modifier.size(20.dp), tint = color)
     }
 }
 
-/** Every observed agent of [client] with all enabled items; the focused pane comes first. */
-@Composable internal fun AgentStatusPanel(client: ClientConnection, settings: AgentStatusSettings, modifier: Modifier = Modifier) {
+@Composable private fun AgentStatusPanel(client: ClientConnection, settings: AgentStatusSettings, fromSidebar: Boolean, modifier: Modifier) {
     val snapshot by client.agents.collectAsState()
     val remote by client.remote.collectAsState()
+    val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
     val now = System.currentTimeMillis()
-    val observations = agentStatusOrder(snapshot, pane)
+    val observations = agentStatusOrder(if (fromSidebar) snapshot.observations else snapshot.inSession(session), pane)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (observations.isEmpty()) Text(t("agent_status.none"))
         else if (!snapshot.current(now)) Text(t("agent_status.stale"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -339,21 +308,21 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
 }
 
 /** The full panel for wide screens. */
-@Composable internal fun AgentStatusDialog(client: ClientConnection, settings: AgentStatusSettings, dismiss: () -> Unit) {
+@Composable internal fun AgentStatusDialog(client: ClientConnection, settings: AgentStatusSettings, fromSidebar: Boolean, dismiss: () -> Unit) {
     AlertDialog(onDismissRequest = dismiss, title = { Text(t("agent_status.title")) }, text = {
-        AgentStatusPanel(client, settings, Modifier.verticalScroll(rememberScrollState()))
+        AgentStatusPanel(client, settings, fromSidebar, Modifier.verticalScroll(rememberScrollState()))
     }, confirmButton = { BorderedButton(dismiss) { Text(t("common.close")) } })
 }
 
 /** The full panel for phones, in the same bottom sheet form as tmux navigation. */
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun AgentStatusSheet(client: ClientConnection, settings: AgentStatusSettings, dismiss: () -> Unit) {
+@Composable internal fun AgentStatusSheet(client: ClientConnection, settings: AgentStatusSettings, fromSidebar: Boolean, dismiss: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = dismiss, sheetState = sheet) {
         // A weighted child needs a finite height before the sheet computes its anchors.
         Column(Modifier.fillMaxWidth().heightIn(max = 600.dp)) {
             Text(t("agent_status.title"), Modifier.padding(horizontal = 16.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium)
-            AgentStatusPanel(client, settings, Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(16.dp))
+            AgentStatusPanel(client, settings, fromSidebar, Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(16.dp))
             BorderedButton(dismiss, modifier = Modifier.fillMaxWidth()) { Text(t("common.close")) }
         }
     }
@@ -374,7 +343,7 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
             val snapshot = client?.agents?.collectAsState()?.value
             val pane = client?.pane?.collectAsState()?.value
             val now = System.currentTimeMillis()
-            val observations = snapshot?.let { agentStatusOrder(it, pane) }.orEmpty()
+            val observations = snapshot?.let { agentStatusOrder(it.observations, pane) }.orEmpty()
             if (observations.isEmpty()) Text(t("agent_status.none"), style = MaterialTheme.typography.bodySmall)
             observations.forEach { o -> AgentStatusLine(o, snapshot!!.limitsFor(o), settings, !snapshot.current(now) || o.status?.isStale(now) == true, openDetails) }
             if (observations.isNotEmpty()) TextButton(openDetails) { Text(t("agent_status.open_details")) }

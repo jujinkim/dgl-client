@@ -809,12 +809,10 @@ impl Desktop {
             .child(shortcuts)
             .child(self.launcher_button(cx))
     }
-    /// The connection status line, the focused agent's status chip and the actions. A
-    /// cached view of its own (`chrome::Part::StatusBar`); it spans the window, so a
-    /// resize renders it again and the chip can fit its parts to the width.
-    pub(crate) fn render_status_bar(&mut self, window: &Window, cx: &mut Context<Self>) -> Div {
+    /// The selected tab's connection status, agent button and workspace actions.
+    pub(crate) fn render_status_bar(&mut self, cx: &mut Context<Self>) -> Div {
         let p = self.palette;
-        let chip = self.agent_status_chip(f32::from(window.viewport_size().width), window, cx);
+        let chip = self.agent_status_chip(cx);
         let unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
         let status = self
             .active_tab()

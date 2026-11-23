@@ -3543,14 +3543,13 @@ fn agent_status_snapshot() -> dgl_core::agent::Snapshot {
 }
 
 #[gpui::test]
-fn agent_status_chip_fits_the_status_bar_and_opens_details(cx: &mut TestAppContext) {
+fn agent_status_icon_has_fixed_size_and_opens_details(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     let terminal = add_terminal(&view, ui);
     view.update(ui, |s, cx| {
-        s.agents.hud.snapshot = Some(agent_status_snapshot());
+        s.agents.hud.snapshot = Some(("$1".into(), agent_status_snapshot()));
         cx.notify();
     });
-    let mut widths = vec![];
     for width in [420., 640., 1200.] {
         ui.simulate_resize(gpui::size(px(width), px(800.)));
         redraw(ui);
@@ -3563,18 +3562,9 @@ fn agent_status_chip_fits_the_status_bar_and_opens_details(cx: &mut TestAppConte
         assert!(status.right() <= chip.left(), "{width}");
         assert!(chip.right() <= actions.left(), "{width}");
         assert!(chip.top() >= bar.top() && chip.bottom() <= bar.bottom());
-        assert!(
-            chip.size.width <= px(super::agent_status_ui::chip_budget(width)),
-            "{width}"
-        );
-        widths.push(chip.size.width);
+        assert_eq!(chip.size, gpui::size(px(28.), px(24.)));
     }
-    // Narrow bars drop parts instead of overflowing.
-    assert!(
-        widths[0] <= widths[1] && widths[1] <= widths[2] && widths[0] < widths[2],
-        "{widths:?}"
-    );
-    // The chip's popover lists every agent with visible values and explicit gaps.
+    // Opening the icon shows the session's detailed status and preserves terminal focus on close.
     ui.update(|w, cx| w.focus(&terminal.focus_handle(cx)));
     let chip = ui.debug_bounds("agent-status-chip").unwrap();
     ui.simulate_click(chip.center(), Modifiers::default());
@@ -3639,7 +3629,7 @@ fn agent_status_sidebar_panel_folds_and_settings_toggle_fields(cx: &mut TestAppC
     add_terminal(&view, ui);
     ui.simulate_resize(gpui::size(px(1200.), px(800.)));
     view.update(ui, |s, cx| {
-        s.agents.hud.snapshot = Some(agent_status_snapshot());
+        s.agents.hud.snapshot = Some(("$1".into(), agent_status_snapshot()));
         cx.notify();
     });
     redraw(ui);

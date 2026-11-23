@@ -6,11 +6,6 @@ use dgl_core::agent::{
 };
 
 const POPOVER_WIDTH: f32 = 400.;
-const STATUS_TEXT_SIZE: f32 = 12.;
-/// Status-bar padding (12 + 12) and the notification and settings buttons (56 + 28).
-const STATUS_BAR_RESERVED: f32 = 24. + 84. + 8.;
-/// Chip icon, gap and padding around its text.
-const CHIP_CHROME: f32 = 40.;
 
 /// HUD state that is not a preference. It stays on this device for this run only.
 #[derive(Default)]
@@ -24,41 +19,29 @@ pub(crate) struct Hud {
     pub collapsed: bool,
     /// "Include detailed status collection" in the integration dialog; `None` follows inspect.
     pub collect: Option<bool>,
-    /// Replaces the active connection's agents in UI tests, which cannot poll a host.
+    /// Supplies the selected session and a server-wide poll in UI tests.
     #[cfg(test)]
-    pub snapshot: Option<Snapshot>,
+    pub snapshot: Option<(String, Snapshot)>,
 }
 
-/// The chip's parts, in display order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ChipPart {
-    Model,
-    Effort,
-    Context,
-    Limit,
-    Cache,
-    Cost,
-}
-/// Parts dropped first to last when the status bar is narrow.
-const DROP_ORDER: [ChipPart; 6] = [
-    ChipPart::Cost,
-    ChipPart::Cache,
-    ChipPart::Effort,
-    ChipPart::Limit,
-    ChipPart::Model,
-    ChipPart::Context,
-];
-
-/// The agent the chip summarizes: the focused pane's (its parent before subagents and
-/// one with a status first), else the first observation with a status, else any.
-pub(crate) fn focused<'a>(snapshot: &'a Snapshot, pane: Option<&str>) -> Option<&'a Observation> {
+/// Prefer the focused pane, then detailed status and the parent agent within this tab's session.
+fn focused<'a>(
+    snapshot: &'a Snapshot,
+    session: Option<&str>,
+    pane: Option<&str>,
+) -> Option<&'a Observation> {
+    let session = session?;
     snapshot
         .observations
         .iter()
-        .filter(|o| pane.is_some_and(|p| o.pane == p))
-        .min_by_key(|o| (o.status.is_none(), o.actor != "parent"))
-        .or_else(|| snapshot.observations.iter().find(|o| o.status.is_some()))
-        .or_else(|| snapshot.observations.first())
+        .filter(|o| o.session == session)
+        .min_by_key(|o| {
+            (
+                Some(o.pane.as_str()) != pane,
+                o.status.is_none(),
+                o.actor != "parent",
+            )
+        })
 }
 
 fn percent(value: f64) -> String {
@@ -73,12 +56,12 @@ pub(crate) fn top_limit(limits: &[UsageLimit]) -> Option<(&UsageLimit, f64)> {
         .max_by(|a, b| a.1.total_cmp(&b.1))
 }
 
-/// Enabled and known parts only, in display order.
-pub(crate) fn chip_parts(
+/// Known, enabled status values for the icon's tooltip.
+fn status_summary(
     status: &AgentStatus,
     limits: &[UsageLimit],
     settings: &AgentStatusSettings,
-) -> Vec<(ChipPart, String)> {
+) -> String {
     let mut parts = Vec::new();
     if settings.model
         && let Some(model) = status
@@ -87,67 +70,34 @@ pub(crate) fn chip_parts(
             .and_then(|m| m.name.as_deref().or(m.id.as_deref()))
             .filter(|m| !m.trim().is_empty())
     {
-        parts.push((ChipPart::Model, model.to_owned()));
+        parts.push(model.to_owned());
     }
     if settings.effort
         && let Some(effort) = status.effort.as_deref().filter(|e| !e.trim().is_empty())
     {
-        parts.push((ChipPart::Effort, effort.to_owned()));
+        parts.push(effort.to_owned());
     }
     if settings.context
         && let Some(value) = status.context_percent()
     {
-        parts.push((ChipPart::Context, format!("ctx {}%", percent(value))));
+        parts.push(format!("ctx {}%", percent(value)));
     }
     if settings.usage
         && let Some((limit, used)) = top_limit(limits)
     {
-        parts.push((
-            ChipPart::Limit,
-            format!("{} {}%", limit.title(), percent(used)),
-        ));
+        parts.push(format!("{} {}%", limit.title(), percent(used)));
     }
     if settings.cache
         && let Some(ratio) = status.cache_hit_ratio()
     {
-        parts.push((
-            ChipPart::Cache,
-            tr!("agent_status.cache.hit_ratio", percent(ratio * 100.)),
-        ));
+        parts.push(tr!("agent_status.cache.hit_ratio", percent(ratio * 100.)));
     }
     if settings.cost
         && let Some(cost) = status.cost_usd
     {
-        parts.push((
-            ChipPart::Cost,
-            tr!("agent_status.cost", format!("{cost:.2}")),
-        ));
+        parts.push(tr!("agent_status.cost", format!("{cost:.2}")));
     }
-    parts
-}
-
-fn join(parts: &[(ChipPart, String)]) -> String {
-    parts
-        .iter()
-        .map(|(_, s)| s.as_str())
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
-/// Drops parts in `DROP_ORDER` until the text fits; at least one part stays.
-pub(crate) fn fit_chip(mut parts: Vec<(ChipPart, String)>, fits: impl Fn(&str) -> bool) -> String {
-    for drop in DROP_ORDER {
-        if parts.len() <= 1 || fits(&join(&parts)) {
-            break;
-        }
-        parts.retain(|(part, _)| *part != drop);
-    }
-    join(&parts)
-}
-
-/// Width the chip may take in a status bar `bar` wide; the connection status keeps the rest.
-pub(crate) fn chip_budget(bar: f32) -> f32 {
-    ((bar - STATUS_BAR_RESERVED) * 0.55).clamp(0., 520.)
+    parts.join(" · ")
 }
 
 /// A value the helper reports, or why it is missing.
@@ -207,35 +157,14 @@ fn warning_color(palette: &theme::Palette) -> u32 {
     dgl_core::accent::readable(0xd64545, &[palette.panel], 4.5)
 }
 
-fn text_width(window: &Window, text: &str) -> f32 {
-    let run = TextRun {
-        len: text.len(),
-        font: font(platform::UI_FONT),
-        color: black(),
-        background_color: None,
-        underline: None,
-        strikethrough: None,
-    };
-    f32::from(
-        window
-            .text_system()
-            .shape_line(
-                SharedString::from(text.to_owned()),
-                px(STATUS_TEXT_SIZE),
-                &[run],
-                None,
-            )
-            .width,
-    )
-}
-
 impl Desktop {
     /// The active tab's connection state, the HUD's single source.
     pub(crate) fn hud_state(&self) -> Option<Arc<dgl_core::connection::State>> {
         let state = self.active_tab()?.connection.state();
         #[cfg(test)]
-        if let Some(snapshot) = &self.agents.hud.snapshot {
+        if let Some((session, snapshot)) = &self.agents.hud.snapshot {
             let mut state = (*state).clone();
+            state.session = Some(session.clone());
             state.agents = snapshot.clone();
             return Some(Arc::new(state));
         }
@@ -279,12 +208,7 @@ impl Desktop {
     }
 
     /// The status-bar chip for the focused pane's agent, `None` when nothing is shown.
-    pub(crate) fn agent_status_chip(
-        &self,
-        bar_width: f32,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Stateful<Div>> {
+    pub(crate) fn agent_status_chip(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         let settings = &self.local.preferences.agent_status;
         if !settings.status_bar {
             return None;
@@ -294,28 +218,30 @@ impl Desktop {
         if !state.agents.has_fresh_poll(now) {
             return None;
         }
-        let observation = focused(&state.agents, state.pane.as_deref())?;
-        let budget = chip_budget(bar_width);
+        let observation = focused(
+            &state.agents,
+            state.session.as_deref(),
+            state.pane.as_deref(),
+        )?;
         let status = observation.status.as_ref();
-        let parts = status.map_or_else(Vec::new, |s| {
-            chip_parts(s, state.agents.limits_for(observation), settings)
+        let summary = status.map_or_else(String::new, |s| {
+            status_summary(s, state.agents.limits_for(observation), settings)
         });
-        let full = join(&parts);
-        let text = if parts.is_empty() {
-            t("agent_status.unknown").to_owned()
-        } else {
-            fit_chip(parts, |text| {
-                text_width(window, text) + CHIP_CHROME <= budget
-            })
-        };
         let dim = status.is_none_or(|s| s.is_stale(now));
         let alert = status
             .and_then(|s| s.alert.as_deref())
             .and_then(agent::alert_label);
         let p = self.palette;
+        let icon_color = if alert.is_some() {
+            warning_color(&p)
+        } else if dim {
+            p.muted
+        } else {
+            p.fg
+        };
         let tip = [
             observation.agent.label().to_owned(),
-            full,
+            summary,
             alert.unwrap_or_default().to_owned(),
             t("agent_status.open_details").to_owned(),
         ]
@@ -341,27 +267,16 @@ impl Desktop {
                 .inset_0(),
             )
             .relative()
+            .w(px(28.))
             .h(px(24.))
-            .min_w_0()
-            .max_w(px(budget))
-            .flex_shrink()
-            .overflow_hidden()
+            .p_0()
             .flex()
             .items_center()
-            .gap_1()
-            .text_size(px(STATUS_TEXT_SIZE))
-            .text_color(rgb(if dim { p.muted } else { p.fg }))
+            .justify_center()
             .native_tooltip(tip)
-            .child(self.agent_icon(observation.agent, 14.))
-            .when(alert.is_some(), |d| {
-                d.child(UiIcon::Error.render(warning_color(&p)).size(px(14.)))
-            })
             .child(
-                div()
-                    .debug_selector(|| "agent-status-chip-text".into())
-                    .min_w_0()
-                    .truncate()
-                    .child(text),
+                self.agent_icon(observation.agent, 16.)
+                    .text_color(rgb(icon_color)),
             ),
         )
     }
@@ -453,7 +368,7 @@ impl Desktop {
         )
     }
 
-    /// Every agent of the active connection, with the explicit no-data states.
+    /// The chip opens this session's details. The sidebar opens the full host list.
     fn agent_status_details(&self) -> Div {
         let body = div().flex().flex_col().gap_3();
         let Some(state) = self.hud_state() else {
@@ -467,10 +382,17 @@ impl Desktop {
         if !snapshot.has_fresh_poll(now) {
             return body.child(self.muted_line(t("agent_status.stale")));
         }
-        if snapshot.observations.is_empty() {
+        let mut observations = snapshot
+            .observations
+            .iter()
+            .filter(|o| {
+                self.agents.hud.from_sidebar || state.session.as_deref() == Some(o.session.as_str())
+            })
+            .peekable();
+        if observations.peek().is_none() {
             return body.child(self.muted_line(t("agent_status.none")));
         }
-        snapshot.observations.iter().fold(body, |body, o| {
+        observations.fold(body, |body, o| {
             body.child(self.observation_status(&state, o, now))
         })
     }
@@ -1082,11 +1004,11 @@ pub(crate) fn collection_state(config: &serde_json::Value) -> Option<String> {
 mod tests {
     // Not `super::*`: GPUI's `test` attribute would replace the standard one.
     use super::{
-        Agent, AgentStatus, AgentStatusSettings, ChipPart, Field, Observation, Snapshot,
-        UsageLimit, chip_budget, chip_parts, collection_state, fit_chip, focused,
-        installed_collection, missing, t,
+        Agent, AgentStatus, AgentStatusSettings, Field, Observation, Snapshot, UsageLimit,
+        collection_state, focused, installed_collection, missing, status_summary, t,
     };
     use dgl_core::agent::{AccountInfo, CacheUsage, ContextUsage, ModelInfo};
+    use dgl_core::tr;
 
     fn observation(pane: &str, actor: &str, status: Option<AgentStatus>) -> Observation {
         Observation {
@@ -1140,46 +1062,22 @@ mod tests {
     }
 
     #[test]
-    fn chip_shows_enabled_known_parts_and_drops_them_in_priority_order() {
+    fn icon_tooltip_includes_enabled_known_values() {
         let status = full_status();
         let mut settings = AgentStatusSettings {
             cost: true,
             ..Default::default()
         };
-        let parts = chip_parts(&status, &status.limits, &settings);
-        let kinds: Vec<_> = parts.iter().map(|(k, _)| *k).collect();
+        let summary = status_summary(&status, &status.limits, &settings);
         assert_eq!(
-            kinds,
-            [
-                ChipPart::Model,
-                ChipPart::Effort,
-                ChipPart::Context,
-                ChipPart::Limit,
-                ChipPart::Cache,
-                ChipPart::Cost
-            ]
+            summary,
+            format!(
+                "Opus · high · ctx 42% · {} 63% · {} · {}",
+                status.limits[0].title(),
+                tr!("agent_status.cache.hit_ratio", "96"),
+                tr!("agent_status.cost", "1.50")
+            )
         );
-        // The most used limit is the one shown.
-        assert!(parts[3].1.ends_with(" 63%"), "{}", parts[3].1);
-        assert_eq!(parts[2].1, "ctx 42%");
-        // Narrowing drops cost, cache, effort, limits, model, and never the last part.
-        let all = parts.len();
-        let mut seen = vec![];
-        for keep in (1..=all).rev() {
-            let text = fit_chip(parts.clone(), |t| t.matches(" · ").count() < keep);
-            seen.push(text);
-        }
-        assert_eq!(seen.last().unwrap(), "ctx 42%");
-        assert!(seen[1].starts_with("Opus · high · ctx 42% · "));
-        assert!(!seen[1].contains('$'));
-        assert_eq!(
-            seen[3],
-            format!("Opus · ctx 42% · {} 63%", status.limits[0].title())
-        );
-        assert_eq!(seen[4], "Opus · ctx 42%");
-        // Nothing fits: one part stays.
-        assert_eq!(fit_chip(parts.clone(), |_| false), "ctx 42%");
-        // Disabled and unknown parts are not shown; unknown is never 0.
         settings.model = false;
         settings.cost = false;
         let unknown = AgentStatus {
@@ -1187,33 +1085,42 @@ mod tests {
             context: None,
             ..status.clone()
         };
-        let kinds: Vec<_> = chip_parts(&unknown, &[], &settings)
-            .into_iter()
-            .map(|(k, _)| k)
-            .collect();
-        assert_eq!(kinds, [ChipPart::Cache]);
-        assert!(chip_parts(&AgentStatus::default(), &[], &settings).is_empty());
+        assert_eq!(
+            status_summary(&unknown, &[], &settings),
+            tr!("agent_status.cache.hit_ratio", "96")
+        );
+        assert!(status_summary(&AgentStatus::default(), &[], &settings).is_empty());
     }
 
     #[test]
-    fn focus_prefers_the_pane_parent_then_any_status() {
+    fn chip_follows_the_selected_session_and_prefers_its_focused_pane() {
         let snapshot = Snapshot {
             valid: true,
             observed_at: 1_000,
             observations: vec![
+                Observation {
+                    session: "$2".into(),
+                    window: "@2".into(),
+                    ..observation("%8", "parent", Some(full_status()))
+                },
                 observation("%1", "parent", None),
                 observation("%2", "sub", Some(full_status())),
                 observation("%2", "parent", Some(full_status())),
             ],
             ..Default::default()
         };
-        assert_eq!(focused(&snapshot, Some("%2")).unwrap().actor, "parent");
+        let focus = |session, pane| focused(&snapshot, session, pane);
+        assert_eq!(focus(Some("$1"), Some("%2")).unwrap().actor, "parent");
         // The pane's own agent wins even without a status.
-        assert_eq!(focused(&snapshot, Some("%1")).unwrap().pane, "%1");
-        // Elsewhere: the first agent that has a status.
-        let other = focused(&snapshot, Some("%9")).unwrap();
-        assert_eq!((other.pane.as_str(), other.actor.as_str()), ("%2", "sub"));
-        assert!(focused(&Snapshot::default(), None).is_none());
+        assert_eq!(focus(Some("$1"), Some("%1")).unwrap().pane, "%1");
+        let other = focus(Some("$1"), Some("%9")).unwrap();
+        assert_eq!(
+            (other.pane.as_str(), other.actor.as_str()),
+            ("%2", "parent")
+        );
+        assert_eq!(focus(Some("$2"), Some("%8")).unwrap().pane, "%8");
+        assert!(focus(Some("$3"), Some("%8")).is_none());
+        assert!(focus(None, Some("%8")).is_none());
         assert!(snapshot.has_fresh_poll(10_999));
         assert!(!snapshot.has_fresh_poll(11_000));
         assert!(
@@ -1226,11 +1133,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_and_missing_reasons_are_explicit() {
-        assert!(chip_budget(420.) < chip_budget(640.));
-        assert!(chip_budget(640.) < chip_budget(1200.));
-        assert_eq!(chip_budget(1200.), 520.);
-        assert_eq!(chip_budget(50.), 0.);
+    fn missing_reasons_are_explicit() {
         let hooks_only = AgentStatus {
             sources: vec!["hook".into()],
             ..Default::default()
