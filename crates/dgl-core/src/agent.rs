@@ -477,13 +477,17 @@ impl Snapshot {
         self.events.clear();
     }
     pub fn current(&self, now: u64) -> bool {
-        self.valid && now.saturating_sub(self.observed_at) < 10_000 && !self.gap
+        self.has_fresh_poll(now) && !self.gap
+    }
+    /// Process observations are independent of gaps in the hook event stream.
+    pub fn has_fresh_poll(&self, now: u64) -> bool {
+        self.valid && now.saturating_sub(self.observed_at) < 10_000
     }
     /// A CLI process found under `pane` in a fresh poll. The CLI launcher must not type
     /// its command into one. An event gap leaves process observations intact, so only
     /// staleness counts; unknown state returns `None` and does not block.
     pub fn agent_in_pane(&self, pane: &str, now: u64) -> Option<Agent> {
-        if !self.valid || now.saturating_sub(self.observed_at) >= 10_000 {
+        if !self.has_fresh_poll(now) {
             return None;
         }
         self.observations

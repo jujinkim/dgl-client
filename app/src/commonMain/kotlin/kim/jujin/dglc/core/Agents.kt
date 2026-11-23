@@ -114,10 +114,11 @@ fun formatDurationS(secs: Long): String {
 }
 @Serializable data class AgentSnapshot(val server: String = "", val epoch: String = "", val cursor: Long = 0, val gap: Boolean = false,
     val observations: List<AgentObservation> = emptyList(), val events: List<AgentEvent> = emptyList(), val valid: Boolean = false, val observed_at: Long = 0) {
-    fun current(now: Long) = valid && !gap && now - observed_at < 10_000
+    fun hasFreshPoll(now: Long) = valid && now - observed_at < 10_000
+    fun current(now: Long) = hasFreshPoll(now) && !gap
     /** Mirrors Rust `Snapshot::agent_in_pane`: a CLI process in a fresh poll; unknown state is null. */
     fun agentInPane(pane: String, now: Long): String? =
-        if (!valid || now - observed_at >= 10_000) null else observations.firstOrNull { it.pane == pane }?.agent
+        if (hasFreshPoll(now)) observations.firstOrNull { it.pane == pane }?.agent else null
     /** Mirrors Rust `Snapshot::statuses`: observations with a status; `@` window, `$` session or `%` pane filter. */
     fun statuses(filter: String? = null): List<AgentObservation> = observations.filter { o ->
         o.status != null && when {
@@ -140,7 +141,7 @@ fun formatDurationS(secs: Long): String {
     }
     /** Mirrors Rust `dgl_core::scroll::cli_in_pane` for every pane: observed, or tmux's current command. */
     fun cliPanes(panes: List<RemotePane>, now: Long): Set<String> =
-        (if (!valid || now - observed_at >= 10_000) emptySet() else observations.map { it.pane }.toSet()) +
+        (if (hasFreshPoll(now)) observations.map { it.pane }.toSet() else emptySet()) +
             panes.filter { agentForCommand(it.command) != null }.map { it.id }
 }
 /** Mirrors Rust `Agent::from_command`: a supported CLI's executable name as `ps` or tmux reports it. */
@@ -160,17 +161,21 @@ fun agentMessage(kind: String) = when (kind) {
 }
 
 /** A window (@ID) or pane (%ID) filter drives the button, unknown state, unread count, and details. */
-data class PanelAgentState(val observations: List<AgentObservation>, val unread: List<AgentNotice>, val label: String, val kind: String?)
+data class PanelAgentState(val observations: List<AgentObservation>, val label: String, val agent: String? = null,
+    val kind: String? = null, val unread: List<AgentNotice> = emptyList())
 fun AgentSnapshot.panelState(pane: String?, endpoint: String, notices: List<AgentNotice>, now: Long): PanelAgentState {
     val observations = observations.filter { pane == null || (if (pane.startsWith("@")) it.window == pane else it.pane == pane) }
+    if (!hasFreshPoll(now)) return PanelAgentState(observations, t("agent.status_unknown"))
+    val first = observations.firstOrNull()?.agent ?: return PanelAgentState(observations, t("agent.not_detected"))
+    if (gap) return PanelAgentState(observations, agentName(first), first)
+
     val events = observations.mapNotNull { it.last }.filter { it.kind != "Ended" }
-    val representative = events.minByOrNull { agentPriority(it.kind) }
     val unread = notices.filter { n -> !n.read && n.endpoint == endpoint && n.event.server == server &&
         (pane == null || (if (pane.startsWith("@")) pane == n.event.window else pane == n.event.pane)) && observations.any { it.pane == n.event.pane && it.run == n.event.run && it.last != null } }
-    val priority = unread.minByOrNull { agentPriority(it.event.kind) }
-    val label = if (current(now) && priority != null) tr("agent.unread_events", agentMessage(priority.event.kind), unread.size)
-        else if (!current(now) || representative == null) t("agent.status_unknown")
-        else agentMessage(representative.kind) + " ${events.count { agentPriority(it.kind) == agentPriority(representative.kind) }}"
-    val kind = if (current(now)) priority?.event?.kind ?: representative?.kind else null
-    return PanelAgentState(observations, unread, label, kind)
+    val event = unread.minByOrNull { agentPriority(it.event.kind) }?.event ?: events.minByOrNull { agentPriority(it.kind) }
+        ?: return PanelAgentState(observations, agentName(first), first)
+    val message = agentMessage(event.kind)
+    val label = if (unread.isNotEmpty()) tr("agent.unread_events", message, unread.size)
+        else "$message ${events.count { agentPriority(it.kind) == agentPriority(event.kind) }}"
+    return PanelAgentState(observations, "${agentName(event.agent)} · $label", event.agent, event.kind, unread)
 }

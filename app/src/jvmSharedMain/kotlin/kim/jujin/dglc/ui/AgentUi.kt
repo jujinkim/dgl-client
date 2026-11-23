@@ -1,5 +1,6 @@
 package kim.jujin.dglc.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -8,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -15,22 +17,18 @@ import kim.jujin.dglc.*
 import kim.jujin.dglc.core.*
 import kotlinx.serialization.json.*
 
-@Composable internal fun AgentBadge(client: ClientConnection, pane: String? = null, notices: List<AgentNotice> = emptyList(), compact: Boolean = false, onDetails: (() -> Unit)? = null) {
-    val snapshot by client.agents.collectAsState()
-    val (observations, unread, label, kind) = snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis())
-    val description = observations.map { agentName(it.agent) }.distinct().joinToString().ifEmpty { t("common.terminal") } + " · " + label
-    if (compact) {
-        IconButton({ onDetails?.invoke() }, enabled = onDetails != null,
-            modifier = Modifier.size(48.dp).semantics { contentDescription = tr("agent.window_status", description) }) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                UiGlyph(agentIcon(kind))
-                if (unread.isNotEmpty()) Text(unread.size.toString(), maxLines = 1)
-            }
-        }
-    } else Row(Modifier.semantics { contentDescription = description }, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        observations.map { it.agent }.distinct().forEach { agent -> Icon(LauncherIcons.agent(agent), agentName(agent), Modifier.size(16.dp)) }
-        UiGlyph(agentIcon(kind))
-        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+@Composable internal fun AgentBadge(state: PanelAgentState, onDetails: (() -> Unit)? = null) {
+    val modifier = if (onDetails == null) Modifier else Modifier.widthIn(min = 48.dp).height(48.dp)
+        .clickable(role = Role.Button, onClick = onDetails)
+        .semantics { contentDescription = tr("agent.window_status", state.label) }.padding(horizontal = 4.dp)
+    Row(modifier, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp, androidx.compose.ui.Alignment.CenterHorizontally)) {
+        if (state.agent != null) Icon(LauncherIcons.agent(state.agent), null, Modifier.size(16.dp))
+        if (state.kind != null || state.agent == null) UiGlyph(agentIcon(state.kind))
+        if (onDetails == null) Text(state.label, style = MaterialTheme.typography.labelSmall, maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        else if (state.unread.isNotEmpty()) Text(state.unread.size.toString(), Modifier.clearAndSetSemantics {},
+            style = MaterialTheme.typography.labelSmall, maxLines = 1)
     }
 }
 
@@ -49,9 +47,10 @@ import kotlinx.serialization.json.*
     AlertDialog(onDismissRequest = dismiss, title = { Text(tr("agent.integration_named", client.host.alias)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(t("agent.last_observed_note"))
-            AgentBadge(client, pane, notices)
+            val panel = snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis())
+            AgentBadge(panel)
             val remote by client.remote.collectAsState()
-            snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis()).observations.forEach { o ->
+            panel.observations.forEach { o ->
                 Text("${agentName(o.agent)} · ${remote.targetLabel(o.session, o.pane)}" + if (o.actor != "parent") t("agent.subagent_suffix") else "")
                 Row { UiGlyph(agentIcon(o.last?.kind)); Text(o.last?.let { "${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}" } ?: t("agent.not_linked")) }
                 Text(tr("agent.diagnostics_ids", o.session, o.window, o.pane), style = MaterialTheme.typography.labelSmall)

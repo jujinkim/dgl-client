@@ -51,14 +51,14 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
             menu()
             notification()
         }
-        Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 12.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(buildAnnotatedString {
-                withStyle(SpanStyle(color = colors.onSurfaceVariant, fontSize = 12.sp)) { append(tr("mobile.current_host", "")) }
-                withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(hostName?.let(::displayTreeText) ?: "—") }
-            }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.width(8.dp))
-            // Agent status chip; it shares the row with the host name and takes at most its own text width.
-            status()
+        Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(buildAnnotatedString {
+                    withStyle(SpanStyle(color = colors.onSurfaceVariant, fontSize = 12.sp)) { append(tr("mobile.current_host", "")) }
+                    withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(hostName?.let(::displayTreeText) ?: "—") }
+                }, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                status()
+            }
             BorderedButton(openTmux, enabled = hostName != null, modifier = Modifier
                 .semantics { contentDescription = t("mobile.manage_tmux") }, contentPadding = PaddingValues(horizontal = 10.dp)) {
                 Text("tmux", style = MaterialTheme.typography.labelMedium, modifier = Modifier.clearAndSetSemantics {})

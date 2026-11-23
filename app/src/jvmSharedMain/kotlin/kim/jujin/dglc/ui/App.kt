@@ -510,7 +510,10 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     }
     TreeRow(row.label, depth, row.selected(remote, session, pane), if (row.children.isEmpty()) null else expanded[row.key] == true,
         { expanded[row.key] = expanded[row.key] != true }, { selectTarget(row.session, row.window, row.pane) }, enabled, actions,
-        status = { row.window?.let { p -> AgentBadge(client, p, notices, compact = true) { showAgents(p) } } }, selectable = selectable,
+        status = { row.window?.let { window ->
+            val snapshot by client.agents.collectAsState()
+            AgentBadge(snapshot.panelState(window, client.agentEndpoint, notices, System.currentTimeMillis())) { showAgents(window) }
+        } }, selectable = selectable,
         current = row.kind == TreeKind.Session && row.session == currentSession)
     if (expanded[row.key] == true) row.children.forEach { child ->
         key(child.key) { HierarchyEntry(child, depth + 1, client, remote, session, pane, expanded, enabled, notices, showAgents, prompt, delete, selectTarget, selectable, currentSession) }

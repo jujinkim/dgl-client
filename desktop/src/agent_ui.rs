@@ -24,7 +24,7 @@ fn badge_content(
     unread: &[&agent::Notice],
     now: u64,
 ) -> (Option<Agent>, Option<agent::Kind>) {
-    if !snapshot.valid || now.saturating_sub(snapshot.observed_at) >= 10_000 {
+    if !snapshot.has_fresh_poll(now) {
         return (None, None);
     }
     let detected = Agent::ALL
@@ -218,7 +218,12 @@ impl Desktop {
         }
         let (detected, kind) = badge_content(snapshot, &unread, now);
         if detected.is_none() {
-            label = t("agent.not_detected").into();
+            label = t(if snapshot.has_fresh_poll(now) {
+                "agent.not_detected"
+            } else {
+                "agent.status_unknown"
+            })
+            .into();
         }
         let id = format!("agent-{}-{}", state.handle, pane);
         let title = host.alias.clone();

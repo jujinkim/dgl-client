@@ -45,6 +45,12 @@ impl Probe {
             .map(|c| c.state())
             .or_else(|| self.cached.clone())
     }
+    fn has_fresh_agents(&self, now: u64) -> bool {
+        self.connection.as_ref().is_some_and(|c| {
+            let s = c.state();
+            s.browses_sessions() && s.agents.has_fresh_poll(now)
+        })
+    }
 }
 
 /// Where a host's session tree comes from.
@@ -58,16 +64,16 @@ pub(crate) enum Source {
 pub(crate) struct HostTab {
     pub id: TabId,
     pub browses: bool,
+    pub fresh_agents: bool,
 }
 
-/// The connection that lists a host's sessions. A tab that browses wins (the active
-/// one, then the most recently used, then any); a probe serves while no tab can; a
-/// recovering tab still shows its cached rows when there is no probe.
+/// Keep a complete listing while a newly selected connection awaits its first agent
+/// poll. Rows, badges and actions always come from the same connection.
 pub(crate) fn pick_source(
     tabs: &[HostTab],
     active: Option<TabId>,
     history: &[TabId],
-    probe: bool,
+    probe_fresh: Option<bool>,
 ) -> Option<Source> {
     let preferred = || {
         active
@@ -76,10 +82,16 @@ pub(crate) fn pick_source(
             .chain(tabs.iter().map(|t| t.id))
             .filter_map(|id| tabs.iter().find(|t| t.id == id))
     };
+    if let Some(tab) = preferred().find(|t| t.browses && t.fresh_agents) {
+        return Some(Source::Tab(tab.id));
+    }
+    if probe_fresh == Some(true) {
+        return Some(Source::Probe);
+    }
     if let Some(tab) = preferred().find(|t| t.browses) {
         return Some(Source::Tab(tab.id));
     }
-    if probe {
+    if probe_fresh.is_some() {
         return Some(Source::Probe);
     }
     preferred().next().map(|t| Source::Tab(t.id))
@@ -110,12 +122,17 @@ pub(crate) struct TreeSource {
 
 impl crate::Desktop {
     fn host_tabs(&self, host: &str) -> Vec<HostTab> {
+        let now = dgl_core::agent::now_ms();
         self.tabs
             .iter()
             .filter(|t| t.host.id == host)
-            .map(|t| HostTab {
-                id: t.id,
-                browses: t.connection.state().browses_sessions(),
+            .map(|t| {
+                let s = t.connection.state();
+                HostTab {
+                    id: t.id,
+                    browses: s.browses_sessions(),
+                    fresh_agents: s.agents.has_fresh_poll(now),
+                }
             })
             .collect()
     }
@@ -134,7 +151,8 @@ impl crate::Desktop {
             .map(Vec::as_slice)
             .unwrap_or(&[]);
         let probe = self.probes.get(host);
-        match pick_source(&tabs, active, history, probe.is_some())? {
+        let probe_fresh = probe.map(|p| p.has_fresh_agents(dgl_core::agent::now_ms()));
+        match pick_source(&tabs, active, history, probe_fresh)? {
             Source::Tab(id) => {
                 let tab = self.tabs.iter().find(|t| t.id == id)?;
                 Some(TreeSource {
@@ -248,8 +266,13 @@ impl crate::Desktop {
             let exists =
                 host == crate::local_host::ID || self.local.hosts.iter().any(|h| h.id == host);
             let expanded = self.host_expanded(&host);
-            let tab_lists = self.host_tabs(&host).iter().any(|t| t.browses);
+            let tabs = self.host_tabs(&host);
             let probe = self.probes.get_mut(&host).unwrap();
+            let probe_fresh = probe.has_fresh_agents(dgl_core::agent::now_ms());
+            let tab_lists = matches!(
+                pick_source(&tabs, None, &[], Some(probe_fresh)),
+                Some(Source::Tab(_))
+            );
             if let Some(connection) = probe.connection.clone() {
                 for result in connection.completions() {
                     if probe.refresh == Some(result.request_id) {
@@ -296,34 +319,64 @@ impl crate::Desktop {
 mod tests {
     use super::*;
     fn tab(id: TabId, browses: bool) -> HostTab {
-        HostTab { id, browses }
+        HostTab {
+            id,
+            browses,
+            fresh_agents: browses,
+        }
     }
     #[test]
     fn a_browsing_tab_lists_before_a_probe_and_the_active_one_first() {
         let tabs = [tab(1, true), tab(2, true), tab(3, false)];
         assert_eq!(
-            pick_source(&tabs, Some(2), &[1], true),
+            pick_source(&tabs, Some(2), &[1], Some(true)),
             Some(Source::Tab(2))
         );
         // The active tab recovers: the most recently used browsing tab serves.
         assert_eq!(
-            pick_source(&tabs, Some(3), &[2, 1], true),
+            pick_source(&tabs, Some(3), &[2, 1], Some(true)),
             Some(Source::Tab(1))
         );
-        assert_eq!(pick_source(&tabs, None, &[], false), Some(Source::Tab(1)));
+        assert_eq!(pick_source(&tabs, None, &[], None), Some(Source::Tab(1)));
+    }
+    #[test]
+    fn refreshing_one_session_keeps_the_hosts_other_badges_until_handoff() {
+        let mut tabs = [tab(1, true), tab(2, true)];
+        tabs[1].fresh_agents = false;
+        assert_eq!(pick_source(&tabs, Some(2), &[], None), Some(Source::Tab(1)));
+        tabs[0].fresh_agents = false;
+        assert_eq!(
+            pick_source(&tabs, Some(2), &[], Some(true)),
+            Some(Source::Probe)
+        );
+        assert_eq!(
+            pick_source(&tabs, Some(2), &[], Some(false)),
+            Some(Source::Tab(2))
+        );
+        tabs[1].fresh_agents = true; // A successful empty poll is authoritative too.
+        assert_eq!(
+            pick_source(&tabs, Some(2), &[], Some(true)),
+            Some(Source::Tab(2))
+        );
     }
     #[test]
     fn a_probe_serves_only_while_no_tab_can_list() {
         let tabs = [tab(3, false), tab(4, false)];
-        assert_eq!(pick_source(&tabs, Some(4), &[3], true), Some(Source::Probe));
+        assert_eq!(
+            pick_source(&tabs, Some(4), &[3], Some(false)),
+            Some(Source::Probe)
+        );
         // Without a probe the recovering tab keeps its cached rows on screen.
         assert_eq!(
-            pick_source(&tabs, Some(4), &[3], false),
+            pick_source(&tabs, Some(4), &[3], None),
             Some(Source::Tab(4))
         );
-        assert_eq!(pick_source(&tabs, None, &[3], false), Some(Source::Tab(3)));
-        assert_eq!(pick_source(&[], None, &[], true), Some(Source::Probe));
-        assert_eq!(pick_source(&[], None, &[], false), None);
+        assert_eq!(pick_source(&tabs, None, &[3], None), Some(Source::Tab(3)));
+        assert_eq!(
+            pick_source(&[], None, &[], Some(false)),
+            Some(Source::Probe)
+        );
+        assert_eq!(pick_source(&[], None, &[], None), None);
     }
     #[test]
     fn probes_close_on_collapse_a_listing_tab_or_idleness() {

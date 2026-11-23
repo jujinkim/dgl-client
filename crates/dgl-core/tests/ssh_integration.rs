@@ -100,6 +100,138 @@ async fn agent_hidden_panes_baseline_events_navigation_and_process_exit() {
     }
 }
 
+#[tokio::test]
+#[ignore = "requires scripts/integration.py --agent-home; two real tmux sessions"]
+async fn refreshing_then_losing_a_session_keeps_observing_the_other() {
+    let root = std::path::PathBuf::from(std::env::var("DGL_TEST_ROOT").unwrap());
+    assert!(root.join("home").exists(), "use --agent-home");
+    let dir = root.join("badge-test");
+    std::fs::create_dir(&dir).unwrap();
+    let cli = dir.join("codex");
+    let source = dir.join("cli.c");
+    std::fs::write(
+        &source,
+        "#include <unistd.h>\nint main(void) { pause(); }\n",
+    )
+    .unwrap();
+    assert!(
+        std::process::Command::new("cc")
+            .arg(&source)
+            .arg("-o")
+            .arg(&cli)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let tmux = |args: &[&str]| {
+        let output = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    };
+    let open = |name| {
+        tmux(&[
+            "new-session",
+            "-d",
+            "-P",
+            "-F",
+            "#{session_id}|#{pane_id}",
+            "-s",
+            name,
+            cli.to_str().unwrap(),
+        ])
+    };
+    let active = open("badge-active");
+    let sibling = open("badge-sibling");
+    let (session, pane) = active.split_once('|').unwrap();
+    let (other_session, other_pane) = sibling.split_once('|').unwrap();
+    let (mut host, credential, fingerprint) = fixture("DGL_TEST_KEY_FILE");
+    host.last_session = Some(session.to_owned());
+    let c = Connection::start(host, credential, Some(fingerprint));
+    phase(&c, Phase::Ready).await;
+    let codex = Some(dgl_core::agent::Agent::Codex);
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let state = c.state();
+            let now = dgl_core::agent::now_ms();
+            if !state.agents.server.is_empty()
+                && state.agents.agent_in_pane(pane, now) == codex
+                && state.agents.agent_in_pane(other_pane, now) == codex
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // A writer can hold the event DB during a refresh. A failed helper poll must
+    // not replace the other session's recent observation with a basic-poll run.
+    let database = root.join("home/.local/share/dgl-agent/v1/events.sqlite");
+    std::fs::create_dir_all(database.parent().unwrap()).unwrap();
+    let server = c.state().agents.server.clone();
+    assert!(!server.is_empty());
+    let mut writer = tokio::process::Command::new("python3")
+        .args([
+            "-c",
+            r"
+import pathlib, sqlite3, sys, time
+path = pathlib.Path(sys.argv[1])
+existed = path.exists()
+db = sqlite3.connect(path)
+db.execute('BEGIN EXCLUSIVE')
+time.sleep(4)
+db.close()
+if not existed:
+    path.unlink()
+",
+        ])
+        .arg(&database)
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    completion(&c, c.action(Action::Refresh).unwrap()).await;
+    while writer.try_wait().unwrap().is_none() {
+        let state = c.state();
+        assert_eq!(state.agents.server, server);
+        assert_eq!(
+            state
+                .agents
+                .agent_in_pane(other_pane, dgl_core::agent::now_ms()),
+            codex
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(writer.wait().await.unwrap().success());
+    tmux(&["kill-session", "-t", session]);
+    phase(&c, Phase::MissingSession).await;
+    let previous_poll = c.state().agents.observed_at;
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let state = c.state();
+            let now = dgl_core::agent::now_ms();
+            assert_eq!(state.agents.agent_in_pane(other_pane, now), codex);
+            if state.agents.observed_at > previous_poll
+                && state.agents.agent_in_pane(pane, now).is_none()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap();
+    c.close();
+    c.join().await;
+    tmux(&["kill-session", "-t", other_session]);
+}
+
 async fn agent_hidden_pane_case(service: dgl_core::agent::Agent, executable: &str) {
     use dgl_core::agent::{self, Kind};
     let root = std::path::PathBuf::from(std::env::var("DGL_TEST_ROOT").unwrap());

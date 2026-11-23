@@ -264,7 +264,7 @@ class AndroidMobileInputTest {
                 val tmux = bounds(awaitNode("tmux 관리"))
                 assertTrue(currentHost.right <= tmux.left)
                 assertTrue(topRow.maxOf { it.bottom } <= tmux.top)
-                assertEquals(topRow.last().right, tmux.right)
+                assertEquals(tabs.right, tmux.right)
                 assertNull(node("설정"))
                 click(menuLabel); awaitNode("설정")
                 assertTrue(app.inputBlocked())

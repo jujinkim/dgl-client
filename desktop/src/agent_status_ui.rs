@@ -49,12 +49,6 @@ const DROP_ORDER: [ChipPart; 6] = [
     ChipPart::Context,
 ];
 
-/// A poll young enough to trust, the badge's rule: valid and under 10 s old. An event gap
-/// does not matter, status values come with every poll.
-pub(crate) fn fresh(snapshot: &Snapshot, now: u64) -> bool {
-    snapshot.valid && now.saturating_sub(snapshot.observed_at) < 10_000
-}
-
 /// The agent the chip summarizes: the focused pane's (its parent before subagents and
 /// one with a status first), else the first observation with a status, else any.
 pub(crate) fn focused<'a>(snapshot: &'a Snapshot, pane: Option<&str>) -> Option<&'a Observation> {
@@ -297,7 +291,7 @@ impl Desktop {
         }
         let state = self.hud_state()?;
         let now = agent::now_ms();
-        if !fresh(&state.agents, now) {
+        if !state.agents.has_fresh_poll(now) {
             return None;
         }
         let observation = focused(&state.agents, state.pane.as_deref())?;
@@ -470,7 +464,7 @@ impl Desktop {
         if !snapshot.valid {
             return body.child(self.muted_line(t("agent_status.unknown")));
         }
-        if !fresh(snapshot, now) {
+        if !snapshot.has_fresh_poll(now) {
             return body.child(self.muted_line(t("agent_status.stale")));
         }
         if snapshot.observations.is_empty() {
@@ -912,14 +906,14 @@ impl Desktop {
         let state = self.hud_state();
         let observations = state
             .as_ref()
-            .filter(|s| fresh(&s.agents, now))
+            .filter(|s| s.agents.has_fresh_poll(now))
             .map_or(&[][..], |s| s.agents.observations.as_slice());
         if observations.is_empty() {
             list = list.child(
                 div().py_1().text_color(rgb(p.muted)).child(
                     if state
                         .as_ref()
-                        .is_some_and(|s| s.agents.valid && !fresh(&s.agents, now))
+                        .is_some_and(|s| s.agents.valid && !s.agents.has_fresh_poll(now))
                     {
                         t("agent_status.stale")
                     } else {
@@ -1089,7 +1083,7 @@ mod tests {
     // Not `super::*`: GPUI's `test` attribute would replace the standard one.
     use super::{
         Agent, AgentStatus, AgentStatusSettings, ChipPart, Field, Observation, Snapshot,
-        UsageLimit, chip_budget, chip_parts, collection_state, fit_chip, focused, fresh,
+        UsageLimit, chip_budget, chip_parts, collection_state, fit_chip, focused,
         installed_collection, missing, t,
     };
     use dgl_core::agent::{AccountInfo, CacheUsage, ContextUsage, ModelInfo};
@@ -1220,15 +1214,15 @@ mod tests {
         let other = focused(&snapshot, Some("%9")).unwrap();
         assert_eq!((other.pane.as_str(), other.actor.as_str()), ("%2", "sub"));
         assert!(focused(&Snapshot::default(), None).is_none());
-        assert!(fresh(&snapshot, 10_999));
-        assert!(!fresh(&snapshot, 11_000));
-        assert!(!fresh(
-            &Snapshot {
+        assert!(snapshot.has_fresh_poll(10_999));
+        assert!(!snapshot.has_fresh_poll(11_000));
+        assert!(
+            !Snapshot {
                 valid: false,
                 ..snapshot
-            },
-            1_000
-        ));
+            }
+            .has_fresh_poll(1_000)
+        );
     }
 
     #[test]

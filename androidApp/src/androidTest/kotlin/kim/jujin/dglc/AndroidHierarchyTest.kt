@@ -61,26 +61,51 @@ class AndroidHierarchyTest {
         lateinit var app: AppModel; lateinit var previous: LocalState
         var oldConnections = emptyList<ClientConnection>(); var oldSelected: ClientConnection? = null
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            fun terminalBounds(): Rect {
+                lateinit var rect: Rect
+                scenario.onActivity {
+                    val view = (first.surface as kim.jujin.dglc.ui.AndroidTerminal).view
+                    val location = IntArray(2); view.getLocationOnScreen(location)
+                    rect = Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
+                }
+                return rect
+            }
             try {
                 scenario.onActivity {
                     app = (it.application as DglApplication).connections().app
                     previous = app.local.value; oldConnections = app.connections.value; oldSelected = app.selected.value
-                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", showAllHierarchy = false, mobilePaneToolbarVisible = false)) }
-                    freshAgents(); app.connections.value = listOf(first, second); app.selected.value = first
+                    app.modify { state -> state.copy(preferences = state.preferences.copy(language = "ko", theme = "light", showAllHierarchy = false,
+                        mobilePaneToolbarVisible = false, agentStatus = AgentStatusSettings())) }
+                    app.connections.value = listOf(first, second); app.selected.value = first
                 }
                 await("연결 하나 · 개발")
                 assertNull(node("현재 세션: 개발"))
-                assertNotNull(node("tmux 관리"))
+                fun assertRightEdge(button: AccessibilityNodeInfo) = assertEquals(terminalBounds().right, bounds(button).right)
+                assertRightEdge(await("tmux 관리"))
+                val process = AgentObservation("$1", "@1", "%1", "cli", "parent", "Claude")
+                suspend fun checkChip(observation: AgentObservation) {
+                    scenario.onActivity {
+                        first.agents.value = AgentSnapshot(server = "server", valid = true, observed_at = System.currentTimeMillis(),
+                            observations = listOf(observation))
+                    }
+                    val label = observation.status?.model?.name ?: "Claude"
+                    awaitPrefix("에이전트 상태 자세히 · Claude · $label")
+                    assertRightEdge(await("tmux 관리"))
+                }
+                checkChip(process)
+                checkChip(process.copy(status = AgentStatus(at = System.currentTimeMillis(), model = ModelInfo(name = "긴 모델 이름 ".repeat(6).trim()))))
                 click("호스트")
                 click("tmux 관리")
                 val compact = "개발\n3: 편집 · 작업\n패널 1개"
                 await(compact)
+                await("창 에이전트 상태 · Claude")
                 assertNull(node("$compact 펼치기"))
                 click("$compact 메뉴")
                 listOf("창 만들기…", "세션 이름 변경…", "세션 삭제…", "창 이름 변경…", "창 삭제…").forEach { await(it) }
                 instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
                 await(compact)
-                val badge = awaitPrefix("창 에이전트 상태 ·")
+                scenario.onActivity { freshAgents() }
+                val badge = awaitPrefix("창 에이전트 상태 · Claude · 질문이 발생했습니다")
                 val density = instrumentation.targetContext.resources.displayMetrics.density
                 assertTrue(bounds(badge).width() >= (48 * density).toInt() - 1)
                 assertTrue(bounds(badge).height() >= (48 * density).toInt() - 1)
@@ -108,15 +133,6 @@ class AndroidHierarchyTest {
                 val sx = bounds(await(session)).left; val wx = bounds(await(window)).left
                 assertTrue(kotlin.math.abs((20 * density).toInt() - (wx - sx)) <= 1)
                 assertNull(node(pane)); assertNull(node("$window 펼치기"))
-                fun terminalBounds(): Rect {
-                    lateinit var rect: Rect
-                    scenario.onActivity {
-                        val view = (first.surface as kim.jujin.dglc.ui.AndroidTerminal).view
-                        val location = IntArray(2); view.getLocationOnScreen(location)
-                        rect = Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
-                    }
-                    return rect
-                }
                 suspend fun geometry() = listOf(bounds(await(session)), bounds(await(window)), terminalBounds())
                 val beforeRestore = geometry()
                 assertTrue(beforeRestore.last().width() > 0 && beforeRestore.last().height() > 0)
@@ -178,7 +194,7 @@ class AndroidHierarchyTest {
     private fun dump(root: AccessibilityNodeInfo?): String = if (root == null) "" else "[${root.text}|${root.contentDescription}|${bounds(root)}|click=${root.isClickable}]" + (0 until root.childCount).joinToString { dump(root.getChild(it)) }
 
     private suspend fun awaitPrefix(text: String): AccessibilityNodeInfo = withTimeout(5000) {
-        while (true) { find(instrumentation.uiAutomation.rootInActiveWindow) { it.contentDescription?.startsWith(text) == true }?.let { return@withTimeout it }; delay(30) }; error("unreachable")
+        while (true) { instrumentation.uiAutomation.clearCache(); find(instrumentation.uiAutomation.rootInActiveWindow) { it.contentDescription?.startsWith(text) == true }?.let { return@withTimeout it }; delay(30) }; error("unreachable")
     }
     private fun bounds(node: AccessibilityNodeInfo) = Rect().also { node.getBoundsInScreen(it) }
     private fun clickNode(node: AccessibilityNodeInfo) {

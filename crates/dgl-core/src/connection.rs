@@ -95,10 +95,7 @@ impl State {
     }
     /// The phases in which the connection runs its agent observer.
     pub fn observing_agents(&self) -> bool {
-        matches!(
-            self.phase,
-            Phase::Ready | Phase::Restoring | Phase::Selecting
-        )
+        self.browses_sessions() || self.phase == Phase::Restoring
     }
     pub fn input_target(&self) -> Option<PaneTarget> {
         self.pane.as_ref().map(|p| PaneTarget {
@@ -2125,7 +2122,12 @@ async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
                     }
                 }
             }
-            if snapshot.is_none() {
+            // A transient helper failure (e.g. a busy event DB) says nothing about
+            // any pane. Keep the last full poll up to its original expiry, including
+            // its cursor. Basic polls have no server identity or hook events.
+            let recent_helper_poll = !state.agents.server.is_empty()
+                && state.agents.has_fresh_poll(crate::agent::now_ms());
+            if snapshot.is_none() && !recent_helper_poll {
                 snapshot =
                     tokio::time::timeout(Duration::from_secs(2), crate::agent::basic_snapshot(ssh))
                         .await
@@ -2150,6 +2152,7 @@ async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
                     snapshot.observed_at = crate::agent::now_ms();
                     shared.update(|s| s.agents = snapshot);
                 }
+                None if state.agents.has_fresh_poll(crate::agent::now_ms()) => {}
                 None => {
                     shared.update(|s| s.agents.invalidate());
                     cursor = 0;
@@ -3220,6 +3223,9 @@ mod tests {
         s.phase = Phase::Ready;
         s.pane = Some("%35".into());
         assert!(s.accepts_output(&rendered) && s.observing_agents());
+        s.phase = Phase::MissingSession;
+        assert!(s.observing_agents() && !s.accepts_input());
+        s.phase = Phase::Ready;
         let mut stale = rendered.clone();
         stale.generation.size += 1;
         assert!(!s.accepts_output(&stale));
