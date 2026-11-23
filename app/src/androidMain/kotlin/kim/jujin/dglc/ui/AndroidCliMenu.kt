@@ -16,6 +16,19 @@ private tailrec fun Context.menuActivity(): Activity? = when (this) {
     else -> null
 }
 
+private class MenuKeys(private val previous: Window.Callback, val dismiss: () -> Unit) : Window.Callback by previous {
+    fun consume(event: KeyEvent): Boolean {
+        if (event.keyCode != KeyEvent.KEYCODE_ESCAPE && event.keyCode != KeyEvent.KEYCODE_BACK) return false
+        if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) dismiss()
+        return true
+    }
+    override fun dispatchKeyEvent(event: KeyEvent) = consume(event) || previous.dispatchKeyEvent(event)
+}
+
+/** A hardware Escape can reach the keyboard before Window.Callback gets it. */
+internal fun Context.consumeMenuKeyBeforeIme(event: KeyEvent) =
+    (menuActivity()?.window?.callback as? MenuKeys)?.consume(event) == true
+
 @Composable internal actual fun CliMenuDismissHandler(dismiss: () -> Unit) {
     val activity = LocalContext.current.menuActivity() ?: return
     val currentDismiss by rememberUpdatedState(dismiss)
@@ -25,15 +38,7 @@ private tailrec fun Context.menuActivity(): Activity? = when (this) {
         activity.onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, back)
         val window = activity.window
         val previous = window.callback
-        val callback = object : Window.Callback by previous {
-            override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-                if (event.keyCode != KeyEvent.KEYCODE_ESCAPE && event.keyCode != KeyEvent.KEYCODE_BACK)
-                    return previous.dispatchKeyEvent(event)
-                // Keep both halves of the key out of the WebView, then remove the handler.
-                if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) currentDismiss()
-                return true
-            }
-        }
+        val callback = MenuKeys(previous) { currentDismiss() }
         window.callback = callback
         onDispose {
             activity.onBackInvokedDispatcher.unregisterOnBackInvokedCallback(back)

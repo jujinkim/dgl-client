@@ -234,6 +234,16 @@ impl Desktop {
                     s.dialog = Some(Dialog::Shortcuts);
                 },
             ));
+        let terminal = terminal.child(self.button(
+            "edit-launch-settings",
+            (UiIcon::ChevronRight, t("launcher.settings")),
+            cx,
+            |s, _, _| {
+                s.settings.main_offset = s.modal.scroll.offset();
+                s.settings.entry = "edit-launch-settings";
+                s.dialog = Some(Dialog::LaunchSettings);
+            },
+        ));
         let power_mode =
             crate::power::Mode::from_preference(&self.local.preferences.desktop_power_saving);
         let mut power = div().flex().flex_wrap().gap_2();
@@ -353,6 +363,7 @@ impl Desktop {
         self.cancel_import_preview();
         self.settings.entry = match self.dialog {
             Some(Dialog::About) => "about-app",
+            Some(Dialog::LaunchSettings) => "edit-launch-settings",
             Some(Dialog::ExportSync) => "export-sync",
             Some(Dialog::TerminalFont) => "terminal-font",
             _ => "edit-shortcuts",

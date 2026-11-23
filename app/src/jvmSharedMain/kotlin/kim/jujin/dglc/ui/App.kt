@@ -438,7 +438,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
             TimedSnackbar(client.inputNotice, Modifier.align(Alignment.BottomCenter))
         }
         if (mobileLayout) mobileTabs()
-        if (!workspace) TerminalShortcutBar(client, preferences.terminalShortcuts, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open,
+        if (!workspace) TerminalShortcutBar(client, preferences, terminalBaseAllowed, terminalFocus, mobileLayout, composer::open,
             mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows, keyboardAlwaysVisible = preferences.androidKeyboardAlwaysVisible,
             inputGate = model, openShortcutSettings = openShortcutSettings)
     }
@@ -653,7 +653,7 @@ internal val LocalTerminalOcclusion = staticCompositionLocalOf<WindowInsets> { W
     }, dismissButton = { BorderedButton(dismiss) { Text(t("common.cancel")) } })
 }
 
-private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
+private enum class SettingsPage { Main, Shortcuts, Launch, About, ExportSync }
 
 @Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, initialPage: SettingsPage, dismiss: () -> Unit) {
     val local by model.local.collectAsState()
@@ -662,6 +662,7 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
     var restoreFocus by remember { mutableStateOf(false) }
     val mainScroll = rememberScrollState()
     val shortcutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val launchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val syncFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val aboutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     var entryFocus by remember { mutableStateOf(shortcutFocus) }
@@ -672,11 +673,14 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
     EditorDialog(mobileLayout, settingsLayout = true, onDismissRequest = back, title = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (page != SettingsPage.Main) BorderedButton(back) { Text(t("common.back")) }
-            Text(when (page) { SettingsPage.Main -> t("common.settings"); SettingsPage.Shortcuts -> t("settings.bottom_shortcuts"); SettingsPage.About -> t("settings.about"); SettingsPage.ExportSync -> t("sync.export_and_sync") })
+            Text(when (page) { SettingsPage.Main -> t("common.settings"); SettingsPage.Shortcuts -> t("settings.bottom_shortcuts"); SettingsPage.Launch -> t("launcher.settings"); SettingsPage.About -> t("settings.about"); SettingsPage.ExportSync -> t("sync.export_and_sync") })
         }
     }, text = {
         if (page == SettingsPage.ExportSync) Column(Modifier.verticalScroll(rememberScrollState())) { CloudSyncSettings(model) }
         else if (page == SettingsPage.About) AboutApp()
+        else if (page == SettingsPage.Launch) LaunchSettings(local.preferences) { agent, edit ->
+            model.modify { it.copy(preferences = it.preferences.updateLaunch(agent, edit)) }
+        }
         else if (page == SettingsPage.Shortcuts) TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
             model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
         } else Column(Modifier.verticalScroll(mainScroll), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -710,6 +714,9 @@ private enum class SettingsPage { Main, Shortcuts, About, ExportSync }
                 Text(tr("settings.scrollback_description", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
                 BorderedButton({ entryFocus = shortcutFocus; page = SettingsPage.Shortcuts }, modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(shortcutFocus)) {
                     Text(t("settings.bottom_shortcuts"), Modifier.weight(1f)); Text(tr("settings.shortcuts_count_edit", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
+                }
+                BorderedButton({ entryFocus = launchFocus; page = SettingsPage.Launch }, modifier = Modifier.fillMaxWidth().focusRequester(launchFocus)) {
+                    Text(t("launcher.settings"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
                 }
                 SettingsSwitch(t("launcher.always_show_keyboard"), local.preferences.androidKeyboardAlwaysVisible) { enabled ->
                     model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = enabled)) }

@@ -57,6 +57,12 @@ interface ClientConnection {
     /** Product adapters use the Rust encoder. Null means the legacy protocol cannot encode this input. */
     fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? = null
     fun input(bytes: ByteArray)
+    /** Run a launcher selection against the captured pane generation. */
+    fun inputAt(target: InputTarget, bytes: ByteArray): Boolean {
+        if (target != captureInputTarget()) return false
+        input(bytes)
+        return true
+    }
     /** Identity excludes the size generation: opening the IME must not change the destination. */
     fun captureInputTarget(): InputTarget? = null
     /** Completes only when the existing input queue reports its result. Never retries. */

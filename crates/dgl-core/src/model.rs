@@ -106,6 +106,7 @@ pub struct Preferences {
     /// `off` keeps Up/Down. Unknown values behave as `auto`. Stays on this device.
     pub terminal_scroll_assist: String,
     pub terminal_shortcuts: Vec<crate::input::TerminalShortcut>,
+    pub agent_launch: std::collections::HashMap<crate::agent::Agent, crate::launcher::AgentLaunch>,
     pub volume_keys_enabled: bool,
     pub agent_notifications: crate::agent::NotificationSettings,
     /// Where and which agent status parts are shown. Stays on this device.
@@ -134,6 +135,7 @@ impl Default for Preferences {
             scrollback: 5000,
             terminal_scroll_assist: "auto".into(),
             terminal_shortcuts: crate::input::TerminalShortcut::defaults(),
+            agent_launch: Default::default(),
             volume_keys_enabled: false,
             agent_notifications: Default::default(),
             agent_status: Default::default(),

@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+accesskit = "=0.25.2"
+accesskit_xplat = { version = "=0.2.1", default-features = false, features = ["accesskit_unix", "tokio"] }
 dgl-core = { path = "../crates/dgl-core" }
 gpui = "=0.2.2"
 alacritty_terminal = "=0.26.0"

@@ -22,6 +22,7 @@ class AndroidVolumeKeyTest {
     private class KeyboardConnection(private val delegate: ClientModel) : ClientConnection by delegate {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         private val target = """{"connection":"fixture-cli","pane_id":null,"generation":{"connection":1,"pane":0}}"""
+        override fun inputAt(target: InputTarget, bytes: ByteArray) = super<ClientConnection>.inputAt(target, bytes)
         override fun captureInputTarget() = InputTarget(1, null, inputTargetIdentity(target))
         override fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? =
             TerminalKey.entries.firstOrNull { it.semanticInput() == (key to modifiers) }?.bytes()
@@ -290,39 +291,65 @@ class AndroidVolumeKeyTest {
                     assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
                     assertNull(withTimeoutOrNull(150) { secondWire.writes.receive() })
                 }
-                val actions = listOf("Claude Code 실행" to "claude\r", "Claude Code Bypass 실행" to "claude --dangerously-skip-permissions\r",
-                    "Codex 실행" to "codex\r", "Codex Bypass 실행" to "codex --yolo\r",
-                    "AGY 실행 · 실험 지원" to "agy\r", "AGY Bypass 실행 · 실험 지원" to "agy --dangerously-skip-permissions\r",
-                    "Grok Build 실행 · 실험 지원" to "grok\r", "Grok Build Bypass 실행 · 실험 지원" to "grok --always-approve\r")
+                fun bypassHelp(service: String) = "Bypass\n$service 실행에 설정된 Bypass 매개변수를 적용합니다."
+                val actions = listOf(
+                    Triple("Claude Code", "claude", "--dangerously-skip-permissions"),
+                    Triple("Codex", "codex", "--yolo"),
+                    Triple("AGY", "agy", "--dangerously-skip-permissions"),
+                    Triple("Grok Build", "grok", "--always-approve"),
+                )
+                fun launchLabel(service: String) = if (service == "AGY" || service == "Grok Build") "$service 실행 · 실험 지원" else "$service 실행"
                 for (theme in listOf("light", "dark")) {
                     scenario.onMainActivity { app.update(app.local.value.copy(preferences = Preferences(language = "ko", theme = theme))) }
-                    for ((label, command) in actions) {
+                    for ((service, executable, arguments) in actions) for (useBypass in listOf(false, true)) {
+                        val label = launchLabel(service)
                         val trigger = android.graphics.Rect().also { waitForText("CLI 실행 메뉴").getBoundsInScreen(it) }
                         assertTrue(trigger.width() > 0)
                         click("CLI 실행 메뉴")
                         val normal = android.graphics.Rect().also { waitForText("Claude Code 실행").getBoundsInScreen(it) }
-                        val bypass = android.graphics.Rect().also { waitForText("Claude Code Bypass 실행").getBoundsInScreen(it) }
+                        val bypass = android.graphics.Rect().also { waitForText(bypassHelp("Claude Code")).getBoundsInScreen(it) }
                         val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-                        assertEquals(48.0, bypass.width() / density.toDouble(), 1.0)
+                        assertTrue(bypass.width() >= (48 * density - 1).toInt())
                         assertEquals(normal.right, bypass.left)
                         assertEquals(normal.top, bypass.top)
+                        val help = "Code Mode\nCode Mode를 활성화한 채로 시작"
+                        val option = waitForText(help)
+                        val bounds = android.graphics.Rect().also { option.getBoundsInScreen(it) }
+                        assertTrue(option.isCheckable)
+                        assertTrue(bounds.left >= bypass.right && bounds.top == normal.top)
+                        if (service == "Claude Code" && !useBypass) {
+                            click(help)
+                            awaitUi("option checked") { while (!waitForText(help).isChecked) delay(25) }
+                            assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
+                            assertNull(withTimeoutOrNull(150) { secondWire.writes.receive() })
+                        }
                         val agy = android.graphics.Rect().also { waitForText("AGY 실행 · 실험 지원").getBoundsInScreen(it) }
-                        val agyBypass = android.graphics.Rect().also { waitForText("AGY Bypass 실행 · 실험 지원").getBoundsInScreen(it) }
+                        val agyBypass = android.graphics.Rect().also { waitForText(bypassHelp("AGY")).getBoundsInScreen(it) }
                         assertEquals(agy.right, agyBypass.left)
                         assertEquals(bypass.width(), agyBypass.width())
-                        assertTrue("Bolt follows each service name", agyBypass.left < bypass.left)
+                        assertTrue("Bypass follows each service name", agyBypass.left < bypass.left)
                         assertTrue("Touch target retained", agy.width() >= (48 * density - 1).toInt())
-                        assertNull(find(automation.rootInActiveWindow) { it.text?.toString() in listOf("Bypass", "test") })
                         assertTrue("Menu opens upwards", normal.bottom <= trigger.top)
-                        if (label == actions.first().first) {
+                        if (service == "Claude Code" && !useBypass) {
                             automation.takeScreenshot()?.let { bitmap ->
                                 val context = InstrumentationRegistry.getInstrumentation().targetContext
                                 java.io.File(context.cacheDir, "cli-launcher-$theme.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
                                 bitmap.recycle()
                             }
                         }
+                        val check = waitForText(bypassHelp(service))
+                        assertTrue(check.isCheckable)
+                        assertFalse(check.isChecked)
+                        if (useBypass) {
+                            click(bypassHelp(service))
+                            awaitUi("Bypass checked") { while (!waitForText(bypassHelp(service)).isChecked) delay(25) }
+                            assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
+                            assertNull(withTimeoutOrNull(150) { secondWire.writes.receive() })
+                        }
                         click(label)
-                        assertArrayEquals(command.encodeToByteArray(), withTimeout(3000) { firstWire.writes.receive() })
+                        val command = executable + (if (useBypass) " $arguments" else "") + "\r"
+                        val expected = if (service == "Claude Code") "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 $command" else command
+                        assertArrayEquals(expected.encodeToByteArray(), withTimeout(3000) { firstWire.writes.receive() })
                         assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
                         assertNull(withTimeoutOrNull(150) { secondWire.writes.receive() })
                         awaitUi("launcher closes") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
@@ -368,7 +395,8 @@ class AndroidVolumeKeyTest {
                     scenario.onMainActivity { first.status.value = ConnectionStatus(phase) }
                     awaitUi("phase dismiss") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
                     click("CLI 실행 메뉴")
-                    for ((label, _) in actions) {
+                    for ((service, _, _) in actions) {
+                        val label = launchLabel(service)
                         val item = waitForText(label)
                         assertTrue("Disabled $label", generateSequence(item) { it.parent }.any { !it.isEnabled })
                         item.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -383,7 +411,11 @@ class AndroidVolumeKeyTest {
                 click("CLI 실행 메뉴"); waitForText("Claude Code 실행")
                 scenario.onMainActivity { app.selected.value = second }
                 awaitUi("connection dismiss") { while (find(automation.rootInActiveWindow) { it.contentDescription?.toString() == "Claude Code 실행" } != null) delay(50) }
-                click("CLI 실행 메뉴"); click("Codex 실행")
+                click("CLI 실행 메뉴")
+                assertTrue(waitForText(bypassHelp("Codex")).isChecked)
+                click(bypassHelp("Codex"))
+                awaitUi("Bypass unchecked") { while (waitForText(bypassHelp("Codex")).isChecked) delay(25) }
+                click("Codex 실행")
                 assertArrayEquals("codex\r".encodeToByteArray(), withTimeout(3000) { secondWire.writes.receive() })
                 assertNull(withTimeoutOrNull(150) { firstWire.writes.receive() })
             } finally {

@@ -1,7 +1,6 @@
 package kim.jujin.dglc
 
 import kim.jujin.dglc.core.*
-import kim.jujin.dglc.ui.CliCommand
 import kim.jujin.dglc.ui.CliLaunchRequest
 import kim.jujin.dglc.ui.CliMenuPlacement
 import kim.jujin.dglc.ui.cliMenuPosition
@@ -10,6 +9,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.*
+import kotlinx.serialization.json.*
+import kim.jujin.dglc.storage.LocalRepository
+import java.nio.file.Files
 
 class CliLauncherTest {
     private class RecordingConnection : ClientConnection {
@@ -109,26 +111,70 @@ class CliLauncherTest {
         assertTrue(client.writes.isEmpty())
     }
 
+    @Test fun configuredLaunchCombinesOptionsAndRejectsInvalidValues() {
+        val fixture = Json.parseToJsonElement(javaClass.getResource("/launcher-options.json")!!.readText()).jsonObject
+        val json = Json { ignoreUnknownKeys = true }
+        val config = json.decodeFromJsonElement(AgentLaunch.serializer(), fixture)
+        val client = RecordingConnection()
+        assertFalse(config.bypassChecked) // Existing settings have no checkbox field.
+        for ((checked, key) in listOf(false to "normal", true to "withBypass")) {
+            assertTrue(CliLaunchRequest(client).send(LaunchAgent.Claude, client, true, config.copy(bypassChecked = checked)))
+            assertEquals(fixture.getValue(key).jsonPrimitive.content, client.writes.last().decodeToString())
+        }
+        for (raw in listOf("=1", "9BAD=1", "BAD NAME=1", "NOVALUE", "A=a\rb", "A=\n", "A=\u001b", "A=\u0085", "A=\u2028")) {
+            val opt = LaunchOption("test", "", OptionKind.Environment, raw, true)
+            assertFalse(opt.valid)
+            assertFalse(CliLaunchRequest(client).send(LaunchAgent.Claude, client, true, config.copy(options = listOf(opt))))
+        }
+        assertFalse(CliLaunchRequest(client).send(LaunchAgent.Claude, client, true, config.copy(bypassChecked = true, bypass = "a\rb")))
+        assertEquals(2, client.writes.size)
+    }
+
+    @Test fun checkedOptionsAndDefaultDeletionSurviveSettingsReload() {
+        val dir = Files.createTempDirectory("dgl-launch-options").toFile()
+        try {
+            val repo = LocalRepository(dir)
+            val agent = LaunchAgent.Claude
+            val first = repo.read()
+            val initial = first.preferences.launchFor(agent)
+            assertFalse(initial.options.single().checked)
+            assertFalse(initial.bypassChecked)
+            val checked = initial.copy(bypassChecked = true, options = initial.options.map { it.copy(checked = true) })
+            repo.save(first.copy(preferences = first.preferences.updateLaunch(agent) { checked }))
+            val reloaded = LocalRepository(dir).read()
+            assertEquals("CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 claude --dangerously-skip-permissions\r",
+                reloaded.preferences.launchFor(agent).command(agent))
+            repo.save(reloaded.copy(preferences = reloaded.preferences.updateLaunch(agent) { it.copy(options = emptyList()) }))
+            assertTrue(LocalRepository(dir).read().preferences.launchFor(agent).options.isEmpty())
+        } finally { dir.deleteRecursively() }
+    }
+
     @Test fun exactCommandsOnceForActiveShellAndPane() {
-        val expected = listOf("claude\r", "claude --dangerously-skip-permissions\r", "codex\r", "codex --yolo\r",
-            "agy\r", "agy --dangerously-skip-permissions\r", "grok\r", "grok --always-approve\r")
-        assertEquals(expected.size, CliCommand.entries.size)
+        val expected = mapOf(
+            LaunchAgent.Claude to listOf("claude\r", "claude --dangerously-skip-permissions\r"),
+            LaunchAgent.Codex to listOf("codex\r", "codex --yolo\r"),
+            LaunchAgent.Agy to listOf("agy\r", "agy --dangerously-skip-permissions\r"),
+            LaunchAgent.Grok to listOf("grok\r", "grok --always-approve\r"),
+        )
         for (phase in listOf(Phase.Ready, Phase.Shell)) {
             val first = RecordingConnection()
             val second = RecordingConnection().apply { status.value = ConnectionStatus(phase) }
-            for ((command, wire) in CliCommand.entries.zip(expected)) {
-                val request = CliLaunchRequest(second)
-                assertTrue(request.send(command, second, true))
-                assertFalse(request.send(command, second, true))
-                assertContentEquals(wire.encodeToByteArray(), second.writes.last())
+            for (agent in LaunchAgent.entries) {
+                for ((checked, wire) in listOf(false, true).zip(expected.getValue(agent))) {
+                    val config = agent.defaults().copy(bypassChecked = checked)
+                    val request = CliLaunchRequest(second)
+                    assertTrue(request.send(agent, second, true, config))
+                    assertFalse(request.send(agent, second, true, config))
+                    assertContentEquals(wire.encodeToByteArray(), second.writes.last())
+                }
             }
-            assertEquals(expected.size, second.writes.size)
+            assertEquals(8, second.writes.size)
             assertTrue(first.writes.isEmpty())
         }
     }
 
     @Test fun targetChangesAndUnavailableInputNeverSendOrReplay() {
-        for (command in CliCommand.entries) {
+        for (command in LaunchAgent.entries) {
             for (phase in Phase.entries.filter { it !in listOf(Phase.Ready, Phase.Shell) }) {
                 val client = RecordingConnection().apply { status.value = ConnectionStatus(phase) }
                 val request = CliLaunchRequest(client)
@@ -158,7 +204,7 @@ class CliLauncherTest {
     @Test fun runningCliInTheInputPaneBlocksLaunchUntilItLeaves() {
         val now = System.currentTimeMillis()
         val claude = AgentObservation("\$1", "@1", "%1", "run", "parent", "Claude")
-        for (command in CliCommand.entries) {
+        for (command in LaunchAgent.entries) {
             val client = RecordingConnection()
             client.agents.value = AgentSnapshot(valid = true, observed_at = now, observations = listOf(claude))
             assertEquals("Claude", client.agents.value.agentInPane("%1", now))
@@ -200,8 +246,8 @@ class CliLauncherTest {
             val client = RecordingConnection().apply { status.value = before }
             val request = CliLaunchRequest(client)
             client.status.value = after
-            assertTrue(request.send(CliCommand.Codex, client, true))
-            assertFalse(request.send(CliCommand.Codex, client, true))
+            assertTrue(request.send(LaunchAgent.Codex, client, true))
+            assertFalse(request.send(LaunchAgent.Codex, client, true))
             assertEquals(1, client.writes.size)
             assertContentEquals("codex\r".encodeToByteArray(), client.writes.single())
         }
@@ -213,9 +259,9 @@ class CliLauncherTest {
             val client = RecordingConnection()
             val request = CliLaunchRequest(client)
             client.status.value = blocked
-            assertFalse(request.send(CliCommand.Codex, client, true))
+            assertFalse(request.send(LaunchAgent.Codex, client, true))
             client.status.value = ready
-            assertFalse(request.send(CliCommand.Codex, client, true))
+            assertFalse(request.send(LaunchAgent.Codex, client, true))
             assertTrue(client.writes.isEmpty())
         }
         for (change in 0..3) {
@@ -228,9 +274,9 @@ class CliLauncherTest {
                 2 -> client.session.value = "\$2"
                 3 -> client.pane.value = "%2"
             }
-            assertFalse(request.send(CliCommand.Codex, client, true))
+            assertFalse(request.send(LaunchAgent.Codex, client, true))
             client.status.value = ready
-            assertFalse(request.send(CliCommand.Codex, client, true))
+            assertFalse(request.send(LaunchAgent.Codex, client, true))
             assertTrue(client.writes.isEmpty())
         }
     }

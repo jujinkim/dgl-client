@@ -232,9 +232,20 @@ impl Desktop {
     }
 
     pub(super) fn dismiss_dialog(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.dialog, Some(Dialog::LaunchEditor(_))) {
+            self.dialog = Some(Dialog::LaunchSettings);
+            cx.notify();
+            return;
+        }
         if matches!(
             self.dialog,
-            Some(Dialog::Shortcuts | Dialog::TerminalFont | Dialog::About | Dialog::ExportSync)
+            Some(
+                Dialog::LaunchSettings
+                    | Dialog::Shortcuts
+                    | Dialog::TerminalFont
+                    | Dialog::About
+                    | Dialog::ExportSync
+            )
         ) {
             self.settings_back();
             cx.notify();

@@ -163,21 +163,16 @@ impl WindowTerminal {
             SnackbarDuration::Short,
         ));
     }
-    pub fn send(&mut self, bytes: Vec<u8>) {
+    pub fn send_to(&mut self, target: PaneTarget, bytes: Vec<u8>) {
         if !self.enabled {
             return;
         }
         #[cfg(test)]
         self.sent.push(bytes.clone());
-        if self.connection.target().is_none() {
-            self.reject_input(dgl_core::Error::NotReady);
-        }
-        if let Some(target) = self.connection.target() {
-            crate::cadence::wake();
-            self.claims.before_input(&self.connection);
-            if let Err(e) = self.connection.input(target, bytes) {
-                self.reject_input(e);
-            }
+        crate::cadence::wake();
+        self.claims.before_input(&self.connection);
+        if let Err(e) = self.connection.input(target, bytes) {
+            self.reject_input(e);
         }
     }
     /// Focus claim: this screen takes its tmux window's size. Silent; `NotReady`

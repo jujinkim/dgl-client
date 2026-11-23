@@ -719,15 +719,26 @@ class RustClientConnection(
     }
     override fun encodeKeyboard(key: String, text: String?, modifiers: TerminalModifiers, applicationCursor: Boolean): ByteArray? =
         runCatching { uniffi.dgl_core.encodeTerminalInput(key, text, modifiers.control, modifiers.shift, modifiers.alt, applicationCursor) }.getOrNull()
-    @Synchronized override fun input(bytes: ByteArray) {
+    @Synchronized override fun input(bytes: ByteArray) { submitInput(bytes, null) }
+    @Synchronized override fun inputAt(target: InputTarget, bytes: ByteArray) = submitInput(bytes, target)
+    private fun submitInput(bytes: ByteArray, expected: InputTarget?): Boolean {
         wake()
-        val c = native ?: return rejectInput("Closed")
-        if (!status.value.acceptsInput) return rejectInput("NotReady")
-        try {
-            val target = c.targetJson() ?: return rejectInput("NotReady")
-            claimSize(force = false)
-            inputRequests.add(c.submitInput(target, bytes))
-        } catch (error: Exception) { rejectInput(inputCode(error)) }
+        val c = native
+        if (c == null || !status.value.acceptsInput) {
+            rejectInput(if (c == null) "Closed" else "NotReady")
+            return false
+        }
+        return try {
+            val raw = c.targetJson()
+            if (raw == null || (expected != null && expected != InputTarget(epoch, session.value, inputTargetIdentity(raw)))) {
+                rejectInput(if (raw == null) "NotReady" else "StaleGeneration")
+                false
+            } else {
+                claimSize(force = false)
+                inputRequests.add(c.submitInput(raw, bytes))
+                true
+            }
+        } catch (error: Exception) { rejectInput(inputCode(error)); false }
     }
     @Synchronized override fun captureInputTarget(): InputTarget? = native?.targetJson()?.let {
         InputTarget(epoch, session.value, inputTargetIdentity(it))

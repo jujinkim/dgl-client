@@ -528,6 +528,9 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         }
     }).apply { isQuickScaleEnabled = false; isStylusScaleEnabled = false }
     val view = object : WebView(context) {
+        override fun onKeyPreIme(keyCode: Int, event: android.view.KeyEvent): Boolean =
+            context.consumeMenuKeyBeforeIme(event) || super.onKeyPreIme(keyCode, event)
+
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             // Keep measuring/painting behind an opaque curtain. GONE/INVISIBLE

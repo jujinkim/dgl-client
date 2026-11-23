@@ -360,7 +360,7 @@ private data class TabDrag(val tab: String, val position: Offset)
         }
     }
     if (preferences.mobilePaneToolbarVisible) TmuxPaneToolbar(client, { focus.request() }) { deleting = it }
-    TerminalShortcutBar(client, preferences.terminalShortcuts, { model.selected.value === client }, focus, mobile = true,
+    TerminalShortcutBar(client, preferences, { model.selected.value === client }, focus, mobile = true,
         openComposer = composer::open, workspace = true, mobileShortcutBarTwoRows = preferences.mobileShortcutBarTwoRows,
         keyboardAlwaysVisible = preferences.androidKeyboardAlwaysVisible, inputGate = model, openShortcutSettings = openShortcutSettings)
     if (opened) {

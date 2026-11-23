@@ -39,6 +39,7 @@ actions!(
 
 pub struct TextInput {
     multiline: Option<Multiline>,
+    strict_single_line: bool,
     pub read_only: bool,
     secret: bool,
     secret_visible: bool,
@@ -58,6 +59,7 @@ impl TextInput {
     pub fn new(value: &str, placeholder: &str, secret: bool, cx: &mut Context<Self>) -> Self {
         Self {
             multiline: None,
+            strict_single_line: false,
             read_only: false,
             secret,
             secret_visible: false,
@@ -72,6 +74,12 @@ impl TextInput {
             last_bounds: None,
             is_selecting: false,
         }
+    }
+
+    pub fn strict_single_line(value: &str, cx: &mut Context<Self>) -> Self {
+        let mut input = Self::new(value, "", false, cx);
+        input.strict_single_line = true;
+        input
     }
 
     /// Starts with all of `value` selected, so typing replaces it and an arrow key edits it.
@@ -227,6 +235,9 @@ impl TextInput {
 
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+            if self.strict_single_line && !dgl_core::launcher::single_line(&text) {
+                return;
+            }
             let text = if self.multiline.is_some() {
                 text.replace("\r\n", "\n").replace('\r', "\n")
             } else {
@@ -431,6 +442,9 @@ impl EntityInputHandler for TextInput {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.strict_single_line && !dgl_core::launcher::single_line(new_text) {
+            return;
+        }
         // Single-line editors must not insert the Enter used to commit an IME.
         if self.read_only || (self.multiline.is_none() && (new_text == "\n" || new_text == "\r")) {
             return;
@@ -459,7 +473,8 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.read_only {
+        if self.read_only || (self.strict_single_line && !dgl_core::launcher::single_line(new_text))
+        {
             return;
         }
         let range = range_utf16

@@ -602,6 +602,14 @@ mod tests {
             .trust
             .insert("PRIVATE-TRUST".into(), "PRIVATE-FINGERPRINT".into());
         local.preferences.language = "ko".into();
+        local.preferences.agent_launch.insert(
+            crate::agent::Agent::Claude,
+            crate::launcher::AgentLaunch {
+                bypass: "PRIVATE-LAUNCH-ARG".into(),
+                bypass_checked: true,
+                options: vec![],
+            },
+        );
         local.preferences.terminal_font_family = "PRIVATE-FONT".into();
         local.preferences.theme = "dark".into();
         local.preferences.accent = Default::default();
@@ -612,6 +620,8 @@ mod tests {
             "PRIVATE-TRUST",
             "PRIVATE-FINGERPRINT",
             "PRIVATE-FONT",
+            "agentLaunch",
+            "PRIVATE-LAUNCH-ARG",
             "credentialRef",
             "lastSession",
             "language",
@@ -734,6 +744,14 @@ mod tests {
         local.preferences.android_keyboard_mode = "resize".into();
         local.preferences.android_keyboard_always_visible = true;
         local.preferences.android_keyboard_on_touch = false;
+        local.preferences.agent_launch.insert(
+            crate::agent::Agent::Claude,
+            crate::launcher::AgentLaunch {
+                bypass: "PRIVATE-LAUNCH-ARG".into(),
+                bypass_checked: true,
+                options: vec![],
+            },
+        );
         local.preferences.terminal_font_family = "PRIVATE-FONT".into();
         local.preferences.desktop_power_saving = "always".into();
         local.preferences.desktop_tmux_buffer_clipboard = true;
@@ -755,6 +773,8 @@ mod tests {
             "androidKeyboardOnTouch",
             "terminalFontFamily",
             "PRIVATE-FONT",
+            "agentLaunch",
+            "PRIVATE-LAUNCH-ARG",
             "desktopPowerSaving",
             "desktopTmuxBufferClipboard",
             "terminalScrollAssist",

@@ -2412,7 +2412,19 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
         let longest = cx.debug_bounds("launch-Claude Code-bypass").unwrap();
         let shortest = cx.debug_bounds("launch-AGY-bypass").unwrap();
         assert!(shortest.left() < longest.left());
-        assert!((menu.right() - longest.right() - px(1.)).abs() <= px(1.));
+        let option = cx.debug_bounds("launch-Claude Code-option-0").unwrap();
+        assert_eq!(option.left(), longest.right());
+        assert_eq!(option.top(), longest.top());
+        assert!(menu.contains(&option.center()));
+        cx.simulate_click(option.center(), Modifiers::default());
+        redraw(cx);
+        assert!(view.read_with(cx, |s, _| s.launcher.opened.is_some()));
+        assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
+        assert!(view.read_with(cx, |s, _| {
+            let saved = dgl_core::model::LocalState::read(&s.path).unwrap();
+            saved.preferences.agent_launch[&dgl_core::agent::Agent::Claude].options[0].checked
+                == (theme == "light")
+        }));
         assert!(menu.size.width < px(300.));
         for (normal, bypass) in [
             ("launch-Claude Code-normal", "launch-Claude Code-bypass"),
@@ -2422,7 +2434,7 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
         ] {
             let normal = cx.debug_bounds(normal).unwrap();
             let bypass = cx.debug_bounds(bypass).unwrap();
-            assert_eq!(bypass.size.width, px(44.));
+            assert!(bypass.size.width >= px(48.));
             assert_eq!(normal.right(), bypass.left());
             assert_eq!(normal.top(), bypass.top());
             assert!(normal.size.width >= px(44.) && normal.size.height >= px(44.));
@@ -2432,6 +2444,15 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
             assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
             assert!(view.read_with(cx, |s, _| s.launcher.opened.is_some()));
         }
+        view.read_with(cx, |s, _| {
+            let saved = dgl_core::model::LocalState::read(&s.path).unwrap();
+            for agent in dgl_core::launcher::LAUNCH_AGENTS {
+                assert_eq!(
+                    saved.preferences.agent_launch[&agent].bypass_checked,
+                    theme == "light"
+                );
+            }
+        });
         cx.simulate_keystrokes("escape");
         redraw(cx);
         assert!(view.read_with(cx, |s, _| s.launcher.opened.is_none()));
@@ -2450,6 +2471,111 @@ fn launcher_layout_disabled_actions_dismissal_and_focus(cx: &mut TestAppContext)
         redraw(cx);
         assert!(view.read_with(cx, |s, _| s.launcher.opened.is_none()));
     }
+}
+
+#[gpui::test]
+fn launcher_settings_edit_options_bypass_and_delete_the_default(cx: &mut TestAppContext) {
+    use dgl_core::{agent::Agent, launcher::OptionKind, model::LocalState};
+    let (view, cx) = setup(cx);
+    view.update(cx, |s, cx| {
+        s.dialog = Some(Dialog::LaunchSettings);
+        cx.notify();
+    });
+    redraw(cx);
+    let click = |cx: &mut VisualTestContext, id: &'static str| {
+        let center = cx.debug_bounds(id).unwrap().center();
+        cx.simulate_click(center, Modifiers::default());
+        redraw(cx);
+    };
+    click(cx, "launch-bypass-edit-Claude");
+    cx.simulate_keystrokes(&format!("{}-a", crate::platform::EDIT_MODIFIER));
+    cx.simulate_input("--custom");
+    click(cx, "save-launch-editor");
+    click(cx, "launch-option-add-Claude");
+    cx.simulate_input("Model");
+    cx.simulate_keystrokes("tab");
+    cx.simulate_input("Select the model");
+    cx.simulate_keystrokes("tab");
+    cx.simulate_input("--model 'two words'");
+    click(cx, "save-launch-editor");
+    view.read_with(cx, |s, _| {
+        let config = &LocalState::read(&s.path).unwrap().preferences.agent_launch[&Agent::Claude];
+        assert_eq!(config.bypass, "--custom");
+        assert_eq!(config.options[1].value, "--model 'two words'");
+        assert_eq!(config.options[1].description, "Select the model");
+        assert_eq!(config.options[1].kind, OptionKind::Argument);
+    });
+    click(cx, "launch-option-edit-Claude-1");
+    cx.simulate_keystrokes(&format!("{}-a", crate::platform::EDIT_MODIFIER));
+    cx.simulate_input("Changed");
+    click(cx, "save-launch-editor");
+    click(cx, "launch-option-delete-Claude-0");
+    view.read_with(cx, |s, _| {
+        let config = &LocalState::read(&s.path).unwrap().preferences.agent_launch[&Agent::Claude];
+        assert_eq!(config.options.len(), 1);
+        assert_eq!(config.options[0].name, "Changed");
+    });
+}
+
+#[gpui::test]
+fn launcher_scrolls_only_options_and_keeps_labels_above_checks(cx: &mut TestAppContext) {
+    use dgl_core::agent::Agent;
+    let (view, cx) = setup(cx);
+    cx.simulate_resize(gpui::size(px(420.), px(520.)));
+    view.update(cx, |s, cx| {
+        s.update_agent_launch(Agent::Claude, |config| {
+            let options = &mut config.options;
+            let mut long = options[0].clone();
+            long.name = "A long option name with more text than the visible label".into();
+            options.extend(vec![long; 12]);
+        });
+        cx.notify();
+    });
+    redraw(cx);
+    let center = cx.debug_bounds("cli-launcher").unwrap().center();
+    cx.simulate_click(center, Modifiers::default());
+    redraw(cx);
+    let normal = cx.debug_bounds("launch-Claude Code-normal").unwrap();
+    let bypass = cx.debug_bounds("launch-Claude Code-bypass").unwrap();
+    let strip = cx.debug_bounds("launch-options-Claude Code").unwrap();
+    let label = cx
+        .debug_bounds("launch-Claude Code-option-1-label")
+        .unwrap();
+    let check = cx
+        .debug_bounds("launch-Claude Code-option-1-check")
+        .unwrap();
+    assert!(normal.left() >= px(0.) && strip.right() <= px(420.));
+    assert_eq!(normal.right(), bypass.left());
+    assert_eq!(bypass.right(), strip.left());
+    let bypass_label = cx.debug_bounds("launch-Claude Code-bypass-label").unwrap();
+    let bypass_check = cx.debug_bounds("launch-Claude Code-bypass-check").unwrap();
+    assert!(bypass_label.bottom() <= bypass_check.top());
+    assert!((bypass_label.center().x - bypass_check.center().x).abs() <= px(1.));
+    assert!(label.size.width <= px(88.) && label.bottom() <= check.top());
+    assert!((label.center().x - check.center().x).abs() <= px(1.));
+    let last = cx.debug_bounds("launch-Claude Code-option-12").unwrap();
+    assert!(last.right() > strip.right());
+    cx.simulate_event(ScrollWheelEvent {
+        position: strip.center(),
+        delta: ScrollDelta::Pixels(point(px(-1500.), px(0.))),
+        modifiers: Modifiers::default(),
+        touch_phase: TouchPhase::Moved,
+    });
+    redraw(cx);
+    assert_eq!(
+        normal,
+        cx.debug_bounds("launch-Claude Code-normal").unwrap()
+    );
+    assert_eq!(
+        bypass,
+        cx.debug_bounds("launch-Claude Code-bypass").unwrap()
+    );
+    let last = cx.debug_bounds("launch-Claude Code-option-12").unwrap();
+    assert!(strip.contains(&last.center()));
+    cx.simulate_click(last.center(), Modifiers::default());
+    redraw(cx);
+    assert!(view.read_with(cx, |s, _| s.launcher.opened.is_some()
+        && s.agent_launch(Agent::Claude).options[12].checked));
 }
 
 #[gpui::test]

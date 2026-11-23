@@ -851,6 +851,38 @@ class AndroidMobileInputTest {
                 }
                 assertEquals(sent + 1, client.writes.size)
                 assertArrayEquals("grok\r".encodeToByteArray(), client.writes.last())
+                stage = "scroll launch options without moving launch buttons"
+                scenario.onActivity {
+                    it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    app.modify { state -> state.copy(preferences = state.preferences.updateLaunch(LaunchAgent.Claude) { config ->
+                        config.copy(options = (1..10).map { n ->
+                            LaunchOption("Long launch option number $n", "Description $n", OptionKind.Argument, "--flag-$n")
+                        })
+                    }) }
+                }
+                waitOrientation(scenario, false)
+                click("CLI 실행 메뉴")
+                val normalBefore = bounds(awaitNode("Claude Code 실행"))
+                val bypassHelp = "Bypass\nClaude Code 실행에 설정된 Bypass 매개변수를 적용합니다."
+                val bypassBefore = bounds(awaitNode(bypassHelp))
+                val lastOption = "Long launch option number 10\nDescription 10"
+                val paneTitle = "CLI 실행 메뉴"
+                withTimeout(5000) {
+                    while (node(lastOption)?.isVisibleToUser != true) {
+                        val panel = find(instrumentation.uiAutomation.rootInActiveWindow) { it.paneTitle?.toString() == paneTitle }
+                        val strip = find(panel) { it.actionList.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT) }
+                        strip?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id)
+                        delay(100)
+                    }
+                }
+                assertEquals(normalBefore, bounds(awaitNode("Claude Code 실행")))
+                assertEquals(bypassBefore, bounds(awaitNode(bypassHelp)))
+                assertTrue(bounds(awaitNode(lastOption)).left >= bypassBefore.right)
+                click(lastOption)
+                assertTrue(app.local.value.preferences.launchFor(LaunchAgent.Claude).options.last().checked)
+                assertEquals(sent + 1, client.writes.size)
+                instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ESCAPE)
+                withTimeout(5000) { while (app.inputBlocked()) delay(20) }
                 stage = "shortcut settings from menu"
                 scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
                 waitOrientation(scenario, false)

@@ -19,7 +19,9 @@ mod host_order;
 mod host_tree;
 mod i18n;
 mod key_file;
+mod launch_settings;
 mod launcher;
+mod launcher_accessibility;
 mod local_host;
 mod modal;
 mod native_tooltips;
@@ -140,6 +142,8 @@ enum Dialog {
     Settings,
     ExportSync,
     Shortcuts,
+    LaunchSettings,
+    LaunchEditor(launch_settings::Editor),
     TerminalFont,
     About,
     Agents(Arc<Connection>, String, Option<String>),
@@ -167,6 +171,7 @@ struct Desktop {
     probes: HashMap<String, host_tree::Probe>,
     menu: Option<String>,
     launcher: launcher::LaunchMenu,
+    launch_access: launcher_accessibility::LauncherAccessibility,
     shortcut_target: Option<(GroupId, Option<TabId>)>,
     settings: settings::SettingsState,
     window_title: String,
@@ -270,6 +275,7 @@ impl Desktop {
             probes: HashMap::new(),
             menu: None,
             launcher: launcher::LaunchMenu::default(),
+            launch_access: Default::default(),
             shortcut_target: None,
             settings: settings::SettingsState::default(),
             window_title: String::new(),
@@ -1071,6 +1077,8 @@ impl Render for Desktop {
                 Dialog::Settings => ("settings", vec![]),
                 Dialog::ExportSync => ("export-sync", vec![]),
                 Dialog::Shortcuts => ("shortcuts", vec![]),
+                Dialog::LaunchSettings => ("launch-settings", vec![]),
+                Dialog::LaunchEditor(edit) => ("launch-editor", edit.inputs()),
                 Dialog::TerminalFont => ("terminal-font", vec![]),
                 Dialog::About => ("about", vec![]),
                 Dialog::Agents(..) => ("agents", vec![]),
@@ -1108,12 +1116,13 @@ impl Render for Desktop {
                     if matches!(
                         &dialog,
                         Dialog::Shortcuts
+                            | Dialog::LaunchSettings
                             | Dialog::TerminalFont
                             | Dialog::About
                             | Dialog::ExportSync
                     ) {
                         t("common.back")
-                    } else if matches!(&dialog, Dialog::Compose(_)) {
+                    } else if matches!(&dialog, Dialog::Compose(_) | Dialog::LaunchEditor(_)) {
                         t("common.cancel")
                     } else {
                         t("common.cancel_close")
@@ -1193,6 +1202,18 @@ impl Render for Desktop {
                     Dialog::ExportSync => {
                         body = body.child(self.export_sync_settings(cx));
                     }
+                    Dialog::LaunchSettings => {
+                        body = body.child(self.launch_settings(cx));
+                    }
+                    Dialog::LaunchEditor(edit) => {
+                        body = body.child(self.launch_editor(&edit, cx));
+                        footer = footer.child(
+                            self.button("save-launch-editor", t("common.save"), cx, |s, _, cx| {
+                                s.save_launch_editor(cx)
+                            })
+                            .when(!edit.valid(cx), |d| d.opacity(0.35).cursor_default()),
+                        );
+                    }
                     Dialog::Shortcuts => {
                         body = body.child(self.shortcut_settings(cx));
                     }
@@ -1225,6 +1246,7 @@ impl Render for Desktop {
                                         Some(
                                             Dialog::Settings
                                                 | Dialog::ExportSync
+                                                | Dialog::LaunchSettings
                                                 | Dialog::Shortcuts
                                                 | Dialog::TerminalFont
                                                 | Dialog::About
@@ -1306,7 +1328,11 @@ impl Render for Desktop {
             }
             self.modal.finish(window);
         }
-        native_tooltips::root(root)
+        native_tooltips::root(self.launch_access.finish(
+            root,
+            self.launcher.opened.is_some(),
+            self.dialog.is_none(),
+        ))
     }
 }
 fn main() {
@@ -1336,6 +1362,7 @@ fn main() {
             let bounds = Bounds::centered(None, window_size::WindowSize::fit(saved, display), cx);
             cx.open_window(
                 WindowOptions {
+                    show: cfg!(target_os = "linux"),
                     app_id: Some("kim.jujin.dglc".into()),
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
@@ -1347,10 +1374,12 @@ fn main() {
                 move |window, cx| {
                     #[cfg(target_os = "windows")]
                     windows_ime::install(window).expect("Windows IME handler unavailable");
-                    #[cfg(not(target_os = "windows"))]
-                    let _ = window;
                     cx.new(|cx| {
                         let mut desktop = Desktop::new(runtime, path, cx);
+                        desktop.launch_access =
+                            launcher_accessibility::LauncherAccessibility::install(window, cx);
+                        #[cfg(not(target_os = "linux"))]
+                        window.activate_window();
                         desktop.init_appearance(window, cx);
                         desktop.watch_window_size(window, cx);
                         desktop

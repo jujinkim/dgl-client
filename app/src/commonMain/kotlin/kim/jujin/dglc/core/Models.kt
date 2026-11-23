@@ -43,6 +43,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     /** A finished tap on the terminal opens the IME; off leaves only the keyboard button. Not synced. */
     val androidKeyboardOnTouch: Boolean = true,
     val terminalShortcuts: List<TerminalShortcut> = TerminalShortcut.defaultShortcuts,
+    val agentLaunch: Map<LaunchAgent, AgentLaunch> = emptyMap(),
     val volumeKeysEnabled: Boolean = false,
     val agentNotifications: AgentNotificationSettings = AgentNotificationSettings(),
     /** Where and which agent status parts are shown. Not synced. */

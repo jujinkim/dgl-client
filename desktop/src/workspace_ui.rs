@@ -420,7 +420,7 @@ impl Desktop {
                         ),
                     ),
             )
-            .children(self.render_launcher(cx))
+            .children(self.render_launcher(window, cx))
     }
     /// The host and session explorer. A cached view of its own (`chrome::Part::Sidebar`):
     /// it reads `Desktop` only, never the window or a terminal.

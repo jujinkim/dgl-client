@@ -1,34 +1,9 @@
 use super::*;
+use crate::launcher_accessibility::Control;
 use dgl_core::agent::Agent;
 use dgl_core::connection::State;
+use dgl_core::launcher::{AgentLaunch, LAUNCH_AGENTS};
 use std::borrow::Cow;
-
-#[derive(Clone, Copy)]
-pub enum LaunchCommand {
-    Claude,
-    ClaudeBypass,
-    Codex,
-    CodexBypass,
-    Agy,
-    AgyBypass,
-    Grok,
-    GrokBypass,
-}
-impl LaunchCommand {
-    pub fn bytes(self) -> Vec<u8> {
-        match self {
-            Self::Claude => b"claude\r".as_slice(),
-            Self::ClaudeBypass => b"claude --dangerously-skip-permissions\r",
-            Self::Codex => b"codex\r",
-            Self::CodexBypass => b"codex --yolo\r",
-            Self::Agy => b"agy\r",
-            Self::AgyBypass => b"agy --dangerously-skip-permissions\r",
-            Self::Grok => b"grok\r",
-            Self::GrokBypass => b"grok --always-approve\r",
-        }
-        .to_vec()
-    }
-}
 
 // Size/remote-list updates must not dismiss the menu, but a new connection or
 // pane generation must invalidate even a return to the same pane ID.
@@ -84,10 +59,14 @@ impl LaunchMenu {
         &mut self,
         current: &LaunchContext,
         allowed: bool,
-        command: LaunchCommand,
+        command: impl FnOnce() -> Option<Vec<u8>>,
     ) -> Option<Vec<u8>> {
         let opened = self.opened.take()?;
-        (allowed && opened == *current && current.accepts_input()).then(|| command.bytes())
+        if allowed && opened == *current && current.accepts_input() {
+            command()
+        } else {
+            None
+        }
     }
 }
 
@@ -103,9 +82,6 @@ impl AssetSource for Assets {
             ))),
             "launcher/openai.svg" => Some(Cow::Borrowed(include_bytes!(
                 "../../assets/launcher/openai.svg"
-            ))),
-            "launcher/bolt.svg" => Some(Cow::Borrowed(include_bytes!(
-                "../../assets/launcher/bolt.svg"
             ))),
             "launcher/agy.svg" => Some(Cow::Borrowed(include_bytes!(
                 "../../assets/launcher/agy.svg"
@@ -124,7 +100,6 @@ impl AssetSource for Assets {
             "app-icon.png".into(),
             "launcher/claude.svg".into(),
             "launcher/openai.svg".into(),
-            "launcher/bolt.svg".into(),
             "launcher/agy.svg".into(),
             "launcher/grok.svg".into(),
         ];
@@ -166,49 +141,138 @@ impl Desktop {
             .agents
             .agent_in_pane(state.pane.as_deref()?, dgl_core::agent::now_ms())
     }
-    fn launch(&mut self, command: LaunchCommand, window: &mut Window, cx: &mut Context<Self>) {
-        let current = self.launch_context();
-        if let Some(bytes) = self.launcher.take_command(
-            &current,
-            self.dialog.is_none() && self.snackbar.is_none() && self.launch_blocker().is_none(),
-            command,
-        ) && let Some(tab) = self.active_tab()
-        {
-            tab.terminal.update(cx, |terminal, _| terminal.send(bytes));
+    pub(super) fn agent_launch(&self, agent: Agent) -> Cow<'_, AgentLaunch> {
+        self.local
+            .preferences
+            .agent_launch
+            .get(&agent)
+            .map(Cow::Borrowed)
+            .unwrap_or_else(|| Cow::Owned(AgentLaunch::defaults(agent)))
+    }
+    pub(super) fn update_agent_launch(
+        &mut self,
+        agent: Agent,
+        update: impl FnOnce(&mut AgentLaunch),
+    ) -> bool {
+        let mut config = self.agent_launch(agent).into_owned();
+        update(&mut config);
+        let previous = self.local.preferences.agent_launch.insert(agent, config);
+        if self.save() {
+            return true;
+        }
+        if let Some(previous) = previous {
+            self.local.preferences.agent_launch.insert(agent, previous);
+        } else {
+            self.local.preferences.agent_launch.remove(&agent);
+        }
+        false
+    }
+    fn launch(&mut self, agent: Agent, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(tab) = self.active_tab() {
+            // Build the context, running-agent check and final input target from one core snapshot.
+            let state = tab.connection.state();
+            let current = LaunchContext::new(self.workspace.active, Some(tab.id), Some(&state));
+            let target = state.input_target();
+            let allowed = state.accepts_input()
+                && self.dialog.is_none()
+                && self.snackbar.is_none()
+                && state.pane.as_deref().is_some_and(|p| {
+                    state
+                        .agents
+                        .agent_in_pane(p, dgl_core::agent::now_ms())
+                        .is_none()
+                });
+            let powershell = cfg!(windows) && tab.host.id == local_host::ID;
+            let terminal = tab.terminal.clone();
+            let config = self.local.preferences.agent_launch.get(&agent);
+            if let Some(bytes) = self.launcher.take_command(&current, allowed, || {
+                config
+                    .map(Cow::Borrowed)
+                    .unwrap_or_else(|| Cow::Owned(AgentLaunch::defaults(agent)))
+                    .command(agent, powershell)
+            }) && let Some(target) = target
+            {
+                terminal.update(cx, |t, _| t.send_to(target, bytes));
+            }
         }
         self.dismiss_launcher(window, cx);
     }
-    pub fn launcher_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        self.input_button("cli-launcher", "…", cx, |s, window, cx| {
-            if s.launcher.opened.is_some() {
-                s.dismiss_launcher(window, cx);
-            } else {
-                s.menu = None;
-                s.launcher.opened = Some(s.launch_context());
-                // Keep menu keys out of the remote terminal.
-                window.focus(&s.focus);
+    pub(super) fn activate_launcher_control(
+        &mut self,
+        control: Control,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.dialog.is_some() {
+            return;
+        }
+        match control {
+            Control::Menu => {
+                if self.launcher.opened.is_some() {
+                    self.dismiss_launcher(window, cx);
+                } else {
+                    self.menu = None;
+                    self.launcher.opened = Some(self.launch_context());
+                    window.focus(&self.focus);
+                }
             }
-        })
-        .w(px(44.))
-        .h(px(32.))
-        .rounded_md()
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(px(20.))
-        .native_tooltip(t("launcher.cli_launch_menu"))
+            _ if self.launcher.opened.as_ref() != Some(&self.launch_context()) => return,
+            Control::Run(agent) => self.launch(agent, window, cx),
+            Control::Bypass(agent) => {
+                self.update_agent_launch(agent, |config| {
+                    config.bypass_checked = !config.bypass_checked
+                });
+            }
+            Control::Option(agent, index) => {
+                self.update_agent_launch(agent, |config| {
+                    if let Some(option) = config.options.get_mut(index) {
+                        option.checked = !option.checked;
+                    }
+                });
+            }
+            Control::Settings => {
+                self.dismiss_launcher(window, cx);
+                self.menu = None;
+                self.settings = settings::SettingsState::default();
+                self.dialog = Some(Dialog::Shortcuts);
+            }
+        }
+        cx.notify();
     }
-    pub fn render_launcher(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+    pub fn launcher_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let label = t("launcher.cli_launch_menu");
+        let button = self
+            .input_button("cli-launcher", "…", cx, |s, window, cx| {
+                s.activate_launcher_control(Control::Menu, window, cx);
+            })
+            .w(px(44.))
+            .h(px(32.))
+            .rounded_md()
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_size(px(20.))
+            .native_tooltip(label);
+        self.launch_access
+            .control(button, Control::Menu, label, "", None, true)
+    }
+    pub fn render_launcher(
+        &self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Stateful<Div>> {
         self.launcher.opened.as_ref()?;
         let p = self.palette;
         let blocker = self.launch_blocker();
         let enabled = self.launch_context().accepts_input() && blocker.is_none();
+        let max_width = (window.viewport_size().width - px(10.)).max(px(1.));
         let mut menu = div()
             .id("cli-launcher-menu")
             .debug_selector(|| "cli-launcher-menu".into())
             .absolute()
             .right(px(4.))
             .bottom(px(66.))
+            .max_w(max_width)
             .flex()
             .flex_col()
             .items_start()
@@ -238,79 +302,137 @@ impl Desktop {
             notice.style().align_self = Some(gpui::AlignSelf::Stretch);
             menu = menu.child(notice);
         }
-        for (service, icon, normal, bypass) in [
-            (
-                "Claude Code",
-                "launcher/claude.svg",
-                LaunchCommand::Claude,
-                LaunchCommand::ClaudeBypass,
-            ),
-            (
-                "Codex",
-                "launcher/openai.svg",
-                LaunchCommand::Codex,
-                LaunchCommand::CodexBypass,
-            ),
-            (
-                "AGY",
-                "launcher/agy.svg",
-                LaunchCommand::Agy,
-                LaunchCommand::AgyBypass,
-            ),
-            (
-                "Grok Build",
-                "launcher/grok.svg",
-                LaunchCommand::Grok,
-                LaunchCommand::GrokBypass,
-            ),
-        ] {
-            let mut row = div().flex().h(px(44.));
-            for (label, icon, command, suffix) in [
-                (Some(service), icon, normal, "normal"),
-                (None, "launcher/bolt.svg", bypass, "bypass"),
-            ] {
+        for agent in LAUNCH_AGENTS {
+            let service = agent.launch_label();
+            let mut row = div().flex().h(px(44.)).max_w(max_width - px(2.));
+            let experimental = matches!(agent, Agent::Agy | Agent::Grok);
+            let help = tr!(
+                "launcher.launch",
+                service,
+                if experimental {
+                    t("launcher.experimental_suffix")
+                } else {
+                    ""
+                }
+            );
+            let id = format!("launch-{service}-normal");
+            let fg = if enabled { p.fg } else { p.muted };
+            let run = div()
+                .id(SharedString::from(id.clone()))
+                .debug_selector(move || id)
+                .flex()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .px_3()
+                .h_full()
+                .flex_shrink_0()
+                .min_w(px(44.))
+                .text_color(rgb(fg))
+                .when(enabled, |d| {
+                    d.cursor_pointer().hover(move |s| s.bg(rgb(p.selection)))
+                })
+                .child(
+                    div()
+                        .size(px(18.))
+                        .flex_shrink_0()
+                        .child(svg().path(agent.icon()).size_full().text_color(rgb(fg))),
+                )
+                .child(service)
+                .native_tooltip(help.clone())
+                .on_click(cx.listener(move |s, _, w, cx| {
+                    if enabled {
+                        s.activate_launcher_control(Control::Run(agent), w, cx);
+                    }
+                    cx.stop_propagation();
+                }));
+            row = row.child(self.launch_access.control(
+                run,
+                Control::Run(agent),
+                &help,
+                "",
+                None,
+                enabled,
+            ));
+
+            let checkbox = |control, suffix: &str, label: &str, description: &str, checked| {
                 let id = format!("launch-{service}-{suffix}");
-                let experimental = matches!(normal, LaunchCommand::Agy | LaunchCommand::Grok);
+                let label_id = format!("{id}-label");
+                let check_id = format!("{id}-check");
+                let icon = if checked {
+                    UiIcon::CheckboxChecked
+                } else {
+                    UiIcon::Checkbox
+                };
+                let help = if description.is_empty() {
+                    label.to_owned()
+                } else {
+                    format!("{label}\n{description}")
+                };
                 let item = div()
-                    .id(ElementId::Name(id.clone().into()))
-                    .debug_selector(move || id.clone())
+                    .id(SharedString::from(id.clone()))
+                    .debug_selector(move || id)
                     .flex()
+                    .flex_col()
                     .items_center()
                     .justify_center()
-                    .gap_2()
-                    .px_3()
-                    .h_full()
                     .flex_shrink_0()
-                    .min_w(px(44.))
-                    .text_color(rgb(if enabled { p.fg } else { p.muted }))
-                    .when(enabled, |d| {
-                        d.cursor_pointer().hover(move |s| s.bg(rgb(p.selection)))
-                    })
-                    .child(div().size(px(18.)).flex_shrink_0().child(
-                        svg().path(icon).size_full().text_color(rgb(if enabled {
-                            p.fg
-                        } else {
-                            p.muted
-                        })),
-                    ))
-                    .children(label)
-                    .native_tooltip(tr!(
-                        "launcher.launch_variant",
-                        service,
-                        suffix,
-                        if experimental {
-                            t("launcher.experimental_suffix")
-                        } else {
-                            ""
-                        }
-                    ))
+                    .h_full()
+                    .min_w(px(48.))
+                    .max_w(px(88.))
+                    .px_1()
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(rgb(p.selection)))
+                    .child(
+                        div()
+                            .debug_selector(move || label_id)
+                            .max_w_full()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .overflow_hidden()
+                            .text_size(px(11.))
+                            .child(label.to_owned()),
+                    )
+                    .child(
+                        div().debug_selector(move || check_id).size(px(18.)).child(
+                            icon.render(if checked { p.accent } else { p.fg })
+                                .size_full(),
+                        ),
+                    )
+                    .native_tooltip(help)
                     .on_click(cx.listener(move |s, _, w, cx| {
-                        if enabled {
-                            s.launch(command, w, cx);
-                        }
+                        s.activate_launcher_control(control, w, cx);
                         cx.stop_propagation();
                     }));
-                row = row.child(item);
+                self.launch_access
+                    .control(item, control, label, description, Some(checked), true)
+            };
+            let config = self.agent_launch(agent);
+            row = row.child(checkbox(
+                Control::Bypass(agent),
+                "bypass",
+                "Bypass",
+                &tr!("launcher.bypass_description", service),
+                config.bypass_checked,
+            ));
+            if !config.options.is_empty() {
+                let mut strip = div()
+                    .id(SharedString::from(format!("launch-options-{service}")))
+                    .debug_selector(move || format!("launch-options-{service}"))
+                    .flex()
+                    .min_w_0()
+                    .overflow_x_scroll()
+                    .h_full();
+                for (index, option) in config.options.iter().enumerate() {
+                    strip = strip.child(checkbox(
+                        Control::Option(agent, index),
+                        &format!("option-{index}"),
+                        &option.name,
+                        &option.description,
+                        option.checked,
+                    ));
+                }
+                row = row.child(strip);
             }
             menu = menu.child(row);
         }
@@ -334,15 +456,18 @@ impl Desktop {
             )
             .child(t("shortcut.settings"))
             .on_click(cx.listener(|s, _, window, cx| {
-                s.dismiss_launcher(window, cx);
-                s.menu = None;
-                s.settings = settings::SettingsState::default();
-                s.dialog = Some(Dialog::Shortcuts);
-                cx.notify();
+                s.activate_launcher_control(Control::Settings, window, cx);
                 cx.stop_propagation();
             }));
         settings_entry.style().align_self = Some(gpui::AlignSelf::Stretch);
-        menu = menu.child(settings_entry);
+        menu = menu.child(self.launch_access.control(
+            settings_entry,
+            Control::Settings,
+            t("shortcut.settings"),
+            "",
+            None,
+            true,
+        ));
         Some(
             div()
                 .id("cli-launcher-overlay")
@@ -368,7 +493,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{LaunchCommand, LaunchContext, LaunchMenu, LaunchTarget, Phase};
+    use super::{Agent, AgentLaunch, LaunchContext, LaunchMenu, LaunchTarget, Phase};
     fn target() -> LaunchContext {
         LaunchContext {
             group: 1,
@@ -385,22 +510,23 @@ mod tests {
     }
     #[test]
     fn commands_are_single_use_and_require_the_same_live_target() {
-        for (command, wire) in [
-            (LaunchCommand::Claude, "claude\r"),
+        for (agent, bypass, wire) in [
+            (Agent::Claude, false, "claude\r"),
             (
-                LaunchCommand::ClaudeBypass,
+                Agent::Claude,
+                true,
                 "claude --dangerously-skip-permissions\r",
             ),
-            (LaunchCommand::Codex, "codex\r"),
-            (LaunchCommand::CodexBypass, "codex --yolo\r"),
-            (LaunchCommand::Agy, "agy\r"),
-            (
-                LaunchCommand::AgyBypass,
-                "agy --dangerously-skip-permissions\r",
-            ),
-            (LaunchCommand::Grok, "grok\r"),
-            (LaunchCommand::GrokBypass, "grok --always-approve\r"),
+            (Agent::Codex, false, "codex\r"),
+            (Agent::Codex, true, "codex --yolo\r"),
+            (Agent::Agy, false, "agy\r"),
+            (Agent::Agy, true, "agy --dangerously-skip-permissions\r"),
+            (Agent::Grok, false, "grok\r"),
+            (Agent::Grok, true, "grok --always-approve\r"),
         ] {
+            let mut config = AgentLaunch::defaults(agent);
+            config.bypass_checked = bypass;
+            let command = || config.command(agent, false);
             let context = target();
             let mut menu = LaunchMenu {
                 opened: Some(context.clone()),

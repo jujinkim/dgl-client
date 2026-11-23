@@ -1,0 +1,37 @@
+{
+  "bypass": "--custom  \"two words\"",
+  "options": [
+    {
+      "name": "Model",
+      "kind": "Argument",
+      "value": "--model  'my model' ",
+      "checked": true
+    },
+    {
+      "name": "Mode",
+      "kind": "Environment",
+      "value": "MODE=1",
+      "checked": true
+    },
+    {
+      "name": "Skipped",
+      "kind": "Argument",
+      "value": "--skip-me",
+      "checked": false
+    },
+    {
+      "name": "Label",
+      "kind": "Environment",
+      "value": "LABEL=a b'c=$HOME",
+      "checked": true
+    },
+    {
+      "name": "Resume",
+      "kind": "Argument",
+      "value": " --resume",
+      "checked": true
+    }
+  ],
+  "normal": "MODE=1 LABEL='a b'\\''c=$HOME' claude --model  'my model'   --resume\r",
+  "withBypass": "MODE=1 LABEL='a b'\\''c=$HOME' claude --custom  \"two words\" --model  'my model'   --resume\r"
+}

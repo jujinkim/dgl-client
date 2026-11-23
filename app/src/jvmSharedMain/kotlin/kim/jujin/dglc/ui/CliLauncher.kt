@@ -36,6 +36,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
@@ -46,14 +47,9 @@ import androidx.compose.ui.window.PopupPositionProvider
 import kim.jujin.dglc.ClientConnection
 import kim.jujin.dglc.core.ConnectionStatus
 import kim.jujin.dglc.core.Phase
-import kim.jujin.dglc.core.TerminalShortcut
-
-internal enum class CliCommand(val wire: String) {
-    Claude("claude\r"), ClaudeBypass("claude --dangerously-skip-permissions\r"),
-    Codex("codex\r"), CodexBypass("codex --yolo\r"),
-    Agy("agy\r"), AgyBypass("agy --dangerously-skip-permissions\r"),
-    Grok("grok\r"), GrokBypass("grok --always-approve\r")
-}
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.text.style.TextOverflow
+import kim.jujin.dglc.core.*
 
 /** A viewport snapshot keeps the same input destination and must not dismiss its menu. */
 private val ConnectionStatus.cliLaunchPhase: Phase
@@ -71,14 +67,14 @@ internal class CliLaunchRequest(private val client: ClientConnection) {
     private val target = client.captureInputTarget()
     private var consumed = false
 
-    fun send(command: CliCommand, current: ClientConnection, allowed: Boolean): Boolean {
+    fun send(agent: LaunchAgent, current: ClientConnection, allowed: Boolean, config: AgentLaunch = agent.defaults()): Boolean {
         if (consumed) return false
         consumed = true
         if (!allowed || current !== client || !client.status.value.acceptsInput ||
             client.status.value.cliLaunchPhase != phase || client.session.value != session || client.pane.value != pane ||
             client.captureInputTarget() != target || client.runningCli() != null) return false
-        client.input(command.wire.encodeToByteArray())
-        return true
+        val bytes = config.command(agent)?.encodeToByteArray() ?: return false
+        return target != null && client.inputAt(target, bytes)
     }
 }
 
@@ -102,12 +98,13 @@ private object AboveLauncher : PopupPositionProvider {
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun TerminalShortcutBar(client: ClientConnection, shortcuts: List<TerminalShortcut>, allowed: () -> Boolean, terminalFocus: TerminalFocus,
+@Composable internal fun TerminalShortcutBar(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean, terminalFocus: TerminalFocus,
     mobile: Boolean = false, openComposer: () -> Unit = {}, workspace: Boolean = false, mobileShortcutBarTwoRows: Boolean = true,
     keyboardAlwaysVisible: Boolean = false,
-    inputGate: kim.jujin.dglc.AppModel? = null, openShortcutSettings: () -> Unit) {
-    val shortcutInput = inputGate?.shortcutInput(client)
-    val modifiers = shortcutInput?.modifiers?.collectAsState()?.value
+    inputGate: kim.jujin.dglc.AppModel, openShortcutSettings: () -> Unit) {
+    val shortcuts = preferences.terminalShortcuts
+    val shortcutInput = inputGate.shortcutInput(client)
+    val modifiers = shortcutInput.modifiers.collectAsState().value
     val status by client.status.collectAsState()
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
@@ -115,15 +112,15 @@ private object AboveLauncher : PopupPositionProvider {
     // Not a request key: a CLI found while the menu is open disables rows instead of dismissing it.
     val runningCli = pane?.let { agentSnapshot.agentInPane(it, System.currentTimeMillis()) }
     val menuOwner = remember { Any() }
-    val blocks = inputGate?.inputBlocks?.collectAsState()?.value
-    val menuAllowed = { allowed() && (blocks == null || inputGate?.inputBlocked(menuOwner) != true) }
-    val available = menuAllowed()
+    val blocks = inputGate.inputBlocks.collectAsState().value
+    val menuAllowed = { allowed() && !inputGate.inputBlocked(menuOwner) }
+    val available = allowed() && blocks.none { it !== menuOwner }
     val overlay = LocalCliMenuOverlay.current
-    SideEffect { shortcutInput?.sync() }
+    SideEffect { shortcutInput.sync() }
     // A target/phase/dialog change discards the request before painting or handling another click.
     var request by remember(client, status.cliLaunchPhase, session, pane, available) { mutableStateOf<CliLaunchRequest?>(null) }
-    if (inputGate != null) WorkspaceInputBlock(inputGate, menuOwner, request != null)
-    val dismiss: () -> Unit = { request = null; inputGate?.blockInput(menuOwner, false) }
+    WorkspaceInputBlock(inputGate, menuOwner, request != null)
+    val dismiss: () -> Unit = { request = null; inputGate.blockInput(menuOwner, false) }
     val compact = mobile && !workspace
     val twoRows = compact && mobileShortcutBarTwoRows
     val buttonHeight = if (compact) 30.dp else 48.dp
@@ -160,14 +157,14 @@ private object AboveLauncher : PopupPositionProvider {
             val shortcutButton: @Composable (TerminalShortcut, Modifier) -> Unit = { shortcut, modifier ->
                 TerminalToolButton({
                     if (menuAllowed() && client.status.value.acceptsInput) {
-                        if (shortcut.key == null) shortcutInput?.toggle(shortcut)
+                        if (shortcut.key == null) shortcutInput.toggle(shortcut)
                         else terminalFocus.shortcut(shortcut)
                         terminalFocus.request()
                     }
                 }, enabled = available && status.acceptsInput,
-                    containerColor = if (modifiers?.active(shortcut) == true) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    containerColor = if (modifiers.active(shortcut)) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                     modifier = modifier.height(buttonHeight).widthIn(min = if (mobile) 46.dp else 58.dp).semantics {
-                        if (shortcut.key == null) stateDescription = t(if (modifiers?.active(shortcut) == true) "common.on" else "common.off")
+                        if (shortcut.key == null) stateDescription = t(if (modifiers.active(shortcut)) "common.on" else "common.off")
                     },
                     contentPadding = PaddingValues(horizontal = if (mobile) 8.dp else 10.dp)) {
                     Text(shortcut.label, maxLines = 1, fontSize = if (mobile) 11.sp else 14.sp)
@@ -205,11 +202,11 @@ private object AboveLauncher : PopupPositionProvider {
                             }.focusRequester(menuFocus).focusable() else Modifier
                             Column(Modifier.width(IntrinsicSize.Max).focusProperties { canFocus = overlay == null }
                                 .verticalScroll(rememberScrollState()).then(menuKeys)) {
-                                val launch: (CliCommand) -> Unit = { command ->
+                                val launch: (LaunchAgent) -> Unit = { agent ->
                                     if (request === opened) {
                                         request = null
-                                        inputGate?.blockInput(menuOwner, false)
-                                        opened.send(command, client, menuAllowed())
+                                        inputGate.blockInput(menuOwner, false)
+                                        opened.send(agent, client, menuAllowed(), inputGate.local.value.preferences.launchFor(agent))
                                     }
                                 }
                                 if (runningCli != null) {
@@ -222,14 +219,19 @@ private object AboveLauncher : PopupPositionProvider {
                                     HorizontalDivider()
                                 }
                                 val launchable = available && status.acceptsInput && runningCli == null
-                                LauncherRow("Claude Code", LauncherIcons.claude, launchable,
-                                    { launch(CliCommand.Claude) }, { launch(CliCommand.ClaudeBypass) })
-                                LauncherRow("Codex", LauncherIcons.openai, launchable,
-                                    { launch(CliCommand.Codex) }, { launch(CliCommand.CodexBypass) })
-                                LauncherRow("AGY", LauncherIcons.agy, launchable,
-                                    { launch(CliCommand.Agy) }, { launch(CliCommand.AgyBypass) }, experimental = true)
-                                LauncherRow("Grok Build", LauncherIcons.grok, launchable,
-                                    { launch(CliCommand.Grok) }, { launch(CliCommand.GrokBypass) }, experimental = true)
+                                for (agent in LaunchAgent.entries) {
+                                    val icon = when (agent) {
+                                        LaunchAgent.Claude -> LauncherIcons.claude
+                                        LaunchAgent.Codex -> LauncherIcons.openai
+                                        LaunchAgent.Agy -> LauncherIcons.agy
+                                        LaunchAgent.Grok -> LauncherIcons.grok
+                                    }
+                                    LauncherRow(agent, icon, preferences.launchFor(agent), launchable, { launch(agent) }) { edit ->
+                                        if (request === opened) inputGate.modify { state ->
+                                            state.copy(preferences = state.preferences.updateLaunch(agent, edit))
+                                        }
+                                    }
+                                }
                                 HorizontalDivider()
                                 Row(Modifier.fillMaxWidth().height(48.dp).focusProperties { canFocus = overlay == null }.clickable(role = Role.Button) {
                                     if (request === opened) { dismiss(); openShortcutSettings() }
@@ -275,21 +277,54 @@ private object AboveLauncher : PopupPositionProvider {
     }
 }
 
-@Composable private fun LauncherRow(service: String, icon: ImageVector, enabled: Boolean, normal: () -> Unit, bypass: () -> Unit, experimental: Boolean = false) {
+@Composable private fun LauncherRow(agent: LaunchAgent, icon: ImageVector, config: AgentLaunch, enabled: Boolean,
+    launch: () -> Unit, update: ((AgentLaunch) -> AgentLaunch) -> Unit) {
+    val service = agent.label
+    val experimental = agent == LaunchAgent.Agy || agent == LaunchAgent.Grok
     val support = if (experimental) t("launcher.experimental_suffix") else ""
     Row(Modifier.height(48.dp)) {
-        LauncherItem(service, tr("launcher.launch", service, support), icon, enabled, Modifier.widthIn(min = 48.dp), normal)
-        LauncherItem(null, tr("launcher.launch_bypass", service, support), LauncherIcons.bolt, enabled, Modifier.width(48.dp), bypass)
+        LauncherItem(service, tr("launcher.launch", service, support), icon, enabled, Modifier.zIndex(1f).widthIn(min = 48.dp), launch)
+        Box(Modifier.zIndex(1f)) {
+            LauncherCheckbox("Bypass", "Bypass\n" + tr("launcher.bypass_description", service), config.bypassChecked) { checked ->
+                update { it.copy(bypassChecked = checked) }
+            }
+        }
+        if (config.options.isNotEmpty()) Row(Modifier.clipToBounds().horizontalScroll(rememberScrollState())) {
+            config.options.forEachIndexed { index, option ->
+                LauncherCheckbox(option.name, option.help, option.checked) { checked ->
+                    update { current ->
+                        current.copy(options = current.options.mapIndexed { i, old -> if (i == index) old.copy(checked = checked) else old })
+                    }
+                }
+            }
+        }
     }
 }
 
-@Composable private fun LauncherItem(label: String?, description: String, icon: ImageVector, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun LauncherCheckbox(label: String, help: String, checked: Boolean, toggle: (Boolean) -> Unit) {
+    val overlay = LocalCliMenuOverlay.current
+    TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(help) } }, state = rememberTooltipState(), focusable = false) {
+        Column(Modifier.fillMaxHeight().widthIn(min = 48.dp, max = 88.dp)
+            .focusProperties { canFocus = overlay == null }
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = toggle)
+            .clearAndSetSemantics { contentDescription = help }
+            .padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable private fun LauncherItem(label: String, description: String, icon: ImageVector, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
     val overlay = LocalCliMenuOverlay.current
     val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
     Row(modifier.fillMaxHeight().focusProperties { canFocus = overlay == null }.clickable(enabled = enabled, role = Role.Button, onClick = action)
         .semantics(mergeDescendants = true) { contentDescription = description }.padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = color)
-        if (label != null) Text(label, color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        Text(label, color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
