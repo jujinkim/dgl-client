@@ -4,7 +4,9 @@ import json
 import os
 from pathlib import Path
 import shlex
+import signal
 import sys
+import time
 state_path = Path(sys.argv[1])
 args = sys.argv[2:]
 state = json.loads(state_path.read_text())
@@ -21,6 +23,15 @@ elif args == ['list-commands']:
     print('capture-pane refresh-client send-keys list-sessions')
 elif args[0] == 'list-sessions':
     prefix = 's|' if args[args.index('-F') + 1].startswith('s|') else ''
+    hold = state_path.with_suffix('.hold')
+    if prefix and hold.exists():
+        # This listing has already read its snapshot. Emit independent pane output
+        # while the caller is waiting, and release only when the test allows it.
+        blocked = state_path.with_suffix('.blocked')
+        hold.rename(blocked)
+        os.kill(int(state_path.with_suffix('.pid').read_text()), signal.SIGUSR1)
+        while blocked.exists():
+            time.sleep(0.01)
     for session in state:
         print(f"{prefix}{session['id']}|{session['name']}|0")
 elif args[0] == 'list-windows':
@@ -43,6 +54,8 @@ elif args[0] == 'rename-window':
 elif args[0] == '-CC':
     selected = next(s for s in state if s['id'] == target())
     assert os.environ.get('PSMUX_SESSION_NAME') == selected['name']
+    signal.signal(signal.SIGUSR1, lambda *_: print('%output %0 LIVE_DURING_LIST', flush=True))
+    state_path.with_suffix('.pid').write_text(str(os.getpid()))
     sys.stdout.write('\x1bP1000p%begin 1 1 0\n%end 1 1 0\n')
     sys.stdout.flush()
     number = 1

@@ -23,17 +23,12 @@ async fn until(c: &Connection, f: impl Fn() -> bool) {
     .await
     .unwrap_or_else(|_| panic!("{:?}", c.state()));
 }
-#[tokio::test]
-async fn psmux_process_fixture_switches_servers_restores_capture_and_preserves_flow_output() {
-    use std::os::unix::fs::PermissionsExt;
+fn start_fixture() -> (tempfile::TempDir, std::path::PathBuf, Arc<Connection>) {
     let dir = tempfile::tempdir().unwrap();
-    let executable = dir.path().join("psmux-fixture");
-    std::fs::write(
-        &executable,
-        include_str!("../../../fixtures/psmux/control_client.py"),
-    )
-    .unwrap();
-    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/psmux/control_client.py"
+    );
     let state = dir.path().join("state.json");
     std::fs::write(
         &state,
@@ -41,12 +36,94 @@ async fn psmux_process_fixture_switches_servers_restores_capture_and_preserves_f
     )
     .unwrap();
     let c = Connection::start_local(LocalConfig {
-        executable,
+        executable: "python3".into(),
         multiplexer: Multiplexer::Psmux,
-        arguments: vec![state.to_str().unwrap().into()],
+        arguments: vec![fixture.into(), state.to_str().unwrap().into()],
         last_session: None,
         last_pane: None,
     });
+    (dir, state, c)
+}
+
+#[tokio::test]
+async fn periodic_inventory_keeps_live_output_and_input_flowing() {
+    let (_dir, state, c) = start_fixture();
+    let output = c.output();
+    let subscription = output.subscribe().unwrap();
+    until(&c, || c.state().phase == Phase::Selecting).await;
+    c.action(Action::SelectSession { id: "$1".into() }).unwrap();
+    until(&c, || c.state().phase == Phase::Ready).await;
+    let target = c.target().unwrap();
+    let hold = state.with_extension("hold");
+    let blocked = state.with_extension("blocked");
+
+    let renamed = std::fs::read_to_string(&state)
+        .unwrap()
+        .replace("second", "external");
+    std::fs::write(&state, renamed).unwrap();
+    std::fs::write(&hold, "").unwrap();
+    until(&c, || blocked.exists()).await;
+    // No keypress or command prompts this output. It has to arrive while the
+    // session listing is still held, including when no metadata has come back.
+    until(&c, || {
+        while let Ok(Some(e)) = output.poll(subscription) {
+            output.ack(subscription, e.sequence).unwrap();
+            if e.kind == OutputKind::Live && e.bytes == b"LIVE_DURING_LIST" {
+                assert_eq!(e.target.pane_id, target.pane_id);
+                return true;
+            }
+        }
+        false
+    })
+    .await;
+    let request = c.input(target.clone(), b"k".to_vec()).unwrap();
+    until(&c, || {
+        c.completions()
+            .into_iter()
+            .any(|r| r.request_id == request && r.error.is_none())
+    })
+    .await;
+    std::fs::remove_file(&blocked).unwrap();
+    until(&c, || {
+        c.state()
+            .remote
+            .sessions
+            .iter()
+            .any(|s| s.name == "external")
+    })
+    .await;
+    assert_eq!(c.target().unwrap(), target);
+
+    // An explicit rename during the next slow poll supersedes its older snapshot.
+    std::fs::write(&hold, "").unwrap();
+    until(&c, || blocked.exists()).await;
+    let rename = c
+        .action(Action::Manage {
+            operation: Operation::RenameSession {
+                target: "$2".into(),
+                name: "newest".into(),
+            },
+        })
+        .unwrap();
+    until(&c, || {
+        c.completions()
+            .into_iter()
+            .any(|r| r.request_id == rename && r.error.is_none())
+    })
+    .await;
+    assert!(c.state().remote.sessions.iter().any(|s| s.name == "newest"));
+    std::fs::remove_file(&blocked).unwrap();
+    // Hold the following poll too, so it cannot repair a stale application.
+    std::fs::write(&hold, "").unwrap();
+    until(&c, || blocked.exists()).await;
+    assert!(c.state().remote.sessions.iter().any(|s| s.name == "newest"));
+    c.close();
+    c.join().await;
+}
+
+#[tokio::test]
+async fn psmux_process_fixture_switches_servers_restores_capture_and_preserves_flow_output() {
+    let (_dir, state, c) = start_fixture();
     let output = c.output();
     let subscription = output.subscribe().unwrap();
     let recorded: Arc<Mutex<Vec<OutputEvent>>> = Arc::default();

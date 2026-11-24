@@ -20,6 +20,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc};
+use tokio::task::JoinSet;
 static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
 pub const MAX_RETRIES: u8 = 3;
 pub const CHECK_TIMEOUT: Duration = Duration::from_secs(3);
@@ -1006,11 +1007,24 @@ impl SnapshotWriter {
     }
 }
 
-/// Replaces the format subscription on tmux before 3.7, which crashes on it (see
-/// `command::safe_subscriptions`): the same format is read once a second instead.
+/// Older tmux reads a format over the control stream. psmux lists sessions
+/// through separate CLI processes that can be polled alongside the stream.
 struct MetadataPoll {
     due: tokio::time::Instant,
     last: Vec<Vec<u8>>,
+    /// At most one read-only listing. Dropping the set cancels its worker on detach.
+    inventory: JoinSet<Result<RemoteState>>,
+}
+impl MetadataPoll {
+    async fn next(&mut self) -> Incoming {
+        if let Some(result) = self.inventory.join_next().await {
+            self.due = tokio::time::Instant::now() + METADATA_POLL;
+            Incoming::Inventory(result.unwrap_or(Err(Error::Protocol)))
+        } else {
+            tokio::time::sleep_until(self.due).await;
+            Incoming::Metadata
+        }
+    }
 }
 struct Control {
     stream: Stream,
@@ -1270,6 +1284,8 @@ impl Control {
     /// Runs `ops`, then lists every session, in one round trip. The listing is applied
     /// even if an operation failed; the first failure is returned after it.
     async fn refresh_after(&mut self, ops: &[Operation]) -> Result<Vec<Vec<Vec<u8>>>> {
+        // A foreground listing supersedes any older periodic inventory.
+        self.cancel_inventory();
         // Clear before reading: notifications received during the queries still
         // require another pass, otherwise a concurrent title change can be lost.
         self.dirty = false;
@@ -1281,6 +1297,10 @@ impl Control {
         let lists = replies.split_off(ops.len());
         let [sessions, windows, panes] = <[_; 3]>::try_from(lists).unwrap();
         let remote = model::remote(&sessions?, &windows?, &panes?)?;
+        self.apply_listing(remote);
+        replies.into_iter().collect()
+    }
+    fn apply_listing(&mut self, remote: RemoteState) {
         let (client, was_fitting) = (self.client, self.fits);
         let mut now_fits = false;
         self.shared.update(|s| {
@@ -1328,7 +1348,6 @@ impl Control {
             now_fits = fits;
         });
         self.fits = now_fits;
-        replies.into_iter().collect()
     }
     async fn refresh_title(&mut self) -> Result<()> {
         self.titles.reconcile(self.shared.title_scope());
@@ -1351,9 +1370,13 @@ impl Control {
         Ok(())
     }
     async fn poll_metadata(&mut self) -> Result<()> {
-        if self.psmux.is_some() {
-            self.dirty = true;
-            self.metadata.as_mut().unwrap().due = tokio::time::Instant::now() + METADATA_POLL;
+        if let Some(adapter) = &self.psmux {
+            let transport = adapter.transport.clone();
+            self.metadata
+                .as_mut()
+                .unwrap()
+                .inventory
+                .spawn(async move { list(&transport).await });
             return Ok(());
         }
         let value = self.command(Operation::MetadataPoll).await;
@@ -1367,6 +1390,22 @@ impl Control {
             }
             Err(Error::InvalidArgument) => self.dirty = true,
             Err(error) => return Err(error),
+        }
+        Ok(())
+    }
+    fn cancel_inventory(&mut self) {
+        if let Some(poll) = &mut self.metadata
+            && !poll.inventory.is_empty()
+        {
+            poll.inventory = JoinSet::new();
+            poll.due = tokio::time::Instant::now() + METADATA_POLL;
+        }
+    }
+    async fn finish_inventory(&mut self, result: Result<RemoteState>) -> Result<()> {
+        let remote = result?;
+        if self.shared.state.lock().unwrap().remote != remote {
+            self.apply_listing(remote);
+            self.sync_screens(false, false).await?;
         }
         Ok(())
     }
@@ -1477,6 +1516,8 @@ impl Control {
         Ok(())
     }
     async fn snapshot_pane(&mut self, id: String, resizing: bool) -> Result<()> {
+        // The capture can observe a newer pane size than an in-flight listing.
+        self.cancel_inventory();
         // Every part of this capture belongs to the consumer present at its start.
         let subscription = self.shared.output.subscription();
         self.capturing = Some(id.clone());
@@ -1775,6 +1816,7 @@ async fn attach(
         c.metadata = Some(MetadataPoll {
             due: tokio::time::Instant::now() + METADATA_POLL,
             last: replies.swap_remove(1),
+            inventory: JoinSet::new(),
         });
     }
     let state = c.shared.state.lock().unwrap().clone();
@@ -2366,6 +2408,7 @@ enum Incoming {
     Refresh,
     Title,
     Metadata,
+    Inventory(Result<RemoteState>),
     Visibility,
     Paste(PasteScope, Result<(u32, Vec<u8>)>),
 }
@@ -2425,13 +2468,17 @@ async fn connected(
                 actor.paste.busy = false;
                 actor.shared.publish_paste(&scope, result);
             }
-            incoming @ (Incoming::Title | Incoming::Metadata | Incoming::Event(_)) => {
+            incoming @ (Incoming::Title
+            | Incoming::Metadata
+            | Incoming::Inventory(_)
+            | Incoming::Event(_)) => {
                 let Remote::Tmux(Some(c)) = &mut actor.remote else {
                     unreachable!("only an attached control client produces these")
                 };
                 let result = match incoming {
                     Incoming::Title => c.refresh_title().await,
                     Incoming::Metadata => c.poll_metadata().await,
+                    Incoming::Inventory(result) => c.finish_inventory(result).await,
                     Incoming::Event(event) => match event {
                         Ok(event) => c.unsolicited(event).await,
                         Err(error) => Err(error),
@@ -2531,11 +2578,16 @@ impl Actor<'_> {
                 let pasted = &mut *self.paste.results;
                 c.titles.reconcile(self.shared.title_scope());
                 let title_deadline = c.titles.deadline();
-                let metadata_due = c.metadata.as_ref().map(|m| m.due);
+                // Keep an unfinished listing across input and stream events. A pending
+                // title query runs after it, so the older listing cannot undo the title.
+                let mut metadata = c.metadata.take();
+                let listing = metadata
+                    .as_ref()
+                    .is_some_and(|poll| !poll.inventory.is_empty());
                 let pending_refresh = c.dirty || !c.paused.is_empty();
                 // A slow link may receive another change during every refresh.
                 // Keep pending user requests eligible instead of starving input.
-                tokio::select! {
+                let incoming = tokio::select! {
                     Some(check) = checks.recv() => Incoming::Checked(check),
                     r = rx.recv() => Incoming::Request(r),
                     e = c.next() => Incoming::Event(e),
@@ -2545,16 +2597,18 @@ impl Actor<'_> {
                             Some(at) => tokio::time::sleep_until(at).await,
                             None => std::future::pending().await,
                         }
-                    } => Incoming::Title,
-                    _ = async {
-                        match metadata_due {
-                            Some(at) => tokio::time::sleep_until(at).await,
+                    }, if !listing => Incoming::Title,
+                    event = async {
+                        match &mut metadata {
+                            Some(poll) => poll.next().await,
                             None => std::future::pending().await,
                         }
-                    } => Incoming::Metadata,
+                    } => event,
                     Some((scope, result)) = pasted.recv() => Incoming::Paste(scope, result),
                     _ = std::future::ready(()), if pending_refresh => Incoming::Refresh,
-                }
+                };
+                c.metadata = metadata;
+                incoming
             }
             Remote::Shell(sh) => tokio::select! {
                 Some(check) = checks.recv() => Incoming::Checked(check),
