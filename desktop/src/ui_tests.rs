@@ -761,7 +761,7 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
     state.phase = dgl_core::connection::Phase::Ready;
     state.session = Some("$1".into());
     state.pane = Some("%1".into());
-    let handle = state.handle;
+    let badge_id: &'static str = Box::leak(format!("agent-{}-@1", state.handle).into_boxed_str());
     let owner = desktop.clone();
     let (preview, ui) = cx.add_window_view(|_, _| HierarchyPreview {
         desktop: owner,
@@ -774,24 +774,68 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
     redraw(ui);
     let row = ui.debug_bounds("session-$1").unwrap();
     let menu = ui.debug_bounds("fixture/$1/menu").unwrap();
-    let badge = ui
-        .debug_bounds(Box::leak(format!("agent-{handle}-@1").into_boxed_str()))
-        .unwrap();
+    let badge = ui.debug_bounds(badge_id).unwrap();
     assert!(
         row.right() <= menu.left() && menu.right() <= badge.left() && badge.right() <= px(240.)
     );
     ui.simulate_click(menu.center(), Modifiers::default());
     redraw(ui);
-    for id in [
-        "new-window-$1",
-        "rename-session-$1",
-        "kill-session-$1",
-        "rename-@1",
-        "kill-@1",
-    ] {
-        assert!(ui.debug_bounds(id).is_some(), "missing merged action {id}");
+    for width in [240., 272., 360.] {
+        preview.update(ui, |p, cx| {
+            p.width = width;
+            cx.notify();
+        });
+        redraw(ui);
+        let mut bounds = |id| {
+            let bounds = ui
+                .debug_bounds(id)
+                .unwrap_or_else(|| panic!("missing action {id}"));
+            assert!(
+                bounds.left() >= px(0.) && bounds.right() <= px(width),
+                "{id}: {bounds:?}"
+            );
+            assert!(bounds.size.width > px(0.) && bounds.size.height > px(0.));
+            bounds
+        };
+        let delete_session = bounds("kill-session-$1");
+        let create = bounds("new-window-$1");
+        let rename = bounds("rename-session-$1");
+        let files = bounds(r#"open-files-fixture-Some("$1")"#);
+        let delete_window = bounds("kill-@1");
+        let rename_window = bounds("rename-@1");
+        let delete_pane = bounds("kill-%1");
+        let left_right = bounds("split-%1-true");
+        let top_bottom = bounds("split-%1-false");
+        let title = bounds("rename-pane-%1");
+        assert!(delete_session.bottom() <= create.top());
+        assert_eq!(create.top(), rename.top());
+        assert!(create.right() <= rename.left() && rename.bottom() <= files.top());
+        assert!(
+            files.bottom() <= delete_window.top() && delete_window.bottom() <= rename_window.top()
+        );
+        assert!(
+            rename_window.bottom() <= delete_pane.top() && delete_pane.bottom() <= left_right.top()
+        );
+        assert_eq!(left_right.top(), top_bottom.top());
+        assert!(left_right.right() <= top_bottom.left() && top_bottom.bottom() <= title.top());
     }
     assert!(ui.update(|w, _| focus.is_focused(w)));
+    let delete_pane = ui.debug_bounds("kill-%1").unwrap();
+    ui.simulate_click(delete_pane.center(), Modifiers::default());
+    desktop.update(ui, |s, _| {
+        let Some(Dialog::Delete {
+            title,
+            operation: super::DeleteOp::Remote(_, super::Operation::KillPane { target }),
+        }) = &s.dialog
+        else {
+            panic!("expected a pane deletion confirmation");
+        };
+        assert_eq!(target, "%1");
+        assert!(title.contains("작업"));
+        assert!(s.menu.is_none());
+        s.dialog = None;
+    });
+    let badge = ui.debug_bounds(badge_id).unwrap();
     ui.simulate_click(badge.center(), Modifiers::default());
     assert!(desktop.read_with(
         ui,

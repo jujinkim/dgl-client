@@ -1968,6 +1968,7 @@ impl Desktop {
         let toggle = expand.clone();
         let menu_id = format!("{expand}/menu");
         let menu = menu_id.clone();
+        let menu_open = browse && self.menu.as_ref() == Some(&menu_id);
         let c = connection.cloned();
         let open_host = host.clone();
         let listed = state.clone();
@@ -2065,7 +2066,12 @@ impl Desktop {
                         s.toggle_menu(menu.clone())
                     })
                     .w(px(28.))
-                    .px_0(),
+                    .px_0()
+                    .when(menu_open, |d| {
+                        d.rounded_sm()
+                            .bg(rgb(p.selection))
+                            .border_color(rgb(p.accent))
+                    }),
                 )
             });
         if let Some(pid) = &row.window
@@ -2077,30 +2083,8 @@ impl Desktop {
             line = line.child(self.current_outline(format!("session-current-{}", row.session)));
         }
         let mut body = div().flex().flex_col().child(line);
-        if browse
-            && self.menu.as_ref() == Some(&menu_id)
-            && let Some(connection) = connection
-        {
-            body = body.child(self.hierarchy_menu(row, depth, connection, cx));
-            if session_row && host.id != local_host::ID {
-                let pane = state
-                    .pane
-                    .clone()
-                    .filter(|_| state.session.as_ref() == Some(&row.session));
-                let name = state
-                    .remote
-                    .sessions
-                    .iter()
-                    .find(|s| s.id == row.session)
-                    .map(|s| s.name.clone());
-                body = body.child(self.file_open_button(
-                    host.clone(),
-                    Some(row.session.clone()),
-                    pane,
-                    name,
-                    cx,
-                ));
-            }
+        if menu_open && let Some(connection) = connection {
+            body = body.child(self.hierarchy_menu(row, depth, host, connection, state, cx));
         }
         if self.expanded.contains(&expand) {
             for child in &row.children {
@@ -2120,191 +2104,269 @@ impl Desktop {
         &self,
         row: &hierarchy::Row,
         depth: usize,
+        host: &HostProfile,
         connection: &Arc<Connection>,
+        state: &dgl_core::connection::State,
         cx: &mut Context<Self>,
     ) -> Div {
+        let p = self.palette;
         let mut menu = div()
-            .pl(px(depth as f32 * 20.))
+            .ml(px(depth as f32 * 20. + 4.))
+            .mr_1()
+            .my_1()
             .flex()
-            .flex_wrap()
-            .gap_1()
+            .flex_col()
+            .gap(px(1.))
+            .rounded_md()
+            .overflow_hidden()
+            .border_1()
+            .border_color(rgb(p.line))
+            .bg(rgb(p.line))
             .text_xs();
+        let actions = || div().grid().grid_cols(2).gap_1();
+        let name_button = |id: String,
+                           label: &'static str,
+                           title: &'static str,
+                           operation: PromptOp,
+                           cx: &mut Context<Self>| {
+            let c = connection.clone();
+            self.button(id, label, cx, move |s, _, cx| {
+                s.menu = None;
+                s.prompt_on(c.clone(), title, operation.clone(), cx);
+            })
+            .px_1()
+            .text_center()
+        };
+        let delete = |id: String,
+                      kind: &'static str,
+                      name: &str,
+                      operation: Operation,
+                      cx: &mut Context<Self>| {
+            let c = connection.clone();
+            let title = format!("{} · {name}", tr!("common.delete_named", kind));
+            let tooltip = title.clone();
+            self.button_base(id, cx, move |s, _, _| {
+                s.menu = None;
+                s.dialog = Some(Dialog::Delete {
+                    title: title.clone(),
+                    operation: DeleteOp::Remote(c.clone(), operation.clone()),
+                });
+            })
+            .rounded_sm()
+            .text_color(rgb(p.muted))
+            .native_tooltip(tooltip)
+            .child(t("workspace.delete_ellipsis"))
+        };
         if row.kind == hierarchy::Kind::Session {
-            let add = row.session.clone();
-            menu = menu.child(self.button(
-                format!("new-window-{add}"),
-                t("workspace.create_window_ellipsis"),
-                cx,
-                {
-                    let c = connection.clone();
-                    move |s, _, cx| {
-                        s.menu = None;
-                        s.prompt_on(
-                            c.clone(),
-                            t("workspace.create_window"),
-                            PromptOp::Window(add.clone()),
-                            cx,
-                        );
-                    }
-                },
-            ));
-            let target = row.session.clone();
-            menu = menu.child(self.button(
-                format!("rename-session-{target}"),
-                t("workspace.rename_session_ellipsis"),
-                cx,
-                {
-                    let c = connection.clone();
-                    move |s, _, cx| {
-                        s.menu = None;
-                        s.prompt_on(
-                            c.clone(),
-                            t("workspace.rename_session"),
-                            PromptOp::RenameSession(target.clone()),
-                            cx,
-                        );
-                    }
-                },
-            ));
-            menu = menu.child(self.hierarchy_delete(
-                format!("kill-session-{}", row.session),
-                t("workspace.delete_session"),
+            let id = &row.session;
+            let mut controls = actions()
+                .child(name_button(
+                    format!("new-window-{id}"),
+                    t("workspace.create_window_ellipsis"),
+                    t("workspace.create_window"),
+                    PromptOp::Window(id.clone()),
+                    cx,
+                ))
+                .child(name_button(
+                    format!("rename-session-{id}"),
+                    t("common.rename_ellipsis"),
+                    t("workspace.rename_session"),
+                    PromptOp::RenameSession(id.clone()),
+                    cx,
+                ));
+            if host.id != local_host::ID {
+                let pane = state
+                    .pane
+                    .clone()
+                    .filter(|_| state.session.as_ref() == Some(id));
+                let name = state
+                    .remote
+                    .sessions
+                    .iter()
+                    .find(|s| &s.id == id)
+                    .map(|s| s.name.clone());
+                controls = controls.child(
+                    self.file_open_button(host.clone(), Some(id.clone()), pane, name, cx)
+                        .col_span_full()
+                        .justify_center(),
+                );
+            }
+            menu = menu.child(self.hierarchy_menu_group(
+                "common.session",
                 row.label.title.clone(),
-                Operation::KillSession {
-                    target: row.session.clone(),
-                },
-                connection,
-                cx,
+                delete(
+                    format!("kill-session-{id}"),
+                    t("common.session"),
+                    &row.label.title,
+                    Operation::KillSession { target: id.clone() },
+                    cx,
+                ),
+                controls,
             ));
         }
-        if row.kind != hierarchy::Kind::Pane
-            && let Some(window) = &row.window
-        {
-            let target = window.clone();
-            menu = menu.child(self.button(
-                format!("rename-{target}"),
-                t("workspace.rename_window_ellipsis"),
-                cx,
-                {
-                    let c = connection.clone();
-                    move |s, _, cx| {
-                        s.menu = None;
-                        s.prompt_on(
-                            c.clone(),
-                            t("workspace.rename_window"),
-                            PromptOp::RenameWindow(target.clone()),
-                            cx,
-                        );
-                    }
-                },
-            ));
-            menu = menu.child(self.hierarchy_delete(
+        let Some(window) = &row.window else {
+            return menu;
+        };
+        if row.kind != hierarchy::Kind::Pane {
+            let name = state
+                .remote
+                .windows
+                .iter()
+                .find(|w| &w.id == window)
+                .map(|w| hierarchy::window_label(&state.remote, w).title)
+                .unwrap_or_else(|| t("hierarchy.unnamed_window").to_owned());
+            let controls = actions().child(
+                name_button(
+                    format!("rename-{window}"),
+                    t("common.rename_ellipsis"),
+                    t("workspace.rename_window"),
+                    PromptOp::RenameWindow(window.clone()),
+                    cx,
+                )
+                .col_span_full(),
+            );
+            let close = delete(
                 format!("kill-{window}"),
-                t("workspace.delete_window"),
-                t("common.window").into(),
+                t("common.window"),
+                &name,
                 Operation::KillWindow {
                     target: window.clone(),
                 },
-                connection,
                 cx,
-            ));
+            );
+            menu = menu.child(self.hierarchy_menu_group("common.window", name, close, controls));
         }
-        let active_pane = row.window.as_ref().and_then(|id| {
-            connection
-                .state()
-                .remote
-                .panes
-                .iter()
-                .find(|p| &p.window == id && p.active)
-                .map(|p| p.id.clone())
-        });
-        if let Some(pane) = &active_pane {
-            let generation = connection.state().generation.connection;
-            for (horizontal, label) in [
-                (true, t("workspace.split_pane_horizontally")),
-                (false, t("workspace.split_pane_vertically")),
+        if let Some(active) = state
+            .remote
+            .panes
+            .iter()
+            .find(|p| &p.window == window && p.active)
+        {
+            let mut controls = actions();
+            for (horizontal, icon, label, description) in [
+                (
+                    true,
+                    UiIcon::SplitHorizontal,
+                    t("workspace.split_left_right"),
+                    t("workspace.split_pane_horizontally"),
+                ),
+                (
+                    false,
+                    UiIcon::SplitVertical,
+                    t("workspace.split_top_bottom"),
+                    t("workspace.split_pane_vertically"),
+                ),
             ] {
                 let c = connection.clone();
-                let mut target = row.clone();
-                target.pane = Some(pane.clone());
-                menu = menu.child(self.button(
-                    format!("split-{pane}-{horizontal}"),
-                    label,
-                    cx,
-                    move |s, w, cx| {
-                        s.menu = None;
-                        if let Some(id) = s.select_session_tab(
-                            &c,
-                            generation,
-                            &target.session,
-                            target.window.clone(),
-                            target.pane.clone(),
-                            cx,
-                        ) {
-                            let operation = Operation::Split {
-                                target: target.pane.clone().unwrap(),
-                                horizontal,
-                            };
-                            let tab = s.tabs.iter_mut().find(|t| t.id == id).unwrap();
-                            if let Some(pending) = &mut tab.pending_target {
-                                pending.operation = Some(operation);
-                            } else if tab.connection.state().browses_sessions() {
-                                let connection = tab.connection.clone();
-                                s.submit(&connection, Action::Manage { operation });
+                let session = row.session.clone();
+                let window = window.clone();
+                let pane = active.id.clone();
+                let generation = state.generation.connection;
+                controls = controls.child(
+                    self.button(
+                        format!("split-{pane}-{horizontal}"),
+                        (icon, label),
+                        cx,
+                        move |s, w, cx| {
+                            s.menu = None;
+                            if let Some(id) = s.select_session_tab(
+                                &c,
+                                generation,
+                                &session,
+                                Some(window.clone()),
+                                Some(pane.clone()),
+                                cx,
+                            ) {
+                                let operation = Operation::Split {
+                                    target: pane.clone(),
+                                    horizontal,
+                                };
+                                let tab = s.tabs.iter_mut().find(|t| t.id == id).unwrap();
+                                if let Some(pending) = &mut tab.pending_target {
+                                    pending.operation = Some(operation);
+                                } else if tab.connection.state().browses_sessions() {
+                                    let connection = tab.connection.clone();
+                                    s.submit(&connection, Action::Manage { operation });
+                                }
+                                s.group_focus(s.workspace.active, w, cx);
                             }
-                            s.group_focus(s.workspace.active, w, cx);
-                        }
-                    },
-                ));
+                        },
+                    )
+                    .justify_center()
+                    .px_1()
+                    .native_tooltip(description),
+                );
             }
-            let target = pane.clone();
-            menu = menu.child(self.button(
-                format!("rename-pane-{target}"),
-                t("workspace.rename_pane_ellipsis"),
+            let id = &active.id;
+            controls = controls.child(
+                name_button(
+                    format!("rename-pane-{id}"),
+                    t("workspace.rename_title_ellipsis"),
+                    t("workspace.rename_pane"),
+                    PromptOp::RenamePane(id.clone()),
+                    cx,
+                )
+                .col_span_full(),
+            );
+            let name = hierarchy::pane_label(active).title;
+            let close = delete(
+                format!("kill-{id}"),
+                t("common.pane"),
+                &name,
+                Operation::KillPane { target: id.clone() },
                 cx,
-                {
-                    let c = connection.clone();
-                    move |s, _, cx| {
-                        s.menu = None;
-                        s.prompt_on(
-                            c.clone(),
-                            t("workspace.rename_pane"),
-                            PromptOp::RenamePane(target.clone()),
-                            cx,
-                        );
-                    }
-                },
-            ));
-            menu = menu.child(self.hierarchy_delete(
-                format!("kill-{pane}"),
-                t("workspace.delete_pane"),
-                t("common.pane").into(),
-                Operation::KillPane {
-                    target: pane.clone(),
-                },
-                connection,
-                cx,
+            );
+            menu = menu.child(self.hierarchy_menu_group(
+                "workspace.active_pane",
+                name,
+                close,
+                controls,
             ));
         }
         menu
     }
-    fn hierarchy_delete(
+
+    fn hierarchy_menu_group(
         &self,
-        id: String,
-        label: &'static str,
-        title: String,
-        operation: Operation,
-        connection: &Arc<Connection>,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let c = connection.clone();
-        self.button(id, label, cx, move |s, _, _| {
-            s.menu = None;
-            s.dialog = Some(Dialog::Delete {
-                title: tr!("common.delete_named", title),
-                operation: DeleteOp::Remote(c.clone(), operation.clone()),
-            });
-        })
+        heading_key: &'static str,
+        target: String,
+        delete: Stateful<Div>,
+        actions: Div,
+    ) -> Div {
+        let p = self.palette;
+        div()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .px_2()
+            .pb_2()
+            .pt_1()
+            .bg(rgb(p.panel))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(t(heading_key)),
+                    )
+                    .child(
+                        div()
+                            .id(heading_key)
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_color(rgb(p.muted))
+                            .native_tooltip(target.clone())
+                            .child(target),
+                    )
+                    .child(delete),
+            )
+            .child(actions)
     }
 }
 
