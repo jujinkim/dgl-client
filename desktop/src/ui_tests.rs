@@ -819,6 +819,26 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
         assert_eq!(left_right.top(), top_bottom.top());
         assert!(left_right.right() <= top_bottom.left() && top_bottom.bottom() <= title.top());
     }
+    for (id, label_id) in [
+        ("new-window-$1", "new-window-$1-label"),
+        ("rename-session-$1", "rename-session-$1-label"),
+        ("rename-@1", "rename-@1-label"),
+        ("rename-pane-%1", "rename-pane-%1-label"),
+    ] {
+        let button = ui.debug_bounds(id).unwrap();
+        let label = ui.debug_bounds(label_id).unwrap();
+        assert!(label.size.width < button.size.width);
+        assert!(
+            (label.center().x - button.center().x).abs() <= px(1.),
+            "{id}"
+        );
+        ui.simulate_mouse_move(button.center(), None, Modifiers::default());
+        redraw(ui);
+        assert_eq!(ui.debug_bounds(label_id), Some(label), "hovering {id}");
+        ui.simulate_mouse_move(row.center(), None, Modifiers::default());
+        redraw(ui);
+        assert_eq!(ui.debug_bounds(label_id), Some(label), "leaving {id}");
+    }
     assert!(ui.update(|w, _| focus.is_focused(w)));
     let delete_pane = ui.debug_bounds("kill-%1").unwrap();
     ui.simulate_click(delete_pane.center(), Modifiers::default());
@@ -1340,7 +1360,10 @@ fn host_disconnect_only_closes_the_selected_connection(cx: &mut TestAppContext) 
     let first_terminal = add_terminal(&desktop, ui);
     let second_terminal = add_terminal(&desktop, ui);
     let (first_id, first_handle, second_id) = desktop.update(ui, |s, _| {
-        s.local.hosts.push(s.tabs[0].host.clone());
+        s.local.hosts.push(HostProfile {
+            alias: "긴 호스트 이름 ".repeat(20),
+            ..s.tabs[0].host.clone()
+        });
         s.reconcile_hosts();
         (
             s.tabs[0].id,
@@ -1357,7 +1380,23 @@ fn host_disconnect_only_closes_the_selected_connection(cx: &mut TestAppContext) 
     let menu = ui.debug_bounds("host-menu-fixture").unwrap();
     ui.simulate_click(menu.center(), Modifiers::default());
     redraw(ui);
+    let sidebar = ui.debug_bounds("session-sidebar").unwrap();
+    let connection = ui.debug_bounds("sidebar-menu-common.connection").unwrap();
+    let host = ui.debug_bounds("sidebar-menu-common.host").unwrap();
+    let files = ui.debug_bounds("open-files-fixture-None").unwrap();
     let disconnect = ui.debug_bounds("host-disconnect").unwrap();
+    let delete = ui.debug_bounds("delete-fixture").unwrap();
+    let edit = ui.debug_bounds("edit-fixture").unwrap();
+    let agent = ui.debug_bounds("agent-setup-fixture").unwrap();
+    assert_eq!(connection.left(), host.left());
+    assert_eq!(connection.right(), host.right());
+    assert!(host.right() <= sidebar.right());
+    assert!(connection.top() <= files.top() && files.bottom() <= disconnect.top());
+    assert!(disconnect.bottom() <= connection.bottom() && connection.bottom() < host.top());
+    assert!(host.top() <= delete.top() && delete.bottom() <= edit.top());
+    assert_eq!(edit.top(), agent.top());
+    assert!(edit.right() <= agent.left() && agent.right() <= host.right());
+    assert!(delete.right() <= host.right() && edit.bottom() <= host.bottom());
     ui.simulate_click(disconnect.center(), Modifiers::default());
     redraw(ui);
     assert!(desktop.read_with(ui, |s, _| s.tabs.len() == 1
@@ -3139,7 +3178,14 @@ fn local_is_first_fixed_and_does_not_connect_on_app_start(cx: &mut TestAppContex
     let local = ui.debug_bounds("host-row-:local").unwrap();
     assert!(local.top() < ui.debug_bounds("host-row-a").unwrap().top());
     assert!(local.top() < ui.debug_bounds("host-row-b").unwrap().top());
-    assert!(ui.debug_bounds("host-menu-:local").is_some());
+    let menu = ui.debug_bounds("host-menu-:local").unwrap();
+    ui.simulate_click(menu.center(), Modifiers::default());
+    redraw(ui);
+    assert!(ui.debug_bounds("sidebar-menu-common.host").is_some());
+    assert!(ui.debug_bounds("agent-setup-:local").is_some());
+    assert!(ui.debug_bounds("sidebar-menu-common.connection").is_none());
+    assert!(ui.debug_bounds("edit-:local").is_none());
+    assert!(ui.debug_bounds("delete-:local").is_none());
     view.read_with(ui, |s, _| {
         assert!(s.tabs.is_empty());
         assert_eq!(s.local.hosts.len(), 2);

@@ -485,9 +485,6 @@ impl Desktop {
             let is_local = local_host::Target::of(&host) == local_host::Target::Local;
             let id = host.id.clone();
             let open = host.clone();
-            let edit = host.clone();
-            let delete = host.clone();
-            let setup_host = host.clone();
             let toggle_host = host.clone();
             let refresh_host = host.clone();
             let expanded = self.host_expanded(&id);
@@ -680,67 +677,7 @@ impl Desktop {
                     ),
             );
             if self.menu.as_ref() == Some(&menu_id) {
-                explorer = explorer.child(
-                    div()
-                        .pl_3()
-                        .flex()
-                        .flex_wrap()
-                        .gap_1()
-                        .text_sm()
-                        .when(!is_local, |d| {
-                            d.child(self.file_open_button(host.clone(), None, None, None, cx))
-                                .child(self.host_connection_controls(&host.id, cx))
-                                .child(self.button(
-                                    format!("edit-{id}"),
-                                    t("common.edit"),
-                                    cx,
-                                    move |s, _, cx| {
-                                        s.menu = None;
-                                        s.edit(Some(edit.clone()), cx);
-                                    },
-                                ))
-                        })
-                        .child(self.button(
-                            format!("agent-setup-{id}"),
-                            t("agent.integration"),
-                            cx,
-                            move |s, _, _| {
-                                s.menu = None;
-                                if let Some(tab) = s
-                                    .active_tab()
-                                    .filter(|t| t.host.id == setup_host.id)
-                                    .or_else(|| {
-                                        s.tabs.iter().rev().find(|t| t.host.id == setup_host.id)
-                                    })
-                                {
-                                    s.dialog = Some(Dialog::Agents(
-                                        tab.connection.clone(),
-                                        setup_host.alias.clone(),
-                                        None,
-                                    ));
-                                } else {
-                                    s.snackbar.show_snackbar_with_duration(
-                                        t("workspace.connect_host_first"),
-                                        SnackbarDuration::Short,
-                                    );
-                                }
-                            },
-                        ))
-                        .when(!is_local, |d| {
-                            d.child(self.button(
-                                format!("delete-{id}"),
-                                t("workspace.delete_ellipsis"),
-                                cx,
-                                move |s, _, _| {
-                                    s.menu = None;
-                                    s.dialog = Some(Dialog::Delete {
-                                        title: tr!("workspace.delete_host_named", delete.alias),
-                                        operation: DeleteOp::Host(delete.clone()),
-                                    });
-                                },
-                            ))
-                        }),
-                );
+                explorer = explorer.child(self.host_menu(&host, is_local, cx));
             }
             if expanded {
                 explorer = explorer.child(self.render_host_tree(&host, source, cx));
@@ -904,8 +841,17 @@ impl Desktop {
                     .items_center()
                     // Preserve the prior focus until the modal records it.
                     .on_mouse_down(MouseButton::Left, |_, w, _| w.prevent_default())
-                    .when_some(self.file_switch_button(cx), |d, button| {
-                        d.child(button.min_w(px(76.)).text_center())
+                    .when(self.workspace.file_view.is_some(), |d| {
+                        d.child(
+                            self.button(
+                                "switch-to-terminal",
+                                t("files.terminal"),
+                                cx,
+                                Self::return_to_terminals,
+                            )
+                            .min_w(px(76.))
+                            .text_center(),
+                        )
                     })
                     .child(
                         self.button_base("agent-notifications", cx, |s, _, _| {
@@ -1741,15 +1687,95 @@ impl Desktop {
         }
         body
     }
-    fn host_connection_controls(&self, host: &str, cx: &mut Context<Self>) -> Div {
-        let mut controls = div().flex().gap_1().text_xs();
-        if let Some(tab) = self.active_tab().filter(|t| t.host.id == host) {
+    fn host_menu(&self, host: &HostProfile, is_local: bool, cx: &mut Context<Self>) -> Div {
+        let id = &host.id;
+        let mut menu = self.sidebar_menu(4.);
+        let mut actions = Self::sidebar_menu_actions();
+        let mut delete = None;
+        if !is_local {
+            menu = menu.child(self.sidebar_menu_group(
+                "common.connection",
+                None,
+                None,
+                self.host_connection_controls(host, cx),
+            ));
+            let edit_host = host.clone();
+            actions = actions.child(self.sidebar_menu_button(
+                format!("edit-{id}"),
+                t("common.edit"),
+                cx,
+                move |s, _, cx| {
+                    s.menu = None;
+                    s.edit(Some(edit_host.clone()), cx);
+                },
+            ));
+            let delete_host = host.clone();
+            let title = tr!("workspace.delete_host_named", host.alias);
+            let tooltip = title.clone();
+            delete = Some(
+                self.button_base(format!("delete-{id}"), cx, move |s, _, _| {
+                    s.menu = None;
+                    s.dialog = Some(Dialog::Delete {
+                        title: title.clone(),
+                        operation: DeleteOp::Host(delete_host.clone()),
+                    });
+                })
+                .rounded_sm()
+                .text_color(rgb(self.palette.muted))
+                .native_tooltip(tooltip)
+                .child(t("workspace.delete_ellipsis")),
+            );
+        }
+        let setup_host = host.clone();
+        actions = actions.child(
+            self.sidebar_menu_button(
+                format!("agent-setup-{id}"),
+                t("agent.integration"),
+                cx,
+                move |s, _, _| {
+                    s.menu = None;
+                    if let Some(tab) = s
+                        .active_tab()
+                        .filter(|t| t.host.id == setup_host.id)
+                        .or_else(|| s.tabs.iter().rev().find(|t| t.host.id == setup_host.id))
+                    {
+                        s.dialog = Some(Dialog::Agents(
+                            tab.connection.clone(),
+                            setup_host.alias.clone(),
+                            None,
+                        ));
+                    } else {
+                        s.snackbar.show_snackbar_with_duration(
+                            t("workspace.connect_host_first"),
+                            SnackbarDuration::Short,
+                        );
+                    }
+                },
+            )
+            .when(is_local, |d| d.col_span_full()),
+        );
+        menu.child(self.sidebar_menu_group(
+            "common.host",
+            Some(hierarchy::display_text(&host.alias)),
+            delete,
+            actions,
+        ))
+    }
+
+    fn host_connection_controls(&self, host: &HostProfile, cx: &mut Context<Self>) -> Div {
+        let mut controls = Self::sidebar_menu_actions().child(
+            self.file_open_button(host.clone(), None, None, None, cx)
+                .col_span_full(),
+        );
+        if let Some(tab) = self.active_tab().filter(|t| t.host.id == host.id) {
             let tid = tab.id;
-            let handle = tab.connection.state().handle;
-            let host_id = host.to_owned();
-            let retry_host = host_id.clone();
-            if !tab.connection.state().can_retry_now() {
-                controls = controls.child(self.button(
+            let state = tab.connection.state();
+            let handle = state.handle;
+            let host_id = host.id.clone();
+            let show_reconnect = !state.can_retry_now();
+            if show_reconnect {
+                let retry_host = host_id.clone();
+                controls = controls.child(self.sidebar_menu_button(
                     "host-reconnect",
                     t("workspace.reconnect"),
                     cx,
@@ -1764,17 +1790,20 @@ impl Desktop {
                     },
                 ));
             }
-            controls = controls.child(self.button(
-                "host-disconnect",
-                t("common.disconnect"),
-                cx,
-                move |s, _, _| {
-                    if s.matches_selected_connection(&host_id, tid, handle) {
-                        s.menu = None;
-                        s.close_tab(tid);
-                    }
-                },
-            ));
+            controls = controls.child(
+                self.sidebar_menu_button(
+                    "host-disconnect",
+                    t("common.disconnect"),
+                    cx,
+                    move |s, _, _| {
+                        if s.matches_selected_connection(&host_id, tid, handle) {
+                            s.menu = None;
+                            s.close_tab(tid);
+                        }
+                    },
+                )
+                .when(!show_reconnect, |d| d.col_span_full()),
+            );
         }
         controls
     }
@@ -2110,32 +2139,17 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Div {
         let p = self.palette;
-        let mut menu = div()
-            .ml(px(depth as f32 * 20. + 4.))
-            .mr_1()
-            .my_1()
-            .flex()
-            .flex_col()
-            .gap(px(1.))
-            .rounded_md()
-            .overflow_hidden()
-            .border_1()
-            .border_color(rgb(p.line))
-            .bg(rgb(p.line))
-            .text_xs();
-        let actions = || div().grid().grid_cols(2).gap_1();
+        let mut menu = self.sidebar_menu(depth as f32 * 20. + 4.);
         let name_button = |id: String,
                            label: &'static str,
                            title: &'static str,
                            operation: PromptOp,
                            cx: &mut Context<Self>| {
             let c = connection.clone();
-            self.button(id, label, cx, move |s, _, cx| {
+            self.sidebar_menu_button(id, label, cx, move |s, _, cx| {
                 s.menu = None;
                 s.prompt_on(c.clone(), title, operation.clone(), cx);
             })
-            .px_1()
-            .text_center()
         };
         let delete = |id: String,
                       kind: &'static str,
@@ -2159,7 +2173,7 @@ impl Desktop {
         };
         if row.kind == hierarchy::Kind::Session {
             let id = &row.session;
-            let mut controls = actions()
+            let mut controls = Self::sidebar_menu_actions()
                 .child(name_button(
                     format!("new-window-{id}"),
                     t("workspace.create_window_ellipsis"),
@@ -2187,20 +2201,19 @@ impl Desktop {
                     .map(|s| s.name.clone());
                 controls = controls.child(
                     self.file_open_button(host.clone(), Some(id.clone()), pane, name, cx)
-                        .col_span_full()
-                        .justify_center(),
+                        .col_span_full(),
                 );
             }
-            menu = menu.child(self.hierarchy_menu_group(
+            menu = menu.child(self.sidebar_menu_group(
                 "common.session",
-                row.label.title.clone(),
-                delete(
+                Some(row.label.title.clone()),
+                Some(delete(
                     format!("kill-session-{id}"),
                     t("common.session"),
                     &row.label.title,
                     Operation::KillSession { target: id.clone() },
                     cx,
-                ),
+                )),
                 controls,
             ));
         }
@@ -2215,7 +2228,7 @@ impl Desktop {
                 .find(|w| &w.id == window)
                 .map(|w| hierarchy::window_label(&state.remote, w).title)
                 .unwrap_or_else(|| t("hierarchy.unnamed_window").to_owned());
-            let controls = actions().child(
+            let controls = Self::sidebar_menu_actions().child(
                 name_button(
                     format!("rename-{window}"),
                     t("common.rename_ellipsis"),
@@ -2234,7 +2247,12 @@ impl Desktop {
                 },
                 cx,
             );
-            menu = menu.child(self.hierarchy_menu_group("common.window", name, close, controls));
+            menu = menu.child(self.sidebar_menu_group(
+                "common.window",
+                Some(name),
+                Some(close),
+                controls,
+            ));
         }
         if let Some(active) = state
             .remote
@@ -2242,7 +2260,7 @@ impl Desktop {
             .iter()
             .find(|p| &p.window == window && p.active)
         {
-            let mut controls = actions();
+            let mut controls = Self::sidebar_menu_actions();
             for (horizontal, icon, label, description) in [
                 (
                     true,
@@ -2316,25 +2334,67 @@ impl Desktop {
                 Operation::KillPane { target: id.clone() },
                 cx,
             );
-            menu = menu.child(self.hierarchy_menu_group(
+            menu = menu.child(self.sidebar_menu_group(
                 "workspace.active_pane",
-                name,
-                close,
+                Some(name),
+                Some(close),
                 controls,
             ));
         }
         menu
     }
 
-    fn hierarchy_menu_group(
+    fn sidebar_menu(&self, indent: f32) -> Div {
+        div()
+            .ml(px(indent))
+            .mr_1()
+            .my_1()
+            .flex()
+            .flex_col()
+            .gap(px(1.))
+            .rounded_md()
+            .overflow_hidden()
+            .border_1()
+            .border_color(rgb(self.palette.line))
+            .bg(rgb(self.palette.line))
+            .text_xs()
+    }
+
+    fn sidebar_menu_actions() -> Div {
+        div().grid().grid_cols(2).gap_1()
+    }
+
+    pub(super) fn sidebar_menu_button(
+        &self,
+        id: impl Into<SharedString>,
+        label: &'static str,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Stateful<Div> {
+        let id = id.into();
+        let label = div()
+            .debug_selector(|| format!("{id}-label"))
+            .min_w_0()
+            .text_center()
+            .child(label);
+        self.outlined(self.button_base(id, cx, action))
+            .px_1()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(label)
+    }
+
+    fn sidebar_menu_group(
         &self,
         heading_key: &'static str,
-        target: String,
-        delete: Stateful<Div>,
+        target: Option<String>,
+        header_action: Option<Stateful<Div>>,
         actions: Div,
     ) -> Div {
         let p = self.palette;
         div()
+            .debug_selector(|| format!("sidebar-menu-{heading_key}"))
             .min_w_0()
             .flex()
             .flex_col()
@@ -2354,17 +2414,19 @@ impl Desktop {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(t(heading_key)),
                     )
-                    .child(
-                        div()
-                            .id(heading_key)
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_color(rgb(p.muted))
-                            .native_tooltip(target.clone())
-                            .child(target),
-                    )
-                    .child(delete),
+                    .when_some(target, |d, target| {
+                        d.child(
+                            div()
+                                .id(heading_key)
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .text_color(rgb(p.muted))
+                                .native_tooltip(target.clone())
+                                .child(target),
+                        )
+                    })
+                    .children(header_action),
             )
             .child(actions)
     }

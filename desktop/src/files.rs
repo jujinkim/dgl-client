@@ -84,9 +84,9 @@ impl Desktop {
         name: Option<String>,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        self.button(
+        self.sidebar_menu_button(
             format!("open-files-{}-{:?}", host.id, session),
-            t("files.open"),
+            "sFTP",
             cx,
             move |s, w, cx| {
                 s.open_files(
@@ -98,15 +98,6 @@ impl Desktop {
                     cx,
                 );
             },
-        )
-        .flex()
-        .items_center()
-        .gap_1()
-        .child(
-            div()
-                .text_size(px(10.))
-                .text_color(rgb(self.palette.muted))
-                .child("(experiment)"),
         )
     }
     fn open_files(
@@ -146,33 +137,6 @@ impl Desktop {
             self.files.remove(&id);
             self.return_to_terminals(window, cx);
         }
-    }
-    pub(super) fn file_switch_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
-        if self.workspace.file_view.is_some() {
-            return Some(self.button(
-                "switch-to-terminal",
-                t("files.terminal"),
-                cx,
-                Self::return_to_terminals,
-            ));
-        }
-        let tab = self
-            .active_tab()
-            .filter(|tab| tab.host.id != local_host::ID)?;
-        let id = tab.id;
-        Some(self.button("switch-to-sftp", "SFTP", cx, move |s, w, cx| {
-            if let Some(tab) = s.active_tab().filter(|tab| tab.id == id) {
-                let state = tab.connection.state();
-                s.open_files(
-                    tab.host.clone(),
-                    tab.session.clone(),
-                    state.pane.clone().filter(|_| state.session == tab.session),
-                    tab.session_name.clone(),
-                    w,
-                    cx,
-                );
-            }
-        }))
     }
     fn create_file_browser(
         &mut self,
@@ -634,7 +598,7 @@ mod tests {
     use gpui::{Modifiers, TestAppContext};
 
     #[gpui::test]
-    fn file_switch_preserves_terminal_tabs_and_resumes_the_selected_browser(
+    fn host_file_menu_preserves_terminal_tabs_and_resumes_the_selected_browser(
         cx: &mut TestAppContext,
     ) {
         let (view, ui) = setup(cx);
@@ -652,6 +616,8 @@ mod tests {
             last_pane: None,
         };
         let (terminal, host_files, session_files) = view.update(ui, |s, cx| {
+            s.local.hosts.push(host.clone());
+            s.reconcile_hosts();
             let host_files = s.create_file_browser(
                 host.clone(),
                 None,
@@ -659,6 +625,7 @@ mod tests {
                 None,
                 (Credential::default(), None),
             );
+            s.files.get_mut(&host_files).unwrap().listing.path = "/home/fixture".into();
             let session = Some("$1".to_string());
             let session_files = s.create_file_browser(
                 host.clone(),
@@ -671,7 +638,7 @@ mod tests {
             let terminal = s.create_tab(
                 HostProfile {
                     last_session: session,
-                    ..host.clone()
+                    ..host
                 },
                 Credential::default(),
                 None,
@@ -681,25 +648,35 @@ mod tests {
             (terminal, host_files, session_files)
         });
         redraw(ui);
-        for control in ["switch-to-sftp", "switch-to-terminal", "switch-to-sftp"] {
-            let button = ui.debug_bounds(control).unwrap().center();
+        assert!(ui.debug_bounds("switch-to-sftp").is_none());
+        assert!(ui.debug_bounds("switch-to-terminal").is_none());
+        let open_host_files = |ui: &mut gpui::VisualTestContext| {
+            let menu = ui.debug_bounds("host-menu-remote").unwrap().center();
+            ui.simulate_click(menu, Modifiers::default());
+            redraw(ui);
+            let button = ui.debug_bounds("open-files-remote-None").unwrap().center();
             ui.simulate_click(button, Modifiers::default());
             redraw(ui);
-            let showing_files = control == "switch-to-sftp";
+        };
+        for showing_files in [true, false, true] {
             if showing_files {
+                open_host_files(ui);
                 let panel = ui.debug_bounds("file-panel").unwrap();
                 assert!(panel.left() >= ui.debug_bounds("session-sidebar").unwrap().right());
                 assert!(panel.bottom() <= ui.debug_bounds("status-bar").unwrap().top());
+            } else {
+                let button = ui.debug_bounds("switch-to-terminal").unwrap().center();
+                ui.simulate_click(button, Modifiers::default());
+                redraw(ui);
             }
             view.read_with(ui, |s, cx| {
+                assert!(s.menu.is_none());
                 assert_eq!(s.tabs[0].terminal.read(cx).enabled, !showing_files);
                 assert_eq!(s.workspace.groups[&s.workspace.active].tabs, vec![terminal]);
-                assert_eq!(
-                    s.workspace.file_view,
-                    showing_files.then_some(session_files)
-                );
+                assert_eq!(s.workspace.file_view, showing_files.then_some(host_files));
                 assert_eq!(s.workspace.selected(), (!showing_files).then_some(terminal));
                 assert_eq!(s.workspace.visible_tabs().is_empty(), showing_files);
+                assert_eq!(s.files[&host_files].listing.path, "/home/fixture");
                 assert_eq!(s.files[&session_files].listing.path, "/work");
             });
         }
@@ -710,10 +687,14 @@ mod tests {
         });
 
         // A saved host also has a file view when no terminal is open.
+        view.update(ui, |s, cx| {
+            s.close_tab(terminal);
+            cx.notify();
+        });
+        redraw(ui);
+        open_host_files(ui);
         ui.update(|w, cx| {
             view.update(cx, |s, cx| {
-                s.close_tab(terminal);
-                s.open_files(host, None, None, None, w, cx);
                 assert_eq!(s.workspace.file_view, Some(host_files));
                 assert!(s.workspace.groups[&s.workspace.active].tabs.is_empty());
                 s.close_file_view(w, cx);
