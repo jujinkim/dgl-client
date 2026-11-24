@@ -182,7 +182,11 @@ impl Desktop {
                         .agent_in_pane(p, dgl_core::agent::now_ms())
                         .is_none()
                 });
-            let powershell = cfg!(windows) && tab.host.id == local_host::ID;
+            let powershell = (cfg!(windows) && tab.host.id == local_host::ID)
+                || state
+                    .diagnostics
+                    .iter()
+                    .any(|p| p.stage == "psmux" && p.outcome == "found");
             let terminal = tab.terminal.clone();
             let config = self.local.preferences.agent_launch.get(&agent);
             if let Some(bytes) = self.launcher.take_command(&current, allowed, || {

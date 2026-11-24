@@ -148,6 +148,7 @@ enum Dialog {
     TerminalFont,
     About,
     Agents(Arc<Connection>, String, Option<String>),
+    AgentHooks(Arc<Connection>, String),
     Notifications,
     /// The agent status popover of the active connection.
     AgentStatus,
@@ -1094,6 +1095,7 @@ impl Render for Desktop {
                 Dialog::TerminalFont => ("terminal-font", vec![]),
                 Dialog::About => ("about", vec![]),
                 Dialog::Agents(..) => ("agents", vec![]),
+                Dialog::AgentHooks(..) => ("agent-hooks", vec![]),
                 Dialog::Notifications => ("notifications", vec![]),
                 Dialog::AgentStatus => ("agent-status", vec![]),
                 Dialog::Compose(id) => ("compose", vec![self.composers[id].input.clone()]),
@@ -1187,6 +1189,9 @@ impl Render for Desktop {
                     Dialog::Agents(connection, alias, pane) => {
                         body =
                             body.child(self.agent_details(connection, alias, pane.as_deref(), cx));
+                    }
+                    Dialog::AgentHooks(connection, alias) => {
+                        body = body.child(self.agent_hook_settings(connection, alias, cx));
                     }
                     Dialog::Notifications | Dialog::AgentStatus => unreachable!(),
                     Dialog::Compose(id) => {

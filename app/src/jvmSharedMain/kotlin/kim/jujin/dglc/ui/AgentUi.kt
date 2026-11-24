@@ -33,25 +33,22 @@ import kotlinx.serialization.json.*
 }
 
 @Composable internal fun AgentDetails(client: ClientConnection, model: AppModel, pane: String? = null, dismiss: () -> Unit) {
+    var showHooks by remember(client, pane) { mutableStateOf(false) }
+    if (showHooks) {
+        AgentHookSettings(client, dismiss)
+        return
+    }
     val snapshot by client.agents.collectAsState()
-    val setup by client.agentSetup.collectAsState()
     val notices by model.agentNotifications.collectAsState()
-    var inspected by remember { mutableStateOf(false) }
-    val preview = setup?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }
-    val token = preview?.get("token")?.jsonPrimitive?.content
-    val collections = preview?.get("configs")?.jsonArray.orEmpty().mapNotNull { runCatching { it.jsonObject["status_collection"]?.jsonObject }.getOrNull() }
-    fun flag(o: JsonObject, name: String) = o[name]?.jsonPrimitive?.booleanOrNull == true
-    val collectable = collections.any { flag(it, "supported") }
-    // Install without the flag removes detailed collection, so the box starts as it is installed now.
-    var collect by remember(token) { mutableStateOf(collections.any { flag(it, "installed") }) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(tr("agent.integration_named", client.host.alias)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(t("agent.last_observed_note"))
-            val panel = snapshot.panelState(pane, client.agentEndpoint, notices, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            val panel = snapshot.panelState(pane, client.agentEndpoint, notices, now)
             AgentBadge(panel)
             val remote by client.remote.collectAsState()
             panel.observations.forEach { o ->
-                Text("${agentName(o.agent)} · ${remote.targetLabel(o.session, o.pane)}" + if (o.actor != "parent") t("agent.subagent_suffix") else "")
+                Text("${agentName(o.agent)} · ${agentPhaseLabel(snapshot.phaseOf(o, now))} · ${remote.targetLabel(o.session, o.pane)}" + if (o.actor != "parent") t("agent.subagent_suffix") else "")
                 Row { UiGlyph(agentIcon(o.last?.kind)); Text(o.last?.let { "${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}" } ?: t("agent.not_linked")) }
                 Text(tr("agent.diagnostics_ids", o.session, o.window, o.pane), style = MaterialTheme.typography.labelSmall)
                 Text(tr("agent.observed_event_types", o.supported.joinToString { agentMessage(it) }.ifEmpty { t("agent.unknown") }), style = MaterialTheme.typography.labelSmall)
@@ -61,9 +58,30 @@ import kotlinx.serialization.json.*
                 }) { Text(t("agent.go_pane")) }
             }
             if (pane == null) {
+                Text(t("agent.basic_observation"))
+                BorderedButton({
+                    client.configureAgents("inspect")
+                    showHooks = true
+                }) { Text(t("agent.advanced_hooks")) }
+            }
+        }
+    }, confirmButton = { BorderedButton(dismiss) { Text(t("common.close")) } })
+}
+
+@Composable private fun AgentHookSettings(client: ClientConnection, dismiss: () -> Unit) {
+    val setup by client.agentSetup.collectAsState()
+    val preview = setup?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }
+    val token = preview?.get("token")?.jsonPrimitive?.content
+    val collections = preview?.get("configs")?.jsonArray.orEmpty().mapNotNull { runCatching { it.jsonObject["status_collection"]?.jsonObject }.getOrNull() }
+    fun flag(o: JsonObject, name: String) = o[name]?.jsonPrimitive?.booleanOrNull == true
+    val collectable = collections.any { flag(it, "supported") } || preview?.get("configs")?.jsonArray.orEmpty().any { flag(it.jsonObject, "supported") }
+    // Install without the flag removes detailed collection, so the box starts as it is installed now.
+    var collect by remember(token) { mutableStateOf(preview?.let { flag(it, "account_limits") } == true || collections.any { flag(it, "installed") }) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text(tr("agent.hooks_named", client.host.alias)) }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(t("agent.optional_setup_existing_kept"))
-            BorderedButton({ inspected = true; client.configureAgents("inspect") }) { Text(t("agent.inspect_before_install")) }
-            if (inspected && preview == null) Text(t("agent.inspecting"))
+            BorderedButton({ client.configureAgents("inspect") }) { Text(t("agent.inspect_before_install")) }
+            if (preview == null) Text(t("agent.inspecting"))
             preview?.get("error")?.jsonPrimitive?.content?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (token != null) {
                 Text("Python ${preview["python"]?.jsonPrimitive?.content} · ${preview["tmux"]?.jsonPrimitive?.content}")
@@ -95,7 +113,6 @@ import kotlinx.serialization.json.*
                 }
                 BorderedButton({ client.configureAgents("install", token, collectable && collect) }) { Text(t("agent.install_integration")) }
                 BorderedButton({ client.configureAgents("remove", token) }) { Text(t("agent.remove_dagali_hooks_only")) }
-            }
             }
         }
     }, confirmButton = { BorderedButton(dismiss) { Text(t("common.close")) } })

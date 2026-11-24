@@ -672,14 +672,12 @@ impl Desktop {
                             .when(refreshing, |d| d.opacity(0.35)),
                         )
                     })
-                    .when(!is_local, |d| {
-                        d.child(
-                            self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
-                                s.toggle_menu(toggle.clone())
-                            })
-                            .flex_shrink_0(),
-                        )
-                    }),
+                    .child(
+                        self.button(menu_id.clone(), UiIcon::More, cx, move |s, _, _| {
+                            s.toggle_menu(toggle.clone())
+                        })
+                        .flex_shrink_0(),
+                    ),
             );
             if self.menu.as_ref() == Some(&menu_id) {
                 explorer = explorer.child(
@@ -689,17 +687,19 @@ impl Desktop {
                         .flex_wrap()
                         .gap_1()
                         .text_sm()
-                        .child(self.file_open_button(host.clone(), None, None, None, cx))
-                        .child(self.host_connection_controls(&host.id, cx))
-                        .child(self.button(
-                            format!("edit-{id}"),
-                            t("common.edit"),
-                            cx,
-                            move |s, _, cx| {
-                                s.menu = None;
-                                s.edit(Some(edit.clone()), cx);
-                            },
-                        ))
+                        .when(!is_local, |d| {
+                            d.child(self.file_open_button(host.clone(), None, None, None, cx))
+                                .child(self.host_connection_controls(&host.id, cx))
+                                .child(self.button(
+                                    format!("edit-{id}"),
+                                    t("common.edit"),
+                                    cx,
+                                    move |s, _, cx| {
+                                        s.menu = None;
+                                        s.edit(Some(edit.clone()), cx);
+                                    },
+                                ))
+                        })
                         .child(self.button(
                             format!("agent-setup-{id}"),
                             t("agent.integration"),
@@ -726,18 +726,20 @@ impl Desktop {
                                 }
                             },
                         ))
-                        .child(self.button(
-                            format!("delete-{id}"),
-                            t("workspace.delete_ellipsis"),
-                            cx,
-                            move |s, _, _| {
-                                s.menu = None;
-                                s.dialog = Some(Dialog::Delete {
-                                    title: tr!("workspace.delete_host_named", delete.alias),
-                                    operation: DeleteOp::Host(delete.clone()),
-                                });
-                            },
-                        )),
+                        .when(!is_local, |d| {
+                            d.child(self.button(
+                                format!("delete-{id}"),
+                                t("workspace.delete_ellipsis"),
+                                cx,
+                                move |s, _, _| {
+                                    s.menu = None;
+                                    s.dialog = Some(Dialog::Delete {
+                                        title: tr!("workspace.delete_host_named", delete.alias),
+                                        operation: DeleteOp::Host(delete.clone()),
+                                    });
+                                },
+                            ))
+                        }),
                 );
             }
             if expanded {
@@ -828,9 +830,9 @@ impl Desktop {
             .child(self.launcher_button(cx))
     }
     /// The selected tab's connection status, agent button and workspace actions.
-    pub(crate) fn render_status_bar(&mut self, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn render_status_bar(&mut self, wide: bool, cx: &mut Context<Self>) -> Div {
         let p = self.palette;
-        let chip = self.agent_status_chip(cx);
+        let chip = self.agent_status_chip(wide, cx);
         let unread = self.agents.inbox.recent.iter().filter(|n| !n.read).count();
         let status = self
             .active_tab()

@@ -1050,7 +1050,14 @@ impl Control {
             }
             let msg = self.stream.wait().await.ok_or(Error::Network)?;
             match msg {
-                russh::ChannelMsg::Data { data } => self.events.extend(self.parser.feed(&data)?),
+                russh::ChannelMsg::Data { data } => {
+                    if let Some(adapter) = &mut self.psmux {
+                        self.events
+                            .extend(self.parser.feed(&adapter.framing.feed(&data)?)?);
+                    } else {
+                        self.events.extend(self.parser.feed(&data)?);
+                    }
+                }
                 russh::ChannelMsg::ExitStatus { .. } | russh::ChannelMsg::Close => {
                     return Err(Error::MissingSession);
                 }
@@ -1187,8 +1194,8 @@ impl Control {
                         .psmux
                         .as_ref()
                         .unwrap()
-                        .local
-                        .execute(&Command::new(op)?)
+                        .transport
+                        .execute_tmux(&Command::new(op)?)
                         .await?;
                     replies.push(if code == 0 {
                         Ok(Vec::new())
@@ -1204,7 +1211,7 @@ impl Control {
                 {
                     let adapter = self.psmux.as_ref().unwrap();
                     if crate::local::psmux::native(target)?.0 != adapter.session {
-                        let (code, _) = adapter.local.execute(&Command::new(op)?).await?;
+                        let (code, _) = adapter.transport.execute_tmux(&Command::new(op)?).await?;
                         replies.push(if code == 0 {
                             Ok(Vec::new())
                         } else {
@@ -1719,11 +1726,10 @@ async fn attach(
     });
     let mut c = Control {
         stream,
-        psmux: match ssh {
-            Transport::Local(l) if ssh.psmux() => {
-                Some(crate::local::psmux::Adapter::new(l.clone(), &id)?)
-            }
-            _ => None,
+        psmux: if ssh.psmux() {
+            Some(crate::local::psmux::Adapter::new(ssh.clone(), &id)?)
+        } else {
+            None
         },
         parser: Parser::default(),
         events: VecDeque::new(),
@@ -1952,7 +1958,7 @@ async fn run(
                 shared.phase(Phase::Authenticating);
                 let tmux = ssh.discover().await?;
                 let diagnostics = ssh.diagnostics.clone();
-                (Transport::Ssh(ssh), tmux, diagnostics)
+                (Transport::Ssh(Arc::new(ssh)), tmux, diagnostics)
             };
             shared.update(|s| {
                 s.error = None;
@@ -2072,9 +2078,6 @@ async fn fetch_paste_buffers(
     std::future::pending().await
 }
 async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
-    let Some(ssh) = ssh.as_ssh() else {
-        return std::future::pending().await;
-    };
     let mut cursor = 0u64;
     let mut epoch = String::new();
     let mut server = String::new();
@@ -2090,7 +2093,7 @@ async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
             if observer.is_none() && retry_at.is_none_or(|at| tokio::time::Instant::now() >= at) {
                 observer = tokio::time::timeout(
                     Duration::from_secs(8),
-                    crate::agent::Observer::start(ssh),
+                    crate::agent::Observer::for_transport(ssh),
                 )
                 .await
                 .ok()
@@ -2128,11 +2131,13 @@ async fn observe_agents(ssh: &Transport, shared: Arc<Shared>, tmux: bool) {
             let recent_helper_poll = !state.agents.server.is_empty()
                 && state.agents.has_fresh_poll(crate::agent::now_ms());
             if snapshot.is_none() && !recent_helper_poll {
-                snapshot =
-                    tokio::time::timeout(Duration::from_secs(2), crate::agent::basic_snapshot(ssh))
-                        .await
-                        .ok()
-                        .and_then(|r| r.ok());
+                snapshot = tokio::time::timeout(
+                    Duration::from_secs(2),
+                    crate::agent::basic_for_transport(ssh),
+                )
+                .await
+                .ok()
+                .and_then(|r| r.ok());
             }
             match snapshot {
                 Some(mut snapshot) => {
@@ -2702,11 +2707,9 @@ impl Actor<'_> {
                 status,
             } => {
                 let args = crate::agent::setup_args(operation, token.as_deref(), *status);
-                let result = crate::agent::setup(self.ssh.as_ssh().ok_or(Error::NotReady)?, &args)
-                    .await
-                    .unwrap_or_else(
-                        |_| serde_json::json!({"error": t("agent.error.integration_check_failed")}),
-                    );
+                let result = crate::agent::setup(self.ssh, &args).await.unwrap_or_else(
+                    |_| serde_json::json!({"error": t("agent.error.integration_check_failed")}),
+                );
                 self.shared.update(|s| s.agent_setup = Some(result));
                 Ok(())
             }
@@ -3352,7 +3355,7 @@ mod tests {
         let fixture = crate::ssh::tests::Fixture::new(32, 32, false, false).await;
         let mut ssh = fixture.connect().await;
         ssh.tmux = Some("/usr/bin/tmux".into());
-        let transport = Transport::Ssh(ssh);
+        let transport = Transport::Ssh(Arc::new(ssh));
         let (requests, paste_rx) = mpsc::channel(1);
         let (pasted_tx, mut pasted) = mpsc::channel(1);
         let scope = PasteScope {
@@ -3379,9 +3382,7 @@ mod tests {
         .expect("the SSH session stalled");
         assert_eq!(fetched, scope);
         assert_eq!(result, Ok((127, Vec::new())));
-        if let Transport::Ssh(ssh) = transport {
-            ssh.close().await;
-        }
+        transport.close().await;
     }
     #[tokio::test]
     async fn paste_notifications_are_recorded_only_when_supported_and_enabled() {

@@ -409,6 +409,13 @@ async fn agent_hidden_pane_case(service: dgl_core::agent::Agent, executable: &st
     assert_eq!(event.kind, Kind::Response);
     assert_eq!(event.agent, service);
     assert_eq!(event.pane, hidden);
+    assert!(
+        c.state()
+            .agents
+            .observations
+            .iter()
+            .any(|o| o.pane == hidden && o.agent == service && o.phase == agent::LivePhase::Idle)
+    );
     // The ordinary client selected this window while creating it; GUI follows that session selection.
     assert!(c.state().remote.panes.iter().any(|p| p.id == hidden));
     completion(

@@ -73,7 +73,7 @@ internal class CliLaunchRequest(private val client: ClientConnection) {
         if (!allowed || current !== client || !client.status.value.acceptsInput ||
             client.status.value.cliLaunchPhase != phase || client.session.value != session || client.pane.value != pane ||
             client.captureInputTarget() != target || client.runningCli() != null) return false
-        val bytes = config.command(agent)?.encodeToByteArray() ?: return false
+        val bytes = config.command(agent, client.status.value.psmux)?.encodeToByteArray() ?: return false
         return target != null && client.inputAt(target, bytes)
     }
 }

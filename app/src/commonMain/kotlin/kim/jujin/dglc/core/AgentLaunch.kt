@@ -33,9 +33,10 @@ private val simpleValue = Regex("[A-Za-z0-9_./-]*")
 }
 
 @Serializable data class AgentLaunch(val bypass: String, val options: List<LaunchOption>, val bypassChecked: Boolean = false) {
-    /** Android sends to POSIX shells. Preserve argument fragments exactly as entered. */
-    fun command(agent: LaunchAgent): String? {
+    /** Preserve the user’s shell argument fragments on the selected host. */
+    fun command(agent: LaunchAgent, powershell: Boolean = false): String? {
         val env = mutableListOf<String>()
+        val assignments = mutableListOf<Pair<String, String>>()
         val words = mutableListOf(agent.executable)
         if (bypassChecked && bypass.isNotEmpty()) {
             if (!launchSingleLine(bypass)) return null
@@ -47,10 +48,28 @@ private val simpleValue = Regex("[A-Za-z0-9_./-]*")
                 OptionKind.Argument -> words += option.value
                 OptionKind.Environment -> {
                     val value = option.value.substringAfter('=')
+                    assignments += option.value.substringBefore('=') to value
                     val literal = if (simpleValue.matches(value)) value else "'" + value.replace("'", "'\\''") + "'"
                     env += option.value.substringBefore('=') + "=" + literal
                 }
             }
+        }
+        if (powershell && assignments.isNotEmpty()) return buildString {
+            append("& { \$dglPrevious = @(")
+            append(assignments.joinToString(", ") { "\$env:" + it.first })
+            append("); try { ")
+            for ((key, value) in assignments) {
+                append("\$env:$key = '")
+                for (ch in value) {
+                    if (ch == '\'' || ch in '\u2018'..'\u201b') append('\'')
+                    append(ch)
+                }
+                append("'; ")
+            }
+            append(words.joinToString(" "))
+            append(" } finally { ")
+            assignments.forEachIndexed { i, (key, _) -> append("\$env:$key = \$dglPrevious[$i]; ") }
+            append("} }\r")
         }
         return (env + words).joinToString(" ") + "\r"
     }

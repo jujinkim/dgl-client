@@ -1950,6 +1950,7 @@ dependencies = [
 name = "dgl-core"
 version = "0.2.1"
 dependencies = [
+ "base64",
  "rand 0.10.3",
  "russh",
  "russh-sftp",

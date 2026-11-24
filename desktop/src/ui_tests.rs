@@ -1179,6 +1179,40 @@ impl gpui::Render for AgentPanelPreview {
 }
 
 #[gpui::test]
+fn host_agent_status_opens_hook_setup_only_for_selected_connection(cx: &mut TestAppContext) {
+    let (desktop, ui) = setup(cx);
+    add_terminal(&desktop, ui);
+    add_terminal(&desktop, ui);
+    let open_status = |tab: usize, s: &mut Desktop, cx: &mut gpui::Context<Desktop>| {
+        let connection = s.tabs[tab].connection.clone();
+        s.dialog = Some(Dialog::Agents(connection.clone(), "fixture".into(), None));
+        cx.notify();
+        connection
+    };
+    let host = desktop.update(ui, |s, cx| open_status(0, s, cx));
+    redraw(ui);
+    assert!(ui.debug_bounds("agent-inspect").is_none());
+    let advanced = ui.debug_bounds("agent-advanced-hooks").unwrap();
+    ui.simulate_click(advanced.center(), Modifiers::default());
+    redraw(ui);
+    assert!(desktop.read_with(ui, |s, _| matches!(
+        &s.dialog, Some(Dialog::AgentHooks(selected, _)) if Arc::ptr_eq(selected, &host)
+    )));
+    assert!(ui.debug_bounds("agent-inspect").is_some());
+    assert!(ui.debug_bounds("agent-install").is_none());
+    ui.simulate_keystrokes("escape");
+    redraw(ui);
+    let other = desktop.update(ui, |s, cx| open_status(1, s, cx));
+    redraw(ui);
+    let advanced = ui.debug_bounds("agent-advanced-hooks").unwrap();
+    ui.simulate_click(advanced.center(), Modifiers::default());
+    redraw(ui);
+    assert!(desktop.read_with(ui, |s, _| matches!(
+        &s.dialog, Some(Dialog::AgentHooks(selected, _)) if Arc::ptr_eq(selected, &other)
+    )));
+}
+
+#[gpui::test]
 fn panel_details_keep_all_runs_and_exclude_other_panes(cx: &mut TestAppContext) {
     use dgl_core::agent::{Agent, AgentEvent, Kind, Observation, Snapshot};
     let (desktop, ui) = setup(cx);
@@ -1216,6 +1250,8 @@ fn panel_details_keep_all_runs_and_exclude_other_panes(cx: &mut TestAppContext) 
             actor: e.actor.clone(),
             agent: e.agent,
             last: Some(e),
+            phase: Default::default(),
+            phase_seq: 0,
             supported: vec![],
             status: None,
         })
@@ -3059,7 +3095,7 @@ fn local_is_first_fixed_and_does_not_connect_on_app_start(cx: &mut TestAppContex
     let local = ui.debug_bounds("host-row-:local").unwrap();
     assert!(local.top() < ui.debug_bounds("host-row-a").unwrap().top());
     assert!(local.top() < ui.debug_bounds("host-row-b").unwrap().top());
-    assert!(ui.debug_bounds("host-menu-:local").is_none());
+    assert!(ui.debug_bounds("host-menu-:local").is_some());
     view.read_with(ui, |s, _| {
         assert!(s.tabs.is_empty());
         assert_eq!(s.local.hosts.len(), 2);
@@ -3468,6 +3504,8 @@ fn agent_status_snapshot() -> dgl_core::agent::Snapshot {
         actor: "parent".into(),
         agent,
         last: None,
+        phase: Default::default(),
+        phase_seq: 0,
         supported: vec![],
         status,
     };
@@ -3529,6 +3567,7 @@ fn agent_status_snapshot() -> dgl_core::agent::Snapshot {
             },
         ],
         limits_at: None,
+        context_at: Some(now),
         alert: None,
     };
     Snapshot {
@@ -3543,7 +3582,7 @@ fn agent_status_snapshot() -> dgl_core::agent::Snapshot {
 }
 
 #[gpui::test]
-fn agent_status_icon_has_fixed_size_and_opens_details(cx: &mut TestAppContext) {
+fn agent_status_chip_fits_and_opens_details(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     let terminal = add_terminal(&view, ui);
     view.update(ui, |s, cx| {
@@ -3562,7 +3601,8 @@ fn agent_status_icon_has_fixed_size_and_opens_details(cx: &mut TestAppContext) {
         assert!(status.right() <= chip.left(), "{width}");
         assert!(chip.right() <= actions.left(), "{width}");
         assert!(chip.top() >= bar.top() && chip.bottom() <= bar.bottom());
-        assert_eq!(chip.size, gpui::size(px(28.), px(24.)));
+        assert_eq!(chip.size.height, px(24.));
+        assert!(chip.size.width > px(28.));
     }
     // Opening the icon shows the session's detailed status and preserves terminal focus on close.
     ui.update(|w, cx| w.focus(&terminal.focus_handle(cx)));

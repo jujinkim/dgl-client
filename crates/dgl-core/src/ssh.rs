@@ -3,6 +3,7 @@ use crate::{
     command::{self, Command},
     model::{AuthKind, Credential, HostProfile, Size},
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use russh::{
     Channel, ChannelMsg, client,
     keys::{HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate},
@@ -54,6 +55,69 @@ impl Drop for SocketGuard {
         let _ = self.0.shutdown(std::net::Shutdown::Both);
     }
 }
+/// Windows OpenSSH may use cmd.exe or PowerShell as its login shell. Only the
+/// base64 alphabet crosses that shell; native children inherit the SSH byte streams.
+pub(crate) fn powershell(script: &str) -> String {
+    let bytes: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    format!(
+        "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand {}",
+        STANDARD.encode(bytes)
+    )
+}
+
+fn ps_string(value: &str) -> String {
+    // PowerShell recognizes curly quotes as delimiters too. Decode data in memory.
+    format!(
+        "[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{}'))",
+        STANDARD.encode(value.as_bytes())
+    )
+}
+
+pub(crate) fn windows_process(exe: &str, args: &[String], session: Option<&str>) -> Result<String> {
+    if std::iter::once(exe)
+        .chain(args.iter().map(String::as_str))
+        .chain(session)
+        .any(|v| v.chars().any(|c| c == '\0' || c == '\r' || c == '\n'))
+    {
+        return Err(Error::InvalidArgument);
+    }
+    let mut argv = String::new();
+    for arg in args {
+        if !argv.is_empty() {
+            argv.push(' ');
+        }
+        argv.push('"');
+        let mut slashes = 0;
+        for c in arg.chars() {
+            if c == '\\' {
+                slashes += 1;
+                continue;
+            }
+            argv.extend(std::iter::repeat_n(
+                '\\',
+                if c == '"' { 2 * slashes + 1 } else { slashes },
+            ));
+            slashes = 0;
+            argv.push(c);
+        }
+        argv.extend(std::iter::repeat_n('\\', 2 * slashes));
+        argv.push('"');
+    }
+    let env = session
+        .map(|name| {
+            format!(
+                "$p.EnvironmentVariables['PSMUX_SESSION_NAME']={};",
+                ps_string(name)
+            )
+        })
+        .unwrap_or_default();
+    Ok(powershell(&format!(
+        "$ErrorActionPreference='Stop';$p=New-Object Diagnostics.ProcessStartInfo;$p.UseShellExecute=$false;$p.FileName={};$p.Arguments={};{env}$c=[Diagnostics.Process]::Start($p);$c.WaitForExit();exit $c.ExitCode",
+        ps_string(exe),
+        ps_string(&argv)
+    )))
+}
+
 pub struct Ssh {
     socket: SocketGuard,
     pub handle: client::Handle<Handler>,
@@ -61,6 +125,7 @@ pub struct Ssh {
     /// `tmux -V` output of a supported `tmux`.
     pub tmux_version: Option<String>,
     pub diagnostics: Vec<Probe>,
+    pub(crate) windows_host: bool,
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Probe {
@@ -166,6 +231,7 @@ pub async fn connect(
         tmux: None,
         tmux_version: None,
         diagnostics: vec![],
+        windows_host: false,
     })
 }
 impl Ssh {
@@ -275,6 +341,14 @@ impl Ssh {
             if let Some(p) = path {
                 self.tmux = Some(p.to_string());
                 let (code, version) = self.execute(&format!("{} -V", command::quote(p)?)).await?;
+                if code == 0
+                    && String::from_utf8_lossy(&version)
+                        .lines()
+                        .any(|line| line.starts_with("psmux "))
+                {
+                    self.tmux = None;
+                    break;
+                }
                 let supported =
                     code == 0 && command::supports_tmux(&String::from_utf8_lossy(&version));
                 if !supported {
@@ -306,6 +380,38 @@ impl Ssh {
                     self.tmux_version = Some(String::from_utf8_lossy(&version).trim().to_owned());
                 }
                 return Ok(supported);
+            }
+        }
+        // This fixed probe also identifies Windows when psmux is absent, so
+        // checking an ordinary SSH shell does not attempt the POSIX ":" command.
+        let probe = powershell(
+            "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);$p=(Get-Command psmux.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source;Write-Output ('DGL_WINDOWS='+$p)",
+        );
+        let (code, out) = self.execute(&probe).await?;
+        if code == 0
+            && let Some(path) = String::from_utf8_lossy(&out)
+                .lines()
+                .find_map(|line| line.strip_prefix("DGL_WINDOWS="))
+                .map(str::trim)
+        {
+            self.windows_host = true;
+            if !path.is_empty() {
+                let cmd = windows_process(path, &["-V".into()], None)?;
+                let (code, bytes) = self.execute(&cmd).await?;
+                let version = String::from_utf8_lossy(&bytes).trim().to_owned();
+                let supported = code == 0 && crate::local::psmux::supported(&version);
+                self.diagnostics.push(Probe {
+                    stage: "psmux".into(),
+                    path: Some(path.into()),
+                    version: Some(version.clone()),
+                    exit_status: Some(code),
+                    outcome: if supported { "found" } else { "unsupported" }.into(),
+                });
+                if supported {
+                    self.tmux = Some(path.into());
+                    self.tmux_version = Some(version);
+                    return Ok(true);
+                }
             }
         }
         Ok(false)

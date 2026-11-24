@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class AgentObservation(val session: String, val window: String, val pane: String, val run: String,
     val actor: String, val agent: String, val last: AgentEvent? = null, val supported: List<String> = emptyList(),
     /** Mirrors Rust `Observation.status`: the core already dropped an invalid status. */
-    val status: AgentStatus? = null)
+    val status: AgentStatus? = null, val phase: String = "unknown", val phase_seq: Long = 0)
 
 /** Which agent status parts are shown; mirrors Rust `AgentStatusSettings`. Not synced. */
 @Serializable data class AgentStatusSettings(val statusBar: Boolean = true, val sidebar: Boolean = true, val account: Boolean = true,
@@ -19,7 +19,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class AgentStatus(val at: Long? = null, val sources: List<String> = emptyList(), val model: ModelInfo? = null,
     val effort: String? = null, val thinking: Boolean? = null, val context: ContextUsage? = null, val cache: CacheUsage? = null,
     val cost_usd: Double? = null, val account: AccountInfo? = null, val limits: List<UsageLimit> = emptyList(), val limits_at: Long? = null,
-    val alert: String? = null) {
+    val alert: String? = null, val context_at: Long? = null) {
     /** Mirrors Rust `AgentStatus::context_percent`: the CLI's own figure, else used / size. */
     fun contextPercent(): Double? = context?.let { c ->
         c.percent ?: if (c.used != null && c.size != null && c.size > 0) (c.used * 100.0 / c.size).coerceIn(0.0, 100.0) else null
@@ -113,7 +113,7 @@ fun formatDurationS(secs: Long): String {
     }
 }
 @Serializable data class AgentSnapshot(val server: String = "", val epoch: String = "", val cursor: Long = 0, val gap: Boolean = false,
-    val observations: List<AgentObservation> = emptyList(), val events: List<AgentEvent> = emptyList(), val valid: Boolean = false, val observed_at: Long = 0) {
+    val observations: List<AgentObservation> = emptyList(), val events: List<AgentEvent> = emptyList(), val valid: Boolean = false, val observed_at: Long = 0, val account_limits: Boolean = false) {
     fun hasFreshPoll(now: Long) = valid && now - observed_at < 10_000
     fun current(now: Long) = hasFreshPoll(now) && !gap
     /** Mirrors Rust `Snapshot::agent_in_pane`: a CLI process in a fresh poll; unknown state is null. */
@@ -129,23 +129,24 @@ fun formatDurationS(secs: Long): String {
         }
     }
     /** Mirrors Rust `Snapshot::freshest_limits`: the newest limits sample of one account. */
-    fun freshestLimits(agent: String, key: String): List<UsageLimit> = observations
+    private fun freshestLimitSample(agent: String, key: String): AgentStatus? = observations
         .filter { it.agent == agent }.mapNotNull { it.status }
         .filter { it.accountKey == key && it.limits.isNotEmpty() }
-        .maxByOrNull { it.limitsSampledAt() }?.limits ?: emptyList()
+        .maxByOrNull { it.limitsSampledAt() }
+    fun freshestLimits(agent: String, key: String): List<UsageLimit> = freshestLimitSample(agent, key)?.limits.orEmpty()
     /** Mirrors Rust `Snapshot::limits_for`: the account's newest sample, else the observation's own. */
-    fun limitsFor(observation: AgentObservation): List<UsageLimit> {
-        val status = observation.status ?: return emptyList()
-        val key = status.accountKey ?: return status.limits
-        return freshestLimits(observation.agent, key).ifEmpty { status.limits }
+    fun limitSampleFor(observation: AgentObservation): AgentStatus? {
+        val status = observation.status ?: return null
+        return status.accountKey?.let { freshestLimitSample(observation.agent, it) } ?: status.takeIf { it.limits.isNotEmpty() }
     }
+    fun limitsFor(observation: AgentObservation): List<UsageLimit> = limitSampleFor(observation)?.limits.orEmpty()
     /** Mirrors Rust `dgl_core::scroll::cli_in_pane` for every pane: observed, or tmux's current command. */
     fun cliPanes(panes: List<RemotePane>, now: Long): Set<String> =
         (if (hasFreshPoll(now)) observations.map { it.pane }.toSet() else emptySet()) +
             panes.filter { agentForCommand(it.command) != null }.map { it.id }
 }
 /** Mirrors Rust `Agent::from_command`: a supported CLI's executable name as `ps` or tmux reports it. */
-fun agentForCommand(command: String): String? = when (command.substringAfterLast('/')) {
+fun agentForCommand(command: String): String? = when (command.substringAfterLast('/').substringAfterLast('\\').lowercase().removeSuffix(".exe")) {
     "codex" -> "Codex"; "claude" -> "Claude"; "agy" -> "Agy"; "grok" -> "Grok"; else -> null
 }
 @Serializable data class AgentNotice(val endpoint: String, val event: AgentEvent, val read: Boolean = false) {
@@ -160,22 +161,42 @@ fun agentMessage(kind: String) = when (kind) {
     "Error" -> t("agent.explicit_error_reported"); "Activity" -> t("agent.activity_event_received"); else -> t("agent.run_ended_interrupted")
 }
 
+private val phasePriority = listOf("approval", "question", "waiting", "error", "command", "reviewing", "working", "idle")
+fun AgentSnapshot.phaseOf(o: AgentObservation, now: Long): String =
+    o.phase.takeIf { it in phasePriority && hasFreshPoll(now) && (!gap || o.phase_seq == 0L) } ?: "unknown"
+
+fun agentPhaseLabel(phase: String) = t(when (phase) {
+    "idle" -> "agent.phase.idle"
+    "working" -> "agent.phase.working"
+    "command" -> "agent.phase.command"
+    "waiting" -> "agent.phase.waiting"
+    "approval" -> "agent.phase.approval"
+    "question" -> "agent.phase.question"
+    "reviewing" -> "agent.phase.reviewing"
+    "error" -> "agent.phase.error"
+    else -> "agent.phase.unknown"
+})
+private fun phaseKind(phase: String): String? = when (phase) {
+    "approval" -> "Approval"
+    "question", "waiting" -> "Question"
+    "error" -> "Error"
+    "idle" -> "Response"
+    "command", "working", "reviewing" -> "Activity"
+    else -> null
+}
 /** A window (@ID) or pane (%ID) filter drives the button, unknown state, unread count, and details. */
 data class PanelAgentState(val observations: List<AgentObservation>, val label: String, val agent: String? = null,
     val kind: String? = null, val unread: List<AgentNotice> = emptyList())
 fun AgentSnapshot.panelState(pane: String?, endpoint: String, notices: List<AgentNotice>, now: Long): PanelAgentState {
     val observations = observations.filter { pane == null || (if (pane.startsWith("@")) it.window == pane else it.pane == pane) }
     if (!hasFreshPoll(now)) return PanelAgentState(observations, t("agent.status_unknown"))
-    val first = observations.firstOrNull()?.agent ?: return PanelAgentState(observations, t("agent.not_detected"))
-    if (gap) return PanelAgentState(observations, agentName(first), first)
-
-    val events = observations.mapNotNull { it.last }.filter { it.kind != "Ended" }
-    val unread = notices.filter { n -> !n.read && n.endpoint == endpoint && n.event.server == server &&
+    val focus = observations.minWithOrNull(compareBy<AgentObservation> {
+        phasePriority.indexOf(phaseOf(it, now)).let { rank -> if (rank < 0) Int.MAX_VALUE else rank }
+    }.thenBy { it.actor != "parent" }) ?: return PanelAgentState(observations, t("agent.not_detected"))
+    val phase = phaseOf(focus, now)
+    val unread = if (gap) emptyList() else notices.filter { n -> !n.read && n.endpoint == endpoint && n.event.server == server &&
         (pane == null || (if (pane.startsWith("@")) pane == n.event.window else pane == n.event.pane)) && observations.any { it.pane == n.event.pane && it.run == n.event.run && it.last != null } }
-    val event = unread.minByOrNull { agentPriority(it.event.kind) }?.event ?: events.minByOrNull { agentPriority(it.kind) }
-        ?: return PanelAgentState(observations, agentName(first), first)
-    val message = agentMessage(event.kind)
-    val label = if (unread.isNotEmpty()) tr("agent.unread_events", message, unread.size)
-        else "$message ${events.count { agentPriority(it.kind) == agentPriority(event.kind) }}"
-    return PanelAgentState(observations, "${agentName(event.agent)} · $label", event.agent, event.kind, unread)
+    val label = agentName(focus.agent) + " · " + agentPhaseLabel(phase)
+    return PanelAgentState(observations, if (unread.isEmpty()) label else tr("agent.unread_events", label, unread.size),
+        focus.agent, phaseKind(phase), unread)
 }

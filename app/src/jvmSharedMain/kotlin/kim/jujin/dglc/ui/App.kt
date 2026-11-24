@@ -302,7 +302,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                     }, status?.message?.takeIf { status.phase in setOf(Phase.Failed, Phase.Reconnecting, Phase.MissingSession) }).filter { it.isNotEmpty() }.distinct().joinToString(" · "),
                         Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                     selected?.takeIf { local.preferences.agentStatus.statusBar }?.let { client -> key(client) {
-                        AgentStatusChip(client, local.preferences.agentStatus) { agentStatus = AgentStatusTarget(client) }
+                        AgentStatusChip(client, local.preferences.agentStatus, wide = true) { agentStatus = AgentStatusTarget(client) }
                     } }
                     selected?.let { client ->
                         if (files != null) OpenFilesButton(files, client)

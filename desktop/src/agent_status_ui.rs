@@ -24,7 +24,7 @@ pub(crate) struct Hud {
     pub snapshot: Option<(String, Snapshot)>,
 }
 
-/// Prefer the focused pane, then detailed status and the parent agent within this tab's session.
+/// The active pane's parent CLI, if this session has observed one.
 fn focused<'a>(
     snapshot: &'a Snapshot,
     session: Option<&str>,
@@ -34,14 +34,8 @@ fn focused<'a>(
     snapshot
         .observations
         .iter()
-        .filter(|o| o.session == session)
-        .min_by_key(|o| {
-            (
-                Some(o.pane.as_str()) != pane,
-                o.status.is_none(),
-                o.actor != "parent",
-            )
-        })
+        .filter(|o| o.session == session && Some(o.pane.as_str()) == pane)
+        .min_by_key(|o| (o.actor != "parent", o.status.is_none()))
 }
 
 fn percent(value: f64) -> String {
@@ -116,8 +110,9 @@ pub(crate) fn missing(agent: Agent, status: Option<&AgentStatus>, field: Field) 
     let sources = status.map_or(&[][..], |s| s.sources.as_slice());
     let rich = |source: &str| sources.iter().any(|s| s == source);
     match (agent, field) {
-        (Agent::Codex | Agent::Grok, Field::Account | Field::Usage) => {
-            t("agent_status.not_supported")
+        (Agent::Codex | Agent::Grok, Field::Account) => t("agent_status.not_supported"),
+        (Agent::Codex | Agent::Grok, Field::Usage) if !rich("command") => {
+            t("agent_status.not_collected")
         }
         (Agent::Codex | Agent::Grok | Agent::Agy, Field::Breakdown) => {
             t("agent_status.no_breakdown")
@@ -165,6 +160,7 @@ impl Desktop {
         if let Some((session, snapshot)) = &self.agents.hud.snapshot {
             let mut state = (*state).clone();
             state.session = Some(session.clone());
+            state.pane = Some("%1".into());
             state.agents = snapshot.clone();
             return Some(Arc::new(state));
         }
@@ -208,7 +204,11 @@ impl Desktop {
     }
 
     /// The status-bar chip for the focused pane's agent, `None` when nothing is shown.
-    pub(crate) fn agent_status_chip(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+    pub(crate) fn agent_status_chip(
+        &self,
+        wide: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<Stateful<Div>> {
         let settings = &self.local.preferences.agent_status;
         if !settings.status_bar {
             return None;
@@ -227,7 +227,7 @@ impl Desktop {
         let summary = status.map_or_else(String::new, |s| {
             status_summary(s, state.agents.limits_for(observation), settings)
         });
-        let dim = status.is_none_or(|s| s.is_stale(now));
+        let dim = status.is_some_and(|s| s.is_stale(now));
         let alert = status
             .and_then(|s| s.alert.as_deref())
             .and_then(agent::alert_label);
@@ -239,8 +239,32 @@ impl Desktop {
         } else {
             p.fg
         };
+        let phase = state.agents.phase_of(observation, now).label();
+        let mut chip = vec![phase.to_owned()];
+        if wide && state.agents.current(now) {
+            if settings.context
+                && let Some(s) = status
+                && s.context_at
+                    .or(s.at)
+                    .is_some_and(|at| now.saturating_sub(at) < agent::STATUS_STALE_MS)
+                && let Some(value) = s.context_percent()
+            {
+                chip.push(format!("ctx {}%", percent(value)));
+            }
+            if settings.usage
+                && let Some(s) = state.agents.limit_sample_for(observation)
+                && now.saturating_sub(s.limits_sampled_at()) < agent::STATUS_STALE_MS
+                && let Some((_, used)) = top_limit(&s.limits)
+            {
+                chip.push(tr!(
+                    "agent_status.remaining",
+                    percent((100. - used).max(0.))
+                ));
+            }
+        }
         let tip = [
             observation.agent.label().to_owned(),
+            phase.to_owned(),
             summary,
             alert.unwrap_or_default().to_owned(),
             t("agent_status.open_details").to_owned(),
@@ -267,9 +291,10 @@ impl Desktop {
                 .inset_0(),
             )
             .relative()
-            .w(px(28.))
             .h(px(24.))
-            .p_0()
+            .px_1()
+            .gap_1()
+            .text_xs()
             .flex()
             .items_center()
             .justify_center()
@@ -277,7 +302,8 @@ impl Desktop {
             .child(
                 self.agent_icon(observation.agent, 16.)
                     .text_color(rgb(icon_color)),
-            ),
+            )
+            .child(chip.join(" · ")),
         )
     }
 
@@ -434,6 +460,7 @@ impl Desktop {
                         }
                     ))),
             );
+        block = block.child(self.muted_line(state.agents.phase_of(o, now).label()));
         let Some(status) = status else {
             let text = match o.agent {
                 Agent::Claude | Agent::Agy => t("agent_status.not_collected"),
@@ -542,7 +569,13 @@ impl Desktop {
         let mut section = self.section(t("agent_status.field.usage"));
         let limits = state.agents.limits_for(o);
         if limits.is_empty() {
-            return section.child(self.muted_line(missing(o.agent, Some(status), Field::Usage)));
+            let reason =
+                if state.agents.account_limits && matches!(o.agent, Agent::Codex | Agent::Grok) {
+                    t("agent_status.unknown")
+                } else {
+                    missing(o.agent, Some(status), Field::Usage)
+                };
+            return section.child(self.muted_line(reason));
         }
         for limit in limits {
             let used = limit.used();
@@ -859,6 +892,7 @@ impl Desktop {
                 .filter(|_| settings.usage)
                 .and_then(|s| top_limit(s.agents.limits_for(o)).map(|(l, u)| (l.title(), u)));
             let dim = status.is_none_or(|s| s.is_stale(now));
+            let phase = state.as_ref().unwrap().agents.phase_of(o, now).label();
             let mut row = self
                 .button_base(
                     format!("agent-status-row-{}-{}", o.run, o.actor),
@@ -872,8 +906,8 @@ impl Desktop {
                 .text_color(rgb(if dim { p.muted } else { p.fg }))
                 .child(self.agent_icon(o.agent, 13.))
                 .child(div().flex_1().min_w_0().truncate().child(match model {
-                    Some(model) => format!("{} · {model}", o.agent.label()),
-                    None => o.agent.label().to_owned(),
+                    Some(model) => format!("{} · {phase} · {model}", o.agent.label()),
+                    None => format!("{} · {phase}", o.agent.label()),
                 }));
             if let Some(value) = context {
                 row = row
@@ -974,11 +1008,12 @@ impl Desktop {
 
 /// Whether inspect found a status collector of ours already installed.
 pub(crate) fn installed_collection(preview: &serde_json::Value) -> bool {
-    preview["configs"].as_array().is_some_and(|configs| {
-        configs
-            .iter()
-            .any(|c| c["status_collection"]["installed"].as_bool() == Some(true))
-    })
+    preview["account_limits"].as_bool() == Some(true)
+        || preview["configs"].as_array().is_some_and(|configs| {
+            configs
+                .iter()
+                .any(|c| c["status_collection"]["installed"].as_bool() == Some(true))
+        })
 }
 
 /// A CLI's detailed collection state from inspect, `None` when it has nothing to install.
@@ -1019,6 +1054,8 @@ mod tests {
             actor: actor.into(),
             agent: Agent::Claude,
             last: None,
+            phase: Default::default(),
+            phase_seq: 0,
             supported: vec![],
             status,
         }
@@ -1113,11 +1150,7 @@ mod tests {
         assert_eq!(focus(Some("$1"), Some("%2")).unwrap().actor, "parent");
         // The pane's own agent wins even without a status.
         assert_eq!(focus(Some("$1"), Some("%1")).unwrap().pane, "%1");
-        let other = focus(Some("$1"), Some("%9")).unwrap();
-        assert_eq!(
-            (other.pane.as_str(), other.actor.as_str()),
-            ("%2", "parent")
-        );
+        assert!(focus(Some("$1"), Some("%9")).is_none());
         assert_eq!(focus(Some("$2"), Some("%8")).unwrap().pane, "%8");
         assert!(focus(Some("$3"), Some("%8")).is_none());
         assert!(focus(None, Some("%8")).is_none());
@@ -1148,7 +1181,7 @@ mod tests {
         );
         assert_eq!(
             missing(Agent::Codex, Some(&hooks_only), Field::Usage),
-            t("agent_status.not_supported")
+            t("agent_status.not_collected")
         );
         assert_eq!(
             missing(Agent::Codex, Some(&hooks_only), Field::Cost),

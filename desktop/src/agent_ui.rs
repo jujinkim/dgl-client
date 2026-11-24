@@ -17,34 +17,11 @@ fn endpoint(host: &HostProfile) -> String {
     format!("{}@{}", host.username, host.endpoint())
 }
 
-/// The CLI a fresh poll found and, when hooks report it, its status. A stale or missing
-/// poll shows nothing detected; a CLI without received hooks shows no status.
-fn badge_content(
-    snapshot: &agent::Snapshot,
-    unread: &[&agent::Notice],
-    now: u64,
-) -> (Option<Agent>, Option<agent::Kind>) {
-    if !snapshot.has_fresh_poll(now) {
-        return (None, None);
+fn badge_content(snapshot: &agent::Snapshot, now: u64) -> (Option<Agent>, Option<agent::Kind>) {
+    match snapshot.representative(now) {
+        Some(o) => (Some(o.agent), snapshot.phase_of(o, now).icon_kind()),
+        None => (None, None),
     }
-    let detected = Agent::ALL
-        .into_iter()
-        .find(|a| snapshot.observations.iter().any(|o| o.agent == *a));
-    (detected, detected.and(badge_kind(snapshot, unread, now)))
-}
-fn badge_kind(
-    snapshot: &agent::Snapshot,
-    unread: &[&agent::Notice],
-    now: u64,
-) -> Option<agent::Kind> {
-    if !snapshot.current(now) {
-        return None;
-    }
-    unread
-        .iter()
-        .min_by_key(|n| n.event.kind.priority())
-        .map(|n| n.event.kind)
-        .or_else(|| snapshot.display_kind(None, now))
 }
 impl Desktop {
     pub fn tick_agents(&mut self, cx: &mut Context<Self>) {
@@ -186,7 +163,6 @@ impl Desktop {
         });
         let snapshot = &filtered;
         let now = agent::now_ms();
-        let mut label = snapshot.label(None, now);
         let unread: Vec<_> =
             self.agents
                 .inbox
@@ -206,20 +182,23 @@ impl Desktop {
                         })
                 })
                 .collect();
-        if snapshot.current(now)
-            && let Some(n) = unread.iter().min_by_key(|n| n.event.kind.priority())
-        {
-            label = tr!("agent.unread_events", n.event.kind.label(), unread.len());
-        }
-        let (detected, kind) = badge_content(snapshot, &unread, now);
-        if detected.is_none() {
-            label = t(if snapshot.has_fresh_poll(now) {
-                "agent.not_detected"
-            } else {
-                "agent.status_unknown"
-            })
-            .into();
-        }
+        let (detected, kind) = badge_content(snapshot, now);
+        let label = match snapshot.representative(now) {
+            Some(o) => {
+                let phase = format!(
+                    "{} · {}",
+                    o.agent.label(),
+                    snapshot.phase_of(o, now).label()
+                );
+                if unread.is_empty() {
+                    phase
+                } else {
+                    tr!("agent.unread_events", phase, unread.len())
+                }
+            }
+            None if snapshot.has_fresh_poll(now) => t("agent.not_detected").into(),
+            None => t("agent.status_unknown").into(),
+        };
         let id = format!("agent-{}-{}", state.handle, pane);
         let title = host.alias.clone();
         let target_pane = pane.to_owned();
@@ -300,12 +279,22 @@ impl Desktop {
                     })
                 });
                 let now = agent::now_ms();
+                let summary = filtered.representative(now).map_or_else(
+                    || filtered.label(None, now),
+                    |o| {
+                        format!(
+                            "{} · {}",
+                            o.agent.label(),
+                            filtered.phase_of(o, now).label()
+                        )
+                    },
+                );
                 div()
                     .flex()
                     .items_center()
                     .gap_1()
-                    .child(UiIcon::agent(filtered.display_kind(None, now)).render(self.palette.fg))
-                    .child(div().flex_1().min_w_0().child(filtered.label(None, now)))
+                    .child(UiIcon::agent(badge_content(&filtered, now).1).render(self.palette.fg))
+                    .child(div().flex_1().min_w_0().child(summary))
             });
         for o in state.agents.observations.iter().filter(|o| {
             pane.is_none_or(|p| {
@@ -336,8 +325,9 @@ impl Desktop {
                         o.last.as_ref().map_or("", |e| e.event.as_str())
                     ))
                     .child(format!(
-                        "{} · {}{}",
+                        "{} · {} · {}{}",
                         o.agent.label(),
+                        state.agents.phase_of(o, agent::now_ms()).label(),
                         hierarchy::target_label(&state.remote, Some(&o.session), Some(&o.pane)),
                         if o.actor != "parent" {
                             t("agent.subagent_suffix")
@@ -407,28 +397,54 @@ impl Desktop {
         if pane.is_some() {
             return body;
         }
-        body = body.child(
-            div()
-                .id("agent-install-help")
-                .child(t("agent.install_description"))
-                .native_tooltip(t("agent.optional_setup")),
+        body.child(t("agent.basic_observation")).child(self.button(
+            "agent-advanced-hooks",
+            t("agent.advanced_hooks"),
+            cx,
+            move |s, _, _| {
+                s.inspect_agent_hooks(&connection);
+                s.dialog = Some(Dialog::AgentHooks(connection.clone(), alias.clone()));
+            },
+        ))
+    }
+
+    fn inspect_agent_hooks(&mut self, connection: &Arc<Connection>) {
+        self.agents.hud.collect = None;
+        self.submit(
+            connection,
+            Action::AgentSetup {
+                operation: "inspect".into(),
+                token: None,
+                status: false,
+            },
         );
+    }
+
+    pub(super) fn agent_hook_settings(
+        &self,
+        connection: Arc<Connection>,
+        alias: String,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let state = connection.state();
+        let mut body = div()
+            .id("agent-hook-settings")
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(div().text_lg().child(tr!("agent.hooks_named", alias)))
+            .child(
+                div()
+                    .id("agent-install-help")
+                    .child(t("agent.install_description"))
+                    .native_tooltip(t("agent.optional_setup")),
+            );
         let c = connection.clone();
         body = body.child(self.button(
             "agent-inspect",
             t("agent.inspect_before_install"),
             cx,
-            move |s, _, _| {
-                s.agents.hud.collect = None;
-                s.submit(
-                    &c,
-                    Action::AgentSetup {
-                        operation: "inspect".into(),
-                        token: None,
-                        status: false,
-                    },
-                );
-            },
+            move |s, _, _| s.inspect_agent_hooks(&c),
         ));
         if let Some(preview) = &state.agent_setup {
             if let Some(error) = preview.get("error").and_then(|v| v.as_str()) {
@@ -676,68 +692,11 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{Agent, UiIcon, agent, badge_content, badge_kind};
-    use agent::{AgentEvent, Kind, Notice, Observation, Snapshot};
+    use super::{Agent, UiIcon, agent, badge_content};
+    use agent::{AgentEvent, Kind, LivePhase, Observation, Snapshot};
 
     #[test]
-    fn badge_uses_unread_priority_and_stale_observations_are_unknown() {
-        let event = AgentEvent {
-            id: "event".into(),
-            seq: 1,
-            server: "server".into(),
-            run: "run".into(),
-            actor: "parent".into(),
-            session: "$1".into(),
-            window: "@1".into(),
-            pane: "%1".into(),
-            agent: Agent::Codex,
-            kind: Kind::Question,
-            event: "Question".into(),
-            at: 1000,
-        };
-        let mut snapshot = Snapshot {
-            valid: true,
-            observed_at: 1000,
-            observations: vec![Observation {
-                session: event.session.clone(),
-                window: event.window.clone(),
-                pane: event.pane.clone(),
-                run: event.run.clone(),
-                actor: event.actor.clone(),
-                agent: event.agent,
-                last: Some(event.clone()),
-                supported: vec![],
-                status: None,
-            }],
-            ..Default::default()
-        };
-        let response = Notice {
-            endpoint: "host".into(),
-            event: AgentEvent {
-                kind: Kind::Response,
-                ..event.clone()
-            },
-            read: false,
-        };
-        let error = Notice {
-            event: AgentEvent {
-                kind: Kind::Error,
-                ..event
-            },
-            ..response.clone()
-        };
-        assert_eq!(badge_kind(&snapshot, &[], 1001), Some(Kind::Question));
-        assert_eq!(
-            badge_kind(&snapshot, &[&response], 1001),
-            Some(Kind::Response)
-        );
-        assert_eq!(
-            badge_kind(&snapshot, &[&response, &error], 1001),
-            Some(Kind::Error)
-        );
-        assert_eq!(badge_kind(&snapshot, &[&error], 11000), None);
-        snapshot.gap = true;
-        assert_eq!(badge_kind(&snapshot, &[&error], 1001), None);
+    fn badge_icons() {
         for (kind, icon) in [
             (Kind::Question, UiIcon::Question),
             (Kind::Approval, UiIcon::Approval),
@@ -761,6 +720,8 @@ mod tests {
             actor: "parent".into(),
             agent: Agent::Claude,
             last: None,
+            phase: Default::default(),
+            phase_seq: 0,
             supported: vec![],
             status: None,
         };
@@ -770,13 +731,10 @@ mod tests {
             ..Default::default()
         };
         // Nothing detected: the "not detected" icon only.
-        assert_eq!(badge_content(&snapshot, &[], 1001), (None, None));
+        assert_eq!(badge_content(&snapshot, 1001), (None, None));
         // A CLI process without received hooks: its icon, no status.
         snapshot.observations.push(observation);
-        assert_eq!(
-            badge_content(&snapshot, &[], 1001),
-            (Some(Agent::Claude), None)
-        );
+        assert_eq!(badge_content(&snapshot, 1001), (Some(Agent::Claude), None));
         // A received hook adds the status.
         snapshot.observations[0].last = Some(AgentEvent {
             id: "event".into(),
@@ -792,18 +750,17 @@ mod tests {
             event: "UserPromptSubmit".into(),
             at: 1000,
         });
+        snapshot.observations[0].phase = LivePhase::Command;
+        snapshot.observations[0].phase_seq = 1;
         assert_eq!(
-            badge_content(&snapshot, &[], 1001),
+            badge_content(&snapshot, 1001),
             (Some(Agent::Claude), Some(Kind::Activity))
         );
         // An event gap keeps the process but not its status; a stale poll keeps neither.
         snapshot.gap = true;
-        assert_eq!(
-            badge_content(&snapshot, &[], 1001),
-            (Some(Agent::Claude), None)
-        );
-        assert_eq!(badge_content(&snapshot, &[], 11_000), (None, None));
+        assert_eq!(badge_content(&snapshot, 1001), (Some(Agent::Claude), None));
+        assert_eq!(badge_content(&snapshot, 11_000), (None, None));
         snapshot.invalidate();
-        assert_eq!(badge_content(&snapshot, &[], 1001), (None, None));
+        assert_eq!(badge_content(&snapshot, 1001), (None, None));
     }
 }

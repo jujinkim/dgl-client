@@ -10,6 +10,9 @@ Also runs from stdin/-c for read-only discovery before installation. Python 3.9+
 POSIX tmux hosts; the SSH client itself may run on Windows, macOS or Android.
 """
 import argparse
+import base64
+import socket
+import struct
 import contextlib
 from contextlib import closing
 import copy
@@ -17,6 +20,7 @@ import datetime
 import glob
 import hashlib
 import itertools
+import io
 import json
 import math
 import os
@@ -111,7 +115,13 @@ def hook_events(agent, version=''):
     return events
 
 
+TMUX_ARGS = []
+MUX_EXE = None
+
+
 def run(args):
+    if TMUX_ARGS and args[0] == MUX_EXE:
+        args = [args[0], *TMUX_ARGS, *args[1:]]
     return subprocess.check_output(args, stderr=subprocess.DEVNULL, timeout=3).decode('utf-8', 'replace').strip()
 
 
@@ -119,8 +129,29 @@ APP_SERVER = re.compile(r'(?:^|/)codex(?:\.js)? app-server(?:\s|$)')
 UUID_TEXT = re.compile(r'(?<![0-9A-Za-z])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(?![0-9A-Za-z])')
 
 
-def processes():
-    result = {}
+WINDOWS = os.name == 'nt'
+
+
+def windows_argv(command):
+    # Windows file names cannot contain a double quote. Capture the quoted executable
+    # and entrypoint even when the user profile lives in a directory with spaces.
+    return [word.strip('"') for word in shlex.split(command, posix=False)]
+
+
+def windows_process_rows():
+    script = ("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); "
+              "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,"
+              "@{n='Started';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToFileTimeUtc()}}} "
+              "| ConvertTo-Json -Compress")
+    entries = json.loads(run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script]))
+    for row in entries if isinstance(entries, list) else [entries]:
+        stamp = row.get('Started')
+        if isinstance(stamp, int):
+            yield (row['ProcessId'], row['ParentProcessId'], str(stamp), row['Name'], row.get('CommandLine') or '',
+                   stamp // 10000000 - 11644473600)
+
+
+def posix_process_rows():
     # lstart prevents attaching observations to a recycled PID. No command line leaves memory.
     arguments = {}
     for line in run(['ps', '-ww', '-axo', 'pid=,args=']).splitlines():
@@ -134,21 +165,29 @@ def processes():
             continue
         pid, parent = int(parts[0]), int(parts[1])
         start, exe = ' '.join(parts[2:7]), parts[7]
-        args = arguments.get(pid, '')
+        yield pid, parent, start, exe, arguments.get(pid, ''), started(start)
+
+
+def processes():
+    result = {}
+    for pid, parent, start, exe, args, born in windows_process_rows() if WINDOWS else posix_process_rows():
         agent = None
         name = Path(exe).name
+        if WINDOWS:
+            name = name.lower().removesuffix('.exe')
         launcher = name in ('node', 'nodejs')
         argv = []
-        if launcher:
+        if launcher or WINDOWS:
             try:
-                argv = shlex.split(args)
+                argv = windows_argv(args) if WINDOWS else shlex.split(args)
             except ValueError:
                 pass
         if name in ('codex', 'claude', 'agy', 'grok'):
             agent = {'codex': 'Codex', 'claude': 'Claude', 'agy': 'Agy', 'grok': 'Grok'}[name]
         elif launcher:
             # Only the actual entrypoint, never a prompt/argument mentioning a product.
-            if len(argv) > 1 and argv[1].startswith('/'):
+            if len(argv) > 1 and os.path.isabs(argv[1]):
+                argv[1] = argv[1].replace(chr(92), '/')
                 if argv[1].endswith('/@openai/codex/bin/codex.js'):
                     agent = 'Codex'
                 elif argv[1].endswith('/@anthropic-ai/claude-code/cli.js'):
@@ -157,18 +196,21 @@ def processes():
         # Codex 0.171+ serves every TUI of a CODEX_HOME from one `codex app-server` daemon,
         # which also runs their hooks. No app-server is a CLI in the pane it descends from.
         # Matched on the raw text so an install path with spaces still counts.
-        if agent == 'Codex' and APP_SERVER.search(args):
+        words = argv[2 if launcher else 1:] if (WINDOWS or launcher) else args.split()[1:]
+        if '--version' in words[:1] or words[:2] == ['agents', '--json'] or (agent == 'Grok' and words[:3] == ['--no-auto-update', 'agent', 'stdio']):
+            agent = None
+        if agent == 'Codex' and (words[:1] == ['app-server'] or APP_SERVER.search(args)):
             agent, daemon = None, 'Codex'
             # Only the TUIs' shared, managed daemon is attributed to a pane. An IDE's or other
             # client's own app-server is not, even if a TUI shares its directory.
             managed = '--managed-daemon' in args.split()
         result[pid] = {'parent': parent, 'token': digest(f'{pid}:{start}:{exe}'), 'agent': agent,
                        'launcher': bool(agent and launcher), 'daemon': daemon, 'managed': bool(managed),
-                       'started': started(start),
+                       'started': born,
                        # Only thread IDs a Codex TUI was started with (`codex resume <id>`) and whether it
                        # reopens one (`resume`/`fork`) instead of starting its own; kept in memory.
                        'threads': frozenset(t.lower() for t in UUID_TEXT.findall(args)) if agent == 'Codex' else frozenset(),
-                       'reuses': agent == 'Codex' and args.split()[2 if launcher else 1:][:1] in (['resume'], ['fork'])}
+                       'reuses': agent == 'Codex' and words[:1] in (['resume'], ['fork'])}
     return result
 
 
@@ -192,6 +234,8 @@ def descendant(pid, root, procs):
 
 def topology(tmux, session=None):
     procs = processes()
+    if WINDOWS:
+        return psmux_topology(tmux, session, procs)
     ident = run([tmux, 'display-message', '-p', '#{socket_path}|#{pid}'])
     socket, pid = ident.rsplit('|', 1)
     server = digest(socket + ':' + procs[int(pid)]['token'])
@@ -205,6 +249,30 @@ def topology(tmux, session=None):
         if not (re.fullmatch(r'\$\d+', s) and re.fullmatch(r'@\d+', w) and re.fullmatch(r'%\d+', p)):
             continue
         panes.append({'session': s, 'window': w, 'pane': p, 'pid': int(pid)})
+    return server, panes, procs
+
+
+def psmux_topology(tmux, session, procs):
+    # psmux owns a server per session. Match the Rust adapter's 32-bit ID namespace.
+    server = digest('psmux:' + socket.gethostname() + ':' + os.path.normcase(str(Path.home())))
+    panes = []
+    for sid in run([tmux, 'list-sessions', '-F', '#{session_id}']).splitlines():
+        if not re.fullmatch(r'\$[0-9]+', sid) or (session and sid != session):
+            continue
+        scope = int(sid[1:])
+        if scope > 0xffffffff:
+            continue
+        try:
+            rows = run([tmux, 'list-panes', '-a', '-t', sid, '-F', '#{window_id}|#{pane_id}|#{pane_pid}'])
+        except subprocess.CalledProcessError:
+            continue  # Session closed between the two reads.
+        for row in rows.splitlines():
+            ids = re.fullmatch(r'@(\d+)\|%(\d+)\|(\d+)', row)
+            if ids:
+                window, pane, pid = map(int, ids.groups())
+                if max(window, pane) <= 0xffffffff and pid in procs:
+                    panes.append(dict(session=sid, window='@' + str(scope << 32 | window),
+                                      pane='%' + str(scope << 32 | pane), pid=pid))
     return server, panes, procs
 
 
@@ -240,6 +308,8 @@ def database(timeout=0.8):
     db.execute('CREATE TABLE IF NOT EXISTS conversations (run TEXT PRIMARY KEY, conversation TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS status (run TEXT, actor TEXT, agent TEXT, data TEXT, at INTEGER, PRIMARY KEY(run,actor))')
     # Codex thread -> TUI run bindings for daemon-run hooks; only digests are stored.
+    db.execute('CREATE TABLE IF NOT EXISTS phases (run TEXT, actor TEXT, data TEXT, PRIMARY KEY(run,actor))')
+    db.execute('CREATE TABLE IF NOT EXISTS quotas (scope TEXT PRIMARY KEY, sampled INTEGER, data TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS threads (thread TEXT PRIMARY KEY, run TEXT, at INTEGER)')
     db.execute('INSERT OR IGNORE INTO meta VALUES (?, ?)', ('epoch', uuid.uuid4().hex))
     return db
@@ -376,9 +446,10 @@ def clean_status(status):
     at = count(status.get('at'))
     if at is not None:
         out['at'] = at
-    limits_at = count(status.get('limits_at'))
-    if limits_at is not None and out.get('limits'):
-        out['limits_at'] = limits_at
+    for key in ('context', 'limits'):
+        sampled = count(status.get(key + '_at'))
+        if sampled is not None and out.get(key):
+            out[key + '_at'] = sampled
     return out
 
 
@@ -565,9 +636,8 @@ def wire_status(row, mod):
     mod = dict(mod or {})
     mod_stamps = mod.pop('_ts', None) or {}
     out = {}
-    limits_at = None
     for key in set(row) | set(mod):
-        if key in ('at', 'sources', 'limits_at'):
+        if key in ('at', 'sources', 'limits_at', 'context_at'):
             continue
         mod_at = mod_stamps.get(key, mod.get('at', 0))
         if key in mod and (key not in row or stamps.get(key, 0) <= mod_at):
@@ -576,13 +646,11 @@ def wire_status(row, mod):
             value, other, sampled = row[key], mod.get(key), stamps.get(key) or row.get('at')
         if key == 'model' and isinstance(other, dict) and isinstance(value, dict) and other.get('id') == value.get('id'):
             value = dict(other, **value)
-        if key == 'limits':
-            limits_at = count(sampled)
+        if key in ('limits', 'context') and count(sampled) is not None:
+            out[key + '_at'] = sampled
         out[key] = value
     out['sources'] = list(set(row.get('sources') or []) | set(mod.get('sources') or []))
     out['at'] = max(count(row.get('at')) or 0, count(mod.get('at')) or 0) or None
-    if limits_at and out.get('limits'):
-        out['limits_at'] = min(limits_at, out['at'] or limits_at)  # when the limits were sampled
     status = clean_status(out)
     if status.get('alert') is None:
         status.pop('alert', None)  # a clearing marker never reaches the wire
@@ -972,6 +1040,10 @@ def unbound_target(thread, candidates, procs, payload, daemon):
     resumed = [c for c in candidates if thread in procs[c[1]].get('threads', ())]
     if len(resumed) == 1:
         return resumed[0]
+    if WINDOWS:
+        all_tuis = [(None, pid, None) for pid, proc in procs.items() if proc.get('agent') == 'Codex' and not proc.get('launcher')]
+        owner = startup_owner(thread, all_tuis, procs)
+        return next((c for c in candidates if owner and c[1] == owner[1]), None)
     cwd = payload.get('cwd')
     matches = []
     if isinstance(cwd, str) and cwd.startswith('/'):
@@ -1008,6 +1080,9 @@ def resolve(agent, tmux, payload=None):
             return daemon_target(agent, server, panes, procs, payload, pid)
         if procs[pid]['agent']:
             # Stop at the nearest identified CLI, including a different vendor's CLI.
+            if WINDOWS:
+                owners = [p for p in panes if descendant(pid, p['pid'], procs)]
+                pane = owners[0] if len(owners) == 1 else None
             if pane is None or procs[pid]['agent'] != agent or not descendant(pid, pane['pid'], procs):
                 return None
             return server, pane, procs, pid
@@ -1015,10 +1090,97 @@ def resolve(agent, tmux, payload=None):
     return None
 
 
+SHELL_TOOLS = {
+    'Codex': {'bash', 'shell', 'shell_command', 'exec_command'},
+    'Claude': {'bash', 'powershell'},
+    'Agy': {'run_command'}, 'Grok': {'bash', 'run_terminal_cmd', 'run_terminal_command'},
+}
+AGY_STATES = {'idle': 'idle', 'working': 'working', 'reviewing': 'reviewing',
+              'tool_use': 'working', 'error': 'error', 'authenticating': 'working', 'initializing': 'working'}
+
+
+def phase_value(state):
+    if state.get('confirming'):
+        return 'approval'
+    calls = [c['phase'] for c in state.get('calls', [])]
+    for phase in ('approval', 'question', 'command'):
+        if phase in calls:
+            return phase
+    return state.get('base', 'unknown')
+
+
+def update_phase(db, run_key, actor, agent, event, payload, kind, seq, at):
+    """Update one actor inside the event transaction. Only tool classes and hashed IDs survive."""
+    row = db.execute('SELECT data FROM phases WHERE run=? AND actor=?', (run_key, actor)).fetchone()
+    state = json.loads(row[0]) if row else {}
+    state.pop('confirming', None)
+    calls = state.setdefault('calls', [])
+    call = payload.get('toolCall') or {}
+    name = str(payload.get('tool_name') or payload.get('toolName') or call.get('name') or '').lower()
+    ident = payload.get('tool_use_id') or payload.get('toolUseId') or call.get('id') or payload.get('stepIdx')
+    key = digest(str(ident)) if ident is not None else ''
+    tool = digest(name) if name else ''
+    match = next((c for c in calls if key and c['id'] == key), None)
+    if match is None:
+        match = next((c for c in calls if tool and c['tool'] == tool and (not key or not c['id'])), None)
+    if event in ('SessionStart', 'UserPromptSubmit', 'SubagentStart', 'Stop', 'StopFailure',
+                 'SessionEnd', 'Interrupt', 'SubagentStop', 'StopCancelled'):
+        calls.clear()
+        if kind == 'Error':
+            state['base'] = 'error'
+        elif kind == 'Response' or event in ('SessionStart', 'Interrupt', 'StopCancelled'):
+            state['base'] = 'idle'
+        else:
+            state['base'] = 'unknown' if kind == 'Ended' else 'working'
+    elif event == 'PreToolUse' or kind == 'Approval':
+        state['base'] = 'working'
+        phase = {'Question': 'question', 'Approval': 'approval'}.get(kind)
+        if not phase:
+            phase = 'command' if name in SHELL_TOOLS[agent] else 'working'
+        if match and (kind == 'Approval' or match['phase'] == 'approval'):
+            match['phase'] = phase
+        elif not (key and match):
+            if len(calls) >= 128:
+                calls.clear()
+                state['base'] = 'unknown'
+            calls.append({'id': key, 'tool': tool, 'phase': phase})
+    elif event in ('PostToolUse', 'PostToolUseFailure', 'PermissionDenied'):
+        if match:
+            calls.remove(match)
+        elif not key and not name and len(calls) == 1:
+            calls.clear()
+        # Some approval notifications carry neither a tool name nor a call ID.
+        calls[:] = [c for c in calls if c['tool'] or c['id'] or c['phase'] != 'approval']
+        state['base'] = 'error' if kind == 'Error' else 'working'
+    elif event in ('PreInvocation', 'PostInvocation'):
+        state['base'] = 'working'
+    if agent == 'Grok':
+        state['quota_scope'] = account_scope(agent)
+    state.update(seq=seq, at=at)
+    db.execute('INSERT OR REPLACE INTO phases VALUES(?,?,?)', (run_key, actor, json.dumps(state)))
+
+
+def statusline_phase(db, run_key, payload):
+    native = payload.get('agent_state')
+    confirming = payload.get('tool_confirmation_pending') is True
+    if native not in AGY_STATES and not confirming:
+        return
+    row = db.execute("SELECT data FROM phases WHERE run=? AND actor='parent'", (run_key,)).fetchone()
+    state = json.loads(row[0]) if row else {}
+    # A provider's tool/review cycle may still need the hook's finer-grained reason.
+    if native in ('idle', 'error'):
+        state['calls'] = []
+    state.update(base=AGY_STATES.get(native, 'unknown'), confirming=confirming, at=now_ms())
+    if not state.get('calls'):
+        state.pop('seq', None)
+    db.execute("INSERT OR REPLACE INTO phases VALUES(?,'parent',?)", (run_key, json.dumps(state)))
+
+
+
 def record_payload(agent, tmux, event, payload):
     status_only = event in STATUS_EVENTS.get(agent, [])
     # A daemon-run Codex hook may lack TMUX; resolve() still requires TMUX_PANE for every other route.
-    if (event not in EVENTS[agent] and not status_only) or (not os.environ.get('TMUX') and agent != 'Codex'):
+    if (event not in EVENTS[agent] and not status_only) or (not WINDOWS and not os.environ.get('TMUX') and agent != 'Codex'):
         return
     event_kind = None if status_only else kind(agent, event, payload)
     if event_kind is None and not status_only:
@@ -1028,7 +1190,7 @@ def record_payload(agent, tmux, event, payload):
         identity = payload.get('conversationId' if agent == 'Agy' else 'sessionId')
         if not isinstance(identity, str) or not identity:
             return
-        if agent == 'Agy' and '/antigravity-cli/brain/' not in payload.get('transcriptPath', ''):
+        if agent == 'Agy' and '/antigravity-cli/brain/' not in payload.get('transcriptPath', '').replace(chr(92), '/'):
             return
     resolved = resolve(agent, tmux, payload)
     if resolved is None:
@@ -1080,23 +1242,28 @@ def record_payload(agent, tmux, event, payload):
         db.execute('UPDATE events SET data=? WHERE seq=?', (encoded, seq))
         db.execute('INSERT OR REPLACE INTO latest VALUES(?,?,?)', (run_key, actor, encoded))
         upsert_status(db, run_key, actor, agent, status, now)
+        update_phase(db, run_key, actor, agent, event, payload, event_kind, seq, now)
         db.execute('DELETE FROM events WHERE seq <= ?', (seq - LIMIT,))
         db.execute('DELETE FROM latest WHERE (run,actor) NOT IN (SELECT run,actor FROM events)')
         db.execute('DELETE FROM conversations WHERE run NOT IN (SELECT run FROM events)')
+        db.execute("DELETE FROM phases WHERE (run,actor) NOT IN (SELECT run,actor FROM latest) AND json_extract(data,'$.at') < ?", (now - STATUS_RETENTION_MS,))
 
 
 def record_statusline(agent, tmux, payload):
-    if not os.environ.get('TMUX'):
+    if not WINDOWS and not os.environ.get('TMUX'):
         return
     status = status_from_statusline(agent, payload)
-    if not status:
+    if not status and not (agent == 'Agy' and (payload.get('agent_state') in AGY_STATES or payload.get('tool_confirmation_pending') is True)):
         return
     resolved = resolve(agent, tmux)
     if resolved is None:
         return
     server, pane, procs, pid = resolved
     with database(timeout=0.2) as db:
-        upsert_status(db, run_id(server, pane['pane'], procs[pid]['token']), 'parent', agent, status)
+        run_key = run_id(server, pane['pane'], procs[pid]['token'])
+        upsert_status(db, run_key, 'parent', agent, status)
+        if agent == 'Agy':
+            statusline_phase(db, run_key, payload)
 
 
 def relayable(original):
@@ -1125,8 +1292,9 @@ def statusline(agent, tmux, umask=None):
     if command:
         previous = os.umask(umask) if umask is not None else None
         try:
-            child = subprocess.Popen(['/bin/sh', '-c', command], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     start_new_session=True)
+            child = subprocess.Popen(command if WINDOWS else ['/bin/sh', '-c', command], shell=WINDOWS,
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     start_new_session=not WINDOWS)
         except OSError:
             child = None
         finally:
@@ -1139,6 +1307,14 @@ def statusline(agent, tmux, umask=None):
             pass  # Never block or fail the user's statusline.
     if child is None:
         return 0, b''
+    if WINDOWS:
+        try:
+            result, _ = child.communicate(raw, timeout=TEE_TIMEOUT)
+            return child.returncode, result
+        except subprocess.TimeoutExpired as err:
+            subprocess.run(['taskkill.exe', '/F', '/T', '/PID', str(child.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+            child.kill()
+            return 124, err.output or b''
     return relay(child, raw, TEE_TIMEOUT)
 
 
@@ -1197,7 +1373,329 @@ def relay(child, raw, timeout):
     return code, b''.join(chunks)
 
 
-def poll(tmux, session, after, epoch):
+class CodexControl:
+    """Read-only JSON-RPC over the running user's Codex Unix WebSocket."""
+    def __enter__(self):
+        self.serial = 0
+        self.socket = self.proxy = self.timer = self.stream = None
+        try:
+            if WINDOWS:
+                # CPython on Windows may lack AF_UNIX. The Codex CLI implements
+                # its own socket transport; its stdio is raw WebSocket bytes.
+                self.proxy = subprocess.Popen([shutil.which('codex') or 'codex', 'app-server', 'proxy'],
+                                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+                self.timer = threading.Timer(5, self.proxy.kill)
+                self.timer.start()
+                self.stream = io.BufferedRWPair(self.proxy.stdout, self.proxy.stdin)
+            else:
+                self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.socket.settimeout(2)
+                self.socket.connect(str(codex_home() / 'app-server-control/app-server-control.sock'))
+                self.stream = self.socket.makefile('rwb')
+            nonce = base64.b64encode(os.urandom(16))
+            self.stream.write(b'GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ' + nonce + b'\r\n\r\n')
+            self.stream.flush()
+            headers = {}
+            if self.stream.readline(512).split()[1:2] != [b'101']:
+                raise ValueError('upgrade')
+            for _ in range(32):
+                line = self.stream.readline(2048)
+                if line == b'\r\n':
+                    break
+                k, _, v = line.partition(b':')
+                headers[k.lower()] = v.strip()
+            expected = hashlib.sha1(nonce + b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest()
+            if headers.get(b'sec-websocket-accept') != base64.b64encode(expected):
+                raise ValueError('upgrade')
+            self.request('initialize', {'clientInfo': {'name': 'dgl-observer', 'version': '1'}})
+            self.send(1, b'{"method":"initialized"}')
+            return self
+        except Exception:
+            self.__exit__(None, None, None)
+            raise
+
+    def __exit__(self, *_):
+        if self.proxy:
+            self.proxy.kill()
+            self.proxy.wait()
+        if self.timer:
+            self.timer.cancel()
+        if self.stream:
+            self.stream.close()
+        if self.socket:
+            self.socket.close()
+
+    def peer_pid(self):
+        if self.socket is None:
+            return None
+        try:
+            if sys.platform == 'darwin':
+                return self.socket.getsockopt(0, 2)  # SOL_LOCAL / LOCAL_PEERPID
+            if hasattr(socket, 'SO_PEERCRED'):
+                data = self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i'))
+                return struct.unpack('3i', data)[0]
+        except OSError:
+            pass
+        return None
+
+    def send(self, opcode, data):
+        mask = os.urandom(4)
+        n = len(data)
+        length = bytes([128 + n]) if n < 126 else b'\xfe' + struct.pack('!H', n)
+        self.stream.write(bytes([128 + opcode]) + length + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+        self.stream.flush()
+
+    def request(self, method, params):
+        self.serial += 1
+        self.send(1, json.dumps(dict(id=self.serial, method=method, params=params)).encode())
+        message = bytearray()
+        for _ in range(128):
+            flags, n = self.stream.read(2)
+            if n & 128:
+                raise ValueError('masked server frame')
+            if n == 126:
+                n, = struct.unpack('!H', self.stream.read(2))
+            elif n == 127:
+                n, = struct.unpack('!Q', self.stream.read(8))
+            if len(message) + n > INPUT_LIMIT:
+                raise ValueError('large frame')
+            data = self.stream.read(n)
+            op = flags & 15
+            if op == 9:
+                self.send(10, data)
+                continue
+            if op == 10:
+                continue
+            if op not in (0, 1) or len(data) != n:
+                raise ValueError('unexpected frame')
+            message.extend(data)
+            if flags & 128:
+                reply = json.loads(message)
+                message.clear()
+                if reply.get('id') == self.serial:
+                    return reply.get('result') or {}
+        raise ValueError('missing response')
+
+
+def codex_phases(candidates, procs, bindings):
+    phases = {}
+    by_run = {run for _, _, run in candidates}
+    with CodexControl() as client:
+        # Include CLI clients outside this tmux server when deciding whether a cwd is unique.
+        # The socket peer identifies the daemon for this exact CODEX_HOME.
+        client_pids = {pid for pid, proc in procs.items() if proc.get('agent') == 'Codex' and not proc.get('launcher')}
+        daemon = client.peer_pid()
+        served = daemon_clients(daemon, client_pids) or set()
+        directories = {pid: process_cwd(pid) for pid in served}
+        runs_by_pid = {pid: run_key for _, pid, run_key in candidates}
+        page = client.request('thread/loaded/list', {'limit': 100})
+        if page.get('nextCursor'):
+            return {}  # More threads than the bounded lookup can disambiguate.
+        for thread in page.get('data', [])[:100]:
+            if not isinstance(thread, str) or not UUID_TEXT.fullmatch(thread):
+                continue
+            info = client.request('thread/read', {'threadId': thread, 'includeTurns': False}).get('thread', {})
+            if info.get('parentThreadId') or (info.get('originator') != 'codex-tui' and info.get('source') != 'cli'):
+                continue
+            run_key = bindings.get(digest('thread:' + thread))
+            if run_key not in by_run:
+                resumed = [pid for pid in client_pids if thread in procs[pid].get('threads', ())]
+                if len(resumed) == 1:
+                    run_key = runs_by_pid.get(resumed[0])
+                elif info.get('cwd') and directories and all(directories.values()):
+                    cwd = os.path.realpath(info['cwd'])
+                    same = [pid for pid in served if directories[pid] == cwd]
+                    if len(same) == 1:
+                        run_key = runs_by_pid.get(same[0])
+                    elif len(same) > 1:
+                        owner = startup_owner(thread, [(None, pid, None) for pid in served], procs)
+                        if owner and owner[1] in same:
+                            run_key = runs_by_pid.get(owner[1])
+                elif WINDOWS:
+                    owner = startup_owner(thread, [(None, pid, None) for pid in client_pids], procs)
+                    run_key = runs_by_pid.get(owner[1]) if owner else None
+            if run_key not in by_run:
+                continue
+            status = info.get('status') or {}
+            flags = status.get('activeFlags') or []
+            state = {'idle': 'idle', 'systemError': 'error', 'active': 'working'}.get(status.get('type'))
+            if status.get('type') == 'active':
+                if 'waitingOnApproval' in flags:
+                    state = 'approval'
+                elif 'waitingOnUserInput' in flags:
+                    state = 'question'
+            # More than one loaded conversation mapped to the same TUI is ambiguous.
+            phases[run_key] = None if run_key in phases else state
+    return {run: phase for run, phase in phases.items() if phase}
+
+
+def claude_phases(candidates):
+    runs = {pid: run_key for _, pid, run_key in candidates}
+    phases = {}
+    for entry in json.loads(run([shutil.which('claude') or 'claude', 'agents', '--json'])):
+        run_key = runs.get(entry.get('pid'))
+        if run_key:
+            status = entry.get('status')
+            state = {'idle': 'idle', 'busy': 'working', 'waiting': 'waiting'}.get(status)
+            if status == 'waiting':
+                reason = entry.get('waitingFor')
+                if reason in ('permission prompt', 'sandbox request'):
+                    state = 'approval'
+                elif reason == 'input needed':
+                    state = 'question'
+            phases[run_key] = state
+    return phases
+
+
+def grok_billing():
+    """One ACP read on the CLI's authenticated channel; no session or prompt is created."""
+    with subprocess.Popen(['grok', '--no-auto-update', 'agent', 'stdio'], stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as proc:
+        timer = threading.Timer(5, proc.kill)
+        timer.start()
+        try:
+            for i, method, params in [(1, 'initialize', {'protocolVersion': 1, 'clientCapabilities': {}}),
+                                      (2, '_x.ai/billing', {})]:
+                proc.stdin.write((json.dumps(dict(jsonrpc='2.0', id=i, method=method, params=params)) + '\n').encode())
+                proc.stdin.flush()
+                for _ in range(32):
+                    reply = json.loads(proc.stdout.readline(INPUT_LIMIT))
+                    if reply.get('id') == i:
+                        if 'result' not in reply:
+                            return {}
+                        break
+                else:
+                    return {}
+            return reply['result'].get('config') or {}
+        finally:
+            timer.cancel()
+            proc.kill()
+
+
+def account_sample(agent):
+    now = now_ms()
+    if agent == 'Codex':
+        with CodexControl() as client:
+            result = client.request('account/rateLimits/read', {})
+        buckets = result.get('rateLimitsByLimitId') or {'codex': result.get('rateLimits') or {}}
+        limits = []
+        for bucket, snapshot in buckets.items():
+            for name in ('primary', 'secondary'):
+                window = snapshot.get(name) or {}
+                if number(window.get('usedPercent'), 0, 100) is None:
+                    continue
+                mins = count(window.get('windowDurationMins'))
+                label = {300: '5h', 10080: '7d'}.get(mins, str(mins) + 'm' if mins else name)
+                limits.append(dict(id=str(bucket) + '-' + name, label=label, used_percent=window['usedPercent'],
+                                   resets_at=window.get('resetsAt')))
+    else:
+        billing = grok_billing()
+        pct = number(billing.get('creditUsagePercent'), 0, 100)
+        if pct is None:
+            return {}
+        period = billing.get('currentPeriod') or {}
+        limits = [dict(id='credits', used_percent=pct, resets_at=epoch_seconds(period.get('end')))]
+    return clean_status(dict(sources=['command'], limits=limits, limits_at=now, at=now)) if limits else {}
+
+
+def account_scope(agent):
+    home = codex_home() if agent == 'Codex' else Path(os.environ.get('GROK_HOME', str(Path.home() / '.grok')))
+    return digest(agent + ':' + str(home.resolve()))
+
+
+def cached_account(agent):
+    """One quota request per CLI home/minute across all polling processes."""
+    scope = account_scope(agent)
+    now = now_ms()
+    with closing(database()) as db, db:
+        # database() has acquired the write transaction while ensuring the epoch exists.
+        if db.execute("SELECT value FROM meta WHERE key='account_limits'").fetchone() != ('1',):
+            return {}
+        row = db.execute('SELECT sampled,data FROM quotas WHERE scope=?', (scope,)).fetchone()
+        if row and 0 <= now - row[0] < 60000:
+            return json.loads(row[1])
+        db.execute('INSERT OR REPLACE INTO quotas VALUES(?,?,?)', (scope, now, '{}'))
+    value = account_sample(agent)
+    with closing(database()) as db, db:
+        # A remove/reinstall invalidates the lease, including any outstanding result.
+        changed = db.execute('UPDATE quotas SET data=? WHERE scope=? AND sampled=?',
+                             (json.dumps(value), scope, now)).rowcount
+    return value if changed else {}
+
+
+class LiveCollector:
+    """Provider queries run outside the terminal and the two-second poll deadline."""
+    def __init__(self):
+        self.samples = {}
+        self.pending = set()
+        self.superseded = {}
+        self.lock = threading.Lock()
+
+    def fetch(self, key, thunk, ttl):
+        with self.lock:
+            stamp, value = self.samples.get(key, (0, {}))
+            age = time.monotonic() - stamp
+            if (not stamp or age >= ttl) and key not in self.pending:
+                self.pending.add(key)
+                def collect():
+                    try:
+                        result = thunk()
+                    except Exception:
+                        result = {}
+                    with self.lock:
+                        self.samples[key] = (time.monotonic(), result)
+                        self.pending.discard(key)
+                threading.Thread(target=collect, daemon=True).start()
+            return value if age < 2 * ttl else {}
+
+    def sample(self, observations, pids, procs, hook_phases, bindings, limits_enabled):
+        self.superseded = {run: seq for run, seq in self.superseded.items() if run in pids}
+        def timed(query):
+            at = now_ms()
+            return {run: (at, value) for run, value in query().items()}
+        for agent in ('Claude', 'Codex', 'Grok'):
+            parents = [o for o in observations if o['agent'] == agent and o['actor'] == 'parent']
+            if not parents:
+                continue
+            candidates = [(o['pane'], pids[o['run']], o['run']) for o in parents]
+            phases = {}
+            if agent == 'Claude':
+                phases = self.fetch('Claude', lambda c=candidates: timed(lambda: claude_phases(c)), 2)
+            elif agent == 'Codex':
+                phases = self.fetch('Codex', lambda c=candidates: timed(lambda: codex_phases(c, procs, bindings)), 2)
+            quota = {}
+            eligible = {o['run'] for o in parents if (agent == 'Codex' and o['run'] in phases) or
+                        (agent == 'Grok' and hook_phases.get((o['run'], 'parent'), {}).get('quota_scope') == account_scope(agent))}
+            if limits_enabled and eligible:
+                quota = self.fetch('limits-' + agent, lambda a=agent: cached_account(a), 5)
+            for o in parents:
+                run_key = o['run']
+                seq = o.get('phase_seq', 0)
+                if seq and seq <= self.superseded.get(run_key, 0):
+                    o.pop('phase', None)
+                    o.pop('phase_seq', None)
+                at, phase = phases.get(run_key, (0, None))
+                hook = hook_phases.get((run_key, 'parent'), {})
+                if phase and at >= hook.get('at', 0):
+                    # The provider may describe a running command simply as busy, or a
+                    # specific approval as waiting. Keep the hook detail while compatible.
+                    detail = o.get('phase')
+                    compatible = (phase == 'working' and detail == 'command') or (
+                        phase == 'waiting' and detail in ('approval', 'question'))
+                    if not compatible:
+                        if phase != detail:
+                            self.superseded[run_key] = max(seq, self.superseded.get(run_key, 0))
+                        o['phase'] = phase
+                        o.pop('phase_seq', None)
+                if quota and o['run'] in eligible:
+                    status = o.setdefault('status', {})
+                    sources = set(status.get('sources', [])) | {'command'}
+                    at = max(status.get('at', 0), quota['at'])
+                    status.update(quota, sources=sorted(sources), at=at)
+
+
+
+def poll(tmux, session, after, epoch, live=None):
     server, panes, procs = topology(tmux, session)
     observations = []
     pids = {}
@@ -1208,7 +1706,8 @@ def poll(tmux, session, after, epoch):
                                  run=run_key, agent=procs[pid]['agent'],
                                  actor='parent', last=None, supported=[]))
     result = dict(server=server, epoch='', cursor=0, gap=False, observations=observations, events=[])
-    statuses = {}
+    statuses, phases, bindings = {}, {}, {}
+    limits_enabled = False
     if DB.exists():
         # Read-only polling never creates a helper directory or a database.
         with closing(sqlite3.connect(DB.as_uri() + '?mode=ro', uri=True, timeout=0.8)) as db:
@@ -1236,6 +1735,14 @@ def poll(tmux, session, after, epoch):
                 result['events'] = [json.loads(row[0]) for row in db.execute(
                     'SELECT data FROM events WHERE seq>? AND server=? ORDER BY seq', (after, server))
                     if json.loads(row[0])['run'] in runs]
+            tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if 'phases' in tables:
+                for run_key, actor, raw in db.execute('SELECT run,actor,data FROM phases'):
+                    if run_key in runs:
+                        phases[(run_key, actor)] = json.loads(raw)
+            if 'threads' in tables:
+                bindings = {key: run_key for key, run_key in db.execute('SELECT thread,run FROM threads') if run_key in runs}
+            limits_enabled = db.execute("SELECT value FROM meta WHERE key='account_limits'").fetchone() == ('1',)
             try:
                 # A database written by an older helper has no status table yet.
                 for run_key, actor, encoded in db.execute('SELECT run,actor,data FROM status'):
@@ -1248,6 +1755,11 @@ def poll(tmux, session, after, epoch):
                 pass
     now = now_ms()
     for obs in observations:
+        phase = phases.get((obs['run'], obs['actor']))
+        if phase:
+            obs['phase'] = phase_value(phase)
+            if phase.get('seq'):
+                obs['phase_seq'] = phase['seq']
         mod = {}
         if obs['agent'] == 'Claude' and obs['actor'] == 'parent':
             pid = pids.get(obs['run'])
@@ -1255,6 +1767,9 @@ def poll(tmux, session, after, epoch):
         status = wire_status(statuses.get((obs['run'], obs['actor'])), mod)
         if status:
             obs['status'] = status
+    result['account_limits'] = limits_enabled
+    if live:
+        live.sample(observations, pids, procs, phases, bindings, limits_enabled)
     return result
 
 
@@ -1299,17 +1814,50 @@ def load_settings(path):
     return raw, data
 
 
+# Configuration commands are launched by the CLI's shell. Keep arbitrary Windows
+# paths (including %, &, quotes and spaces) out of both cmd and PowerShell syntax.
+PS_PREFIX = 'powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand '
+PS_LAUNCH = ("$ErrorActionPreference='Stop';$p=New-Object Diagnostics.ProcessStartInfo;"
+             "$p.UseShellExecute=$false;$p.FileName=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{exe}'));"
+             "$p.Arguments=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{args}'));"
+             "$c=[Diagnostics.Process]::Start($p);$c.WaitForExit();exit $c.ExitCode")
+
+
+def config_command(args):
+    if not WINDOWS:
+        return ' '.join(shlex.quote(v) for v in args)
+    def encoded(s):
+        return base64.b64encode(s.encode()).decode('ascii')
+    script = PS_LAUNCH.format(exe=encoded(args[0]), args=encoded(subprocess.list2cmdline(args[1:])))
+    return PS_PREFIX + base64.b64encode(script.encode('utf-16le')).decode('ascii')
+
+
+def config_argv(command):
+    if not WINDOWS:
+        return shlex.split(command)
+    if command.startswith(PS_PREFIX):
+        script = base64.b64decode(command[len(PS_PREFIX):], validate=True).decode('utf-16le')
+        enc = re.findall(r"FromBase64String\('([A-Za-z0-9+/=]+)'\)", script)
+        if len(enc) == 2:
+            exe, argv = [base64.b64decode(v, validate=True).decode('utf-8') for v in enc]
+            args = [exe, *windows_argv(argv)]
+            if config_command(args) == command:
+                return args
+        return []
+    return windows_argv(command)
+
+
 def hook_command(agent, tmux, event=None):
     args = [sys.executable, str(HELPER), 'record', '--agent', agent, '--tmux', tmux]
     if event:
         args += ['--event', event]
-    return ' '.join(shlex.quote(v) for v in args)
+    return config_command(args)
 
 
 def owned(handler):
     # Stable full helper path and command structure, not a substring of a user's command.
     try:
-        args = shlex.split(handler.get('command', ''))
+        args = config_argv(handler.get('command', ''))
         return (handler.get('type') == 'command' and len(args) in (7, 9) and
                 args[1:4] == [str(HELPER), 'record', '--agent'] and args[4] in EVENTS and args[5] == '--tmux' and
                 (len(args) == 7 or (args[7] == '--event' and args[8] in EVENTS[args[4]] + STATUS_EVENTS.get(args[4], []))))
@@ -1319,12 +1867,12 @@ def owned(handler):
 
 def tee_command(tmux):
     args = [sys.executable, str(HELPER), 'statusline', '--agent', 'Agy', '--tmux', tmux]
-    return ' '.join(shlex.quote(v) for v in args)
+    return config_command(args)
 
 
 def owned_tee(value):
     try:
-        args = shlex.split(value.get('command', ''))
+        args = config_argv(value.get('command', ''))
         return (len(args) == 7 and args[1:5] == [str(HELPER), 'statusline', '--agent', 'Agy'] and
                 args[5] == '--tmux')
     except (ValueError, AttributeError):
@@ -1513,7 +2061,7 @@ def plugin_dirs(data):
         return []
     if not isinstance(value, str):
         raise ValueError('invalid plugin directories')
-    return value.split(':') if value else []
+    return value.split(os.pathsep) if value else []
 
 
 def claude_status(data, want):
@@ -1538,7 +2086,7 @@ def claude_status(data, want):
     remaining = [e for e in entries if e != folder]
     prior = saved if isinstance(saved, dict) else {}
     if remaining:
-        env[PLUGIN_DIRS] = ':'.join(remaining)
+        env[PLUGIN_DIRS] = os.pathsep.join(remaining)
     elif prior.get('value') == '':
         env[PLUGIN_DIRS] = ''
     else:
@@ -1860,8 +2408,12 @@ def inspect(tmux):
             raw = b''
         token_parts.append(str(path) + ':' + digest(raw.hex()))
     helper_hash = digest(HELPER.read_bytes().hex()) if HELPER.exists() else ''
-    token = digest('|'.join(token_parts) + helper_hash + str(configs))
-    return dict(token=token, configs=configs, python=sys.version.split()[0], tmux=run([tmux, '-V']),
+    limits = False
+    if DB.is_file():
+        with closing(sqlite3.connect(DB.as_uri() + '?mode=ro', uri=True)) as db:
+            limits = db.execute("SELECT value FROM meta WHERE key='account_limits'").fetchone() == ('1',)
+    token = digest('|'.join(token_parts) + helper_hash + str(configs) + str(limits))
+    return dict(token=token, account_limits=limits, configs=configs, python=sys.version.split()[0], tmux=run([tmux, '-V']),
                 helper=str(HELPER), database=str(DB))
 
 
@@ -1976,6 +2528,10 @@ def configure(tmux, token, install, source, status=False):
                 saved_path(agent).unlink()
         if drop_mod:
             remove_mod()
+        if install or DB.exists():
+            with database() as db:
+                db.execute("INSERT OR REPLACE INTO meta VALUES('account_limits', ?)", ('1' if install and status else '0',))
+                db.execute('DELETE FROM quotas')
         if not install and DB.exists():
             # Keep bounded history, but don't present a removed integration's old
             # observations as live. A later actual hook can establish a new observation.
@@ -1983,6 +2539,7 @@ def configure(tmux, token, install, source, status=False):
                 db.execute('DELETE FROM latest')
                 db.execute('DELETE FROM status')
                 db.execute('DELETE FROM threads')
+                db.execute('DELETE FROM phases')
                 db.execute("UPDATE meta SET value=? WHERE key='epoch'", (uuid.uuid4().hex,))
         return inspect(tmux)
     finally:
@@ -1991,6 +2548,7 @@ def configure(tmux, token, install, source, status=False):
 
 
 def serve(tmux):
+    live = LiveCollector()
     # One process per connection answers every poll, so the source and the login shell are
     # sent once. Replies start with RS so shell start-up output is never taken for one.
     while True:
@@ -1999,7 +2557,7 @@ def serve(tmux):
             return
         try:
             request = json.loads(line)
-            result = poll(tmux, request['session'], int(request['after']), request['epoch'])
+            result = poll(tmux, request['session'], int(request['after']), request['epoch'], live)
         except Exception:
             result = {'error': 'failed'}
         sys.stdout.write('\x1e' + json.dumps(result, ensure_ascii=False) + '\n')
@@ -2011,11 +2569,15 @@ def main(source=''):
     p = argparse.ArgumentParser()
     p.add_argument('action', choices=['serve', 'record', 'statusline', 'inspect', 'install', 'remove'])
     p.add_argument('--tmux', required=True)
+    p.add_argument('--tmux-args', default='[]')
+    p.add_argument('--framed', action='store_true')
     p.add_argument('--agent', choices=list(EVENTS))
     p.add_argument('--event')
     p.add_argument('--token', default='')
     p.add_argument('--status', action='store_true')
     args = p.parse_args()
+    global TMUX_ARGS, MUX_EXE
+    TMUX_ARGS, MUX_EXE = json.loads(args.tmux_args), args.tmux
     try:
         if args.action == 'record':
             event = record(args.agent, args.tmux, args.event)
@@ -2037,7 +2599,7 @@ def main(source=''):
         else:
             result = configure(args.tmux, args.token, args.action == 'install',
                                source or Path(__file__).read_text(), args.status)
-        print(json.dumps(result, ensure_ascii=False))
+        print(('\x1e' if args.framed else '') + json.dumps(result, ensure_ascii=False))
     except SystemExit:
         raise
     except Exception:
@@ -2047,7 +2609,7 @@ def main(source=''):
             return  # A statusline shows nothing rather than an error object.
         else:
             # Never echo configuration contents, payloads, commands or secret-bearing exceptions.
-            print(json.dumps({'error': 'failed'}))
+            print(('\x1e' if args.framed else '') + json.dumps({'error': 'failed'}))
             sys.exit(1)
 
 

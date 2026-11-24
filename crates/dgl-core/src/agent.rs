@@ -31,7 +31,8 @@ impl Agent {
     }
     /// A CLI's own executable name, as `ps` or tmux `pane_current_command` reports it.
     pub fn from_command(command: &str) -> Option<Self> {
-        match command.rsplit('/').next()? {
+        let name = command.rsplit(['/', '\\']).next()?.to_ascii_lowercase();
+        match name.strip_suffix(".exe").unwrap_or(&name) {
             "codex" => Some(Self::Codex),
             "claude" => Some(Self::Claude),
             "agy" => Some(Self::Agy),
@@ -93,6 +94,56 @@ pub struct AgentEvent {
     pub event: String,
     pub at: u64,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LivePhase {
+    Idle,
+    Working,
+    Command,
+    Waiting,
+    Approval,
+    Question,
+    Reviewing,
+    Error,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+impl LivePhase {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Idle => t("agent.phase.idle"),
+            Self::Working => t("agent.phase.working"),
+            Self::Command => t("agent.phase.command"),
+            Self::Waiting => t("agent.phase.waiting"),
+            Self::Approval => t("agent.phase.approval"),
+            Self::Question => t("agent.phase.question"),
+            Self::Reviewing => t("agent.phase.reviewing"),
+            Self::Error => t("agent.phase.error"),
+            Self::Unknown => t("agent.phase.unknown"),
+        }
+    }
+    pub fn icon_kind(self) -> Option<Kind> {
+        Some(match self {
+            Self::Approval => Kind::Approval,
+            Self::Question | Self::Waiting => Kind::Question,
+            Self::Error => Kind::Error,
+            Self::Idle => Kind::Response,
+            Self::Command | Self::Working | Self::Reviewing => Kind::Activity,
+            Self::Unknown => return None,
+        })
+    }
+    pub fn priority(self) -> u8 {
+        match self {
+            Self::Approval | Self::Question | Self::Waiting => 0,
+            Self::Error => 1,
+            Self::Command => 2,
+            Self::Reviewing | Self::Working => 3,
+            Self::Idle => 4,
+            Self::Unknown => 5,
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Observation {
     pub session: String,
@@ -103,6 +154,10 @@ pub struct Observation {
     pub agent: Agent,
     pub last: Option<AgentEvent>,
     pub supported: Vec<Kind>,
+    #[serde(default)]
+    pub phase: LivePhase,
+    #[serde(default)]
+    pub phase_seq: u64,
     /// Account, usage, context and model the helper collected for this run. A status that
     /// does not parse or fails `AgentStatus::is_valid` becomes `None`; the rest of the
     /// snapshot is kept.
@@ -134,6 +189,7 @@ pub struct AgentStatus {
     pub effort: Option<String>,
     pub thinking: Option<bool>,
     pub context: Option<ContextUsage>,
+    pub context_at: Option<u64>,
     pub cache: Option<CacheUsage>,
     pub cost_usd: Option<f64>,
     pub account: Option<AccountInfo>,
@@ -454,6 +510,7 @@ pub struct Snapshot {
     pub epoch: String,
     pub cursor: u64,
     pub gap: bool,
+    pub account_limits: bool,
     pub observations: Vec<Observation>,
     pub events: Vec<AgentEvent>,
     pub valid: bool,
@@ -465,6 +522,10 @@ impl Snapshot {
             return;
         }
         for observation in &mut self.observations {
+            if observation.phase_seq != 0 && observation.phase_seq <= sequence {
+                observation.phase = LivePhase::Unknown;
+                observation.phase_seq = 0;
+            }
             if observation.last.as_ref().is_some_and(|e| e.seq <= sequence) {
                 observation.last = None;
                 observation.supported.clear();
@@ -494,6 +555,21 @@ impl Snapshot {
             .iter()
             .find(|o| o.pane == pane)
             .map(|o| o.agent)
+    }
+    pub fn phase_of(&self, observation: &Observation, now: u64) -> LivePhase {
+        if self.has_fresh_poll(now) && (!self.gap || observation.phase_seq == 0) {
+            observation.phase
+        } else {
+            LivePhase::Unknown
+        }
+    }
+    pub fn representative(&self, now: u64) -> Option<&Observation> {
+        if !self.has_fresh_poll(now) {
+            return None;
+        }
+        self.observations
+            .iter()
+            .min_by_key(|o| (self.phase_of(o, now).priority(), o.actor != "parent"))
     }
     /// Select by event data, independently of translated display text.
     pub fn display_kind(&self, pane: Option<&str>, now: u64) -> Option<Kind> {
@@ -555,31 +631,29 @@ impl Snapshot {
     }
     /// Usage is per account, so every pane of one account shares the newest sample
     /// (largest `limits_at`, else `at`) that carries limits.
-    pub fn freshest_limits(&self, agent: Agent, key: &str) -> &[UsageLimit] {
+    fn freshest_limit_sample(&self, agent: Agent, key: &str) -> Option<&AgentStatus> {
         self.observations
             .iter()
             .filter(|o| o.agent == agent)
             .filter_map(|o| o.status.as_ref())
             .filter(|s| s.account_key() == Some(key) && !s.limits.is_empty())
             .max_by_key(|s| s.limits_sampled_at())
+    }
+    pub fn freshest_limits(&self, agent: Agent, key: &str) -> &[UsageLimit] {
+        self.freshest_limit_sample(agent, key)
             .map_or(&[], |s| s.limits.as_slice())
+    }
+    pub fn limit_sample_for<'a>(&'a self, observation: &'a Observation) -> Option<&'a AgentStatus> {
+        let status = observation.status.as_ref()?;
+        status
+            .account_key()
+            .and_then(|key| self.freshest_limit_sample(observation.agent, key))
+            .or_else(|| (!status.limits.is_empty()).then_some(status))
     }
     /// Limits shown for `observation`: its account's newest sample, else its own.
     pub fn limits_for<'a>(&'a self, observation: &'a Observation) -> &'a [UsageLimit] {
-        let Some(status) = observation.status.as_ref() else {
-            return &[];
-        };
-        match status.account_key() {
-            Some(key) => {
-                let shared = self.freshest_limits(observation.agent, key);
-                if shared.is_empty() {
-                    &status.limits
-                } else {
-                    shared
-                }
-            }
-            None => &status.limits,
-        }
+        self.limit_sample_for(observation)
+            .map_or(&[], |s| s.limits.as_slice())
     }
     pub fn validate(&self) -> Result<()> {
         if self.observations.len() > 2048 || self.events.len() > 2048 {
@@ -609,45 +683,95 @@ impl Snapshot {
     }
 }
 
-// Only trusted bundled source is passed to this larger shell quote. All dynamic arguments
-// continue through command::quote/target's strict size and control-character validation.
-fn source_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-pub fn remote_command(tmux: &str, args: &[&str]) -> Result<String> {
-    let source = serde_json::to_string(HELPER).unwrap();
-    // JSON string literals use true unicode and Python accepts the escapes used here.
-    let script = format!(
-        "s={source};g={{'__name__':'dgl_observer'}};exec(compile(s,'dgl-observer','exec'),g);g['main'](s)"
+// Send the bundled source on stdin. Windows command lines and Unix single-argument
+// sizes are both too small for an inlined observer; the following bytes remain the poll lane.
+fn helper_args(tmux: &str, extra: &[String], args: &[&str]) -> Vec<String> {
+    let bootstrap = format!(
+        "import sys;print(chr(30)+'true',flush=True);s=sys.stdin.buffer.read({}).decode('utf-8');g={{'__name__':'dgl_observer'}};exec(compile(s,'dgl-observer','exec'),g);g['main'](s)",
+        HELPER.len()
     );
-    let args = args
+    let mut argv = vec![
+        "-X".into(),
+        "utf8".into(),
+        "-u".into(),
+        "-c".into(),
+        bootstrap,
+    ];
+    argv.extend(args.iter().map(|v| (*v).to_owned()));
+    argv.extend(["--framed".into(), "--tmux".into(), tmux.into()]);
+    if !extra.is_empty() {
+        argv.extend(["--tmux-args".into(), serde_json::to_string(extra).unwrap()]);
+    }
+    argv
+}
+
+fn posix_helper(args: &[String]) -> Result<String> {
+    let argv = args
         .iter()
         .map(|v| command::quote(v))
         .collect::<Result<Vec<_>>>()?
         .join(" ");
-    let inner = format!(
-        "exec python3 -c {} {args} --tmux {}",
-        source_quote(&script),
-        command::quote(tmux)?
-    );
-    // Login PATH is necessary for per-user CLI/Python installations. Mark output to ignore banners.
-    Ok(format!(
-        "exec \"${{SHELL:-/bin/sh}}\" -lc {}",
-        source_quote(&inner)
-    ))
+    Ok(format!("exec python3 {argv}"))
 }
-/// Runs a setup action (`inspect`, `install`, `remove`). A failing helper still prints
-/// its `{"error": code}` object, so the exit status adds nothing.
-pub async fn setup(ssh: &Ssh, args: &[&str]) -> Result<serde_json::Value> {
-    let cmd = remote_command(ssh.tmux.as_deref().ok_or(Error::NotReady)?, args)?;
-    let (_, out) = ssh.execute(&cmd).await?;
-    let line = out
-        .split(|b| *b == b'\n')
-        .rev()
-        .find(|l| l.starts_with(b"{"))
-        .ok_or(Error::Protocol)?;
-    let value = serde_json::from_slice(line).map_err(|_| Error::Protocol)?;
-    Ok(localize_setup(value))
+
+async fn ssh_helper(ssh: &Ssh, args: &[&str]) -> Result<crate::transport::Stream> {
+    let argv = helper_args(ssh.tmux.as_deref().ok_or(Error::NotReady)?, &[], args);
+    let command = if ssh.windows_host {
+        crate::ssh::windows_process("python.exe", &argv, None)?
+    } else {
+        let inner = posix_helper(&argv)?;
+        format!(
+            "exec \"${{SHELL:-/bin/sh}}\" -lc '{}'",
+            inner.replace('\'', "'\\''")
+        )
+    };
+    Ok(ssh.process(&command).await?.into())
+}
+
+async fn helper(
+    transport: &crate::transport::Transport,
+    args: &[&str],
+) -> Result<crate::transport::Stream> {
+    match transport {
+        crate::transport::Transport::Ssh(ssh) => ssh_helper(ssh, args).await,
+        crate::transport::Transport::Local(local) => {
+            let path = local
+                .config
+                .executable
+                .to_str()
+                .ok_or(Error::InvalidArgument)?;
+            let argv = helper_args(path, &local.config.arguments, args);
+            let mut cmd = if cfg!(windows) {
+                let mut cmd = crate::local::host_command(std::path::Path::new("python.exe"));
+                cmd.args(argv);
+                cmd
+            } else {
+                let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
+                let mut cmd = crate::local::host_command(std::path::Path::new(&shell));
+                cmd.args(["-lc", &posix_helper(&argv)?]);
+                cmd
+            };
+            cmd.kill_on_drop(true);
+            Ok(crate::transport::Stream::Local(
+                crate::local::Process::start(cmd)?,
+            ))
+        }
+    }
+}
+
+pub(crate) async fn setup(
+    transport: &crate::transport::Transport,
+    args: &[&str],
+) -> Result<serde_json::Value> {
+    tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        let stream = helper(transport, args).await?;
+        let mut o = Observer::bootstrap(stream).await?;
+        let reply = o.reply().await;
+        o.close().await;
+        reply.map(localize_setup)
+    })
+    .await
+    .map_err(|_| Error::Network)?
 }
 /// Helper arguments for `Action::AgentSetup`; `--status` is passed for an install only.
 pub fn setup_args<'a>(operation: &'a str, token: Option<&'a str>, status: bool) -> Vec<&'a str> {
@@ -687,24 +811,43 @@ fn localize_setup(mut value: serde_json::Value) -> serde_json::Value {
 
 /// The helper started once per connection; each poll is one request line and one reply.
 pub struct Observer {
-    stream: crate::ssh::Stream,
+    stream: crate::transport::Stream,
     buffer: Vec<u8>,
 }
 impl Observer {
     pub async fn start(ssh: &Ssh) -> Result<Self> {
-        let cmd = remote_command(ssh.tmux.as_deref().ok_or(Error::NotReady)?, &["serve"])?;
-        Ok(Self {
-            stream: ssh.process(&cmd).await?,
+        Self::bootstrap(ssh_helper(ssh, &["serve"]).await?).await
+    }
+    pub(crate) async fn for_transport(transport: &crate::transport::Transport) -> Result<Self> {
+        Self::bootstrap(helper(transport, &["serve"]).await?).await
+    }
+    async fn bootstrap(stream: crate::transport::Stream) -> Result<Self> {
+        let mut observer = Self {
+            stream,
             buffer: Vec::new(),
-        })
+        };
+        // OpenSSH initially advertises a zero exec-channel window. Drain startup
+        // banners and the exec acknowledgement before uploading the helper.
+        let ready = tokio::time::timeout(std::time::Duration::from_secs(8), observer.reply())
+            .await
+            .map_err(|_| Error::Network)??;
+        if ready.as_bool() != Some(true) {
+            return Err(Error::Protocol);
+        }
+        observer.stream.write(HELPER.as_bytes()).await?;
+        Ok(observer)
     }
     /// A helper that is missing or exits ends its stream: `NotReady`. Every session of
     /// the tmux server is observed, so the sidebar shows CLIs outside the attached one.
     pub async fn poll(&mut self, after: u64, epoch: &str) -> Result<serde_json::Value> {
         let request = serde_json::json!({"session": "", "after": after, "epoch": epoch});
-        crate::ssh::write(&self.stream, format!("{request}\n").as_bytes())
+        self.stream
+            .write(format!("{request}\n").as_bytes())
             .await
             .map_err(|_| Error::NotReady)?;
+        self.reply().await
+    }
+    async fn reply(&mut self) -> Result<serde_json::Value> {
         loop {
             while let Some(end) = self.buffer.iter().position(|b| *b == b'\n') {
                 let line: Vec<u8> = self.buffer.drain(..=end).collect();
@@ -830,6 +973,8 @@ pub async fn basic_snapshot(ssh: &Ssh) -> Result<Snapshot> {
                         actor: "parent".into(),
                         agent: *agent,
                         last: None,
+                        phase: Default::default(),
+                        phase_seq: 0,
                         supported: vec![],
                         status: None,
                     });
@@ -843,6 +988,50 @@ pub async fn basic_snapshot(ssh: &Ssh) -> Result<Snapshot> {
         }
     }
     snapshot.validate()?;
+    Ok(snapshot)
+}
+
+pub(crate) async fn basic_for_transport(
+    transport: &crate::transport::Transport,
+) -> Result<Snapshot> {
+    if let Some(ssh) = transport.as_ssh()
+        && !transport.psmux()
+    {
+        return basic_snapshot(ssh).await;
+    }
+    // Without Python the verified multiplexer inventory still supplies the pane's current command.
+    let (code, data) = transport
+        .execute_tmux(&command::Command::inventory())
+        .await?;
+    if code != 0 {
+        return Err(Error::NotReady);
+    }
+    let rows = data
+        .split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_vec())
+        .collect::<Vec<_>>();
+    let remote = crate::model::inventory(&rows)?;
+    let mut snapshot = Snapshot::default();
+    for window in &remote.windows {
+        for pane in remote.panes.iter().filter(|p| p.window == window.id) {
+            if let Some(agent) = Agent::from_command(&pane.command) {
+                snapshot.observations.push(Observation {
+                    session: window.session.clone(),
+                    window: window.id.clone(),
+                    pane: pane.id.clone(),
+                    actor: "parent".into(),
+                    run: format!("basic:{}", pane.id),
+                    agent,
+                    last: None,
+                    phase: Default::default(),
+                    phase_seq: 0,
+                    supported: vec![],
+                    status: None,
+                });
+            }
+        }
+    }
     Ok(snapshot)
 }
 
@@ -1082,6 +1271,8 @@ mod tests {
                 actor: "parent".into(),
                 agent: Agent::Codex,
                 last: Some(e.clone()),
+                phase: Default::default(),
+                phase_seq: 0,
                 supported: vec![Kind::Response],
                 status: None,
             }],
@@ -1157,6 +1348,8 @@ mod tests {
                 agent: Agent::Claude,
                 // A process without any received hook still counts.
                 last: None,
+                phase: Default::default(),
+                phase_seq: 0,
                 supported: vec![],
                 status: None,
             }],
@@ -1243,6 +1436,8 @@ mod tests {
             actor: "parent".into(),
             agent: Agent::Codex,
             last: None,
+            phase: Default::default(),
+            phase_seq: 0,
             supported: vec![],
             status: None,
         };

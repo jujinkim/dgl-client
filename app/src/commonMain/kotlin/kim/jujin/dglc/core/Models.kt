@@ -93,6 +93,7 @@ data class ConnectionStatus(
     val presenting: Boolean = false,
     /** While [presenting], the renderer keeps this tab's last frame visible instead of a curtain. */
     val presentingPreview: Boolean = false,
+    val psmux: Boolean = false,
 ) {
     val acceptsInput get() = !checking && !recovering && !presenting && (phase == Phase.Ready || phase == Phase.Shell || (phase == Phase.Restoring && resizing && !canStopRetrying))
     val acceptsPointer get() = acceptsInput && !resizing

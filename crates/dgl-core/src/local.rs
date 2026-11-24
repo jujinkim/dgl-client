@@ -193,19 +193,6 @@ impl Local {
         self.execute_args_limited(&args, limit).await
     }
     pub(crate) async fn execute(&self, command: &Command) -> Result<(u32, Vec<u8>)> {
-        if self.config.multiplexer == Multiplexer::Psmux {
-            if command.wire == Command::inventory().wire {
-                return Ok((0, psmux::inventory(self).await?));
-            }
-            let mut args = command.argv()?;
-            if let Some(index) = args.iter().position(|s| s == "-t") {
-                if let Some(id) = args.get(index + 1).filter(|s| s.starts_with(['@', '%'])) {
-                    let (session, native) = psmux::native(id)?;
-                    args[index + 1] = format!("${session}:{native}");
-                }
-            }
-            return self.execute_args(&args).await;
-        }
         let mut args = command.argv()?;
         if self.config.multiplexer == Multiplexer::Tmux {
             args.insert(0, "-u".into());
@@ -214,39 +201,6 @@ impl Local {
     }
     pub(crate) async fn control(&self, session: &str, ignore_size: bool) -> Result<Process> {
         crate::command::target(session, '$')?;
-        if self.config.multiplexer == Multiplexer::Psmux {
-            // Resolve the stable session ID to its current name explicitly; bare -CC may create default.
-            let command = Command::new(&crate::command::Operation::Sessions)?;
-            let (code, bytes) = self.execute_args(&command.argv()?).await?;
-            if code != 0 {
-                return Err(Error::MissingSession);
-            }
-            let rows: Vec<_> = bytes
-                .split(|b| *b == b'\n')
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_vec())
-                .collect();
-            let sessions = crate::model::sessions(&rows)?;
-            let name = sessions
-                .iter()
-                .find(|s| s.id == session)
-                .ok_or(Error::MissingSession)?
-                .name
-                .clone();
-            let mut process = self
-                .spawn(
-                    &[
-                        "-CC".into(),
-                        "attach-session".into(),
-                        "-t".into(),
-                        session.into(),
-                    ],
-                    Some(&name),
-                )
-                .await?;
-            process.framing = Some(Default::default());
-            return Ok(process);
-        }
         let mut args = vec!["-u".into(), "-C".into(), "attach-session".into()];
         if ignore_size {
             args.extend(["-f".into(), "ignore-size".into()]);
@@ -259,6 +213,16 @@ impl Local {
         if let Some(session) = session {
             command.env("PSMUX_SESSION_NAME", session);
         }
+        Process::start(command)
+    }
+}
+pub(crate) struct Process {
+    input: tokio::sync::Mutex<ChildStdin>,
+    output: ChildStdout,
+    child: tokio::sync::Mutex<Child>,
+}
+impl Process {
+    pub(crate) fn start(mut command: tokio::process::Command) -> Result<Self> {
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -269,17 +233,8 @@ impl Local {
             input: tokio::sync::Mutex::new(child.stdin.take().ok_or(Error::Network)?),
             output: child.stdout.take().ok_or(Error::Network)?,
             child: tokio::sync::Mutex::new(child),
-            framing: None,
         })
     }
-}
-pub(crate) struct Process {
-    input: tokio::sync::Mutex<ChildStdin>,
-    output: ChildStdout,
-    child: tokio::sync::Mutex<Child>,
-    framing: Option<psmux::Framing>,
-}
-impl Process {
     pub(crate) async fn write(&self, bytes: &[u8]) -> Result<()> {
         tokio::time::timeout(TIMEOUT, async {
             let mut input = self.input.lock().await;
@@ -295,10 +250,7 @@ impl Process {
             Ok(0) | Err(_) => None,
             Ok(n) => {
                 bytes.truncate(n);
-                match &mut self.framing {
-                    Some(f) => f.feed(&bytes).ok(),
-                    None => Some(bytes),
-                }
+                Some(bytes)
             }
         }
     }

@@ -16,7 +16,7 @@ pub fn supported(output: &str) -> bool {
         && parts[2].parse::<u32>().is_ok()
 }
 
-use super::Local;
+use crate::transport::Transport;
 use crate::{
     Error, Result,
     command::{Command, Operation},
@@ -40,19 +40,21 @@ pub fn native(id: &str) -> Result<(u64, String)> {
     Ok((n >> 32, format!("{prefix}{}", n & u32::MAX as u64)))
 }
 pub(crate) struct Adapter {
-    pub local: Local,
+    pub transport: Transport,
+    pub framing: Framing,
     pub session: u64,
     lists: [Vec<Vec<u8>>; 3],
 }
 impl Adapter {
-    pub fn new(local: Local, session: &str) -> Result<Self> {
+    pub fn new(transport: Transport, session: &str) -> Result<Self> {
         let session = session
             .strip_prefix('$')
             .ok_or(Error::InvalidArgument)?
             .parse()
             .map_err(|_| Error::InvalidArgument)?;
         Ok(Self {
-            local,
+            transport,
+            framing: Default::default(),
             session,
             lists: Default::default(),
         })
@@ -102,7 +104,7 @@ impl Adapter {
             _ => return Ok(None),
         };
         if index == 0 {
-            let bytes = inventory(&self.local).await?;
+            let bytes = inventory(&self.transport).await?;
             self.lists = Default::default();
             for line in bytes.split(|b| *b == b'\n').filter(|l| !l.is_empty()) {
                 let index = match line.first() {
@@ -117,7 +119,7 @@ impl Adapter {
         Ok(Some(self.lists[index].clone()))
     }
 }
-pub(crate) async fn inventory(local: &Local) -> Result<Vec<u8>> {
+pub(crate) async fn inventory(local: &Transport) -> Result<Vec<u8>> {
     let (code, sessions) = local
         .execute_args(&[
             "list-sessions".into(),
@@ -131,11 +133,11 @@ pub(crate) async fn inventory(local: &Local) -> Result<Vec<u8>> {
         }
         return Err(Error::Protocol);
     }
-    let mut out = sessions.clone();
-    if !out.is_empty() && !out.ends_with(b"\n") {
-        out.push(b'\n');
-    }
+    let mut out = Vec::new();
     for row in sessions.split(|b| *b == b'\n').filter(|s| !s.is_empty()) {
+        let row = row.strip_suffix(b"\r").unwrap_or(row);
+        out.extend_from_slice(row);
+        out.push(b'\n');
         let text = std::str::from_utf8(row).map_err(|_| Error::Protocol)?;
         let id = text.split('|').nth(1).ok_or(Error::Protocol)?;
         crate::command::target(id, '$')?;
@@ -152,7 +154,8 @@ pub(crate) async fn inventory(local: &Local) -> Result<Vec<u8>> {
                 continue;
             } // A session can disappear during the inventory.
             for row in bytes.split(|b| *b == b'\n').filter(|s| !s.is_empty()) {
-                let mut fields = crate::model::split_record(row, 10)?;
+                let mut fields =
+                    crate::model::split_record(row.strip_suffix(b"\r").unwrap_or(row), 10)?;
                 if kind == b'w' {
                     fields[0] = id.into();
                     fields[1] = scoped(&fields[1], session)?;
@@ -267,10 +270,10 @@ mod tests {
             }
             assert!(matches!(events[0], Event::Response { flags: 0, .. }));
             let adapter = Adapter::new(
-                Local {
+                Transport::Local(crate::local::Local {
                     config: Default::default(),
                     version: "psmux 3.4.0".into(),
-                },
+                }),
                 "$8",
             )
             .unwrap();
@@ -289,10 +292,10 @@ mod tests {
         assert_ne!(a, b);
         assert_eq!(native(&b).unwrap(), (2, "%0".into()));
         let adapter = Adapter::new(
-            Local {
+            Transport::Local(crate::local::Local {
                 config: Default::default(),
                 version: "psmux 3.4.0".into(),
-            },
+            }),
             "$1",
         )
         .unwrap();

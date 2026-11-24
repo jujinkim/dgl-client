@@ -35,8 +35,8 @@ internal fun agentTopLimit(limits: List<UsageLimit>): UsageLimit? = limits.filte
 internal fun AgentSnapshot.inSession(session: String?) = observations.filter { it.session == session }
 
 internal fun agentStatusFocus(snapshot: AgentSnapshot, session: String?, pane: String?): AgentObservation? =
-    snapshot.inSession(session).minWithOrNull(compareBy<AgentObservation> { it.pane != pane }
-        .thenBy { it.status == null }.thenBy { it.actor != "parent" })
+    snapshot.inSession(session).filter { it.pane == pane }.minWithOrNull(compareBy<AgentObservation> { it.actor != "parent" }
+        .thenBy { it.status == null })
 
 /** Panel order: the focused pane's agents first, then the rest in snapshot order. */
 internal fun agentStatusOrder(observations: List<AgentObservation>, pane: String?): List<AgentObservation> =
@@ -67,10 +67,9 @@ internal fun agentNoStatusKey(agent: String): String =
 
 /**
  * Whether an item has a value and, if not, why. [field] is an [AgentStatusSettings] item name.
- * Mirrors desktop `agent_status_ui::missing`: Codex and Grok have nothing to install, so their
- * missing account and usage are "not provided" and other missing items are unknown.
+ * Mirrors desktop `agent_status_ui::missing`. Account quota reads require consent.
  */
-internal fun agentFieldState(agent: String, field: String, status: AgentStatus?, limits: List<UsageLimit>): AgentFieldState {
+internal fun agentFieldState(agent: String, field: String, status: AgentStatus?, limits: List<UsageLimit>, accountLimits: Boolean = false): AgentFieldState {
     if (status != null) {
         val shown = when (field) {
             "account" -> status.account?.kind != null || !status.account?.plan.isNullOrBlank()
@@ -87,11 +86,12 @@ internal fun agentFieldState(agent: String, field: String, status: AgentStatus?,
     }
     val supported = when (field) {
         "breakdown" -> agent == "Claude"
-        "account", "usage" -> agent == "Claude" || agent == "Agy"
+        "account" -> agent == "Claude" || agent == "Agy"
         "cost" -> agent != "Codex"
         else -> true
     }
     if (!supported) return AgentFieldState.NotSupported
+    if (field == "usage" && agent in setOf("Codex", "Grok") && !accountLimits && status?.sources?.contains("command") != true) return AgentFieldState.NotCollected
     val rich = richSource(agent) ?: return AgentFieldState.Unknown
     if (status == null) return AgentFieldState.NotCollected
     val needsRich = field in setOf("account", "usage", "context", "breakdown", "cache", "cost")
@@ -147,25 +147,39 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
     if (percent >= 90.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
 /** Compact summary of the selected tab's agent. */
-@Composable internal fun AgentStatusChip(client: ClientConnection, settings: AgentStatusSettings, open: () -> Unit) {
+@Composable internal fun AgentStatusChip(client: ClientConnection, settings: AgentStatusSettings, wide: Boolean = false, open: () -> Unit) {
     val snapshot by client.agents.collectAsState()
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
     val now = System.currentTimeMillis()
     val focus = agentStatusFocus(snapshot, session, pane) ?: return
+    if (!snapshot.hasFreshPoll(now)) return
+    val phase = agentPhaseLabel(snapshot.phaseOf(focus, now))
     val status = focus.status
     val stale = !snapshot.current(now) || status?.isStale(now) == true
     val summary = agentStatusSummary(status, snapshot.limitsFor(focus), settings)
     val alert = status?.alert?.let(::agentAlertLabel)
-    val description = listOfNotNull(t("agent_status.open_details"), agentName(focus.agent), summary.takeIf { it.isNotEmpty() },
+    val description = listOfNotNull(t("agent_status.open_details"), agentName(focus.agent), phase, summary.takeIf { it.isNotEmpty() },
         alert, if (stale) t("agent_status.stale") else null, if (status == null) t(agentNoStatusKey(focus.agent)) else null).joinToString(" · ")
     val color = when {
         alert != null -> MaterialTheme.colorScheme.error
         stale -> MaterialTheme.colorScheme.onSurfaceVariant
         else -> MaterialTheme.colorScheme.onSurface
     }
-    IconButton(open, Modifier.size(48.dp).semantics { contentDescription = description }) {
-        Icon(LauncherIcons.agent(focus.agent), null, Modifier.size(20.dp), tint = color)
+    TextButton(open, Modifier.semantics { contentDescription = description }, contentPadding = PaddingValues(horizontal = 4.dp)) {
+        Icon(LauncherIcons.agent(focus.agent), null, Modifier.size(16.dp), tint = color)
+        val parts = buildList {
+            add(phase)
+            if (wide && snapshot.current(now)) {
+                val contextAt = status?.context_at ?: status?.at
+                if (settings.context && contextAt != null && now - contextAt < AGENT_STATUS_STALE_MS)
+                    status?.contextPercent()?.let { add("ctx " + agentPercentText(it) + "%") }
+                val sample = snapshot.limitSampleFor(focus)
+                if (settings.usage && sample != null && now - sample.limitsSampledAt() < AGENT_STATUS_STALE_MS)
+                    agentTopLimit(sample.limits)?.used()?.let { add(tr("agent_status.remaining", agentPercentText((100 - it).coerceAtLeast(0.0)))) }
+            }
+        }
+        Text(parts.joinToString(" · "), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -181,7 +195,7 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
         else if (!snapshot.current(now)) Text(t("agent_status.stale"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         observations.forEachIndexed { index, o ->
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AgentStatusDetails(o, snapshot.limitsFor(o), settings, now, remote.targetLabel(o.session, o.pane))
+            AgentStatusDetails(o, agentPhaseLabel(snapshot.phaseOf(o, now)), snapshot.account_limits, snapshot.limitsFor(o), settings, now, remote.targetLabel(o.session, o.pane))
         }
     }
 }
@@ -202,7 +216,7 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
     }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-@Composable private fun AgentStatusDetails(o: AgentObservation, limits: List<UsageLimit>, settings: AgentStatusSettings, now: Long, target: String) {
+@Composable private fun AgentStatusDetails(o: AgentObservation, phase: String, accountLimits: Boolean, limits: List<UsageLimit>, settings: AgentStatusSettings, now: Long, target: String) {
     val s = o.status
     val small = MaterialTheme.typography.bodySmall
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -212,6 +226,7 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
             Text(target, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        Text(phase, style = small)
         s?.alert?.let(::agentAlertLabel)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = small) }
         if (s == null) {
             Text(t(agentNoStatusKey(o.agent)), style = small)
@@ -220,7 +235,7 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
         val ago = s.at?.let { tr("agent_status.observed_ago", formatDurationS((now - it) / 1000)) }
         Text(listOfNotNull(if (s.isStale(now)) t("agent_status.stale") else null, ago).joinToString(" · ").ifEmpty { t("agent_status.unknown") },
             style = MaterialTheme.typography.labelSmall, color = if (s.isStale(now)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-        fun state(field: String) = agentFieldState(o.agent, field, s, limits)
+        fun state(field: String) = agentFieldState(o.agent, field, s, limits, accountLimits)
         if (settings.account) StatusItem(t("agent_status.field.account")) {
             val account = s.account
             if (state("account") == AgentFieldState.Shown && account != null) Text(listOfNotNull(account.kindLabel(), account.plan?.takeIf { it.isNotBlank() }).joinToString(" · "))
@@ -345,20 +360,20 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
             val now = System.currentTimeMillis()
             val observations = snapshot?.let { agentStatusOrder(it.observations, pane) }.orEmpty()
             if (observations.isEmpty()) Text(t("agent_status.none"), style = MaterialTheme.typography.bodySmall)
-            observations.forEach { o -> AgentStatusLine(o, snapshot!!.limitsFor(o), settings, !snapshot.current(now) || o.status?.isStale(now) == true, openDetails) }
+            observations.forEach { o -> AgentStatusLine(o, agentPhaseLabel(snapshot!!.phaseOf(o, now)), snapshot.limitsFor(o), settings, !snapshot.current(now) || o.status?.isStale(now) == true, openDetails) }
             if (observations.isNotEmpty()) TextButton(openDetails) { Text(t("agent_status.open_details")) }
         }
     }
 }
 
-@Composable private fun AgentStatusLine(o: AgentObservation, limits: List<UsageLimit>, settings: AgentStatusSettings, stale: Boolean, open: () -> Unit) {
+@Composable private fun AgentStatusLine(o: AgentObservation, phase: String, limits: List<UsageLimit>, settings: AgentStatusSettings, stale: Boolean, open: () -> Unit) {
     val s = o.status
     val small = MaterialTheme.typography.labelSmall
     Column(Modifier.fillMaxWidth().clickable(onClick = open).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(LauncherIcons.agent(o.agent), null, Modifier.size(14.dp))
             val model = if (settings.model) s?.model?.let { it.name ?: it.id } else null
-            Text(listOfNotNull(agentName(o.agent) + if (o.actor != "parent") t("agent.subagent_suffix") else "", model).joinToString(" · "),
+            Text(listOfNotNull(agentName(o.agent) + if (o.actor != "parent") t("agent.subagent_suffix") else "", phase, model).joinToString(" · "),
                 Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         when {

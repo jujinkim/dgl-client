@@ -60,9 +60,8 @@
 - [ ] 실제 Grok Build 세션 폴더의 `signals.json`·`usage.json` 구조와 `StopFailure`의 `errorType`/`error` 키 확인.
 - [ ] 상태바 칩·팝오버·사이드바 패널·설정 카드와 Android 칩·바텀시트를 macOS·Windows·Android 실제 화면에서 확인.
   Windows MSVC 빌드와 좁은 폭에서 항목 생략 순서 포함. 자동 UI 검사로 실기 표시를 대체하지 않는다.
-- [ ] 4단계(선택 소스, 미구현): Codex 한도·계정(rollout `token_count` 줄 읽기 또는 `app-server` 저속 조회), AGY `agy -p /usage` 저속·수동 조회,
-  Grok `config.toml` statusline과 `unified.jsonl` credits, Codex MCP statusline 공급자(실험). 대화 파일을 읽지 않는 현재 약속을 바꾸는 소스는
-  별도 opt-in과 문서 공개가 필요하다.
+- [ ] 상세 상태 수집을 켠 실제 구독 계정에서 Codex app-server 한도와 Grok ACP 크레딧의 잔여량·초기화 시각을 확인.
+- [ ] 추가 선택 소스 검토. AGY `agy -p /usage` 수동 조회, Grok statusline, Codex MCP statusline 공급자가 대상이다. 대화 파일 접근을 도입할 때는 별도 동의와 문서 공개가 필요하다.
 
 ## 배포 전
 

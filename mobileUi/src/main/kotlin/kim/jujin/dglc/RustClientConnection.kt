@@ -258,6 +258,7 @@ class RustClientConnection(
         val canStopRetrying = derivedFlag("reconnecting")
         val canRetryNow = outputRetry || derivedFlag("retry_available")
         val retryMessage = derived["retry_message"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+        fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
         val nextStatus = ConnectionStatus(phase, (if (outputRetry) outputFailureMessage() else null) ?: retryMessage ?: error?.let(::message) ?: when (phase) {
             Phase.Connecting -> t("workspace.connecting_ssh"); Phase.Authenticating -> t("connection.verifying_server"); Phase.TrustRequired -> t("connection.verify_host_key_fingerprint")
             Phase.Selecting -> t("workspace.select_or_create_session"); Phase.Restoring -> if (resizing) t("connection.connected_tmux") else t("terminal.restoring"); Phase.Ready -> t("connection.connected_tmux")
@@ -265,13 +266,13 @@ class RustClientConnection(
             else -> t("common.disconnect")
         }, attempt, canRetryNow, canStopRetrying, resizing, text("window"), checking, recovering,
             derivedFlag("retry_exhausted"), presenting = presentation.pending,
-            presentingPreview = presentation.pending && presentation.preview)
+            presentingPreview = presentation.pending && presentation.preview,
+            psmux = s["diagnostics"]?.jsonArray.orEmpty().any { it.jsonObject.str("stage") == "psmux" && it.jsonObject.str("outcome") == "found" })
         session.value = text("session"); pane.value = text("pane")?.takeUnless { it == "shell" }
         if (phase == Phase.Shell) tmuxOutput = false
         else if (phase in setOf(Phase.Ready, Phase.Restoring) && session.value != null) tmuxOutput = true
         if (fresh) {
             val r = s.getValue("remote").jsonObject
-            fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
             remote.value = RemoteStateDecoder.json(r)
             trustRequest.value = if (phase == Phase.TrustRequired) text("fingerprint")?.let { UnknownHostKey(host.endpoint, it) } else null
             tmuxProblem.value = if (phase == Phase.Shell) {

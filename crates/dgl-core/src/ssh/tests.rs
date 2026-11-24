@@ -19,6 +19,7 @@ struct Peer {
     connections: Arc<AtomicUsize>,
     authentications: Arc<AtomicUsize>,
     received: Arc<Mutex<Vec<(usize, Vec<u8>)>>>,
+    windows: Arc<std::sync::atomic::AtomicBool>,
     stall: bool,
     hold_open: bool,
     stopped: watch::Receiver<bool>,
@@ -59,9 +60,50 @@ impl server::Handler for Peer {
     async fn exec_request(
         &mut self,
         ch: ChannelId,
-        _: &[u8],
+        command: &[u8],
         s: &mut server::Session,
     ) -> std::result::Result<(), Self::Error> {
+        if self.windows.load(Ordering::SeqCst) && command.starts_with(b"powershell.exe ") {
+            let encoded = command.split(|c| *c == b' ').next_back().unwrap();
+            let bytes = STANDARD.decode(encoded).unwrap();
+            let script = String::from_utf16(
+                &bytes
+                    .chunks_exact(2)
+                    .map(|p| u16::from_le_bytes([p[0], p[1]]))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+            // Decode argv independently of how the client quotes the PowerShell source.
+            let output: &[u8] = if script.contains("Get-Command psmux.exe") {
+                b"DGL_WINDOWS=C:\\Program Files\\psmux.exe\r\n".as_slice()
+            } else {
+                let arg = script
+                    .split_once("$p.Arguments=")
+                    .unwrap()
+                    .1
+                    .split('\'')
+                    .nth(1)
+                    .unwrap();
+                let argv = String::from_utf8(STANDARD.decode(arg).unwrap()).unwrap();
+                if argv == "\"-V\"" {
+                    b"tmux 3.4.0\r\npsmux 3.4.0 (fixture)\r\n"
+                } else if argv.starts_with("\"list-sessions\"") {
+                    b"$1|first|0\r\n$2|second|0\r\n"
+                } else if argv == "\"-CC\" \"attach-session\" \"-t\" \"$2\"" {
+                    assert!(script.contains(&ps_string("second")));
+                    s.channel_success(ch)?;
+                    s.data(ch, b"\x1bP1000p%session-changed $2 second\n".to_vec())?;
+                    return Ok(());
+                } else {
+                    panic!("unexpected Windows multiplex command: {argv}")
+                }
+            };
+            s.channel_success(ch)?;
+            s.data(ch, output.to_vec())?;
+            s.exit_status_request(ch, 0)?;
+            s.eof(ch)?;
+            return s.close(ch);
+        }
         // No tmux: Connection proceeds to its ordinary shell path.
         s.channel_success(ch)?;
         s.exit_status_request(ch, 127)?;
@@ -137,6 +179,7 @@ impl Fixture {
             connections: Arc::default(),
             authentications: Arc::default(),
             received: Arc::default(),
+            windows: Arc::default(),
             stall,
             hold_open,
             stopped,
@@ -209,6 +252,38 @@ async fn until(mut ready: impl FnMut() -> bool) {
     })
     .await
     .expect("local peer did not reach the expected state");
+}
+
+#[tokio::test]
+async fn windows_openssh_discovers_psmux_and_reattaches_without_replaying_input() {
+    use crate::transport::Transport;
+    let fixture = Fixture::new(65536, 16384, false, false).await;
+    fixture.peer.windows.store(true, Ordering::SeqCst);
+    for attempt in 0..2 {
+        let mut ssh = fixture.connect().await;
+        assert!(ssh.discover().await.unwrap());
+        let transport = Transport::Ssh(Arc::new(ssh));
+        assert!(transport.psmux());
+        let mut stream = transport.control("$2", false).await.unwrap();
+        let mut framing = crate::local::psmux::Framing::default();
+        loop {
+            if let Some(ChannelMsg::Data { data }) = stream.wait().await {
+                assert_eq!(
+                    framing.feed(&data).unwrap(),
+                    b"%session-changed $2 second\n"
+                );
+                break;
+            }
+        }
+        if attempt == 0 {
+            stream.write(b"send-keys -H -t %0 41\n").await.unwrap();
+            until(|| !fixture.bytes(attempt).is_empty()).await;
+        }
+        stream.close().await.unwrap();
+        transport.close().await;
+    }
+    assert_eq!(fixture.bytes(0), b"send-keys -H -t %0 41\n");
+    assert!(fixture.bytes(1).is_empty());
 }
 
 #[test]

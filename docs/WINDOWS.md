@@ -21,12 +21,12 @@ Pillow나 이미지 생성·변환 도구가 필요하지 않다. 네이티브 �
 `dgl-sync.json`을 읽고 쓰는 공통 파일 구현이다. OAuth·클라우드 SDK·추가 빌드 도구는
 필요하지 않다. Windows 실제 Drive 폴더 연동은 미검증이며 [사용 방법](CLOUD_SYNC.md)을 따른다.
 
-## Local·psmux
+## Local·Windows OpenSSH와 psmux
 
 Hosts 최상단의 Local은 SSH 인증·DPAPI 없이 현재 사용자의 psmux 기본 세션을 조회합니다.
 psmux 3.4 이상이 필요하며 `winget install psmux`를 사용합니다.
 [공식 ZIP](https://github.com/psmux/psmux#installation)을 풀고 psmux.exe 디렉터리를 PATH에 추가해도
-됩니다. 앱은 psmux.exe를 직접 실행하며 tmux 별칭이나 POSIX 원격 helper를 사용하지 않습니다.
+됩니다. 원격 Windows OpenSSH에서도 접속 계정의 PATH에 있는 psmux.exe를 조회합니다. 로컬과 원격 모두 세션별 ID와 psmux 제어 프로토콜을 사용합니다. 원격에서 psmux를 사용할 수 없으면 일반 SSH 셸을 엽니다. 에이전트 상세 관측에는 해당 호스트에서 실행 가능한 Python 3.9 이상과 PowerShell이 필요합니다.
 설치 후 PATH 반영을 위해 DGL을 다시 시작하고 Local의 다시 확인을 누릅니다. 설치는 자동 실행하지 않습니다.
 
 앱 시작 시 세션을 생성하지 않으며 Local에서 세션 선택·생성을 진행합니다. 여러 세션은 서버별로

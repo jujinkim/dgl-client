@@ -102,12 +102,129 @@ class AgentObserverTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             observer.load_config(link)
 
+    def test_current_phase_tracks_parallel_tools_for_all_providers(self):
+        for agent, tool in [('Codex', 'exec_command'), ('Claude', 'Bash'), ('Agy', 'run_command'), ('Grok', 'run_terminal_cmd')]:
+            with self.subTest(agent=agent), observer.database() as db:
+                def step(event, ident=None, name=None, **fields):
+                    payload = dict(fields, tool_input={'command': 'SECRET'})
+                    if agent in ('Claude', 'Codex'):
+                        payload.update(tool_use_id=ident, tool_name=name)
+                    elif agent == 'Agy':
+                        payload.update(toolCall={'id': ident, 'name': name})
+                    else:
+                        payload.update(toolUseId=ident, toolName=name)
+                    observer.update_phase(db, 'run', agent, agent, event, payload, observer.kind(agent, event, payload), 1, 1)
+                    raw, = db.execute('SELECT data FROM phases WHERE run=? AND actor=?', ('run', agent)).fetchone()
+                    self.assertNotIn('SECRET', raw)
+                    return observer.phase_value(json.loads(raw))
+                self.assertEqual(step('SessionStart'), 'idle')
+                self.assertEqual(step('PreToolUse', 'first', tool), 'command')
+                self.assertEqual(step('PreToolUse', 'second', tool), 'command')
+                if agent == 'Agy':
+                    self.assertEqual(step('PreToolUse', 'consent', 'ask_permission'), 'approval')
+                    self.assertEqual(step('PostToolUse', 'consent', 'ask_permission'), 'command')
+                elif agent == 'Grok':
+                    self.assertEqual(step('Notification', notificationType='permission_prompt'), 'approval')
+                else:
+                    self.assertEqual(step('PermissionRequest', 'second', tool), 'approval')
+                self.assertEqual(step('PostToolUse', 'second', tool), 'command')
+                self.assertEqual(step('PostToolUse', 'first', tool), 'working')
+                self.assertEqual(step('Stop', terminationReason='model_stop'), 'idle')
+
+    def test_statusline_reports_phase_without_numeric_fields_or_events(self):
+        pane = {'session': '$1', 'window': '@1', 'pane': '%0', 'pid': 100}
+        procs = {100: {'agent': 'Agy', 'parent': 10, 'token': 'native'}}
+        with patch.object(observer, 'resolve', return_value=('server', pane, procs, 100)), \
+                patch.object(observer, 'topology', return_value=('server', [pane], procs)), patch.dict(os.environ, TMUX='socket'):
+            for payload, expected in [({'agent_state': 'reviewing'}, 'reviewing'),
+                                      ({'agent_state': 'tool_use', 'tool_confirmation_pending': True}, 'approval'),
+                                      ({'agent_state': 'idle'}, 'idle')]:
+                observer.record_statusline('Agy', 'tmux', payload)
+                frame = observer.poll('tmux', '', 0, '')
+                self.assertEqual(frame['observations'][0]['phase'], expected)
+                self.assertEqual(frame['cursor'], 0)
+
+    def test_psmux_scopes_reused_ids_and_resolves_hook_by_process_tree(self):
+        def mux(args):
+            if 'list-sessions' in args:
+                return '$1\n$2'
+            return '@0|%0|' + ('10' if '$1' in args else '20')
+        procs = {pid: {'agent': 'Claude', 'token': str(pid), 'parent': 0} for pid in [10, 20]}
+        with patch.object(observer, 'WINDOWS', True), patch.object(observer, 'processes', return_value=procs), \
+                patch.object(observer, 'run', side_effect=mux), patch.object(observer.os, 'getppid', return_value=20):
+            _, panes, _ = observer.topology('psmux')
+            self.assertEqual([p['pane'] for p in panes], ['%4294967296', '%8589934592'])
+            self.assertEqual(observer.resolve('Claude', 'psmux')[1], panes[1])
+
+    def test_windows_config_commands_roundtrip_paths_as_data(self):
+        with patch.object(observer, 'WINDOWS', True), patch.object(observer, 'HELPER', Path('C:/user & %example%/DGL/observer.py')):
+            cmd = observer.hook_command('Claude', 'C:/Program Files/psmux.exe', 'Stop')
+            self.assertNotIn('%example%', cmd)
+            self.assertTrue(observer.owned({'type': 'command', 'command': cmd}))
+            self.assertFalse(observer.owned({'type': 'command', 'command': cmd + ' & other'}))
+            self.assertTrue(observer.owned_tee({'command': observer.tee_command('psmux.exe')}))
+
+    def test_default_poll_reads_live_state_without_install_or_quota_requests(self):
+        pane, procs = self.claude_pane('Codex')
+        live = observer.LiveCollector()
+        def native_phase(candidates, *_):
+            return {run: 'idle' for _, _, run in candidates}
+        with patch.object(observer, 'topology', return_value=('server', [pane], procs)), \
+                patch.object(observer, 'codex_phases', side_effect=native_phase), \
+                patch.object(live, 'fetch', side_effect=lambda key, query, ttl: query()), \
+                patch.object(observer, 'cached_account') as quota:
+            frame = observer.poll('tmux', '', 0, '', live)
+        self.assertEqual(frame['observations'][0]['phase'], 'idle')
+        self.assertFalse(frame['account_limits'])
+        quota.assert_not_called()
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_native_phase_attribution_and_limit_consent(self):
+        thread = '019ca012-1111-7333-a444-555555555555'
+        peer = {'originator': 'codex-tui', 'source': 'vscode', 'cwd': '/p', 'status': {'type': 'active', 'activeFlags': ['waitingOnApproval']}}
+        def rpc(method, params):
+            if method == 'thread/loaded/list':
+                return {'data': [thread]}
+            if method == 'thread/read':
+                self.assertIs(params['includeTurns'], False)
+                return {'thread': peer}
+            self.assertEqual(method, 'account/rateLimits/read')
+            return {'rateLimitsByLimitId': {'model': {'primary': {'usedPercent': 29, 'windowDurationMins': 300}}}}
+        with patch.object(observer, 'CodexControl') as control, patch.object(observer, 'daemon_clients', return_value={1, 2}), \
+                patch.object(observer, 'process_cwd', side_effect=lambda pid: '/p' if pid == 1 else '/q'):
+            control.return_value.__enter__.return_value.request.side_effect = rpc
+            procs = {pid: {'agent': 'Codex'} for pid in (1, 2)}
+            candidates = [('%1', 1, 'a')]
+            self.assertEqual(observer.codex_phases(candidates, procs, {}), {'a': 'approval'})
+            def overlapping(method, params):
+                if method == 'thread/loaded/list':
+                    return {'data': [thread, '019ca012-1111-7333-a444-555555555556']}
+                return rpc(method, params)
+            control.return_value.__enter__.return_value.request.side_effect = overlapping
+            self.assertEqual(observer.codex_phases(candidates, procs, {}), {})
+            control.return_value.__enter__.return_value.request.side_effect = rpc
+            peer['cwd'] = '/q'  # Another CLI outside this tmux server.
+            self.assertEqual(observer.codex_phases(candidates, procs, {}), {})
+            self.assertEqual(observer.cached_account('Codex'), {})
+            with observer.database() as db:
+                db.execute("INSERT OR REPLACE INTO meta VALUES('account_limits','1')")
+            value = observer.cached_account('Codex')
+            self.assertEqual(value['limits'][0]['used_percent'], 29)
+            self.assertEqual(observer.cached_account('Codex'), value)
+            methods = [args.args[0] for args in control.return_value.__enter__.return_value.request.call_args_list]
+            self.assertEqual(methods.count('account/rateLimits/read'), 1)
+        with patch.object(observer, 'grok_billing', return_value={'creditUsagePercent': 0, 'currentPeriod': {'end': '2026-06-08T00:00:00Z'}}):
+            limit = observer.account_sample('Grok')['limits'][0]
+            self.assertEqual(limit['used_percent'], 0)
+            self.assertGreater(limit['resets_at'], 0)
+
     def test_serve_answers_each_poll_line_until_stdin_closes(self):
         requests = [{'session': '$1', 'after': 3, 'epoch': 'e'}, {'session': '$2', 'after': 0, 'epoch': ''}]
         stdin = io.StringIO(''.join(json.dumps(r) + '\n' for r in requests) + 'not json\n')
         output = io.StringIO()
         polled = []
-        def poll(tmux, session, after, epoch):
+        def poll(tmux, session, after, epoch, live):
+            self.assertIsInstance(live, observer.LiveCollector)
             polled.append((tmux, session, after, epoch))
             if session == '$2':
                 raise OSError('secret detail')
@@ -684,6 +801,7 @@ class AgentObserverTest(unittest.TestCase):
         hook = observer.merge_status({}, {'effort': 'high', 'sources': ['hook'], 'at': now + 3000}, now + 3000)
         wire = observer.wire_status(hook, mod)
         self.assertEqual((wire['at'], wire['limits_at']), (now + 3000, now))
+        self.assertEqual(wire['context_at'], now)
         self.assertNotIn('_ts', wire)
         # Without limits there is no limits time.
         self.assertNotIn('limits_at', observer.wire_status(hook, {}))

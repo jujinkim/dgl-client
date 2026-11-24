@@ -7,8 +7,9 @@ use crate::{
     ssh,
 };
 use russh::ChannelMsg;
+#[derive(Clone)]
 pub(crate) enum Transport {
-    Ssh(ssh::Ssh),
+    Ssh(std::sync::Arc<ssh::Ssh>),
     Local(Local),
 }
 pub(crate) enum Stream {
@@ -73,9 +74,38 @@ impl Transport {
         }
     }
     pub fn psmux(&self) -> bool {
-        matches!(self, Self::Local(l) if l.config.multiplexer == Multiplexer::Psmux)
+        match self {
+            Self::Local(l) => l.config.multiplexer == Multiplexer::Psmux,
+            Self::Ssh(s) => s.windows_host && s.tmux.is_some(),
+        }
+    }
+    pub(crate) async fn execute_args(&self, args: &[String]) -> Result<(u32, Vec<u8>)> {
+        match self {
+            Self::Local(l) => l.execute_args(args).await,
+            Self::Ssh(s) => {
+                s.execute(&ssh::windows_process(
+                    s.tmux.as_deref().ok_or(Error::NotReady)?,
+                    args,
+                    None,
+                )?)
+                .await
+            }
+        }
     }
     pub async fn execute_tmux(&self, command: &Command) -> Result<(u32, Vec<u8>)> {
+        if self.psmux() {
+            if command.wire == Command::inventory().wire {
+                return Ok((0, crate::local::psmux::inventory(self).await?));
+            }
+            let mut args = command.argv()?;
+            if let Some(i) = args.iter().position(|s| s == "-t")
+                && let Some(id) = args.get(i + 1).filter(|s| s.starts_with(['@', '%']))
+            {
+                let (session, native) = crate::local::psmux::native(id)?;
+                args[i + 1] = format!("${session}:{native}");
+            }
+            return self.execute_args(&args).await;
+        }
         match self {
             Self::Ssh(s) => s.execute_tmux(command).await,
             Self::Local(l) => l.execute(command).await,
@@ -94,6 +124,42 @@ impl Transport {
         }
     }
     pub async fn control(&self, session: &str, ignore: bool) -> Result<Stream> {
+        if self.psmux() {
+            crate::command::target(session, '$')?;
+            let cmd = Command::new(&crate::command::Operation::Sessions)?;
+            let (code, bytes) = self.execute_args(&cmd.argv()?).await?;
+            if code != 0 {
+                return Err(Error::MissingSession);
+            }
+            let rows = bytes
+                .split(|b| *b == b'\n')
+                .filter(|line| !line.is_empty())
+                .map(|line| line.strip_suffix(b"\r").unwrap_or(line).to_vec())
+                .collect::<Vec<_>>();
+            let sessions = crate::model::sessions(&rows)?;
+            let name = &sessions
+                .iter()
+                .find(|row| row.id == session)
+                .ok_or(Error::MissingSession)?
+                .name;
+            let args = [
+                "-CC".into(),
+                "attach-session".into(),
+                "-t".into(),
+                session.into(),
+            ];
+            return match self {
+                Self::Local(l) => Ok(Stream::Local(l.spawn(&args, Some(name)).await?)),
+                Self::Ssh(s) => Ok(Stream::Ssh(
+                    s.process(&ssh::windows_process(
+                        s.tmux.as_deref().ok_or(Error::NotReady)?,
+                        &args,
+                        Some(name),
+                    )?)
+                    .await?,
+                )),
+            };
+        }
         match self {
             Self::Ssh(s) => s.control(session, ignore).await.map(Stream::Ssh),
             Self::Local(l) => l.control(session, ignore).await.map(Stream::Local),
@@ -107,6 +173,7 @@ impl Transport {
     }
     pub async fn check(&self) -> Result<(u32, Vec<u8>)> {
         match self {
+            Self::Ssh(s) if s.windows_host => s.execute("cmd.exe /d /c exit 0").await,
             Self::Ssh(s) => s.execute(":").await,
             Self::Local(l) => l.execute_args(&["-V".into()]).await,
         }
@@ -117,7 +184,9 @@ impl Transport {
         }
     }
     pub async fn close(self) {
-        if let Self::Ssh(s) = self {
+        if let Self::Ssh(s) = self
+            && let Some(s) = std::sync::Arc::into_inner(s)
+        {
             s.close().await;
         }
     }
