@@ -84,7 +84,7 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
             actions.forEachIndexed { index, (text, action) ->
                 if (index > 0 && index == actions.lastIndex) HorizontalDivider()
-                DropdownMenuItem(text = { Text(text) }, onClick = { dismiss(); action() })
+                DropdownMenuItem(text = { FileActionLabel(text) }, onClick = { dismiss(); action() })
             }
         }
     }

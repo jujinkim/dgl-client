@@ -1963,3 +1963,133 @@ async fn last_focused_client_takes_the_window_size() {
     }
     inspector.close().await;
 }
+
+/// Full tmux-path lookup and SFTP v3 streaming against the isolated OpenSSH fixture.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires scripts/integration.py"]
+async fn sftp_session_folder_and_streaming_round_trip() {
+    use dgl_core::sftp::{Browser, CopyRequest, LocalPaths, Transfer};
+    use std::path::PathBuf;
+    let (host, credential, key) = fixture("DGL_TEST_KEY_FILE");
+    let root = PathBuf::from(std::env::var("DGL_TEST_ROOT").unwrap())
+        .canonicalize()
+        .unwrap();
+    let remote = root.join("sftp work");
+    let source = root.join("source").join("project");
+    let download = root.join("downloads");
+    for dir in [
+        &remote,
+        &source.join("empty"),
+        &source.join("nested"),
+        &download,
+    ] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let data = (0..180_001).map(|i| (i % 251) as u8).collect::<Vec<_>>();
+    std::fs::write(source.join("nested/data.bin"), &data).unwrap();
+    let output = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
+        .args([
+            "new-session",
+            "-dP",
+            "-F",
+            "#{session_id} #{pane_id}",
+            "-s",
+            "sftp-fixture",
+            "-c",
+        ])
+        .arg(&remote)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let ids = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .trim()
+        .split_once(' ')
+        .unwrap();
+    let files = Arc::new(Browser::new(
+        host.clone(),
+        credential.clone(),
+        Some(key.clone()),
+        Some(ids.0.into()),
+        Some(ids.1.into()),
+    ));
+    let listing = files.browse(None).await.unwrap();
+    assert_eq!(listing.path, remote.to_str().unwrap());
+    assert_eq!(listing.fallback, None);
+    let default = Browser::new(host, credential, Some(key), None, None)
+        .browse(None)
+        .await
+        .unwrap();
+    assert!(default.fallback.is_none());
+    let upload = CopyRequest {
+        upload: true,
+        sources: vec![source.display().to_string()],
+        destination: listing.path.clone(),
+        name: None,
+    };
+    async fn wait(job: &Transfer, conflict: bool) {
+        tokio::time::timeout(Duration::from_secs(15), async {
+            loop {
+                let p = job.progress();
+                if p.done {
+                    assert!(!conflict, "unexpected completion {p:?}");
+                    break;
+                }
+                if conflict && p.conflict.is_some() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    let send = files.start(Arc::new(LocalPaths), upload.clone());
+    // Navigation cannot retarget the enqueued copy.
+    files.browse(Some(&default.path)).await.unwrap();
+    wait(&send, false).await;
+    assert_eq!(send.progress().error, None);
+    let fetch = CopyRequest {
+        upload: false,
+        sources: vec![remote.join("project").display().to_string()],
+        destination: download.display().to_string(),
+        name: None,
+    };
+    let get = files.start(Arc::new(LocalPaths), fetch.clone());
+    wait(&get, false).await;
+    assert_eq!(get.progress().error, None);
+    assert!(download.join("project/empty").is_dir());
+    assert_eq!(
+        std::fs::read(download.join("project/nested/data.bin")).unwrap(),
+        data
+    );
+    std::fs::write(source.join("nested/data.bin"), b"replacement").unwrap();
+    let cancelled = files.start(Arc::new(LocalPaths), upload.clone());
+    wait(&cancelled, true).await;
+    cancelled.cancel();
+    wait(&cancelled, false).await;
+    assert_eq!(cancelled.progress().error.as_deref(), Some("Cancelled"));
+    assert_eq!(
+        std::fs::read(remote.join("project/nested/data.bin")).unwrap(),
+        data
+    );
+    for req in [upload, fetch] {
+        let job = files.start(Arc::new(LocalPaths), req);
+        wait(&job, true).await;
+        let conflict = job.progress().conflict.unwrap();
+        job.overwrite("unrelated file");
+        assert_eq!(job.progress().conflict.as_deref(), Some(conflict.as_str()));
+        job.overwrite(&conflict);
+        wait(&job, false).await;
+        assert_eq!(job.progress().error, None);
+    }
+    assert_eq!(
+        std::fs::read(download.join("project/nested/data.bin")).unwrap(),
+        b"replacement"
+    );
+    let cleanup = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
+        .args(["kill-session", "-t", ids.0])
+        .status()
+        .unwrap();
+    assert!(cleanup.success());
+}

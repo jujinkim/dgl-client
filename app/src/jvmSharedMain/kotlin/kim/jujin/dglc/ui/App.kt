@@ -45,6 +45,7 @@ import kim.jujin.dglc.core.*
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 
+@Composable internal expect fun PlatformFilePanel(files: FileTabs, key: FileTabKey, state: FileTabState)
 @Composable expect fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier)
 @Composable expect fun ImportKeyButton(onKey: (String) -> Unit, onError: (String) -> Unit)
 @Composable expect fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean)
@@ -69,6 +70,9 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
     val local by model.local.collectAsState()
     val connections by model.connections.collectAsState()
     val selected by model.selected.collectAsState()
+    val files = model.fileTabs
+    val fileKey = files?.selected?.collectAsState()?.value
+    val fileTabs = files?.tabs?.collectAsState()?.value.orEmpty()
     val expandedHosts by model.expandedHosts.collectAsState()
     val hostProbes by model.hostProbes.collectAsState()
     val inputBlocks by model.inputBlocks.collectAsState()
@@ -104,7 +108,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
         }
     }
     DisposableEffect(model) { onDispose { model.visibleConnection = null; model.visibleConnections = emptySet(); model.hostEditing = false; model.blockInput(appInputOwner, false) } }
-    val appModal = notifications || agentStatus != null || agentError != null || agentDetails != null || settings != null || adding || edit != null || deletion != null || error != null
+    val appModal = fileKey != null || notifications || agentStatus != null || agentError != null || agentDetails != null || settings != null || adding || edit != null || deletion != null || error != null
     SideEffect { model.blockInput(appInputOwner, appModal) }
     val colors = if (dark) darkColorScheme(
         primary = Color(0xff75aaff), secondary = Color(0xff75aaff),
@@ -158,6 +162,18 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
             }
             Column(Modifier.fillMaxSize().windowInsetsPadding(imeInsets)
                 .onGloballyPositioned { availableBounds = it.boundsInWindow() }) {
+                if (files != null && fileTabs.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(fileKey == null, { files.select(null) }, label = { Text(t("files.terminal")) })
+                        fileTabs.forEach { (key, tab) ->
+                            FilterChip(fileKey == key, { files.select(key) }, label = { Text(tab.title) })
+                        }
+                    }
+                }
+                if (files != null && fileKey != null && fileTabs.containsKey(fileKey)) {
+                    key(fileKey) { PlatformFilePanel(files, fileKey, fileTabs.getValue(fileKey)) }
+                    return@Column
+                }
                 if (mobileLayout) {
                     MobileHeader(selected?.host?.alias, explorer || selected == null, { explorer = !explorer },
                         { selected?.let { explorer = false; tmuxNavigationClient = it } }, menu = {
@@ -239,7 +255,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     BorderedButton({ withCredential(host) { model.open(host); explorer = false } }) { Text(t("common.connect")) }
                                                     Spacer(Modifier.weight(1f))
-                                                    TreeMenu(tr("common.menu_for", host.alias), listOf(t("common.edit") to { model.hostEditing = true; edit = host }, t("agent.integration") to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = t("workspace.connect_host_first") } }, t("workspace.delete_ellipsis") to { model.hostEditing = true; deletion = host }))
+                                                    TreeMenu(tr("common.menu_for", host.alias), listOfNotNull(files?.let { t("files.open") to { withCredential(host) { it.open(host, null, null, null) } } }, t("common.edit") to { model.hostEditing = true; edit = host }, t("agent.integration") to { connections.lastOrNull { it.host.id == host.id }?.let { agentDetails = it to null } ?: run { error = t("workspace.connect_host_first") } }, t("workspace.delete_ellipsis") to { model.hostEditing = true; deletion = host }))
                                                 }
                                             }
                                             if (hostExpanded) HostSessionTree(host, hostTreeSource(host.id, connections, selected, hostProbes), local.preferences, model) { client, pane -> agentDetails = client to pane }
@@ -298,7 +314,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                     BorderedButton({ settings = SettingsPage.Main }) { Text(t("common.settings")) }
                 }
             }
-        if (selected == null || explorer || settings != null || notifications || agentStatus != null || agentDetails != null) SideEffect { model.visibleConnection = null }
+        if (fileKey != null || selected == null || explorer || settings != null || notifications || agentStatus != null || agentDetails != null) SideEffect { model.visibleConnection = null }
         agentDetails?.let { (client, pane) -> AgentDetails(client, model, pane) { agentDetails = null } }
         if (notifications && !mobileLayout) AgentNotifications(model) { notifications = false }
         agentStatus?.takeIf { it.client === selected && it.client in connections }?.let { target ->
@@ -476,6 +492,10 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
     val status by client.status.collectAsState()
     val hostId = client.host.id
     return buildList {
+        val session = client.session.collectAsState().value
+        if (session != null) model.fileTabs?.let { files ->
+            add(t("files.open") to { files.open(client.host, session, client.pane.value, client.remote.value.sessions.find { it.id == session }?.name) })
+        }
         if (!status.canRetryNow) add(t("workspace.reconnect") to { model.reconnectSelected(client, hostId) })
         add(t("common.disconnect") to { model.disconnectSelected(client, hostId) })
     }
@@ -490,8 +510,10 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
     showAgents: (String) -> Unit, prompt: (NamePrompt) -> Unit, delete: (String, () -> Unit) -> Unit,
     selectTarget: (String, String?, String?) -> Unit = client::selectTarget, selectable: Boolean = enabled,
     currentSession: String? = null) {
+    val files = LocalAppModel.current?.fileTabs
     val actions = buildList<Pair<String, () -> Unit>> {
         if (row.kind == TreeKind.Session) {
+            files?.let { add(t("files.open") to { it.open(client.host, row.session, pane.takeIf { session == row.session }, remote.sessions.find { it.id == row.session }?.name) }) }
             add(t("workspace.create_window_ellipsis") to { prompt(NamePrompt(t("workspace.create_window")) { client.manage(TmuxCommand.newWindow(row.session, it)) }) })
             add(t("workspace.rename_session_ellipsis") to { prompt(NamePrompt(t("workspace.rename_session"), remote.sessions.firstOrNull { it.id == row.session }?.name.orEmpty()) {
                 client.manage(TmuxCommand.renameSession(row.session, it)) }) })
@@ -531,7 +553,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
     Box(Modifier.size(48.dp)) {
         IconButton({ menu = true }, enabled = enabled, modifier = Modifier.size(48.dp).semantics { contentDescription = label }) { UiGlyph(UiIcons.more) }
         DropdownMenu(menu, { menu = false; model?.blockInput(owner, false) }) {
-            actions.forEach { (text, action) -> DropdownMenuItem(text = { Text(text) }, onClick = { menu = false; model?.blockInput(owner, false); action() }) }
+            actions.forEach { (text, action) -> DropdownMenuItem(text = { FileActionLabel(text) }, onClick = { menu = false; model?.blockInput(owner, false); action() }) }
         }
     }
 }
@@ -859,5 +881,12 @@ internal class NamePrompt(val title: String, val initial: String = "", val accep
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) { dismissButton(); confirmButton() }
             }
         }
+    }
+}
+
+@Composable internal fun FileActionLabel(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text)
+        if (text == t("files.open")) Text(" (experiment)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

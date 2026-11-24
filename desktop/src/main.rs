@@ -13,6 +13,7 @@ mod chrome;
 mod cloud_sync;
 mod composer;
 mod file_picker;
+mod files;
 mod hierarchy;
 mod host_dialog;
 mod host_order;
@@ -157,6 +158,9 @@ struct Desktop {
     path: PathBuf,
     local: LocalState,
     tabs: Vec<Tab>,
+    files: HashMap<TabId, files::FileTab>,
+    #[cfg(target_os = "linux")]
+    linux_file_drag: files::LinuxDrag,
     workspace: Workspace,
     host_order: host_order::HostOrder,
     recent_local: local_host::Recent,
@@ -262,6 +266,9 @@ impl Desktop {
             path,
             local,
             tabs: vec![],
+            files: HashMap::new(),
+            #[cfg(target_os = "linux")]
+            linux_file_drag: Default::default(),
             workspace,
             host_order,
             recent_local,
@@ -413,7 +420,7 @@ impl Desktop {
         self.tick_shortcut_drag(cx);
         self.tick_agents(cx);
         self.tick_cloud_sync(cx);
-        let mut changed = false;
+        let mut changed = self.tick_files(cx);
         let mut save_hosts = false;
         let mut created = Vec::new();
         // Drags autoscroll and snackbar gauges animate from this loop.
@@ -679,6 +686,10 @@ impl Desktop {
         self.tabs.iter().find(|t| t.id == id)
     }
     fn close_tab(&mut self, id: TabId) {
+        if self.files.remove(&id).is_some() {
+            self.workspace.close(id);
+            return;
+        }
         self.composers.remove(&id);
         if matches!(self.dialog, Some(Dialog::Compose(tab)) if tab == id) {
             self.dialog = None;
@@ -1010,6 +1021,7 @@ impl Desktop {
 }
 impl Drop for Desktop {
     fn drop(&mut self) {
+        self.files.clear();
         for tab in &self.tabs {
             tab.connection.close();
         }
@@ -1022,6 +1034,8 @@ impl Drop for Desktop {
 }
 impl Render for Desktop {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(not(target_os = "macos"))]
+        self.drive_file_drag(window);
         let title = self.app_window_title();
         if self.window_title != title {
             window.set_window_title(&title);

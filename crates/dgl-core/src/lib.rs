@@ -10,6 +10,7 @@ pub mod local;
 pub mod model;
 pub mod protocol;
 pub mod scroll;
+pub mod sftp;
 pub mod ssh;
 pub mod sync;
 mod transport;

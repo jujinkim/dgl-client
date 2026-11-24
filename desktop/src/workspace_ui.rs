@@ -102,7 +102,7 @@ impl Desktop {
         let Some(index) = self.workspace.groups[&group]
             .tabs
             .iter()
-            .filter(|id| self.tabs.iter().any(|t| t.id == **id))
+            .filter(|id| self.files.contains_key(id) || self.tabs.iter().any(|t| t.id == **id))
             .position(|id| *id == selected)
         else {
             return;
@@ -672,6 +672,7 @@ impl Desktop {
                         .flex_wrap()
                         .gap_1()
                         .text_sm()
+                        .child(self.file_open_button(host.clone(), None, None, None, cx))
                         .child(self.host_connection_controls(&host.id, cx))
                         .child(self.button(
                             format!("edit-{id}"),
@@ -1072,6 +1073,10 @@ impl Desktop {
                 s.group_focus(id, w, cx);
             }));
         for tab_id in ids.clone() {
+            if let Some(files) = self.files.get(&tab_id) {
+                header = header.child(self.file_header(tab_id, id, files, selected, cx));
+                continue;
+            }
             let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) else {
                 continue;
             };
@@ -1359,6 +1364,18 @@ impl Desktop {
         for tab_id in ids {
             if self.menu.as_deref() == Some(&format!("tab-menu-{tab_id}")) {
                 let mut menu = div().flex().flex_wrap().gap_1().text_xs();
+                if let Some(tab) = self.tabs.iter().find(|tab| tab.id == tab_id)
+                    && tab.host.id != local_host::ID
+                    && let Some(session) = &tab.session
+                {
+                    menu = menu.child(self.file_open_button(
+                        tab.host.clone(),
+                        Some(session.clone()),
+                        tab.connection.state().pane.clone(),
+                        tab.session_name.clone(),
+                        cx,
+                    ));
+                }
                 for (delta, label) in [
                     (-1i32, t("workspace.move_left")),
                     (1, t("workspace.move_right")),
@@ -1412,6 +1429,9 @@ impl Desktop {
                 cx,
             )
         });
+        if let Some(tid) = selected.filter(|tid| self.files.contains_key(tid)) {
+            return body.child(self.file_panel(tid, cx));
+        }
         if let Some(tab) = selected.and_then(|tid| self.tabs.iter().find(|t| t.id == tid)) {
             let terminal = tab.terminal.clone();
             let state = tab.connection.state();
@@ -2041,6 +2061,25 @@ impl Desktop {
             && let Some(connection) = connection
         {
             body = body.child(self.hierarchy_menu(row, depth, connection, cx));
+            if session_row && host.id != local_host::ID {
+                let pane = state
+                    .pane
+                    .clone()
+                    .filter(|_| state.session.as_ref() == Some(&row.session));
+                let name = state
+                    .remote
+                    .sessions
+                    .iter()
+                    .find(|s| s.id == row.session)
+                    .map(|s| s.name.clone());
+                body = body.child(self.file_open_button(
+                    host.clone(),
+                    Some(row.session.clone()),
+                    pane,
+                    name,
+                    cx,
+                ));
+            }
         }
         if self.expanded.contains(&expand) {
             for child in &row.children {

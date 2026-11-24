@@ -99,3 +99,6 @@ class DesktopConnector(private val input: (ByteArray) -> Unit, private val resiz
 @Composable actual fun PlatformConnectionSettings(model: kim.jujin.dglc.AppModel) {}
 @Composable actual fun PlatformTerminalFontSettings(family: String, select: (String) -> Unit) {}
 @Composable actual fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit) {}
+
+// The JVM renderer is a reference fixture. Product desktop file tabs are implemented in GPUI.
+@Composable internal actual fun PlatformFilePanel(files: kim.jujin.dglc.FileTabs, key: kim.jujin.dglc.FileTabKey, state: kim.jujin.dglc.FileTabState) {}

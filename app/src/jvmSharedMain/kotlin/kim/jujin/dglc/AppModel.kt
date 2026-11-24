@@ -131,6 +131,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
         resources(connection).run { composer ?: TextComposer(connection, agentScope).also { composer = it } }
     @Synchronized fun terminalFont(connection: ClientConnection): TerminalFontSize =
         resources(connection).run { font ?: TerminalFontSize(local.value.preferences.fontSize).also { font = it } }
+    var fileTabs: FileTabs? = null
     var cloudSync: CloudSyncController? = null
     var chooseSettingsFile: (SettingsFileAction) -> Unit = {}
     var languageChanged: (String) -> Unit = {}
@@ -405,7 +406,7 @@ class AppModel(val repository: LocalRepository, val credentials: CredentialStore
             chooseSettingsFile = {}; sendAgentNotification = {}; foreground = false
             owned
         }
-        drafts.forEach { it.close() }; cloudSync?.close(); clients.forEach { it.close() }; probes.forEach { it.close() }
+        fileTabs?.shutdown(); drafts.forEach { it.close() }; cloudSync?.close(); clients.forEach { it.close() }; probes.forEach { it.close() }
         synchronized(agentInbox) { agentInbox.close() }
     }
 }

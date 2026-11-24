@@ -8,12 +8,13 @@ license.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["process"] }
+tokio = { workspace = true, features = ["process", "fs"] }
 russh.workspace = true
+russh-sftp = { version = "=4.0.0", features = ["raw-string"] }
+tempfile = "=3.27.0"
 zeroize = { version = "=1.9.1", features = ["derive"] }
 
 rand = "=0.10.3"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-tempfile = "=3.27.0"

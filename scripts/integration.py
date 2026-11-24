@@ -128,9 +128,14 @@ def main():
         with socket.socket() as probe:
             probe.bind(('127.0.0.1', 0))
             port = probe.getsockname()[1]
+        # ForceCommand dispatches the subsystem using SSH_ORIGINAL_COMMAND.
+        sftp_server = next((p for p in ('/usr/libexec/sftp-server', '/usr/lib/openssh/sftp-server',
+                                        '/usr/libexec/openssh/sftp-server') if Path(p).is_file()), None)
+        subsystem = f'Subsystem sftp {sftp_server} -d "{root}"' if sftp_server else ''
         config = root / 'sshd_config'
         config.write_text(f'''Port {port}
 ListenAddress 127.0.0.1
+{subsystem}
 HostKey {root}/host
 PidFile {root}/sshd.pid
 AuthorizedKeysFile {root}/authorized_keys

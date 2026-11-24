@@ -1,4 +1,5 @@
 //! Kotlin owns this object explicitly; shutdown joins the actor before wrapper close().
+mod sftp;
 use dgl_core::{
     connection::{Action, Connection},
     flow::{OutputEvent, OutputKind},

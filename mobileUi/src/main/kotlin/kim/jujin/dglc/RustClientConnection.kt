@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import uniffi.dgl_core.NativeConnection
 import uniffi.dgl_core.NativeOutputKind
-import java.security.MessageDigest
 
 /** The process runtime owns this adapter. Each WebView has its own output subscription. */
 class RustClientConnection(
@@ -102,7 +101,6 @@ class RustClientConnection(
     private fun outputFailureMessage() = t("connection.restore_failed")
     /** Phases that move on by themselves; every other one waits for the user or for output. */
     private val unsettled = setOf(Phase.Connecting, Phase.Authenticating, Phase.Restoring, Phase.Reconnecting)
-    private fun trustRef() = "trust-" + MessageDigest.getInstance("SHA-256").digest(host.endpoint.toByteArray()).joinToString("") { "%02x".format(it) }
 
     @Synchronized override fun connect() {
         if (closed) return
@@ -123,7 +121,7 @@ class RustClientConnection(
                 val credential = credentials.read(host.credentialRef) ?: error("Storage")
                 // A settings fingerprint counts only while its protected copy matches. A mismatch
                 // is not downgraded to a first-connection prompt; the user removes the trust first.
-                val trusted = local.value.trust[host.endpoint]?.also { if (credentials.read(trustRef())?.password != it) throw TrustRecordMismatch() }
+                val trusted = host.verifiedFingerprint(credentials, local.value)
                 val secret = buildJsonObject { put("password", credential.password); put("privateKey", credential.privateKey); put("passphrase", credential.passphrase) }.toString()
                 val connection = NativeConnection(json.encodeToString(HostProfile.serializer(), host.copy(lastSession = lastSession, lastPane = lastPane)), secret, trusted)
                 synchronized(this@RustClientConnection) {
@@ -539,7 +537,7 @@ class RustClientConnection(
     override fun trust() {
         val request = trustRequest.value ?: return
         try {
-            credentials.write(trustRef(), Credential(password = request.fingerprint))
+            credentials.write(host.trustReference(), Credential(password = request.fingerprint))
             updateLocal { it.copy(trust = it.trust + (request.endpoint to request.fingerprint)) }
             trustRequest.value = null; connect()
         } catch (_: Exception) { notice.value = t("connection.host_key_save_failed"); disconnect() }
@@ -788,7 +786,6 @@ class RustClientConnection(
     @Synchronized override fun disconnect() { backgroundResume.cancel(); agents.value = AgentSnapshot(); ++epoch; ++adapterGeneration; detach(); status.value = ConnectionStatus() }
     @Synchronized override fun close() { if (closed) return; closed = true; sizeClaims.close(); disconnect(); surface = null; val pending = cleanup.toList(); scope.launch { pending.forEach { it.join() }; scope.cancel() } }
 
-    private class TrustRecordMismatch : Exception()
     private fun message(code: String) = when (code) {
         "HostKeyChanged" -> t("connection.host_key_changed")
         "Authentication" -> t("connection.auth_failed")

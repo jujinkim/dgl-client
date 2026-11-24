@@ -13,6 +13,7 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=src/notifications/macos.m");
     println!("cargo:rerun-if-changed=src/file_picker/macos.m");
+    println!("cargo:rerun-if-changed=src/files/drag/macos.m");
     println!("cargo:rerun-if-changed=src/appearance/macos.m");
     println!("cargo:rerun-if-changed=src/native_tooltips/macos.m");
     println!("cargo:rerun-if-changed=src/terminal/fonts/macos.m");
@@ -21,6 +22,7 @@ fn main() {
         cc::Build::new()
             .file("src/notifications/macos.m")
             .file("src/file_picker/macos.m")
+            .file("src/files/drag/macos.m")
             .file("src/appearance/macos.m")
             .file("src/native_tooltips/macos.m")
             .file("src/terminal/fonts/macos.m")
