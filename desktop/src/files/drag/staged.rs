@@ -101,18 +101,19 @@ impl Outgoing {
 impl Desktop {
     pub(crate) fn drive_file_drag(&mut self, w: &mut Window) {
         #[cfg(target_os = "linux")]
-        for event in self.linux_file_drag.events(w, !self.files.is_empty()) {
+        for event in self
+            .linux_file_drag
+            .events(w, self.workspace.file_view.is_some())
+        {
             match event {
                 linux::DragEvent::Drop(x, y, paths, completion) => {
-                    let target = self
-                        .pointer
-                        .group_bounds
-                        .iter()
-                        .find(|(_, b)| {
-                            b.contains(&point(px(x), px(y))) && px(y) >= b.top() + px(48.)
-                        })
-                        .and_then(|(g, _)| self.workspace.groups.get(g)?.selected);
-                    let tab = target.and_then(|id| self.files.get_mut(&id));
+                    let tab = self
+                        .workspace
+                        .file_view
+                        .and_then(|id| self.files.get_mut(&id))
+                        .filter(|tab| {
+                            self.dialog.is_none() && tab.bounds.get().contains(&point(px(x), px(y)))
+                        });
                     let accepted = tab.is_some_and(|tab| tab.upload_paths(&paths, &self.runtime));
                     if let Some(id) = completion {
                         self.linux_file_drag.complete(id, accepted);
@@ -122,7 +123,7 @@ impl Desktop {
             }
         }
         for (&id, tab) in &mut self.files {
-            if self.workspace.selected() != Some(id) {
+            if self.workspace.file_view != Some(id) || self.dialog.is_some() {
                 tab.outgoing.release();
                 continue;
             }

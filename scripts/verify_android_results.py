@@ -2,6 +2,7 @@
 import re
 
 EXPECTED_ANDROID = {
+    'kim.jujin.dglc.AndroidAppFlowTest.sftpSwitchResumesFolderAndShortRowsScrollFromTheRightEdge',
     'kim.jujin.dglc.AndroidMobileInputTest.exportSyncPageExplainsExclusionsAndReturnsToSettingsAfterPickerCancellation',
     'kim.jujin.dglc.FileSyncTest.oneShotFilesPreviewMergeWithoutPersistentPermissionOrReplacingSync',
     'kim.jujin.dglc.AndroidMobileInputTest.alwaysVisibleKeyboardRespectsEditorsLifecycleAndActiveTerminal',

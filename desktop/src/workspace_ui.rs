@@ -102,7 +102,7 @@ impl Desktop {
         let Some(index) = self.workspace.groups[&group]
             .tabs
             .iter()
-            .filter(|id| self.files.contains_key(id) || self.tabs.iter().any(|t| t.id == **id))
+            .filter(|id| self.tabs.iter().any(|t| t.id == **id))
             .position(|id| *id == selected)
         else {
             return;
@@ -210,16 +210,38 @@ impl Desktop {
             false,
             cx,
         );
-        let layout = self.workspace.layout.clone();
-        let workspace = self.render_layout(layout, vec![], preview, cx);
-        // The shortcut bar draws the active terminal's sticky modifiers, which change
-        // without a `Desktop` notification.
-        let modifiers = self
-            .active_tab()
-            .map(|tab| tab.terminal.read(cx).modifiers(cx))
-            .unwrap_or_default();
-        let modifiers_changed =
-            std::mem::replace(&mut self.chrome.modifiers, modifiers) != modifiers;
+        let content = if let Some(id) = self.workspace.file_view {
+            self.file_panel(id, cx).into_any_element()
+        } else {
+            let layout = self.workspace.layout.clone();
+            let workspace = self.render_layout(layout, vec![], preview, cx);
+            // The shortcut bar draws the active terminal's sticky modifiers, which change
+            // without a `Desktop` notification.
+            let modifiers = self
+                .active_tab()
+                .map(|tab| tab.terminal.read(cx).modifiers(cx))
+                .unwrap_or_default();
+            let modifiers_changed =
+                std::mem::replace(&mut self.chrome.modifiers, modifiers) != modifiers;
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .child(div().flex_1().min_h_0().child(workspace))
+                .child(
+                    self.chrome(
+                        crate::chrome::Part::InputTools,
+                        StyleRefinement::default()
+                            .w_full()
+                            .h(px(INPUT_TOOLS_HEIGHT))
+                            .flex_shrink_0(),
+                        modifiers_changed,
+                        cx,
+                    ),
+                )
+                .into_any_element()
+        };
         div()
             .id("desktop")
             .size_full()
@@ -299,13 +321,21 @@ impl Desktop {
                         s.prompt(t("workspace.create_session"), PromptOp::Session, cx)
                     }
                     Some(NewHost) => s.edit(None, cx),
+                    Some(CloseTab) if s.workspace.file_view.is_some() => s.close_file_view(w, cx),
                     Some(CloseTab) => {
                         if let Some(id) = s.workspace.selected() {
                             s.close_tab(id);
                         }
                     }
                     Some(Settings) => s.dialog = Some(Dialog::Settings),
-                    Some(Refresh) => s.refresh(),
+                    Some(Refresh) => match s.workspace.file_view {
+                        Some(id) => s.refresh_files(id, cx),
+                        None => s.refresh(),
+                    },
+                    None if e.keystroke.key == "escape" && s.workspace.file_view.is_some() => {
+                        s.return_to_terminals(w, cx);
+                        w.prevent_default();
+                    }
                     Some(SelectTab(n)) => {
                         let Some(id) = s.workspace.groups[&s.workspace.active]
                             .tabs
@@ -388,25 +418,12 @@ impl Desktop {
                     .flex()
                     .flex_col()
                     .child(
-                        div().flex_1().min_h_0().flex().child(sidebar).child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .flex()
-                                .flex_col()
-                                .child(div().flex_1().min_h_0().child(workspace))
-                                .child(
-                                    self.chrome(
-                                        crate::chrome::Part::InputTools,
-                                        StyleRefinement::default()
-                                            .w_full()
-                                            .h(px(INPUT_TOOLS_HEIGHT))
-                                            .flex_shrink_0(),
-                                        modifiers_changed,
-                                        cx,
-                                    ),
-                                ),
-                        ),
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .flex()
+                            .child(sidebar)
+                            .child(content),
                     )
                     .child(
                         self.chrome(
@@ -834,6 +851,12 @@ impl Desktop {
                 .join(" · ")
                     + &state.error.map(|e| format!(" · {e}")).unwrap_or_default()
             })
+            .or_else(|| {
+                self.workspace
+                    .file_view
+                    .and_then(|id| self.files.get(&id))
+                    .map(|f| f.title.clone())
+            })
             .unwrap_or_else(|| t("workspace.empty_group").into());
         let status_host = self
             .active_tab()
@@ -879,6 +902,9 @@ impl Desktop {
                     .items_center()
                     // Preserve the prior focus until the modal records it.
                     .on_mouse_down(MouseButton::Left, |_, w, _| w.prevent_default())
+                    .when_some(self.file_switch_button(cx), |d, button| {
+                        d.child(button.min_w(px(76.)).text_center())
+                    })
                     .child(
                         self.button_base("agent-notifications", cx, |s, _, _| {
                             s.dialog = if matches!(s.dialog, Some(Dialog::Notifications)) {
@@ -1073,10 +1099,6 @@ impl Desktop {
                 s.group_focus(id, w, cx);
             }));
         for tab_id in ids.clone() {
-            if let Some(files) = self.files.get(&tab_id) {
-                header = header.child(self.file_header(tab_id, id, files, selected, cx));
-                continue;
-            }
             let Some(tab) = self.tabs.iter().find(|t| t.id == tab_id) else {
                 continue;
             };
@@ -1429,9 +1451,6 @@ impl Desktop {
                 cx,
             )
         });
-        if let Some(tid) = selected.filter(|tid| self.files.contains_key(tid)) {
-            return body.child(self.file_panel(tid, cx));
-        }
         if let Some(tab) = selected.and_then(|tid| self.tabs.iter().find(|t| t.id == tid)) {
             let terminal = tab.terminal.clone();
             let state = tab.connection.state();

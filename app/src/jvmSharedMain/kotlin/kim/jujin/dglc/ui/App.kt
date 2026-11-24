@@ -45,7 +45,7 @@ import kim.jujin.dglc.core.*
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 
-@Composable internal expect fun PlatformFilePanel(files: FileTabs, key: FileTabKey, state: FileTabState)
+@Composable internal expect fun PlatformFilePanel(files: FileTabs, key: FileTabKey, state: FileTabState, returnLabel: String)
 @Composable expect fun PlatformTerminal(client: ClientConnection, preferences: Preferences, modifier: Modifier)
 @Composable expect fun ImportKeyButton(onKey: (String) -> Unit, onError: (String) -> Unit)
 @Composable expect fun PlatformInputRegistration(client: ClientConnection, preferences: Preferences, allowed: () -> Boolean)
@@ -162,16 +162,10 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
             }
             Column(Modifier.fillMaxSize().windowInsetsPadding(imeInsets)
                 .onGloballyPositioned { availableBounds = it.boundsInWindow() }) {
-                if (files != null && fileTabs.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                        FilterChip(fileKey == null, { files.select(null) }, label = { Text(t("files.terminal")) })
-                        fileTabs.forEach { (key, tab) ->
-                            FilterChip(fileKey == key, { files.select(key) }, label = { Text(tab.title) })
-                        }
-                    }
-                }
-                if (files != null && fileKey != null && fileTabs.containsKey(fileKey)) {
-                    key(fileKey) { PlatformFilePanel(files, fileKey, fileTabs.getValue(fileKey)) }
+                val fileState = fileTabs[fileKey]
+                if (files != null && fileKey != null && fileState != null) {
+                    val returnLabel = t(if (selected == null || explorer) "common.hosts" else "files.terminal")
+                    key(fileKey) { PlatformFilePanel(files, fileKey, fileState, returnLabel) }
                     return@Column
                 }
                 if (mobileLayout) {
@@ -198,11 +192,12 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                             }) { anchor ->
                                 if (notifications) MobileAgentNotifications(model, availableBounds, anchor, restoreNotificationFocus) { notifications = false }
                             }
-                        }, status = {
+                        }, hostActions = {
                             val client = selected
                             if (client != null && local.preferences.agentStatus.statusBar) key(client) {
                                 AgentStatusChip(client, local.preferences.agentStatus) { agentStatus = AgentStatusTarget(client) }
                             }
+                            if (files != null && client != null) OpenFilesButton(files, client)
                         })
                 }
                 val maintenanceError by model.backgroundConnectionError.collectAsState()
@@ -309,7 +304,10 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                     selected?.takeIf { local.preferences.agentStatus.statusBar }?.let { client -> key(client) {
                         AgentStatusChip(client, local.preferences.agentStatus) { agentStatus = AgentStatusTarget(client) }
                     } }
-                    selected?.let { HostConnectionMenu(it, model) }
+                    selected?.let { client ->
+                        if (files != null) OpenFilesButton(files, client)
+                        HostConnectionMenu(client, model)
+                    }
                     BorderedButton({ notifications = true }) { Text(tr("mobile.notifications_count", agentNotices.count { !it.read })) }
                     BorderedButton({ settings = SettingsPage.Main }) { Text(t("common.settings")) }
                 }
@@ -488,13 +486,24 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
     notice?.let { message -> AlertDialog(onDismissRequest = { client.notice.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ client.notice.value = null }) { Text(t("common.close")) } }) }
 }
 
+private fun FileTabs.openFor(client: ClientConnection) {
+    val session = client.session.value
+    open(client.host, session, client.pane.value, client.remote.value.sessions.find { it.id == session }?.name)
+}
+
+@Composable private fun OpenFilesButton(files: FileTabs, client: ClientConnection) {
+    BorderedButton({ files.openFor(client) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+        Text("SFTP", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
 @Composable private fun hostConnectionActions(client: ClientConnection, model: AppModel): List<Pair<String, () -> Unit>> {
     val status by client.status.collectAsState()
     val hostId = client.host.id
     return buildList {
         val session = client.session.collectAsState().value
         if (session != null) model.fileTabs?.let { files ->
-            add(t("files.open") to { files.open(client.host, session, client.pane.value, client.remote.value.sessions.find { it.id == session }?.name) })
+            add(t("files.open") to { files.openFor(client) })
         }
         if (!status.canRetryNow) add(t("workspace.reconnect") to { model.reconnectSelected(client, hostId) })
         add(t("common.disconnect") to { model.disconnectSelected(client, hostId) })

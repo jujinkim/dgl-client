@@ -22,6 +22,87 @@ class AndroidAppFlowTest {
     private lateinit var app: AppModel
     private lateinit var connection: ClientConnection
     private lateinit var previous: LocalState
+
+    @Test fun sftpSwitchResumesFolderAndShortRowsScrollFromTheRightEdge() = runBlocking<Unit> {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("dgl.fixture") == "true")
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val fixture = JSONObject(File(instrumentation.targetContext.cacheDir, "integration.json").readText())
+        val credential = Credential(privateKey = fixture.getString("key"))
+        val name = "android-files-${System.nanoTime()}"
+        val host = HostProfile(name, "SFTP test", "127.0.0.1", fixture.getInt("port"), fixture.getString("user"), AuthKind.PrivateKey)
+        val admin = SshjTransport()
+        admin.connect(host, credential, fixture.getString("fingerprint"))
+        try {
+            // The SSH fixture owns the tmux wrapper directory and removes it at teardown.
+            val names = (100..199).joinToString(" ")
+            val session = admin.execute("cd \"\$(dirname \"\$(command -v tmux)\")\" && mkdir -p $name/files && " +
+                "cd $name/files && touch $names && cd .. && tmux new-session -d -P -F '#{session_id}' -s $name -c \"\$PWD\"")
+                .decodeToString().trim()
+            val key = FileTabKey(host.id, session)
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity {
+                    app = (it.application as DglApplication).connections().app
+                    previous = app.local.value
+                    app.modify { state -> state.copy(trust = state.trust - host.endpoint, preferences = state.preferences.copy(language = "ko")) }
+                    app.credentials.write(host.credentialRef, credential)
+                    app.open(host.copy(lastSession = session))
+                    connection = app.selected.value!!
+                }
+                try {
+                    withTimeout(20_000) { connection.trustRequest.first { it != null } }
+                    scenario.onActivity { connection.trust() }
+                    withTimeout(20_000) { connection.status.first { it.phase == Phase.Ready } }
+                    val automation = instrumentation.uiAutomation
+                    suspend fun bounds(label: String): android.graphics.Rect = withTimeout(5000) {
+                        var node: android.view.accessibility.AccessibilityNodeInfo?
+                        do {
+                            automation.clearCache()
+                            node = findText(automation.rootInActiveWindow, label)
+                            if (node == null) delay(30)
+                        } while (node == null)
+                        android.graphics.Rect().also(node::getBoundsInScreen)
+                    }
+                    val sftp = bounds("SFTP")
+                    val tmux = bounds("tmux 관리")
+                    assertTrue(sftp.right <= tmux.left && sftp.centerY() in tmux.top..tmux.bottom)
+                    clickText("SFTP")
+                    val files = requireNotNull(app.fileTabs)
+                    clickText("files")
+                    assertEquals(setOf("files"), files.tabs.value.getValue(key).selected)
+                    clickText("files/")
+                    val folder = withTimeout(5000) { files.tabs.first { it[key]?.listing?.entries?.size == 100 } }.getValue(key).listing.path
+                    val first = bounds("100").centerY()
+                    val second = bounds("101").centerY()
+                    val metrics = instrumentation.targetContext.resources.displayMetrics
+                    assertTrue((second - first) / metrics.density in 30f..40f)
+                    val x = metrics.widthPixels * 9 / 10
+                    automation.executeShellCommand("input swipe $x ${bounds("106").centerY()} $x $first 250").use {
+                        android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+                    }
+                    withTimeout(5000) {
+                        do { delay(30); automation.clearCache() } while (findText(automation.rootInActiveWindow, "100") != null)
+                    }
+                    assertTrue(files.tabs.value.getValue(key).selected.isEmpty())
+                    clickText("터미널")
+                    bounds("SFTP")
+                    assertNull(findText(automation.rootInActiveWindow, files.tabs.value.getValue(key).title))
+                    clickText("SFTP")
+                    bounds(folder)
+                    assertEquals(key, files.selected.value)
+                } finally {
+                    scenario.onActivity {
+                        app.fileTabs?.close(key)
+                        app.removeConnection(connection)
+                        app.credentials.delete(host.credentialRef)
+                        app.update(previous)
+                    }
+                }
+            }
+        } finally {
+            try { admin.execute("tmux kill-session -t '=$name'") } finally { admin.close() }
+        }
+    }
+
     @Test fun composeTerminalKeyboardToolbarRotationAndForegroundRestore() = runBlocking<Unit> {
         assumeTrue(InstrumentationRegistry.getArguments().getString("dgl.fixture") == "true")
         val instrumentation = InstrumentationRegistry.getInstrumentation()

@@ -5,7 +5,7 @@
 
 ## 기능 인수
 
-- [ ] 실험용 SFTP 탭과 Finder·Windows 탐색기·Linux 파일 관리자(X11·Wayland) 사이에서 파일과 빈 하위 폴더를 양방향으로 끌어 놓고 내용과 경로를 확인. Windows 실기 확인은 사용자 담당.
+- [ ] 실험용 SFTP 파일 화면과 Finder·Windows 탐색기·Linux 파일 관리자(X11·Wayland) 사이에서 파일과 빈 하위 폴더를 양방향으로 끌어 놓고 내용과 경로를 확인. Windows 실기 확인은 사용자 담당.
 - [ ] Android 시스템 파일 선택기에서 파일 여러 개와 폴더를 전송하고, 저장 폴더의 기존 파일에 대한 덮어쓰기·취소를 실기에서 확인.
 - [ ] Ubuntu 24.04 x86_64 네이티브 빌드·단위 검사·AppImage 패키징/추출/실행 및 X11·Wayland 각각의
   시작→Local 연결→입력→종료 인수([Linux 절차](docs/LINUX.md)). 이 macOS 작업 환경에서는 미수행.

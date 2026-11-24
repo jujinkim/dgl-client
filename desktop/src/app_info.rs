@@ -10,7 +10,7 @@ pub fn base_title() -> String {
 
 impl Desktop {
     pub(super) fn app_window_title(&self) -> String {
-        if let Some(tab) = self.workspace.selected().and_then(|id| self.files.get(&id)) {
+        if let Some(tab) = self.workspace.file_view.and_then(|id| self.files.get(&id)) {
             return format!("{} - {}", base_title(), tab.title);
         }
         match self.active_tab() {

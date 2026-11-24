@@ -43,7 +43,7 @@ tmux가 없거나 지원 버전이 아니면 일반 SSH 셸로 연결됩니다.
 Android 백그라운드 연결 유지, 앱 재실행 시 복원 범위, 일반 셸의 제약 등 자세한 조작은 [사용 안내](docs/USAGE.md),
 pane 동기화 계약은 [tmux 창 동기화](docs/TMUX_WINDOW_SYNC.md)를 참고하세요.
 
-SSH 호스트와 tmux 세션 메뉴의 **파일 열기 (experiment)**에서 SFTP 파일 탭을 열고 파일과 폴더를 양방향으로 복사할 수 있습니다. [SFTP 파일 탭 사용 안내](docs/USAGE.md#sftp-파일-탭-experiment)
+터미널의 **SFTP** 버튼이나 SSH 호스트·tmux 세션 메뉴의 **파일 열기 (experiment)**를 눌러 파일과 폴더를 양방향으로 복사할 수 있습니다. [SFTP 사용 안내](docs/USAGE.md#sftp-파일-전송-experiment)
 
 ## 플랫폼과 배포 상태
 

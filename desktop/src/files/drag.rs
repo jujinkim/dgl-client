@@ -17,7 +17,7 @@ pub(crate) use staged::LinuxDrag;
 impl Desktop {
     pub(super) fn drag_files(
         &mut self,
-        id: TabId,
+        id: FileId,
         name: &str,
         w: &mut Window,
         cx: &mut Context<Self>,

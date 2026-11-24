@@ -1,4 +1,5 @@
 use super::*;
+use crate::workspace::FileId;
 use dgl_core::sftp::{self, Browser, CopyRequest, Listing, LocalPaths, Progress, Transfer};
 use std::collections::BTreeSet;
 
@@ -6,7 +7,7 @@ mod drag;
 #[cfg(target_os = "linux")]
 pub(crate) use drag::LinuxDrag;
 
-pub(super) struct FileTab {
+pub(super) struct FileBrowser {
     host: HostProfile,
     session: Option<String>,
     pane: Option<String>,
@@ -19,6 +20,8 @@ pub(super) struct FileTab {
     jobs: Vec<Job>,
     outgoing: drag::Outgoing,
     pressed: Option<(String, Point<Pixels>)>,
+    #[cfg(target_os = "linux")]
+    bounds: std::rc::Rc<std::cell::Cell<Bounds<Pixels>>>,
 }
 struct Job {
     request: CopyRequest,
@@ -30,7 +33,7 @@ impl Drop for Job {
         self.transfer.cancel();
     }
 }
-impl FileTab {
+impl FileBrowser {
     fn selection(&self) -> Vec<String> {
         self.selected
             .iter()
@@ -86,16 +89,14 @@ impl Desktop {
             t("files.open"),
             cx,
             move |s, w, cx| {
-                s.menu = None;
                 s.open_files(
                     host.clone(),
                     session.clone(),
                     pane.clone(),
                     name.clone(),
+                    w,
                     cx,
                 );
-                s.group_focus(s.workspace.active, w, cx);
-                s.reveal_selected_tab();
             },
         )
         .flex()
@@ -114,34 +115,76 @@ impl Desktop {
         session: Option<String>,
         pane: Option<String>,
         name: Option<String>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some((&id, _)) = self
+        self.menu = None;
+        let existing = self
             .files
             .iter()
-            .find(|(_, t)| t.host.id == host.id && t.session == session)
-        {
-            if let Some(group) = self.workspace.group_for(id) {
-                self.workspace.select(group, id);
-            }
-            return;
-        }
-        let Some((credential, trusted)) = self.credentials(&host, cx) else {
-            return;
+            .find(|(_, browser)| browser.host.id == host.id && browser.session == session)
+            .map(|(&id, _)| id);
+        let id = if let Some(id) = existing {
+            id
+        } else {
+            let Some(credentials) = self.credentials(&host, cx) else {
+                return;
+            };
+            let id = self.create_file_browser(host, session, pane, name, credentials);
+            self.browse_files(id, None, cx);
+            id
         };
-        let id = self.create_file_tab(host, session, pane, name, (credential, trusted));
-        self.browse_files(id, None, cx);
+        self.workspace.file_view = Some(id);
+        window.focus(&self.focus);
     }
-    fn create_file_tab(
+    pub(super) fn return_to_terminals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.workspace.file_view = None;
+        self.group_focus(self.workspace.active, window, cx);
+    }
+    pub(super) fn close_file_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(id) = self.workspace.file_view {
+            self.files.remove(&id);
+            self.return_to_terminals(window, cx);
+        }
+    }
+    pub(super) fn file_switch_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        if self.workspace.file_view.is_some() {
+            return Some(self.button(
+                "switch-to-terminal",
+                t("files.terminal"),
+                cx,
+                Self::return_to_terminals,
+            ));
+        }
+        let tab = self
+            .active_tab()
+            .filter(|tab| tab.host.id != local_host::ID)?;
+        let id = tab.id;
+        Some(self.button("switch-to-sftp", "SFTP", cx, move |s, w, cx| {
+            if let Some(tab) = s.active_tab().filter(|tab| tab.id == id) {
+                let state = tab.connection.state();
+                s.open_files(
+                    tab.host.clone(),
+                    tab.session.clone(),
+                    state.pane.clone().filter(|_| state.session == tab.session),
+                    tab.session_name.clone(),
+                    w,
+                    cx,
+                );
+            }
+        }))
+    }
+    fn create_file_browser(
         &mut self,
         host: HostProfile,
         session: Option<String>,
         pane: Option<String>,
         name: Option<String>,
         credentials: (Credential, Option<String>),
-    ) -> TabId {
+    ) -> FileId {
         let (credential, trusted) = credentials;
-        let id = self.workspace.add_tab();
+        let id = self.next_file_id;
+        self.next_file_id += 1;
         let browser = Arc::new(Browser::new(
             host.clone(),
             credential,
@@ -159,7 +202,7 @@ impl Desktop {
         );
         self.files.insert(
             id,
-            FileTab {
+            FileBrowser {
                 host,
                 session,
                 pane,
@@ -172,11 +215,19 @@ impl Desktop {
                 jobs: vec![],
                 outgoing: Default::default(),
                 pressed: None,
+                #[cfg(target_os = "linux")]
+                bounds: Default::default(),
             },
         );
         id
     }
-    fn browse_files(&mut self, id: TabId, path: Option<String>, cx: &mut Context<Self>) {
+    pub(super) fn refresh_files(&mut self, id: FileId, cx: &mut Context<Self>) {
+        if let Some(tab) = self.files.get(&id) {
+            let path = &tab.listing.path;
+            self.browse_files(id, (!path.is_empty()).then(|| path.clone()), cx);
+        }
+    }
+    fn browse_files(&mut self, id: FileId, path: Option<String>, cx: &mut Context<Self>) {
         let Some(tab) = self.files.get_mut(&id) else {
             return;
         };
@@ -216,7 +267,7 @@ impl Desktop {
         .detach();
         cx.notify();
     }
-    fn trust_files(&mut self, id: TabId, cx: &mut Context<Self>) {
+    fn trust_files(&mut self, id: FileId, cx: &mut Context<Self>) {
         let tab = &self.files[&id];
         let Some(fingerprint) = tab
             .browser
@@ -257,44 +308,6 @@ impl Desktop {
         ));
         self.browse_files(id, None, cx);
     }
-    pub(super) fn file_header(
-        &self,
-        id: TabId,
-        group: GroupId,
-        tab: &FileTab,
-        selected: Option<TabId>,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        div()
-            .flex()
-            .items_center()
-            .flex_shrink_0()
-            .h_full()
-            .border_b_2()
-            .border_color(rgb(if selected == Some(id) {
-                self.palette.accent
-            } else {
-                self.palette.line
-            }))
-            .child(self.button(
-                format!("file-tab-{id}"),
-                tab.title.clone(),
-                cx,
-                move |s, w, cx| {
-                    s.workspace.select(group, id);
-                    s.group_focus(group, w, cx);
-                },
-            ))
-            .child(self.button(
-                format!("close-files-{id}"),
-                UiIcon::Close,
-                cx,
-                move |s, w, cx| {
-                    s.close_tab(id);
-                    s.group_focus(group, w, cx);
-                },
-            ))
-    }
     pub(super) fn tick_files(&mut self, cx: &mut Context<Self>) -> bool {
         let mut changed = false;
         #[cfg(target_os = "linux")]
@@ -324,7 +337,7 @@ impl Desktop {
         }
         changed
     }
-    fn file_picker(&mut self, id: TabId, upload: bool, cx: &mut Context<Self>) {
+    fn file_picker(&mut self, id: FileId, upload: bool, cx: &mut Context<Self>) {
         let tab = &self.files[&id];
         let destination = tab.listing.path.clone();
         let sources = tab.selection();
@@ -380,10 +393,9 @@ impl Desktop {
         })
         .detach();
     }
-    pub(super) fn file_panel(&self, id: TabId, cx: &mut Context<Self>) -> Stateful<Div> {
+    pub(super) fn file_panel(&self, id: FileId, cx: &mut Context<Self>) -> Stateful<Div> {
         let tab = &self.files[&id];
         let path = tab.listing.path.clone();
-        let refresh = (!path.is_empty()).then(|| path.clone());
         let mut tools = div()
             .flex()
             .flex_wrap()
@@ -393,7 +405,7 @@ impl Desktop {
                 format!("files-refresh-{id}"),
                 UiIcon::Refresh,
                 cx,
-                move |s, _, cx| s.browse_files(id, refresh.clone(), cx),
+                move |s, _, cx| s.refresh_files(id, cx),
             ));
         if !path.is_empty() {
             let parent = path
@@ -423,8 +435,17 @@ impl Desktop {
                 ));
             }
         }
+        tools = tools.child(self.button(
+            format!("close-files-{id}"),
+            t("common.close"),
+            cx,
+            Self::close_file_view,
+        ));
         let mut panel = div()
             .id(SharedString::from(format!("files-{id}")))
+            .debug_selector(|| "file-panel".into())
+            .relative()
+            .min_w_0()
             .flex_1()
             .min_h_0()
             .flex()
@@ -438,6 +459,15 @@ impl Desktop {
                 d.child(tr!("files.fallback", reason))
             })
             .when_some(tab.error.clone(), |d, e| d.child(e));
+        #[cfg(target_os = "linux")]
+        {
+            let bounds = tab.bounds.clone();
+            panel = panel.child(
+                canvas(move |rect, _, _| bounds.set(rect), |_, _, _, _| {})
+                    .absolute()
+                    .inset_0(),
+            );
+        }
         if tab.error.as_deref() == Some("HostKeyUnknown")
             && let Some(key) = tab.browser.observed()
         {
@@ -585,7 +615,10 @@ impl Desktop {
                 if s.linux_file_drag.handles_drops() {
                     return;
                 }
-                if let Some(tab) = s.files.get_mut(&id) {
+                if s.workspace.file_view == Some(id)
+                    && s.dialog.is_none()
+                    && let Some(tab) = s.files.get_mut(&id)
+                {
                     tab.upload_paths(files.paths(), &s.runtime);
                 }
                 cx.notify();
@@ -597,55 +630,97 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{Credential, HostProfile};
-    use gpui::TestAppContext;
+    use crate::ui_tests::{redraw, setup};
+    use gpui::{Modifiers, TestAppContext};
+
     #[gpui::test]
-    fn file_tabs_reuse_host_and_session_identity_and_keep_paths(cx: &mut TestAppContext) {
-        let (view, ui) = crate::ui_tests::setup(cx);
-        view.update(ui, |s, cx| {
-            let host = HostProfile {
-                id: "remote".into(),
-                alias: "remote".into(),
-                hostname: "127.0.0.1".into(),
-                port: 1,
-                username: "fixture".into(),
-                auth: Default::default(),
-                credential_ref: "fixture".into(),
-                favorite: false,
-                last_connected: 0,
-                last_session: None,
-                last_pane: None,
-            };
-            let mut ids = Vec::new();
-            for session in [None, Some("$1"), Some("$2")] {
-                let session = session.map(str::to_string);
-                let id = s.create_file_tab(
-                    host.clone(),
-                    session,
-                    None,
-                    None,
-                    (Credential::default(), None),
-                );
-                s.files.get_mut(&id).unwrap().listing.path = format!("/dir-{id}");
-                ids.push(id);
+    fn file_switch_preserves_terminal_tabs_and_resumes_the_selected_browser(
+        cx: &mut TestAppContext,
+    ) {
+        let (view, ui) = setup(cx);
+        let host = HostProfile {
+            id: "remote".into(),
+            alias: "remote".into(),
+            hostname: "127.0.0.1".into(),
+            port: 1,
+            username: "fixture".into(),
+            auth: Default::default(),
+            credential_ref: "fixture".into(),
+            favorite: false,
+            last_connected: 0,
+            last_session: None,
+            last_pane: None,
+        };
+        let (terminal, host_files, session_files) = view.update(ui, |s, cx| {
+            let host_files = s.create_file_browser(
+                host.clone(),
+                None,
+                None,
+                None,
+                (Credential::default(), None),
+            );
+            let session = Some("$1".to_string());
+            let session_files = s.create_file_browser(
+                host.clone(),
+                session.clone(),
+                None,
+                None,
+                (Credential::default(), None),
+            );
+            s.files.get_mut(&session_files).unwrap().listing.path = "/work".into();
+            let terminal = s.create_tab(
+                HostProfile {
+                    last_session: session,
+                    ..host.clone()
+                },
+                Credential::default(),
+                None,
+                cx,
+            );
+            cx.notify();
+            (terminal, host_files, session_files)
+        });
+        redraw(ui);
+        for control in ["switch-to-sftp", "switch-to-terminal", "switch-to-sftp"] {
+            let button = ui.debug_bounds(control).unwrap().center();
+            ui.simulate_click(button, Modifiers::default());
+            redraw(ui);
+            let showing_files = control == "switch-to-sftp";
+            if showing_files {
+                let panel = ui.debug_bounds("file-panel").unwrap();
+                assert!(panel.left() >= ui.debug_bounds("session-sidebar").unwrap().right());
+                assert!(panel.bottom() <= ui.debug_bounds("status-bar").unwrap().top());
             }
-            let terminal = s.create_tab(host.clone(), Credential::default(), None, cx);
-            for (session, id) in [Some("$1"), None, Some("$2")]
-                .into_iter()
-                .zip([ids[1], ids[0], ids[2]])
-            {
-                s.open_files(
-                    host.clone(),
-                    session.map(str::to_owned),
-                    Some("%99".into()),
-                    None,
-                    cx,
+            view.read_with(ui, |s, cx| {
+                assert_eq!(s.tabs[0].terminal.read(cx).enabled, !showing_files);
+                assert_eq!(s.workspace.groups[&s.workspace.active].tabs, vec![terminal]);
+                assert_eq!(
+                    s.workspace.file_view,
+                    showing_files.then_some(session_files)
                 );
-                assert_eq!(s.workspace.selected(), Some(id));
-                assert_eq!(s.files[&id].listing.path, format!("/dir-{id}"));
-            }
-            s.close_tab(terminal);
-            assert_eq!(s.files.len(), 3);
-            assert!(s.tabs.is_empty());
+                assert_eq!(s.workspace.selected(), (!showing_files).then_some(terminal));
+                assert_eq!(s.workspace.visible_tabs().is_empty(), showing_files);
+                assert_eq!(s.files[&session_files].listing.path, "/work");
+            });
+        }
+        ui.simulate_keystrokes("escape");
+        redraw(ui);
+        view.read_with(ui, |s, _| {
+            assert_eq!(s.workspace.selected(), Some(terminal))
+        });
+
+        // A saved host also has a file view when no terminal is open.
+        ui.update(|w, cx| {
+            view.update(cx, |s, cx| {
+                s.close_tab(terminal);
+                s.open_files(host, None, None, None, w, cx);
+                assert_eq!(s.workspace.file_view, Some(host_files));
+                assert!(s.workspace.groups[&s.workspace.active].tabs.is_empty());
+                s.close_file_view(w, cx);
+                assert!(s.workspace.file_view.is_none());
+                assert!(!s.files.contains_key(&host_files));
+                assert!(s.files.contains_key(&session_files));
+            })
         });
     }
 }

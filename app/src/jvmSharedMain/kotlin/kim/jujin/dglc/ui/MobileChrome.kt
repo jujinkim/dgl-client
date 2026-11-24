@@ -37,7 +37,7 @@ import kotlinx.coroutines.flow.first
 internal expect fun imePreservingPopupProperties(): PopupProperties
 
 @Composable internal fun MobileHeader(hostName: String?, showingHosts: Boolean, toggleHosts: () -> Unit, openTmux: () -> Unit,
-    menu: @Composable () -> Unit, notification: @Composable () -> Unit, status: @Composable RowScope.() -> Unit = {}) {
+    menu: @Composable () -> Unit, notification: @Composable () -> Unit, hostActions: @Composable RowScope.() -> Unit) {
     val colors = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth().background(colors.surface)) {
         Row(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -57,7 +57,7 @@ internal expect fun imePreservingPopupProperties(): PopupProperties
                     withStyle(SpanStyle(color = colors.onSurfaceVariant, fontSize = 12.sp)) { append(tr("mobile.current_host", "")) }
                     withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(hostName?.let(::displayTreeText) ?: "—") }
                 }, Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                status()
+                hostActions()
             }
             BorderedButton(openTmux, enabled = hostName != null, modifier = Modifier
                 .semantics { contentDescription = t("mobile.manage_tmux") }, contentPadding = PaddingValues(horizontal = 10.dp)) {

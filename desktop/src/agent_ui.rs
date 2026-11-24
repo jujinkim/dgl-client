@@ -67,14 +67,9 @@ impl Desktop {
             .collect();
         for (tab, (key, state)) in self.tabs.iter().zip(&sources) {
             if state.agents.current(now) && state.phase == Phase::Ready {
-                if active
-                    && self.dialog.is_none()
+                if self.dialog.is_none()
                     && self.snackbar.is_none()
-                    && self
-                        .workspace
-                        .groups
-                        .values()
-                        .any(|g| g.selected == Some(tab.id))
+                    && self.workspace.title_updates_enabled(tab.id, active)
                 {
                     for pane in state.render_targets.keys() {
                         visible.insert(agent::pane_key(key, &state.agents.server, pane));

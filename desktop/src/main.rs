@@ -158,7 +158,8 @@ struct Desktop {
     path: PathBuf,
     local: LocalState,
     tabs: Vec<Tab>,
-    files: HashMap<TabId, files::FileTab>,
+    files: HashMap<workspace::FileId, files::FileBrowser>,
+    next_file_id: workspace::FileId,
     #[cfg(target_os = "linux")]
     linux_file_drag: files::LinuxDrag,
     workspace: Workspace,
@@ -267,6 +268,7 @@ impl Desktop {
             local,
             tabs: vec![],
             files: HashMap::new(),
+            next_file_id: 1,
             #[cfg(target_os = "linux")]
             linux_file_drag: Default::default(),
             workspace,
@@ -686,10 +688,6 @@ impl Desktop {
         self.tabs.iter().find(|t| t.id == id)
     }
     fn close_tab(&mut self, id: TabId) {
-        if self.files.remove(&id).is_some() {
-            self.workspace.close(id);
-            return;
-        }
         self.composers.remove(&id);
         if matches!(self.dialog, Some(Dialog::Compose(tab)) if tab == id) {
             self.dialog = None;
@@ -1074,7 +1072,7 @@ impl Render for Desktop {
         self.shortcut_target = shortcut_target;
         for tab in &self.tabs {
             tab.terminal.update(cx, |t, cx| {
-                t.enabled = self.dialog.is_none();
+                t.enabled = self.dialog.is_none() && self.workspace.file_view.is_none();
                 if clear_modifiers {
                     t.clear_modifiers(cx);
                 }
