@@ -259,7 +259,6 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                                     }
                                 }
                                 if (wide && local.preferences.agentStatus.sidebar) {
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     key(selected) { AgentStatusSidebar(selected, local.preferences.agentStatus) {
                                         selected?.let { agentStatus = AgentStatusTarget(it, fromSidebar = true) }
                                     } }

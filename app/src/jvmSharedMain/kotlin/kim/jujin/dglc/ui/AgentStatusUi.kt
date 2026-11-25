@@ -21,10 +21,7 @@ import kim.jujin.dglc.core.*
 import kotlin.math.roundToLong
 
 // Agent status HUD: the status chip, the full panel (dialog on wide screens, bottom sheet on
-// phones), the sidebar summary and the settings card body. Unknown values are never shown as 0.
-
-/** Why a status item has no value. */
-internal enum class AgentFieldState { Shown, Unknown, NotCollected, NotSupported, NoLimits }
+// phones), the sidebar summary and the settings card body.
 
 internal fun agentPercentText(value: Double): String = value.roundToLong().toString()
 
@@ -34,8 +31,9 @@ internal fun agentTopLimit(limits: List<UsageLimit>): UsageLimit? = limits.filte
 /** The observer polls the whole tmux server. The status chip belongs to one tab's session. */
 internal fun AgentSnapshot.inSession(session: String?) = observations.filter { it.session == session }
 
-internal fun agentStatusFocus(snapshot: AgentSnapshot, session: String?, pane: String?): AgentObservation? =
-    snapshot.inSession(session).filter { it.pane == pane }.minWithOrNull(compareBy<AgentObservation> { it.actor != "parent" }
+internal fun agentStatusFocus(snapshot: AgentSnapshot, session: String?, pane: String?, now: Long): AgentObservation? =
+    snapshot.inSession(session).filter { it.pane == pane && snapshot.hasDisplayStatus(it, now) }
+        .minWithOrNull(compareBy<AgentObservation> { it.actor != "parent" }
         .thenBy { it.status == null })
 
 /** Panel order: the focused pane's agents first, then the rest in snapshot order. */
@@ -57,49 +55,6 @@ internal fun agentStatusSummary(status: AgentStatus?, limits: List<UsageLimit>, 
 }
 
 internal fun agentCostText(cost: Double): String = String.format(java.util.Locale.ROOT, "%.2f", cost)
-
-/** The opt-in collector each CLI can install, as the helper names it in `sources`; null when none exists. */
-private fun richSource(agent: String): String? = when (agent) { "Claude" -> "mod"; "Agy" -> "statusline"; else -> null }
-
-/** Why an agent has no status at all: only a CLI with an installable collector reads as "not collected". */
-internal fun agentNoStatusKey(agent: String): String =
-    if (richSource(agent) != null) "agent_status.not_collected" else "agent_status.unknown"
-
-/**
- * Whether an item has a value and, if not, why. [field] is an [AgentStatusSettings] item name.
- * Mirrors desktop `agent_status_ui::missing`. Account quota reads require consent.
- */
-internal fun agentFieldState(agent: String, field: String, status: AgentStatus?, limits: List<UsageLimit>, accountLimits: Boolean = false): AgentFieldState {
-    if (status != null) {
-        val shown = when (field) {
-            "account" -> status.account?.kind != null || !status.account?.plan.isNullOrBlank()
-            "usage" -> limits.isNotEmpty()
-            "context" -> status.contextPercent() != null || status.context?.used != null
-            "breakdown" -> status.context?.breakdown?.isNotEmpty() == true
-            "cache" -> status.cache?.let { c -> listOf(c.input, c.read, c.write, c.output).any { it != null } } == true
-            "model" -> status.model?.let { !it.name.isNullOrBlank() || !it.id.isNullOrBlank() } == true
-            "effort" -> !status.effort.isNullOrBlank() || status.thinking != null
-            "cost" -> status.cost_usd != null
-            else -> false
-        }
-        if (shown) return AgentFieldState.Shown
-    }
-    val supported = when (field) {
-        "breakdown" -> agent == "Claude"
-        "account" -> agent == "Claude" || agent == "Agy"
-        "cost" -> agent != "Codex"
-        else -> true
-    }
-    if (!supported) return AgentFieldState.NotSupported
-    if (field == "usage" && agent in setOf("Codex", "Grok") && !accountLimits && status?.sources?.contains("command") != true) return AgentFieldState.NotCollected
-    val rich = richSource(agent) ?: return AgentFieldState.Unknown
-    if (status == null) return AgentFieldState.NotCollected
-    val needsRich = field in setOf("account", "usage", "context", "breakdown", "cache", "cost")
-    if (needsRich && rich !in status.sources) return AgentFieldState.NotCollected
-    // Mirrors desktop `missing()`: "no limit data" only when the account is known not to be a subscription.
-    val kind = status.account?.kind
-    return if (field == "usage" && kind != null && kind != "subscription") AgentFieldState.NoLimits else AgentFieldState.Unknown
-}
 
 /** Helper `status_collection` state of one CLI in an inspect reply; null when nothing can be installed. */
 internal fun agentCollectionKey(supported: Boolean, installed: Boolean, replaced: Boolean): String? = when {
@@ -152,34 +107,40 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
     val now = System.currentTimeMillis()
-    val focus = agentStatusFocus(snapshot, session, pane) ?: return
-    if (!snapshot.hasFreshPoll(now)) return
+    val focus = agentStatusFocus(snapshot, session, pane, now) ?: return
     val phase = agentPhaseLabel(snapshot.phaseOf(focus, now))
     val status = focus.status
-    val stale = !snapshot.current(now) || status?.isStale(now) == true
+    val stale = status?.isStale(now) == true
     val summary = agentStatusSummary(status, snapshot.limitsFor(focus), settings)
     val alert = status?.alert?.let(::agentAlertLabel)
     val description = listOfNotNull(t("agent_status.open_details"), agentName(focus.agent), phase, summary.takeIf { it.isNotEmpty() },
-        alert, if (stale) t("agent_status.stale") else null, if (status == null) t(agentNoStatusKey(focus.agent)) else null).joinToString(" · ")
+        alert, if (stale) t("agent_status.stale") else null).joinToString(" · ")
     val color = when {
         alert != null -> MaterialTheme.colorScheme.error
         stale -> MaterialTheme.colorScheme.onSurfaceVariant
         else -> MaterialTheme.colorScheme.onSurface
     }
-    TextButton(open, Modifier.semantics { contentDescription = description }, contentPadding = PaddingValues(horizontal = 4.dp)) {
-        Icon(LauncherIcons.agent(focus.agent), null, Modifier.size(16.dp), tint = color)
-        val parts = buildList {
-            add(phase)
-            if (wide && snapshot.current(now)) {
-                val contextAt = status?.context_at ?: status?.at
-                if (settings.context && contextAt != null && now - contextAt < AGENT_STATUS_STALE_MS)
-                    status?.contextPercent()?.let { add("ctx " + agentPercentText(it) + "%") }
-                val sample = snapshot.limitSampleFor(focus)
-                if (settings.usage && sample != null && now - sample.limitsSampledAt() < AGENT_STATUS_STALE_MS)
-                    agentTopLimit(sample.limits)?.used()?.let { add(tr("agent_status.remaining", agentPercentText((100 - it).coerceAtLeast(0.0)))) }
-            }
+    val parts = buildList {
+        phase?.let { add(it) }
+        if (wide && snapshot.current(now)) {
+            val contextAt = status?.context_at ?: status?.at
+            if (settings.context && contextAt != null && now - contextAt < AGENT_STATUS_STALE_MS)
+                status?.contextPercent()?.let { add("ctx " + agentPercentText(it) + "%") }
+            val sample = snapshot.limitSampleFor(focus)
+            if (settings.usage && sample != null && now - sample.limitsSampledAt() < AGENT_STATUS_STALE_MS)
+                agentTopLimit(sample.limits)?.used()?.let { add(tr("agent_status.remaining", agentPercentText((100 - it).coerceAtLeast(0.0)))) }
         }
-        Text(parts.joinToString(" · "), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
+    }
+    val descriptionModifier = Modifier.semantics { contentDescription = description }
+    if (parts.isEmpty()) {
+        IconButton(open, Modifier.size(48.dp).then(descriptionModifier)) {
+            Icon(LauncherIcons.agent(focus.agent), null, Modifier.size(16.dp), tint = color)
+        }
+    } else {
+        TextButton(open, descriptionModifier, contentPadding = PaddingValues(horizontal = 4.dp)) {
+            Icon(LauncherIcons.agent(focus.agent), null, Modifier.size(16.dp), tint = color)
+            Text(parts.joinToString(" · "), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 
@@ -189,13 +150,12 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
     val session by client.session.collectAsState()
     val pane by client.pane.collectAsState()
     val now = System.currentTimeMillis()
-    val observations = agentStatusOrder(if (fromSidebar) snapshot.observations else snapshot.inSession(session), pane)
+    val observations = agentStatusOrder(
+        (if (fromSidebar) snapshot.observations else snapshot.inSession(session)).filter { snapshot.hasDisplayStatus(it, now) }, pane)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (observations.isEmpty()) Text(t("agent_status.none"))
-        else if (!snapshot.current(now)) Text(t("agent_status.stale"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         observations.forEachIndexed { index, o ->
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AgentStatusDetails(o, agentPhaseLabel(snapshot.phaseOf(o, now)), snapshot.account_limits, snapshot.limitsFor(o), settings, now, remote.targetLabel(o.session, o.pane))
+            AgentStatusDetails(o, agentPhaseLabel(snapshot.phaseOf(o, now)), snapshot.limitsFor(o), settings, now, remote.targetLabel(o.session, o.pane))
         }
     }
 }
@@ -207,16 +167,7 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
     }
 }
 
-@Composable private fun FallbackText(state: AgentFieldState, field: String) {
-    Text(when (state) {
-        AgentFieldState.NotCollected -> t("agent_status.not_collected")
-        AgentFieldState.NotSupported -> if (field == "breakdown") t("agent_status.no_breakdown") else t("agent_status.not_supported")
-        AgentFieldState.NoLimits -> t("agent_status.limit.none")
-        else -> t("agent_status.unknown")
-    }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-@Composable private fun AgentStatusDetails(o: AgentObservation, phase: String, accountLimits: Boolean, limits: List<UsageLimit>, settings: AgentStatusSettings, now: Long, target: String) {
+@Composable private fun AgentStatusDetails(o: AgentObservation, phase: String?, limits: List<UsageLimit>, settings: AgentStatusSettings, now: Long, target: String) {
     val s = o.status
     val small = MaterialTheme.typography.bodySmall
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -226,28 +177,24 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
             Text(target, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(phase, style = small)
+        phase?.let { Text(it, style = small) }
         s?.alert?.let(::agentAlertLabel)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = small) }
-        if (s == null) {
-            Text(t(agentNoStatusKey(o.agent)), style = small)
-            return@Column
-        }
+        if (s == null) return@Column
         val ago = s.at?.let { tr("agent_status.observed_ago", formatDurationS((now - it) / 1000)) }
-        Text(listOfNotNull(if (s.isStale(now)) t("agent_status.stale") else null, ago).joinToString(" · ").ifEmpty { t("agent_status.unknown") },
-            style = MaterialTheme.typography.labelSmall, color = if (s.isStale(now)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-        fun state(field: String) = agentFieldState(o.agent, field, s, limits, accountLimits)
-        if (settings.account) StatusItem(t("agent_status.field.account")) {
-            val account = s.account
-            if (state("account") == AgentFieldState.Shown && account != null) Text(listOfNotNull(account.kindLabel(), account.plan?.takeIf { it.isNotBlank() }).joinToString(" · "))
-            else FallbackText(state("account"), "account")
+        val stale = s.isStale(now)
+        if (ago != null || stale) {
+            Text(listOfNotNull(t("agent_status.stale").takeIf { stale }, ago).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall, color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (settings.usage) StatusItem(t("agent_status.field.usage")) {
-            if (state("usage") != AgentFieldState.Shown) FallbackText(state("usage"), "usage")
-            limits.forEach { limit ->
+        val account = s.account?.let { listOfNotNull(it.kindLabel(), it.plan?.takeIf(String::isNotBlank)).joinToString(" · ") }
+        if (settings.account && !account.isNullOrEmpty()) StatusItem(t("agent_status.field.account")) { Text(account) }
+        val shownLimits = limits.filter { it.used() != null || it.resets_at != null }
+        if (settings.usage && shownLimits.isNotEmpty()) StatusItem(t("agent_status.field.usage")) {
+            shownLimits.forEach { limit ->
                 val used = limit.used()
                 Row(Modifier.fillMaxWidth()) {
                     Text(limit.title(), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(used?.let { tr("agent_status.limit.used", agentPercentText(it)) } ?: t("agent_status.unknown"), style = small)
+                    used?.let { Text(tr("agent_status.limit.used", agentPercentText(it)), style = small) }
                 }
                 // An unknown share is never drawn as an empty (0%) gauge.
                 used?.let { Gauge(it / 100, color = gaugeColor(it)) }
@@ -255,49 +202,48 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
             }
         }
         val context = s.context
-        if (settings.context) StatusItem(t("agent_status.field.context")) {
-            val percent = s.contextPercent()
-            if (state("context") != AgentFieldState.Shown) FallbackText(state("context"), "context")
-            else {
+        val percent = s.contextPercent()
+        val tokens = context?.used?.let { used -> context.size?.let { tr("agent_status.context.tokens", formatTokens(used), formatTokens(it)) } ?: formatTokens(used) }
+        val compact = context?.compact_percent
+        if (settings.context && (percent != null || tokens != null || compact != null)) StatusItem(t("agent_status.field.context")) {
+            if (percent != null || tokens != null) {
                 Row(Modifier.fillMaxWidth()) {
-                    Text(context?.used?.let { used -> context.size?.let { tr("agent_status.context.tokens", formatTokens(used), formatTokens(it)) } ?: formatTokens(used) }
-                        ?: t("agent_status.unknown"), Modifier.weight(1f), style = small)
+                    tokens?.let { Text(it, Modifier.weight(1f), style = small) }
                     percent?.let { Text("${agentPercentText(it)}%", style = small) }
                 }
                 percent?.let { Gauge(it / 100, color = gaugeColor(it)) }
-                context?.compact_percent?.let { Text(tr("agent_status.context.compact_at", agentPercentText(it)), style = MaterialTheme.typography.labelSmall) }
             }
+            compact?.let { Text(tr("agent_status.context.compact_at", agentPercentText(it)), style = MaterialTheme.typography.labelSmall) }
         }
-        if (settings.breakdown) StatusItem(t("agent_status.field.breakdown")) {
-            val shares = context?.let(::agentBreakdownShares).orEmpty()
-            if (shares.isEmpty()) FallbackText(state("breakdown").let { if (it == AgentFieldState.Shown) AgentFieldState.Unknown else it }, "breakdown")
-            else {
-                val scheme = MaterialTheme.colorScheme
-                val dark = scheme.background.luminance() < 0.5f
-                Row(Modifier.fillMaxWidth().height(10.dp).background(scheme.surfaceVariant)) {
-                    shares.forEach { (part, share) -> if (share > 0) Box(Modifier.weight(share.toFloat()).fillMaxHeight().background(categoryColor(part.categoryKey, dark, scheme))) }
-                    val rest = 1.0 - shares.sumOf { it.second }
-                    if (rest > 0.0001) Spacer(Modifier.weight(rest.toFloat()))
-                }
-                shares.forEach { (part, share) ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.size(10.dp).background(categoryColor(part.categoryKey, dark, scheme)))
-                        Text(part.label(), Modifier.weight(1f), style = small, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${formatTokens(part.tokens ?: 0)} · ${agentPercentText(share * 100)}%", style = small)
-                    }
+        val shares = if (settings.breakdown) context?.let(::agentBreakdownShares).orEmpty() else emptyList()
+        if (shares.isNotEmpty()) StatusItem(t("agent_status.field.breakdown")) {
+            val scheme = MaterialTheme.colorScheme
+            val dark = scheme.background.luminance() < 0.5f
+            Row(Modifier.fillMaxWidth().height(10.dp).background(scheme.surfaceVariant)) {
+                shares.forEach { (part, share) -> if (share > 0) Box(Modifier.weight(share.toFloat()).fillMaxHeight().background(categoryColor(part.categoryKey, dark, scheme))) }
+                val rest = 1.0 - shares.sumOf { it.second }
+                if (rest > 0.0001) Spacer(Modifier.weight(rest.toFloat()))
+            }
+            shares.forEach { (part, share) ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(10.dp).background(categoryColor(part.categoryKey, dark, scheme)))
+                    Text(part.label(), Modifier.weight(1f), style = small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${formatTokens(part.tokens ?: 0)} · ${agentPercentText(share * 100)}%", style = small)
                 }
             }
         }
-        if (settings.cache) StatusItem(t("agent_status.field.cache")) {
-            val cache = s.cache
-            Text(t("agent_status.cache.server_side"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (state("cache") != AgentFieldState.Shown || cache == null) FallbackText(state("cache"), "cache")
-            else {
-                listOf("agent_status.cache.input" to cache.input, "agent_status.cache.read" to cache.read, "agent_status.cache.write" to cache.write,
-                    "agent_status.cache.output" to cache.output).forEach { (key, value) ->
-                    if (value != null) Row(Modifier.fillMaxWidth()) { Text(t(key), Modifier.weight(1f), style = small); Text(formatTokens(value), style = small) }
+        val cache = s.cache
+        if (settings.cache && cache != null) {
+            val counts = listOf("agent_status.cache.input" to cache.input, "agent_status.cache.read" to cache.read,
+                "agent_status.cache.write" to cache.write, "agent_status.cache.output" to cache.output)
+                .mapNotNull { (key, value) -> value?.let { key to it } }
+            val ratio = s.cacheHitRatio()
+            if (counts.isNotEmpty() || ratio != null || cache.last_at != null) StatusItem(t("agent_status.field.cache")) {
+                Text(t("agent_status.cache.server_side"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                counts.forEach { (key, value) ->
+                    Row(Modifier.fillMaxWidth()) { Text(t(key), Modifier.weight(1f), style = small); Text(formatTokens(value), style = small) }
                 }
-                s.cacheHitRatio()?.let { Text(tr("agent_status.cache.hit_ratio", agentPercentText(it * 100)), style = small) }
+                ratio?.let { Text(tr("agent_status.cache.hit_ratio", agentPercentText(it * 100)), style = small) }
                 cache.last_at?.let { Text(tr("agent_status.cache.last_request", formatDurationS((now - it) / 1000)), style = small) }
                 val ttl = cache.ttl?.takeIf { it.isNotBlank() }
                 val expiry = cache.estimatedExpiryMs()
@@ -305,19 +251,19 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
                     else tr("agent_status.cache.expired", ttl), style = small)
             }
         }
-        if (settings.model) StatusItem(t("agent_status.field.model")) {
-            val name = s.model?.name?.takeIf { it.isNotBlank() }
-            val id = s.model?.id?.takeIf { it.isNotBlank() }
-            if (name == null && id == null) FallbackText(state("model"), "model")
-            else Text(if (name != null && id != null && name != id) "$name ($id)" else name ?: id!!)
+        val name = s.model?.name?.takeIf(String::isNotBlank)
+        val id = s.model?.id?.takeIf(String::isNotBlank)
+        val model = if (name != null && id != null && name != id) "$name ($id)" else name ?: id
+        if (settings.model && model != null) StatusItem(t("agent_status.field.model")) {
+            Text(model)
         }
-        if (settings.effort) StatusItem(t("agent_status.field.effort")) {
-            if (state("effort") != AgentFieldState.Shown) FallbackText(state("effort"), "effort")
-            else Text(listOfNotNull(s.effort?.takeIf { it.isNotBlank() }, if (s.thinking == true) t("agent_status.thinking") else null)
-                .joinToString(" · ").ifEmpty { t("agent_status.unknown") })
+        val effort = listOfNotNull(s.effort?.takeIf(String::isNotBlank), t("agent_status.thinking").takeIf { s.thinking == true })
+        if (settings.effort && effort.isNotEmpty()) StatusItem(t("agent_status.field.effort")) {
+            Text(effort.joinToString(" · "))
         }
-        if (settings.cost) StatusItem(t("agent_status.field.cost")) {
-            s.cost_usd?.let { Text(tr("agent_status.cost", agentCostText(it))) } ?: FallbackText(state("cost"), "cost")
+        val cost = s.cost_usd
+        if (settings.cost && cost != null) StatusItem(t("agent_status.field.cost")) {
+            Text(tr("agent_status.cost", agentCostText(cost)))
         }
     }
 }
@@ -346,7 +292,14 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
 /** Collapsible summary at the bottom of the wide sidebar: one line per agent with mini gauges. */
 @Composable internal fun AgentStatusSidebar(client: ClientConnection?, settings: AgentStatusSettings, openDetails: () -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(true) }
+    if (client == null) return
+    val snapshot by client.agents.collectAsState()
+    val pane by client.pane.collectAsState()
+    val now = System.currentTimeMillis()
+    val observations = agentStatusOrder(snapshot.observations.filter { snapshot.hasDisplayStatus(it, now) }, pane)
+    if (observations.isEmpty()) return
     Column(Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(expanded, role = Role.Button) { expanded = it }
             .semantics { stateDescription = t(if (expanded) "common.collapse" else "common.expand") }.padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -355,18 +308,13 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
         }
         if (expanded) Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            val snapshot = client?.agents?.collectAsState()?.value
-            val pane = client?.pane?.collectAsState()?.value
-            val now = System.currentTimeMillis()
-            val observations = snapshot?.let { agentStatusOrder(it.observations, pane) }.orEmpty()
-            if (observations.isEmpty()) Text(t("agent_status.none"), style = MaterialTheme.typography.bodySmall)
-            observations.forEach { o -> AgentStatusLine(o, agentPhaseLabel(snapshot!!.phaseOf(o, now)), snapshot.limitsFor(o), settings, !snapshot.current(now) || o.status?.isStale(now) == true, openDetails) }
-            if (observations.isNotEmpty()) TextButton(openDetails) { Text(t("agent_status.open_details")) }
+            observations.forEach { o -> AgentStatusLine(o, agentPhaseLabel(snapshot.phaseOf(o, now)), snapshot.limitsFor(o), settings, o.status?.isStale(now) == true, openDetails) }
+            TextButton(openDetails) { Text(t("agent_status.open_details")) }
         }
     }
 }
 
-@Composable private fun AgentStatusLine(o: AgentObservation, phase: String, limits: List<UsageLimit>, settings: AgentStatusSettings, stale: Boolean, open: () -> Unit) {
+@Composable private fun AgentStatusLine(o: AgentObservation, phase: String?, limits: List<UsageLimit>, settings: AgentStatusSettings, stale: Boolean, open: () -> Unit) {
     val s = o.status
     val small = MaterialTheme.typography.labelSmall
     Column(Modifier.fillMaxWidth().clickable(onClick = open).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -376,10 +324,7 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
             Text(listOfNotNull(agentName(o.agent) + if (o.actor != "parent") t("agent.subagent_suffix") else "", phase, model).joinToString(" · "),
                 Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        when {
-            s == null -> Text(t(agentNoStatusKey(o.agent)), style = small, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            stale -> Text(t("agent_status.stale"), style = small, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        if (stale) Text(t("agent_status.stale"), style = small, color = MaterialTheme.colorScheme.onSurfaceVariant)
         s?.alert?.let(::agentAlertLabel)?.let { Text(it, style = small, color = MaterialTheme.colorScheme.error) }
         val context = if (settings.context) s?.contextPercent() else null
         val top = if (settings.usage) agentTopLimit(limits) else null

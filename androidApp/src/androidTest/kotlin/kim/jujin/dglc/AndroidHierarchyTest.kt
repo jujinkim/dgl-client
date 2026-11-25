@@ -54,7 +54,8 @@ class AndroidHierarchyTest {
         val first = Connection("연결 하나"); val second = Connection("연결 둘")
         fun observation(run: String, pane: String, agent: String, kind: String): AgentObservation {
             val e = AgentEvent(run, 1, "server", run, "parent", "$1", "@1", pane, agent, kind, "Test", System.currentTimeMillis())
-            return AgentObservation(e.session, e.window, e.pane, run, e.actor, agent, e)
+            val phase = when (kind) { "Question" -> "question"; "Error" -> "error"; else -> "idle" }
+            return AgentObservation(e.session, e.window, e.pane, run, e.actor, agent, e, phase = phase, phase_seq = e.seq)
         }
         fun freshAgents() { first.agents.value = AgentSnapshot(server = "server", valid = true, observed_at = System.currentTimeMillis(), observations = listOf(
             observation("one", "%1", "Claude", "Question"), observation("two", "%1", "Claude", "Response"), observation("other", "%2", "Codex", "Error"))) }
@@ -95,8 +96,15 @@ class AndroidHierarchyTest {
                     assertEquals(bounds(button).height(), bounds(button).width())
                     assertRightEdge(await("tmux 관리"))
                 }
-                checkChip(process)
-                checkChip(process.copy(status = AgentStatus(at = System.currentTimeMillis(), model = ModelInfo(name = "긴 모델 이름 ".repeat(6).trim()))))
+                scenario.onActivity {
+                    first.agents.value = AgentSnapshot(server = "server", valid = true, observed_at = System.currentTimeMillis(),
+                        observations = listOf(process))
+                }
+                instrumentation.uiAutomation.waitForIdle(100, 5000)
+                instrumentation.uiAutomation.clearCache()
+                assertNull(find(instrumentation.uiAutomation.rootInActiveWindow) { it.contentDescription?.startsWith("에이전트 상태 자세히") == true })
+                val claude = process.copy(status = AgentStatus(at = System.currentTimeMillis(), model = ModelInfo(name = "긴 모델 이름 ".repeat(6).trim())))
+                checkChip(claude)
                 // Both connections poll the same tmux server. Only the selected tab owns the header.
                 scenario.onActivity {
                     second.session.value = "$2"
@@ -114,7 +122,7 @@ class AndroidHierarchyTest {
                 scenario.onActivity {
                     val codex = AgentObservation("$2", "@2", "%2", "other-session", "parent", "Codex",
                         status = AgentStatus(at = System.currentTimeMillis(), model = ModelInfo(name = "검토 모델")))
-                    val poll = first.agents.value.copy(observed_at = System.currentTimeMillis(), observations = listOf(process, codex))
+                    val poll = first.agents.value.copy(observed_at = System.currentTimeMillis(), observations = listOf(claude, codex))
                     first.agents.value = poll
                     second.agents.value = poll
                 }
@@ -122,6 +130,8 @@ class AndroidHierarchyTest {
                 clickNode(codexChip)
                 await("Codex")
                 assertNull(node("Claude"))
+                assertNull(node(t("agent.phase.unknown")))
+                assertNull(node(t("agent_status.field.usage")))
                 click("닫기")
                 click("연결 하나 · 개발")
                 awaitPrefix("에이전트 상태 자세히 · Claude")
@@ -136,14 +146,14 @@ class AndroidHierarchyTest {
                 instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
                 await(compact)
                 scenario.onActivity { freshAgents() }
-                val badge = awaitPrefix("창 에이전트 상태 · Claude · 질문이 발생했습니다")
+                val badge = awaitPrefix("창 에이전트 상태 · Claude · 답변 대기")
                 val density = instrumentation.targetContext.resources.displayMetrics.density
                 assertTrue(bounds(badge).width() >= (48 * density).toInt() - 1)
                 assertTrue(bounds(badge).height() >= (48 * density).toInt() - 1)
                 assertTrue(bounds(await(compact)).right <= bounds(await("$compact 메뉴")).left)
                 assertTrue(bounds(await("$compact 메뉴")).right <= bounds(badge).left)
                 clickNode(badge)
-                await("수신 확인 이벤트: 미확인")
+                await(tr("agent.diagnostics_ids", "$1", "@1", "%1"))
                 assertEquals(3, first.agents.value.panelState("@1", first.agentEndpoint, emptyList(), System.currentTimeMillis()).observations.size)
                 // Large system fonts put the third observation below the dialog viewport.
                 withTimeout(5000) {

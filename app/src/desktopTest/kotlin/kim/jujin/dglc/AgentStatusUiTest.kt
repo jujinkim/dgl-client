@@ -28,48 +28,25 @@ class AgentStatusUiTest {
     }
 
     @Test fun statusChipFollowsTheSelectedSessionAndPrefersItsFocusedPane() {
-        val status = AgentStatus(at = 1)
+        val status = AgentStatus(at = 1, model = ModelInfo("model"))
         val outside = observation("%8", "Grok", status).copy(session = "$2", window = "@2")
         val snapshot = AgentSnapshot(valid = true, observations = listOf(
             outside,
             observation("%1", "Codex"), observation("%2", "Claude", status, actor = "sub"), observation("%2", "Claude", status),
-            observation("%3", "Agy", status)))
-        assertEquals(observation("%2", "Claude", status), agentStatusFocus(snapshot, "$1", "%2"))
-        assertEquals(observation("%1", "Codex"), agentStatusFocus(snapshot, "$1", "%1"))
-        assertNull(agentStatusFocus(snapshot, "$1", "%9"))
-        assertEquals(outside, agentStatusFocus(snapshot, "$2", "%8"))
-        assertNull(agentStatusFocus(snapshot, "$3", "%8"))
-        assertNull(agentStatusFocus(snapshot, null, "%8"))
+            observation("%3", "Agy").copy(phase = "idle")))
+        assertEquals(observation("%2", "Claude", status), agentStatusFocus(snapshot, "$1", "%2", 1))
+        assertNull(agentStatusFocus(snapshot, "$1", "%1", 1))
+        assertEquals("idle", agentStatusFocus(snapshot, "$1", "%3", 1)?.phase)
+        assertNull(agentStatusFocus(snapshot, "$1", "%2", 10_000))
+        assertNull(agentStatusFocus(snapshot, "$1", "%9", 1))
+        assertEquals(outside, agentStatusFocus(snapshot, "$2", "%8", 1))
+        assertNull(agentStatusFocus(snapshot, "$3", "%8", 1))
+        assertNull(agentStatusFocus(snapshot, null, "%8", 1))
         assertEquals(listOf("%2", "%2", "%1", "%3"), agentStatusOrder(snapshot.inSession("$1"), "%2").map { it.pane })
         assertEquals(5, agentStatusOrder(snapshot.observations, "%2").size)
     }
 
-    @Test fun missingItemsExplainWhetherTheyAreUnknownUncollectedOrUnsupported() {
-        val hook = AgentStatus(sources = listOf("hook"), model = ModelInfo("m"))
-        val mod = AgentStatus(sources = listOf("mod"))
-        assertEquals(AgentFieldState.Shown, agentFieldState("Claude", "model", hook, emptyList()))
-        assertEquals(AgentFieldState.NotCollected, agentFieldState("Claude", "usage", hook, emptyList()))
-        assertEquals(AgentFieldState.NotCollected, agentFieldState("Claude", "breakdown", hook, emptyList()))
-        // Like desktop: no limit data is explained only for a known non-subscription account.
-        assertEquals(AgentFieldState.Unknown, agentFieldState("Claude", "usage", mod, emptyList()))
-        assertEquals(AgentFieldState.NoLimits, agentFieldState("Claude", "usage",
-            mod.copy(account = AccountInfo(kind = "api_key")), emptyList()))
-        assertEquals(AgentFieldState.Shown, agentFieldState("Claude", "usage", mod, listOf(UsageLimit("five_hour", used_percent = 1.0))))
-        assertEquals(AgentFieldState.Unknown, agentFieldState("Claude", "context", mod, emptyList()))
-        assertEquals(AgentFieldState.NotSupported, agentFieldState("Codex", "breakdown", hook, emptyList()))
-        assertEquals(AgentFieldState.NotSupported, agentFieldState("Codex", "cost", hook, emptyList()))
-        assertEquals(AgentFieldState.NotCollected, agentFieldState("Codex", "usage", hook, emptyList()))
-        assertEquals(AgentFieldState.NotSupported, agentFieldState("Codex", "account", null, emptyList()))
-        assertEquals(AgentFieldState.Unknown, agentFieldState("Codex", "context", hook, emptyList()))
-        assertEquals(AgentFieldState.NotCollected, agentFieldState("Grok", "usage", hook, emptyList()))
-        // Codex and Grok have nothing to install, so nothing of theirs reads as "not collected".
-        assertEquals(AgentFieldState.Unknown, agentFieldState("Grok", "context", hook, emptyList()))
-        assertEquals(AgentFieldState.Unknown, agentFieldState("Grok", "model", null, emptyList()))
-        assertEquals("agent_status.unknown", agentNoStatusKey("Codex"))
-        assertEquals("agent_status.not_collected", agentNoStatusKey("Agy"))
-        assertEquals(AgentFieldState.NotCollected, agentFieldState("Agy", "account", hook, emptyList()))
-        assertEquals(AgentFieldState.NotCollected, agentFieldState("Claude", "model", null, emptyList()))
-        assertEquals(AgentFieldState.NotSupported, agentFieldState("Agy", "breakdown", null, emptyList()))
+    @Test fun hookSettingsExplainStatusCollectionState() {
         assertEquals("agent_status.collect.installed", agentCollectionKey(true, true, false))
         assertEquals("agent_status.collect.replaced", agentCollectionKey(true, false, true))
         assertEquals("agent_status.not_collected", agentCollectionKey(true, false, false))

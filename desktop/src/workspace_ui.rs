@@ -2140,8 +2140,9 @@ impl Desktop {
             });
         if let Some(pid) = &row.window
             && let Some(connection) = connection
+            && let Some(badge) = self.agent_badge(connection.clone(), host, pid, state, cx)
         {
-            line = line.child(self.agent_badge(connection.clone(), host, pid, state, cx));
+            line = line.child(badge);
         }
         if current {
             line = line.child(self.current_outline(format!("session-current-{}", row.session)));

@@ -18,13 +18,14 @@ import kim.jujin.dglc.core.*
 import kotlinx.serialization.json.*
 
 @Composable internal fun AgentBadge(state: PanelAgentState, onDetails: (() -> Unit)? = null) {
+    val agent = state.agent ?: return
     val modifier = if (onDetails == null) Modifier else Modifier.widthIn(min = 48.dp).height(48.dp)
         .clickable(role = Role.Button, onClick = onDetails)
         .semantics { contentDescription = tr("agent.window_status", state.label) }.padding(horizontal = 4.dp)
     Row(modifier, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp, androidx.compose.ui.Alignment.CenterHorizontally)) {
-        if (state.agent != null) Icon(LauncherIcons.agent(state.agent), null, Modifier.size(16.dp))
-        if (state.kind != null || state.agent == null) UiGlyph(agentIcon(state.kind))
+        Icon(LauncherIcons.agent(agent), null, Modifier.size(16.dp))
+        if (state.kind != null) UiGlyph(agentIcon(state.kind))
         if (onDetails == null) Text(state.label, style = MaterialTheme.typography.labelSmall, maxLines = 2,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         else if (state.unread.isNotEmpty()) Text(state.unread.size.toString(), Modifier.clearAndSetSemantics {},
@@ -42,16 +43,21 @@ import kotlinx.serialization.json.*
     val notices by model.agentNotifications.collectAsState()
     AlertDialog(onDismissRequest = dismiss, title = { Text(tr("agent.integration_named", client.host.alias)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(t("agent.last_observed_note"))
             val now = System.currentTimeMillis()
             val panel = snapshot.panelState(pane, client.agentEndpoint, notices, now)
+            if (panel.observations.isNotEmpty()) Text(t("agent.last_observed_note"))
             AgentBadge(panel)
             val remote by client.remote.collectAsState()
             panel.observations.forEach { o ->
-                Text("${agentName(o.agent)} · ${agentPhaseLabel(snapshot.phaseOf(o, now))} · ${remote.targetLabel(o.session, o.pane)}" + if (o.actor != "parent") t("agent.subagent_suffix") else "")
-                Row { UiGlyph(agentIcon(o.last?.kind)); Text(o.last?.let { "${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}" } ?: t("agent.not_linked")) }
+                val phase = agentPhaseLabel(snapshot.phaseOf(o, now))
+                Text(listOfNotNull(agentName(o.agent), phase, remote.targetLabel(o.session, o.pane)).joinToString(" · ") +
+                    if (o.actor != "parent") t("agent.subagent_suffix") else "")
+                o.last?.takeIf { snapshot.current(now) }?.let {
+                    Row { UiGlyph(agentIcon(it.kind)); Text("${agentMessage(it.kind)} · ${it.event}\n${java.util.Date(it.at)}") }
+                    if (o.supported.isNotEmpty())
+                        Text(tr("agent.observed_event_types", o.supported.joinToString { agentMessage(it) }), style = MaterialTheme.typography.labelSmall)
+                }
                 Text(tr("agent.diagnostics_ids", o.session, o.window, o.pane), style = MaterialTheme.typography.labelSmall)
-                Text(tr("agent.observed_event_types", o.supported.joinToString { agentMessage(it) }.ifEmpty { t("agent.unknown") }), style = MaterialTheme.typography.labelSmall)
                 BorderedButton({
                     model.openAgentObservation(client, o)
                     dismiss()

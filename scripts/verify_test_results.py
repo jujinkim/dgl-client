@@ -108,7 +108,7 @@ TESTS = {
                              'tokenAndDurationFormatsMatchTheCore'],
     'AgentStatusUiTest': ['statusButtonDescriptionIncludesEnabledKnownValues',
                           'statusChipFollowsTheSelectedSessionAndPrefersItsFocusedPane',
-                          'missingItemsExplainWhetherTheyAreUnknownUncollectedOrUnsupported',
+                          'hookSettingsExplainStatusCollectionState',
                           'breakdownSharesUseTheWindowAndNeverExceedIt'],
     'core.ProtocolTest': '''everyByteBoundaryAndUtf8Preserved commandBodyCannotForgeNotification
         unicodeMaySpanOutputEvents extendedOutputAndEmptyOutput malformedAndOversizedMessagesFailClosed

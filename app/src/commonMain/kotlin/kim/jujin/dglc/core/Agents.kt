@@ -165,7 +165,10 @@ private val phasePriority = listOf("approval", "question", "waiting", "error", "
 fun AgentSnapshot.phaseOf(o: AgentObservation, now: Long): String =
     o.phase.takeIf { it in phasePriority && hasFreshPoll(now) && (!gap || o.phase_seq == 0L) } ?: "unknown"
 
-fun agentPhaseLabel(phase: String) = t(when (phase) {
+fun AgentSnapshot.hasDisplayStatus(o: AgentObservation, now: Long): Boolean =
+    hasFreshPoll(now) && (o.status != null || phaseOf(o, now) != "unknown")
+
+fun agentPhaseLabel(phase: String): String? = when (phase) {
     "idle" -> "agent.phase.idle"
     "working" -> "agent.phase.working"
     "command" -> "agent.phase.command"
@@ -174,8 +177,8 @@ fun agentPhaseLabel(phase: String) = t(when (phase) {
     "question" -> "agent.phase.question"
     "reviewing" -> "agent.phase.reviewing"
     "error" -> "agent.phase.error"
-    else -> "agent.phase.unknown"
-})
+    else -> null
+}?.let(::t)
 private fun phaseKind(phase: String): String? = when (phase) {
     "approval" -> "Approval"
     "question", "waiting" -> "Question"
@@ -184,19 +187,21 @@ private fun phaseKind(phase: String): String? = when (phase) {
     "command", "working", "reviewing" -> "Activity"
     else -> null
 }
-/** A window (@ID) or pane (%ID) filter drives the button, unknown state, unread count, and details. */
+/** A window (@ID) or pane (%ID) filter drives the button, unread count, and details. */
 data class PanelAgentState(val observations: List<AgentObservation>, val label: String, val agent: String? = null,
     val kind: String? = null, val unread: List<AgentNotice> = emptyList())
 fun AgentSnapshot.panelState(pane: String?, endpoint: String, notices: List<AgentNotice>, now: Long): PanelAgentState {
-    val observations = observations.filter { pane == null || (if (pane.startsWith("@")) it.window == pane else it.pane == pane) }
-    if (!hasFreshPoll(now)) return PanelAgentState(observations, t("agent.status_unknown"))
+    val observations = observations.filter {
+        (pane == null || (if (pane.startsWith("@")) it.window == pane else it.pane == pane)) &&
+            (hasDisplayStatus(it, now) || (current(now) && it.last != null))
+    }
     val focus = observations.minWithOrNull(compareBy<AgentObservation> {
         phasePriority.indexOf(phaseOf(it, now)).let { rank -> if (rank < 0) Int.MAX_VALUE else rank }
-    }.thenBy { it.actor != "parent" }) ?: return PanelAgentState(observations, t("agent.not_detected"))
+    }.thenBy { it.actor != "parent" }) ?: return PanelAgentState(emptyList(), "")
     val phase = phaseOf(focus, now)
     val unread = if (gap) emptyList() else notices.filter { n -> !n.read && n.endpoint == endpoint && n.event.server == server &&
         (pane == null || (if (pane.startsWith("@")) pane == n.event.window else pane == n.event.pane)) && observations.any { it.pane == n.event.pane && it.run == n.event.run && it.last != null } }
-    val label = agentName(focus.agent) + " · " + agentPhaseLabel(phase)
+    val label = listOfNotNull(agentName(focus.agent), agentPhaseLabel(phase)).joinToString(" · ")
     return PanelAgentState(observations, if (unread.isEmpty()) label else tr("agent.unread_events", label, unread.size),
         focus.agent, phaseKind(phase), unread)
 }

@@ -657,6 +657,8 @@ fn hierarchy_wraps_and_preserves_focus_expansion_and_menus(cx: &mut TestAppConte
     state.phase = dgl_core::connection::Phase::Ready;
     state.session = Some("$1".into());
     state.pane = Some("%2".into());
+    state.agents = agent_status_snapshot();
+    state.agents.observations[0].window = "@2".into();
     desktop.update(ui, |s, _| {
         s.local.preferences.show_all_hierarchy = true;
         s.expanded.extend([
@@ -761,6 +763,7 @@ fn compact_hierarchy_keeps_the_target_menus_and_panel_details(cx: &mut TestAppCo
     state.phase = dgl_core::connection::Phase::Ready;
     state.session = Some("$1".into());
     state.pane = Some("%1".into());
+    state.agents = agent_status_snapshot();
     let badge_id: &'static str = Box::leak(format!("agent-{}-@1", state.handle).into_boxed_str());
     let owner = desktop.clone();
     let (preview, ui) = cx.add_window_view(|_, _| HierarchyPreview {
@@ -3582,8 +3585,8 @@ fn chrome_parts_repaint_for_desktop_changes_not_for_terminal_output(cx: &mut Tes
 
 fn agent_status_snapshot() -> dgl_core::agent::Snapshot {
     use dgl_core::agent::{
-        AccountInfo, Agent, AgentStatus, CacheUsage, ContextPart, ContextUsage, ModelInfo,
-        Observation, Snapshot, UsageLimit, now_ms,
+        AccountInfo, Agent, AgentStatus, CacheUsage, ContextPart, ContextUsage, LivePhase,
+        ModelInfo, Observation, Snapshot, UsageLimit, now_ms,
     };
     let now = now_ms();
     let observation = |pane: &str, agent, status| Observation {
@@ -3664,7 +3667,10 @@ fn agent_status_snapshot() -> dgl_core::agent::Snapshot {
         valid: true,
         observed_at: now,
         observations: vec![
-            observation("%1", Agent::Claude, Some(claude)),
+            Observation {
+                phase: LivePhase::Working,
+                ..observation("%1", Agent::Claude, Some(claude))
+            },
             observation("%2", Agent::Codex, None),
         ],
         ..Default::default()
@@ -3675,6 +3681,16 @@ fn agent_status_snapshot() -> dgl_core::agent::Snapshot {
 fn agent_status_chip_fits_and_opens_details(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     let terminal = add_terminal(&view, ui);
+    view.update(ui, |s, cx| {
+        let mut snapshot = agent_status_snapshot();
+        snapshot.observations[0].phase = Default::default();
+        snapshot.observations[0].status = None;
+        s.agents.hud.snapshot = Some(("$1".into(), snapshot));
+        cx.notify();
+    });
+    redraw(ui);
+    assert!(ui.debug_bounds("agent-status-chip").is_none());
+    assert!(ui.debug_bounds("agent-status-panel").is_none());
     view.update(ui, |s, cx| {
         s.agents.hud.snapshot = Some(("$1".into(), agent_status_snapshot()));
         cx.notify();
@@ -3768,16 +3784,9 @@ fn agent_status_sidebar_panel_folds_and_settings_toggle_fields(cx: &mut TestAppC
     let hosts = ui.debug_bounds("host-section").unwrap();
     assert!(panel.top() >= hosts.bottom());
     assert!(panel.bottom() <= sidebar.bottom() && panel.right() <= sidebar.right());
-    for row in [
-        "agent-status-row-run%1-parent",
-        "agent-status-row-run%2-parent",
-    ] {
-        let bounds = ui.debug_bounds(row).unwrap();
-        assert!(
-            bounds.left() >= panel.left() && bounds.right() <= panel.right(),
-            "{row}"
-        );
-    }
+    let bounds = ui.debug_bounds("agent-status-row-run%1-parent").unwrap();
+    assert!(bounds.left() >= panel.left() && bounds.right() <= panel.right());
+    assert!(ui.debug_bounds("agent-status-row-run%2-parent").is_none());
     let open = panel.size.height;
     let toggle = ui.debug_bounds("agent-status-toggle").unwrap();
     ui.simulate_click(toggle.center(), Modifiers::default());

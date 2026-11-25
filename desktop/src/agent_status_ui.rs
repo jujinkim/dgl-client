@@ -1,5 +1,5 @@
 //! Agent status HUD: the status-bar chip, its popover, the sidebar panel and the
-//! settings card. Values the helper did not report stay unknown and are never shown as 0.
+//! settings card. Only observed phases and collected values are displayed.
 use super::*;
 use dgl_core::agent::{
     self, Agent, AgentStatus, AgentStatusSettings, Observation, Snapshot, UsageLimit,
@@ -29,12 +29,14 @@ fn focused<'a>(
     snapshot: &'a Snapshot,
     session: Option<&str>,
     pane: Option<&str>,
+    now: u64,
 ) -> Option<&'a Observation> {
     let session = session?;
     snapshot
         .observations
         .iter()
         .filter(|o| o.session == session && Some(o.pane.as_str()) == pane)
+        .filter(|o| snapshot.has_display_status(o, now))
         .min_by_key(|o| (o.actor != "parent", o.status.is_none()))
 }
 
@@ -92,43 +94,6 @@ fn status_summary(
         parts.push(tr!("agent_status.cost", format!("{cost:.2}")));
     }
     parts.join(" · ")
-}
-
-/// A value the helper reports, or why it is missing.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Field {
-    Account,
-    Usage,
-    Context,
-    Breakdown,
-    Cache,
-    Cost,
-}
-/// Why a field has no value: the CLI has no source for it, the opt-in collector is missing,
-/// or the value is simply unknown right now.
-pub(crate) fn missing(agent: Agent, status: Option<&AgentStatus>, field: Field) -> &'static str {
-    let sources = status.map_or(&[][..], |s| s.sources.as_slice());
-    let rich = |source: &str| sources.iter().any(|s| s == source);
-    match (agent, field) {
-        (Agent::Codex | Agent::Grok, Field::Account) => t("agent_status.not_supported"),
-        (Agent::Codex | Agent::Grok, Field::Usage) if !rich("command") => {
-            t("agent_status.not_collected")
-        }
-        (Agent::Codex | Agent::Grok | Agent::Agy, Field::Breakdown) => {
-            t("agent_status.no_breakdown")
-        }
-        (Agent::Codex, Field::Cost) => t("agent_status.not_supported"),
-        (Agent::Claude, _) if !rich("mod") => t("agent_status.not_collected"),
-        (Agent::Agy, _) if !rich("statusline") => t("agent_status.not_collected"),
-        (Agent::Claude | Agent::Agy, Field::Usage)
-            if status
-                .and_then(|s| s.account.as_ref())
-                .is_some_and(|a| a.kind.as_deref() != Some("subscription")) =>
-        {
-            t("agent_status.limit.none")
-        }
-        _ => t("agent_status.unknown"),
-    }
 }
 
 /// Breakdown colours by category; `free` is the bar's empty track.
@@ -215,13 +180,11 @@ impl Desktop {
         }
         let state = self.hud_state()?;
         let now = agent::now_ms();
-        if !state.agents.has_fresh_poll(now) {
-            return None;
-        }
         let observation = focused(
             &state.agents,
             state.session.as_deref(),
             state.pane.as_deref(),
+            now,
         )?;
         let status = observation.status.as_ref();
         let summary = status.map_or_else(String::new, |s| {
@@ -239,8 +202,8 @@ impl Desktop {
         } else {
             p.fg
         };
-        let phase = state.agents.phase_of(observation, now).label();
-        let mut chip = vec![phase.to_owned()];
+        let phase = state.agents.phase_of(observation, now).known_label();
+        let mut chip: Vec<_> = phase.into_iter().map(str::to_owned).collect();
         if wide && state.agents.current(now) {
             if settings.context
                 && let Some(s) = status
@@ -264,7 +227,7 @@ impl Desktop {
         }
         let tip = [
             observation.agent.label().to_owned(),
-            phase.to_owned(),
+            phase.unwrap_or_default().to_owned(),
             summary,
             alert.unwrap_or_default().to_owned(),
             t("agent_status.open_details").to_owned(),
@@ -303,7 +266,7 @@ impl Desktop {
                 self.agent_icon(observation.agent, 16.)
                     .text_color(rgb(icon_color)),
             )
-            .child(chip.join(" · ")),
+            .when(!chip.is_empty(), |d| d.child(chip.join(" · "))),
         )
     }
 
@@ -398,26 +361,17 @@ impl Desktop {
     fn agent_status_details(&self) -> Div {
         let body = div().flex().flex_col().gap_3();
         let Some(state) = self.hud_state() else {
-            return body.child(self.muted_line(t("agent_status.none")));
+            return body;
         };
         let now = agent::now_ms();
         let snapshot = &state.agents;
-        if !snapshot.valid {
-            return body.child(self.muted_line(t("agent_status.unknown")));
-        }
-        if !snapshot.has_fresh_poll(now) {
-            return body.child(self.muted_line(t("agent_status.stale")));
-        }
-        let mut observations = snapshot
+        let observations = snapshot
             .observations
             .iter()
             .filter(|o| {
                 self.agents.hud.from_sidebar || state.session.as_deref() == Some(o.session.as_str())
             })
-            .peekable();
-        if observations.peek().is_none() {
-            return body.child(self.muted_line(t("agent_status.none")));
-        }
+            .filter(|o| snapshot.has_display_status(o, now));
         observations.fold(body, |body, o| {
             body.child(self.observation_status(&state, o, now))
         })
@@ -460,13 +414,11 @@ impl Desktop {
                         }
                     ))),
             );
-        block = block.child(self.muted_line(state.agents.phase_of(o, now).label()));
+        if let Some(phase) = state.agents.phase_of(o, now).known_label() {
+            block = block.child(self.muted_line(phase));
+        }
         let Some(status) = status else {
-            let text = match o.agent {
-                Agent::Claude | Agent::Agy => t("agent_status.not_collected"),
-                Agent::Codex | Agent::Grok => t("agent_status.unknown"),
-            };
-            return block.child(self.muted_line(text));
+            return block;
         };
         if let Some(at) = status.at {
             block = block.child(self.muted_line(tr!(
@@ -495,88 +447,71 @@ impl Desktop {
                     .child(alert),
             );
         }
-        if settings.model {
-            let model = status
-                .model
-                .as_ref()
-                .and_then(|m| m.name.as_deref().or(m.id.as_deref()))
-                .unwrap_or(t("agent_status.unknown"));
-            let thinking = if status.thinking == Some(true) {
-                format!(" · {}", t("agent_status.thinking"))
-            } else {
-                String::new()
-            };
-            block = block.child(
-                self.field_line(t("agent_status.field.model"), format!("{model}{thinking}")),
-            );
-        }
-        if settings.effort {
+        let model = status
+            .model
+            .as_ref()
+            .and_then(|m| m.name.as_deref().or(m.id.as_deref()))
+            .filter(|m| !m.trim().is_empty());
+        let thinking = (status.thinking == Some(true)).then(|| t("agent_status.thinking"));
+        if settings.model && (model.is_some() || thinking.is_some()) {
             block = block.child(
                 self.field_line(
-                    t("agent_status.field.effort"),
-                    status
-                        .effort
-                        .clone()
-                        .unwrap_or_else(|| t("agent_status.unknown").into()),
+                    t("agent_status.field.model"),
+                    model
+                        .into_iter()
+                        .chain(thinking)
+                        .collect::<Vec<_>>()
+                        .join(" · "),
                 ),
             );
         }
-        if settings.account {
-            let value = status
-                .account
-                .as_ref()
-                .and_then(|a| {
-                    let kind = a.kind_label();
-                    let parts: Vec<&str> = kind
-                        .into_iter()
-                        .chain(a.plan.as_deref().filter(|p| !p.trim().is_empty()))
-                        .collect();
-                    (!parts.is_empty()).then(|| parts.join(" · "))
-                })
-                .unwrap_or_else(|| missing(o.agent, Some(status), Field::Account).into());
-            block = block.child(self.field_line(t("agent_status.field.account"), value));
+        if settings.effort
+            && let Some(effort) = status.effort.as_deref().filter(|e| !e.trim().is_empty())
+        {
+            block = block.child(self.field_line(t("agent_status.field.effort"), effort.to_owned()));
+        }
+        if settings.account
+            && let Some(account) = &status.account
+        {
+            let parts: Vec<_> = account
+                .kind_label()
+                .into_iter()
+                .chain(account.plan.as_deref().filter(|p| !p.trim().is_empty()))
+                .collect();
+            if !parts.is_empty() {
+                block = block
+                    .child(self.field_line(t("agent_status.field.account"), parts.join(" · ")));
+            }
         }
         if settings.usage {
-            block = block.child(self.usage_section(state, o, status, now));
+            block = block.children(self.usage_section(state.agents.limits_for(o), now));
         }
         // The breakdown is its own setting: it shows even with the context figures off.
         if settings.context || settings.breakdown {
             block =
-                block.child(self.context_section(o, status, settings.context, settings.breakdown));
+                block.children(self.context_section(status, settings.context, settings.breakdown));
         }
         if settings.cache {
-            block = block.child(self.cache_section(o, status, now));
+            block = block.children(self.cache_section(status, now));
         }
-        if settings.cost {
+        if settings.cost
+            && let Some(cost) = status.cost_usd
+        {
             block = block.child(self.field_line(
                 t("agent_status.field.cost"),
-                status.cost_usd.map_or_else(
-                    || missing(o.agent, Some(status), Field::Cost).into(),
-                    |c| tr!("agent_status.cost", format!("{c:.2}")),
-                ),
+                tr!("agent_status.cost", format!("{cost:.2}")),
             ));
         }
         block
     }
 
-    fn usage_section(
-        &self,
-        state: &dgl_core::connection::State,
-        o: &Observation,
-        status: &AgentStatus,
-        now: u64,
-    ) -> Div {
+    fn usage_section(&self, limits: &[UsageLimit], now: u64) -> Option<Div> {
+        let mut limits = limits
+            .iter()
+            .filter(|l| l.used().is_some() || l.resets_at.is_some())
+            .peekable();
+        limits.peek()?;
         let mut section = self.section(t("agent_status.field.usage"));
-        let limits = state.agents.limits_for(o);
-        if limits.is_empty() {
-            let reason =
-                if state.agents.account_limits && matches!(o.agent, Agent::Codex | Agent::Grok) {
-                    t("agent_status.unknown")
-                } else {
-                    missing(o.agent, Some(status), Field::Usage)
-                };
-            return section.child(self.muted_line(reason));
-        }
         for limit in limits {
             let used = limit.used();
             let id = limit.id.clone();
@@ -593,10 +528,9 @@ impl Desktop {
                             .gap_2()
                             .text_sm()
                             .child(div().flex_1().min_w_0().truncate().child(limit.title()))
-                            .child(used.map_or_else(
-                                || t("agent_status.unknown").to_owned(),
-                                |u| tr!("agent_status.limit.used", percent(u)),
-                            ))
+                            .when_some(used, |d, u| {
+                                d.child(tr!("agent_status.limit.used", percent(u)))
+                            })
                             .when_some(limit.resets_in_s(now), |d, secs| {
                                 d.child(div().text_color(rgb(self.palette.muted)).child(tr!(
                                     "agent_status.limit.resets_in",
@@ -609,72 +543,69 @@ impl Desktop {
                     }),
             );
         }
-        section
+        Some(section)
     }
 
-    fn context_section(
-        &self,
-        o: &Observation,
-        status: &AgentStatus,
-        figures: bool,
-        breakdown: bool,
-    ) -> Div {
+    fn context_section(&self, status: &AgentStatus, figures: bool, breakdown: bool) -> Option<Div> {
+        let context = status.context.as_ref()?;
+        let percent_used = status.context_percent().filter(|_| figures);
+        let tokens = context.used.filter(|_| figures);
+        let compact = context.compact_percent.filter(|_| figures);
+        let figures = percent_used.is_some() || tokens.is_some() || compact.is_some();
+        let parts = if breakdown {
+            context.breakdown.as_slice()
+        } else {
+            &[]
+        };
+        if !figures && parts.is_empty() {
+            return None;
+        }
         let p = self.palette;
         let mut section = self.section(t(if figures {
             "agent_status.field.context"
         } else {
             "agent_status.field.breakdown"
         }));
-        let context = status.context.as_ref();
-        match status.context_percent().filter(|_| figures) {
-            Some(value) => {
-                section = section
-                    .child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .gap_2()
-                            .text_sm()
-                            .child(format!("{}%", percent(value)))
-                            .when_some(
-                                context.and_then(|c| Some((c.used?, c.size?))),
-                                |d, (used, size)| {
-                                    d.child(tr!(
-                                        "agent_status.context.tokens",
-                                        agent::format_tokens(used),
-                                        agent::format_tokens(size)
-                                    ))
-                                },
-                            ),
-                    )
-                    .child(
-                        self.gauge(value / 100., p.accent, None)
-                            .debug_selector(|| "agent-status-context-gauge".into()),
-                    );
-            }
-            None if figures => {
-                section =
-                    section.child(self.muted_line(missing(o.agent, Some(status), Field::Context)));
-            }
-            None => {}
+        if percent_used.is_some() || tokens.is_some() {
+            section = section.child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .text_sm()
+                    .when_some(percent_used, |d, value| {
+                        d.child(format!("{}%", percent(value)))
+                    })
+                    .when_some(tokens, |d, used| {
+                        d.child(context.size.map_or_else(
+                            || agent::format_tokens(used),
+                            |size| {
+                                tr!(
+                                    "agent_status.context.tokens",
+                                    agent::format_tokens(used),
+                                    agent::format_tokens(size)
+                                )
+                            },
+                        ))
+                    }),
+            );
         }
-        if let Some(compact) = context.and_then(|c| c.compact_percent).filter(|_| figures) {
+        if let Some(value) = percent_used {
+            section = section.child(
+                self.gauge(value / 100., p.accent, None)
+                    .debug_selector(|| "agent-status-context-gauge".into()),
+            );
+        }
+        if let Some(compact) = compact {
             section = section
                 .child(self.muted_line(tr!("agent_status.context.compact_at", percent(compact))));
         }
-        if !breakdown {
-            return section;
-        }
-        let parts = context.map_or(&[][..], |c| c.breakdown.as_slice());
         if parts.is_empty() {
-            return section.child(self.muted_line(missing(
-                o.agent,
-                Some(status),
-                Field::Breakdown,
-            )));
+            return Some(section);
         }
         let window = context
-            .and_then(|c| c.breakdown_window.or(c.size))
+            .breakdown_window
+            .or(context.size)
             .filter(|w| *w > 0)
             .unwrap_or_else(|| parts.iter().filter_map(|p| p.tokens).sum::<u64>().max(1));
         let mut bar = div()
@@ -716,31 +647,23 @@ impl Desktop {
                             .bg(rgb(color)),
                     )
                     .child(div().flex_1().min_w_0().truncate().child(part.label()))
-                    .child(part.tokens.map_or_else(
-                        || t("agent_status.unknown").to_owned(),
-                        |n| {
-                            format!(
-                                "{} · {}%",
-                                agent::format_tokens(n),
-                                percent(share.unwrap_or(0.) * 100.)
-                            )
-                        },
-                    )),
+                    .when_some(part.tokens.zip(share), |d, (n, share)| {
+                        d.child(format!(
+                            "{} · {}%",
+                            agent::format_tokens(n),
+                            percent(share * 100.)
+                        ))
+                    }),
             );
         }
         if figures {
             section = section.child(self.muted_line(t("agent_status.field.breakdown")));
         }
-        section.child(bar).child(legend)
+        Some(section.child(bar).child(legend))
     }
 
-    fn cache_section(&self, o: &Observation, status: &AgentStatus, now: u64) -> Div {
-        let mut section = self
-            .section(t("agent_status.field.cache"))
-            .child(self.muted_line(t("agent_status.cache.server_side")));
-        let Some(cache) = status.cache.as_ref() else {
-            return section.child(self.muted_line(missing(o.agent, Some(status), Field::Cache)));
-        };
+    fn cache_section(&self, status: &AgentStatus, now: u64) -> Option<Div> {
+        let cache = status.cache.as_ref()?;
         let counts: Vec<String> = [
             ("agent_status.cache.input", cache.input),
             ("agent_status.cache.read", cache.read),
@@ -750,6 +673,13 @@ impl Desktop {
         .into_iter()
         .filter_map(|(key, n)| Some(format!("{} {}", t(key), agent::format_tokens(n?))))
         .collect();
+        let ratio = status.cache_hit_ratio();
+        if counts.is_empty() && ratio.is_none() && cache.last_at.is_none() {
+            return None;
+        }
+        let mut section = self
+            .section(t("agent_status.field.cache"))
+            .child(self.muted_line(t("agent_status.cache.server_side")));
         if !counts.is_empty() {
             section = section.child(
                 div()
@@ -758,7 +688,7 @@ impl Desktop {
                     .child(counts.join(" · ")),
             );
         }
-        if let Some(ratio) = status.cache_hit_ratio() {
+        if let Some(ratio) = ratio {
             section = section.child(
                 div()
                     .text_sm()
@@ -782,14 +712,24 @@ impl Desktop {
                 tr!("agent_status.cache.expired", ttl)
             }));
         }
-        section
+        Some(section)
     }
 
     /// The collapsible panel under the host list: one line per agent with mini gauges.
     pub(crate) fn agent_status_sidebar(&self, cx: &mut Context<Self>) -> Option<Div> {
-        if !self.local.preferences.agent_status.sidebar {
+        let settings = &self.local.preferences.agent_status;
+        if !settings.sidebar {
             return None;
         }
+        let state = self.hud_state()?;
+        let now = agent::now_ms();
+        let mut observations = state
+            .agents
+            .observations
+            .iter()
+            .filter(|o| state.agents.has_display_status(o, now))
+            .peekable();
+        observations.peek()?;
         let p = self.palette;
         let collapsed = self.agents.hud.collapsed;
         let header = div()
@@ -857,27 +797,6 @@ impl Desktop {
             .px_2()
             .pb_1()
             .text_xs();
-        let now = agent::now_ms();
-        let state = self.hud_state();
-        let observations = state
-            .as_ref()
-            .filter(|s| s.agents.has_fresh_poll(now))
-            .map_or(&[][..], |s| s.agents.observations.as_slice());
-        if observations.is_empty() {
-            list = list.child(
-                div().py_1().text_color(rgb(p.muted)).child(
-                    if state
-                        .as_ref()
-                        .is_some_and(|s| s.agents.valid && !s.agents.has_fresh_poll(now))
-                    {
-                        t("agent_status.stale")
-                    } else {
-                        t("agent_status.none")
-                    },
-                ),
-            );
-        }
-        let settings = &self.local.preferences.agent_status;
         for o in observations {
             let status = o.status.as_ref();
             let model = status
@@ -887,12 +806,17 @@ impl Desktop {
             let context = status
                 .filter(|_| settings.context)
                 .and_then(AgentStatus::context_percent);
-            let limit = state
-                .as_ref()
-                .filter(|_| settings.usage)
-                .and_then(|s| top_limit(s.agents.limits_for(o)).map(|(l, u)| (l.title(), u)));
-            let dim = status.is_none_or(|s| s.is_stale(now));
-            let phase = state.as_ref().unwrap().agents.phase_of(o, now).label();
+            let limit = settings
+                .usage
+                .then(|| top_limit(state.agents.limits_for(o)))
+                .flatten();
+            let dim = status.is_some_and(|s| s.is_stale(now));
+            let phase = state.agents.phase_of(o, now).known_label();
+            let label = std::iter::once(o.agent.label())
+                .chain(phase)
+                .chain(model)
+                .collect::<Vec<_>>()
+                .join(" · ");
             let mut row = self
                 .button_base(
                     format!("agent-status-row-{}-{}", o.run, o.actor),
@@ -905,10 +829,7 @@ impl Desktop {
                 .px_1()
                 .text_color(rgb(if dim { p.muted } else { p.fg }))
                 .child(self.agent_icon(o.agent, 13.))
-                .child(div().flex_1().min_w_0().truncate().child(match model {
-                    Some(model) => format!("{} · {phase} · {model}", o.agent.label()),
-                    None => format!("{} · {phase}", o.agent.label()),
-                }));
+                .child(div().flex_1().min_w_0().truncate().child(label));
             if let Some(value) = context {
                 row = row
                     .child(self.gauge(value / 100., p.accent, Some(28.)))
@@ -922,18 +843,10 @@ impl Desktop {
                             .max_w(px(48.))
                             .truncate()
                             .text_color(rgb(p.muted))
-                            .child(title),
+                            .child(title.title()),
                     )
                     .child(self.gauge(used / 100., self.limit_color(used), Some(28.)))
                     .child(div().flex_shrink_0().child(format!("{}%", percent(used))));
-            }
-            if status.is_none() {
-                row = row.child(
-                    div()
-                        .flex_shrink_0()
-                        .text_color(rgb(p.muted))
-                        .child(t("agent_status.unknown")),
-                );
             }
             list = list.child(row);
         }
@@ -1141,15 +1054,20 @@ mod tests {
                     ..observation("%8", "parent", Some(full_status()))
                 },
                 observation("%1", "parent", None),
+                Observation {
+                    phase: agent::LivePhase::Idle,
+                    ..observation("%3", "parent", None)
+                },
                 observation("%2", "sub", Some(full_status())),
                 observation("%2", "parent", Some(full_status())),
             ],
             ..Default::default()
         };
-        let focus = |session, pane| focused(&snapshot, session, pane);
+        let focus = |session, pane| focused(&snapshot, session, pane, 1_001);
         assert_eq!(focus(Some("$1"), Some("%2")).unwrap().actor, "parent");
-        // The pane's own agent wins even without a status.
-        assert_eq!(focus(Some("$1"), Some("%1")).unwrap().pane, "%1");
+        assert!(focus(Some("$1"), Some("%1")).is_none());
+        assert_eq!(focus(Some("$1"), Some("%3")).unwrap().pane, "%3");
+        assert!(focused(&snapshot, Some("$1"), Some("%2"), 11_000).is_none());
         assert!(focus(Some("$1"), Some("%9")).is_none());
         assert_eq!(focus(Some("$2"), Some("%8")).unwrap().pane, "%8");
         assert!(focus(Some("$3"), Some("%8")).is_none());
@@ -1162,50 +1080,6 @@ mod tests {
                 ..snapshot
             }
             .has_fresh_poll(1_000)
-        );
-    }
-
-    #[test]
-    fn missing_reasons_are_explicit() {
-        let hooks_only = AgentStatus {
-            sources: vec!["hook".into()],
-            ..Default::default()
-        };
-        assert_eq!(
-            missing(Agent::Claude, Some(&hooks_only), Field::Usage),
-            t("agent_status.not_collected")
-        );
-        assert_eq!(
-            missing(Agent::Agy, Some(&hooks_only), Field::Breakdown),
-            t("agent_status.no_breakdown")
-        );
-        assert_eq!(
-            missing(Agent::Codex, Some(&hooks_only), Field::Usage),
-            t("agent_status.not_collected")
-        );
-        assert_eq!(
-            missing(Agent::Codex, Some(&hooks_only), Field::Cost),
-            t("agent_status.not_supported")
-        );
-        assert_eq!(
-            missing(Agent::Grok, Some(&hooks_only), Field::Cost),
-            t("agent_status.unknown")
-        );
-        let api = AgentStatus {
-            sources: vec!["mod".into()],
-            account: Some(AccountInfo {
-                kind: Some("api_key".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        assert_eq!(
-            missing(Agent::Claude, Some(&api), Field::Usage),
-            t("agent_status.limit.none")
-        );
-        assert_eq!(
-            missing(Agent::Claude, Some(&api), Field::Breakdown),
-            t("agent_status.unknown")
         );
     }
 

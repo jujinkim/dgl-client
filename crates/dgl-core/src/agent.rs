@@ -133,6 +133,9 @@ impl LivePhase {
             Self::Unknown => return None,
         })
     }
+    pub fn known_label(self) -> Option<&'static str> {
+        (self != Self::Unknown).then(|| self.label())
+    }
     pub fn priority(self) -> u8 {
         match self {
             Self::Approval | Self::Question | Self::Waiting => 0,
@@ -563,12 +566,19 @@ impl Snapshot {
             LivePhase::Unknown
         }
     }
+    pub fn has_display_status(&self, observation: &Observation, now: u64) -> bool {
+        self.has_fresh_poll(now)
+            && (observation.status.is_some()
+                || self.phase_of(observation, now) != LivePhase::Unknown)
+    }
+    pub fn has_display_details(&self, observation: &Observation, now: u64) -> bool {
+        self.has_display_status(observation, now)
+            || (self.current(now) && observation.last.is_some())
+    }
     pub fn representative(&self, now: u64) -> Option<&Observation> {
-        if !self.has_fresh_poll(now) {
-            return None;
-        }
         self.observations
             .iter()
+            .filter(|o| self.has_display_details(o, now))
             .min_by_key(|o| (self.phase_of(o, now).priority(), o.actor != "parent"))
     }
     /// Select by event data, independently of translated display text.

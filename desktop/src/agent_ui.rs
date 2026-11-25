@@ -17,11 +17,11 @@ fn endpoint(host: &HostProfile) -> String {
     format!("{}@{}", host.username, host.endpoint())
 }
 
-fn badge_content(snapshot: &agent::Snapshot, now: u64) -> (Option<Agent>, Option<agent::Kind>) {
-    match snapshot.representative(now) {
-        Some(o) => (Some(o.agent), snapshot.phase_of(o, now).icon_kind()),
-        None => (None, None),
-    }
+fn observation_label(agent: Agent, phase: agent::LivePhase) -> String {
+    phase.known_label().map_or_else(
+        || agent.label().into(),
+        |label| format!("{} · {label}", agent.label()),
+    )
 }
 impl Desktop {
     pub fn tick_agents(&mut self, cx: &mut Context<Self>) {
@@ -152,7 +152,7 @@ impl Desktop {
         pane: &str,
         state: &dgl_core::connection::State,
         cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
+    ) -> Option<Stateful<Div>> {
         let mut filtered = state.agents.clone();
         filtered.observations.retain(|o| {
             if pane.starts_with('@') {
@@ -163,13 +163,16 @@ impl Desktop {
         });
         let snapshot = &filtered;
         let now = agent::now_ms();
-        let unread: Vec<_> =
+        let observation = snapshot.representative(now)?;
+        let phase = snapshot.phase_of(observation, now);
+        let unread =
             self.agents
                 .inbox
                 .recent
                 .iter()
                 .filter(|n| {
-                    !n.read
+                    snapshot.current(now)
+                        && !n.read
                         && n.endpoint == endpoint(host)
                         && n.event.server == snapshot.server
                         && (if pane.starts_with('@') {
@@ -181,30 +184,19 @@ impl Desktop {
                             o.run == n.event.run && o.pane == n.event.pane && o.last.is_some()
                         })
                 })
-                .collect();
-        let (detected, kind) = badge_content(snapshot, now);
-        let label = match snapshot.representative(now) {
-            Some(o) => {
-                let phase = format!(
-                    "{} · {}",
-                    o.agent.label(),
-                    snapshot.phase_of(o, now).label()
-                );
-                if unread.is_empty() {
-                    phase
-                } else {
-                    tr!("agent.unread_events", phase, unread.len())
-                }
-            }
-            None if snapshot.has_fresh_poll(now) => t("agent.not_detected").into(),
-            None => t("agent.status_unknown").into(),
+                .count();
+        let label = observation_label(observation.agent, phase);
+        let label = if unread == 0 {
+            label
+        } else {
+            tr!("agent.unread_events", label, unread)
         };
         let id = format!("agent-{}-{}", state.handle, pane);
         let title = host.alias.clone();
         let target_pane = pane.to_owned();
         // No outline: the badge reads as part of the row, not as a separate box.
-        let badge = self
-            .button_base(id, cx, move |s, _, _| {
+        Some(
+            self.button_base(id, cx, move |s, _, _| {
                 s.dialog = Some(Dialog::Agents(
                     connection.clone(),
                     title.clone(),
@@ -221,22 +213,19 @@ impl Desktop {
             .flex_shrink_0()
             .overflow_hidden()
             .text_xs()
-            .native_tooltip(label);
-        let Some(detected) = detected else {
-            return badge.child(UiIcon::Unknown.render(self.palette.muted));
-        };
-        badge
+            .native_tooltip(label)
             .child(
                 svg()
-                    .path(detected.icon())
+                    .path(observation.agent.icon())
                     .size(px(15.))
                     .flex_shrink_0()
                     .text_color(rgb(self.palette.fg)),
             )
-            .when_some(kind, |d, kind| {
+            .when_some(phase.icon_kind(), |d, kind| {
                 d.child(UiIcon::agent(Some(kind)).render(self.palette.fg))
             })
-            .when(!unread.is_empty(), |d| d.child(unread.len().to_string()))
+            .when(unread > 0, |d| d.child(unread.to_string())),
+        )
     }
     pub fn agent_details(
         &self,
@@ -255,6 +244,17 @@ impl Desktop {
         state: &dgl_core::connection::State,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
+        let now = agent::now_ms();
+        let mut snapshot = state.agents.clone();
+        snapshot.observations.retain(|o| {
+            pane.is_none_or(|p| {
+                if p.starts_with('@') {
+                    p == o.window
+                } else {
+                    p == o.pane
+                }
+            })
+        });
         let mut body = div()
             .id("agent-details")
             .flex()
@@ -267,67 +267,53 @@ impl Desktop {
                     .child(tr!("agent.integration_named", alias))
                     .native_tooltip(t("agent.last_observed_note")),
             )
-            .child({
-                let mut filtered = state.agents.clone();
-                filtered.observations.retain(|o| {
-                    pane.is_none_or(|p| {
-                        if p.starts_with('@') {
-                            p == o.window
-                        } else {
-                            p == o.pane
-                        }
-                    })
-                });
-                let now = agent::now_ms();
-                let summary = filtered.representative(now).map_or_else(
-                    || filtered.label(None, now),
-                    |o| {
-                        format!(
-                            "{} · {}",
-                            o.agent.label(),
-                            filtered.phase_of(o, now).label()
-                        )
-                    },
-                );
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(UiIcon::agent(badge_content(&filtered, now).1).render(self.palette.fg))
-                    .child(div().flex_1().min_w_0().child(summary))
+            .when_some(snapshot.representative(now), |body, o| {
+                let phase = snapshot.phase_of(o, now);
+                body.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .when_some(phase.icon_kind(), |d, kind| {
+                            d.child(UiIcon::agent(Some(kind)).render(self.palette.fg))
+                        })
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .child(observation_label(o.agent, phase)),
+                        ),
+                )
             });
-        for o in state.agents.observations.iter().filter(|o| {
-            pane.is_none_or(|p| {
-                if p.starts_with('@') {
-                    p == o.window
-                } else {
-                    p == o.pane
-                }
-            })
-        }) {
-            let details = tr!("agent.diagnostics_ids", o.session, o.window, o.pane);
-            let supported = tr!(
-                "agent.observed_event_types",
-                o.supported
+        for o in snapshot
+            .observations
+            .iter()
+            .filter(|o| snapshot.has_display_details(o, now))
+        {
+            let last = o.last.as_ref().filter(|_| snapshot.current(now));
+            let mut details = vec![tr!("agent.diagnostics_ids", o.session, o.window, o.pane)];
+            if let Some(event) = last {
+                let supported = o
+                    .supported
                     .iter()
                     .map(|k| k.label())
                     .collect::<Vec<_>>()
-                    .join(" · ")
-            );
+                    .join(" · ");
+                if !supported.is_empty() {
+                    details.push(tr!("agent.observed_event_types", supported));
+                }
+                details.push(event.event.clone());
+            }
             body = body.child(
                 div()
                     .id(SharedString::from(format!(
                         "agent-observation-{}-{}",
                         o.run, o.actor
                     )))
-                    .native_tooltip(format!(
-                        "{details}\n{supported}\n{}",
-                        o.last.as_ref().map_or("", |e| e.event.as_str())
-                    ))
+                    .native_tooltip(details.join("\n"))
                     .child(format!(
-                        "{} · {} · {}{}",
-                        o.agent.label(),
-                        state.agents.phase_of(o, agent::now_ms()).label(),
+                        "{} · {}{}",
+                        observation_label(o.agent, snapshot.phase_of(o, now)),
                         hierarchy::target_label(&state.remote, Some(&o.session), Some(&o.pane)),
                         if o.actor != "parent" {
                             t("agent.subagent_suffix")
@@ -335,29 +321,21 @@ impl Desktop {
                             ""
                         }
                     ))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .text_sm()
-                            .child(
-                                UiIcon::agent(o.last.as_ref().map(|e| e.kind))
-                                    .render(self.palette.fg),
-                            )
-                            .child(
-                                o.last
-                                    .as_ref()
-                                    .map(|e| {
-                                        tr!(
-                                            "agent.event_age_seconds",
-                                            e.kind.label(),
-                                            agent::now_ms().saturating_sub(e.at) / 1000
-                                        )
-                                    })
-                                    .unwrap_or_else(|| t("agent.not_linked").into()),
-                            ),
-                    ),
+                    .when_some(last, |d, e| {
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .text_sm()
+                                .child(UiIcon::agent(Some(e.kind)).render(self.palette.fg))
+                                .child(tr!(
+                                    "agent.event_age_seconds",
+                                    e.kind.label(),
+                                    now.saturating_sub(e.at) / 1000
+                                )),
+                        )
+                    }),
             );
             let target = o.clone();
             let c = connection.clone();
@@ -692,7 +670,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{Agent, UiIcon, agent, badge_content};
+    use super::{Agent, UiIcon, agent};
     use agent::{AgentEvent, Kind, LivePhase, Observation, Snapshot};
 
     #[test]
@@ -711,7 +689,7 @@ mod tests {
     }
 
     #[test]
-    fn badge_shows_status_only_beside_a_detected_agent() {
+    fn badge_requires_a_fresh_phase_status_or_event() {
         let observation = Observation {
             session: "$1".into(),
             window: "@1".into(),
@@ -730,12 +708,10 @@ mod tests {
             observed_at: 1000,
             ..Default::default()
         };
-        // Nothing detected: the "not detected" icon only.
-        assert_eq!(badge_content(&snapshot, 1001), (None, None));
-        // A CLI process without received hooks: its icon, no status.
+        assert!(snapshot.representative(1001).is_none());
         snapshot.observations.push(observation);
-        assert_eq!(badge_content(&snapshot, 1001), (Some(Agent::Claude), None));
-        // A received hook adds the status.
+        assert!(snapshot.representative(1001).is_none());
+        assert_eq!(snapshot.agent_in_pane("%1", 1001), Some(Agent::Claude));
         snapshot.observations[0].last = Some(AgentEvent {
             id: "event".into(),
             seq: 1,
@@ -750,17 +726,21 @@ mod tests {
             event: "UserPromptSubmit".into(),
             at: 1000,
         });
+        assert!(snapshot.representative(1001).is_some());
         snapshot.observations[0].phase = LivePhase::Command;
         snapshot.observations[0].phase_seq = 1;
         assert_eq!(
-            badge_content(&snapshot, 1001),
-            (Some(Agent::Claude), Some(Kind::Activity))
+            snapshot
+                .phase_of(snapshot.representative(1001).unwrap(), 1001)
+                .icon_kind(),
+            Some(Kind::Activity)
         );
-        // An event gap keeps the process but not its status; a stale poll keeps neither.
         snapshot.gap = true;
-        assert_eq!(badge_content(&snapshot, 1001), (Some(Agent::Claude), None));
-        assert_eq!(badge_content(&snapshot, 11_000), (None, None));
+        assert!(snapshot.representative(1001).is_none());
+        snapshot.observations[0].phase_seq = 0;
+        assert!(snapshot.representative(1001).is_some());
+        assert!(snapshot.representative(11_000).is_none());
         snapshot.invalidate();
-        assert_eq!(badge_content(&snapshot, 1001), (None, None));
+        assert!(snapshot.representative(1001).is_none());
     }
 }
