@@ -169,6 +169,7 @@ TTL은 Claude만 제공한다. 마지막 turn의 `ephemeral_5m_input_tokens`·`e
 
 | 데이터 | 갱신 계기 | 앱 반영 |
 |---|---|---|
+| Claude·Codex 작업 상태 | CLI별 백그라운드 조회 시작 간격 최소 4초 | 조회 완료 후 다음 poll(약 2초) |
 | Claude 컨텍스트·한도·비용·캐시·구성·계정 | mod의 `session.measure`·`turn.complete`(최소 1초 간격 기록) | 기록 후 다음 poll(약 2초) |
 | Claude 모델·추론 수준·경보 | mod, `PostModelSwitch`·도구 훅·`StopFailure` | 같음 |
 | Codex 모델·토큰·컨텍스트·캐시 | `PostModelRequest`(요청 완료마다) | 같음 |
@@ -178,7 +179,8 @@ TTL은 Claude만 제공한다. 마지막 turn의 `ephemeral_5m_input_tokens`·`e
 | Grok 컨텍스트·모델·캐시·비용 | `SessionStart`·`Stop`·`StopFailure` 훅 | turn 종료 후 다음 poll |
 | 초기화까지 남은 시간·캐시 경과 시간 | 앱이 `resets_at`·`last_at`으로 계산 | 화면 갱신(약 2초) |
 
-기본 CLI 조회는 관측 도우미의 백그라운드에서 실행한다. 선택한 계정 조회는 CLI 홈별로 결과를 공유하고 1분 안에는 다시 요청하지 않는다.
+같은 pane에서 같은 CLI 프로세스가 계속 확인되면, 조회가 늦어지거나 실패해도 마지막 정상 작업 상태를 최대 12초 동안 표시한다. 더 최근의 훅 상태를 우선하고 프로세스 종료·교체는 다음 관측에 반영한다.
+프로세스 관측과 훅 알림 전달은 약 2초 간격이다. 선택한 계정 조회는 CLI 홈별로 결과를 공유하고 1분 안에는 다시 요청하지 않는다.
 도우미는 값마다 관측 시각을 두고 더 새로운 값을 쓴다(같은 시각이면 mod 우선). 24시간 지난 상태 행은 정리한다.
 CLI 프로세스 자체의 관측 유효 시간(10초)은 기존 규칙을 따른다.
 

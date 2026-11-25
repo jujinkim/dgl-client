@@ -171,13 +171,101 @@ class AgentObserverTest(unittest.TestCase):
             return {run: 'idle' for _, _, run in candidates}
         with patch.object(observer, 'topology', return_value=('server', [pane], procs)), \
                 patch.object(observer, 'codex_phases', side_effect=native_phase), \
-                patch.object(live, 'fetch', side_effect=lambda key, query, ttl: query()), \
+                patch.object(observer.threading, 'Thread') as worker, \
                 patch.object(observer, 'cached_account') as quota:
+            observer.poll('tmux', '', 0, '', live)
+            worker.call_args.kwargs['target']()
             frame = observer.poll('tmux', '', 0, '', live)
         self.assertEqual(frame['observations'][0]['phase'], 'idle')
         self.assertFalse(frame['account_limits'])
         quota.assert_not_called()
         self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_native_phase_survives_pending_failed_and_empty_refreshes_until_expiry(self):
+        for agent, provider in [('Claude', 'claude_phases'), ('Codex', 'codex_phases')]:
+            with self.subTest(agent=agent):
+                pane, procs = self.claude_pane(agent)
+                live = observer.LiveCollector()
+                run = observer.run_id('server', pane['pane'], procs[2]['token'])
+                with patch.object(observer, 'topology', return_value=('server', [pane], procs)), \
+                        patch.object(observer, provider, side_effect=[{run: 'working'}, TimeoutError(), {}, {run: 'idle'}]), \
+                        patch.object(observer.threading, 'Thread') as worker, \
+                        patch.object(observer.time, 'monotonic') as clock:
+                    def phase(at, attempts):
+                        clock.return_value = at
+                        frame = observer.poll('tmux', '', 0, '', live)
+                        self.assertEqual(worker.call_count, attempts)
+                        return frame['observations'][0].get('phase')
+
+                    self.assertIsNone(phase(100, 1))
+                    worker.call_args.kwargs['target']()
+                    self.assertEqual(phase(103.9, 1), 'working')
+                    self.assertEqual(phase(104, 2), 'working')
+                    self.assertEqual(phase(105, 2), 'working')
+                    worker.call_args.kwargs['target']()  # timeout
+                    self.assertEqual(phase(107.9, 2), 'working')
+                    self.assertEqual(phase(108, 3), 'working')
+                    worker.call_args.kwargs['target']()  # empty response
+                    self.assertEqual(phase(111.9, 3), 'working')
+                    self.assertIsNone(phase(112, 4))
+                    worker.call_args.kwargs['target']()
+                    self.assertEqual(phase(113, 4), 'idle')
+
+    def test_native_phase_drops_replaced_run_before_in_flight_result_returns(self):
+        pane, procs = self.claude_pane()
+        live = observer.LiveCollector()
+        def native_phase(candidates):
+            return {run: 'working' for _, _, run in candidates}
+        with patch.object(observer, 'topology', return_value=('server', [pane], procs)), \
+                patch.object(observer, 'claude_phases', side_effect=native_phase), \
+                patch.object(observer.threading, 'Thread') as worker, \
+                patch.object(observer.time, 'monotonic', return_value=100) as clock:
+            def poll():
+                return observer.poll('tmux', '', 0, '', live)['observations']
+
+            original = poll()[0]['run']
+            worker.call_args.kwargs['target']()
+            clock.return_value = 104
+            self.assertEqual(poll()[0]['phase'], 'working')
+            stale_refresh = worker.call_args.kwargs['target']
+            procs[2]['token'] = 'reused-pid'
+            replacement = poll()[0]
+            self.assertNotEqual(replacement['run'], original)
+            self.assertNotIn('phase', replacement)
+            stale_refresh()
+            self.assertNotIn(original, live.phase_samples)
+
+            clock.return_value = 108
+            self.assertNotIn('phase', poll()[0])
+            worker.call_args.kwargs['target']()
+            self.assertEqual(poll()[0]['phase'], 'working')
+            del procs[2]
+            self.assertEqual(poll(), [])
+            self.assertEqual(live.phase_samples, {})
+
+    def test_cached_native_phase_respects_newer_hook_until_next_sample(self):
+        live = observer.LiveCollector()
+        hook = {('run', 'parent'): {'at': 100001}}
+        with patch.object(observer, 'codex_phases', side_effect=[{'run': 'working'}, {'run': 'idle'}]), \
+                patch.object(observer.threading, 'Thread') as worker, \
+                patch.object(observer.time, 'monotonic', return_value=100) as clock, \
+                patch.object(observer, 'now_ms', side_effect=lambda: int(clock.return_value * 1000)):
+            def phase(hook_phase=None):
+                observation = dict(agent='Codex', actor='parent', pane='%1', run='run')
+                if hook_phase:
+                    observation.update(phase=hook_phase, phase_seq=1)
+                live.sample([observation], {'run': 2}, {}, hook if hook_phase else {}, {}, False)
+                return observation.get('phase'), observation.get('phase_seq')
+
+            self.assertEqual(phase(), (None, None))
+            worker.call_args.kwargs['target']()
+            clock.return_value = 101
+            self.assertEqual(phase(), ('working', None))
+            self.assertEqual(phase('approval'), ('approval', 1))
+            clock.return_value = 104
+            self.assertEqual(phase('question'), ('question', 1))
+            worker.call_args.kwargs['target']()
+            self.assertEqual(phase('question'), ('idle', None))
 
     def test_native_phase_attribution_and_limit_consent(self):
         thread = '019ca012-1111-7333-a444-555555555555'
@@ -196,6 +284,8 @@ class AgentObserverTest(unittest.TestCase):
             procs = {pid: {'agent': 'Codex'} for pid in (1, 2)}
             candidates = [('%1', 1, 'a')]
             self.assertEqual(observer.codex_phases(candidates, procs, {}), {'a': 'approval'})
+            peer['status']['activeFlags'] = []
+            self.assertEqual(observer.codex_phases(candidates, procs, {}), {'a': 'working'})
             def overlapping(method, params):
                 if method == 'thread/loaded/list':
                     return {'data': [thread, '019ca012-1111-7333-a444-555555555556']}

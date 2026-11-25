@@ -73,6 +73,8 @@ TEE_TIMEOUT = 4.5  # seconds the saved statusline original may run
 TEE_DRAIN = 0.2  # seconds to wait for stdout to close after `sh` exits
 STATUS_RETENTION_MS = 24 * 3600 * 1000
 MOD_STALE_MS = 6 * 3600 * 1000
+PHASE_POLL_INTERVAL = 4  # seconds between native query starts for each CLI
+PHASE_MAX_AGE = 12  # seconds since the last successful sample for a live run
 MOD_NAME = 'dgl-agent-status'
 PLUGIN_DIRS = 'CLAUDE_CODE_PLUGIN_DIRS'
 STATUS_KIND = {'Claude': 'mod', 'Agy': 'statusline', 'Codex': 'hooks', 'Grok': 'files'}
@@ -1627,6 +1629,9 @@ class LiveCollector:
     """Provider queries run outside the terminal and the two-second poll deadline."""
     def __init__(self):
         self.samples = {}
+        self.phase_samples = {}
+        self.next_phase_poll = {}
+        self.live_runs = set()
         self.pending = set()
         self.superseded = {}
         self.lock = threading.Lock()
@@ -1648,11 +1653,42 @@ class LiveCollector:
                 threading.Thread(target=collect, daemon=True).start()
             return value if age < 2 * ttl else {}
 
+    def fetch_phases(self, agent, candidates, query):
+        with self.lock:
+            now = time.monotonic()
+            if now >= self.next_phase_poll.get(agent, now) and agent not in self.pending:
+                self.next_phase_poll[agent] = now + PHASE_POLL_INTERVAL
+                self.pending.add(agent)
+
+                def collect():
+                    # Compare against hooks at query start so a newer event can win.
+                    at = now_ms()
+                    try:
+                        result = query()
+                    except Exception:
+                        result = {}
+                    with self.lock:
+                        stamp = time.monotonic()
+                        for run, phase in result.items():
+                            if phase and run in self.live_runs:
+                                self.phase_samples[run] = (stamp, at, phase)
+                        self.pending.discard(agent)
+
+                threading.Thread(target=collect, daemon=True).start()
+
+            phases = {}
+            for _, _, run in candidates:
+                stamp, at, phase = self.phase_samples.get(run, (0, 0, None))
+                if phase and now - stamp < PHASE_MAX_AGE:
+                    phases[run] = (at, phase)
+            return phases
+
     def sample(self, observations, pids, procs, hook_phases, bindings, limits_enabled):
         self.superseded = {run: seq for run, seq in self.superseded.items() if run in pids}
-        def timed(query):
-            at = now_ms()
-            return {run: (at, value) for run, value in query().items()}
+        with self.lock:
+            self.live_runs = set(pids)
+            for run in self.phase_samples.keys() - self.live_runs:
+                del self.phase_samples[run]
         for agent in ('Claude', 'Codex', 'Grok'):
             parents = [o for o in observations if o['agent'] == agent and o['actor'] == 'parent']
             if not parents:
@@ -1660,9 +1696,9 @@ class LiveCollector:
             candidates = [(o['pane'], pids[o['run']], o['run']) for o in parents]
             phases = {}
             if agent == 'Claude':
-                phases = self.fetch('Claude', lambda c=candidates: timed(lambda: claude_phases(c)), 2)
+                phases = self.fetch_phases(agent, candidates, lambda c=candidates: claude_phases(c))
             elif agent == 'Codex':
-                phases = self.fetch('Codex', lambda c=candidates: timed(lambda: codex_phases(c, procs, bindings)), 2)
+                phases = self.fetch_phases(agent, candidates, lambda c=candidates: codex_phases(c, procs, bindings))
             quota = {}
             eligible = {o['run'] for o in parents if (agent == 'Codex' and o['run'] in phases) or
                         (agent == 'Grok' and hook_phases.get((o['run'], 'parent'), {}).get('quota_scope') == account_scope(agent))}
