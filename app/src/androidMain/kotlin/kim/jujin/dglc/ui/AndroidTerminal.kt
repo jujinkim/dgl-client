@@ -318,7 +318,8 @@ private val LocalTerminalResources = staticCompositionLocalOf<TerminalResources?
             if (resources == null) terminal.close()
         }
     }
-    LaunchedEffect(terminal, preferences.fontSize, preferences.terminalFontFamily, preferences.scrollback, preferences.effectiveAndroidKeyboardMode) { terminal.configure(preferences) }
+    LaunchedEffect(terminal, preferences.fontSize, preferences.terminalFontFamily, preferences.scrollback, preferences.effectiveAndroidKeyboardMode,
+        preferences.effectiveAndroidInputCorrection) { terminal.configure(preferences) }
     val status by client.status.collectAsState()
     val presenting = terminal.screenPending || status.presenting
     // A reattachment keeps the tab's last frame; failures and session selection still need the opaque curtain.
@@ -516,6 +517,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
     val fontSizeOverride get() = font.overrideSize
     private var scrollback = preferences.scrollback.coerceIn(100, 10000)
     private var keyboardMode = preferences.effectiveAndroidKeyboardMode
+    private var inputCorrection = preferences.effectiveAndroidInputCorrection
     /** The installed face served at `/fonts/<token>`; read by the WebView's request thread. */
     @Volatile private var terminalFont: Pair<String, TerminalFontFile>? = null
     private var consumingPinch = false
@@ -794,6 +796,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
             font.configure(preferences.fontSize)
             scrollback = preferences.scrollback.coerceIn(100, 10000)
             keyboardMode = preferences.effectiveAndroidKeyboardMode
+            inputCorrection = preferences.effectiveAndroidInputCorrection
             applyConfiguration()
             val current = terminalFont?.second
             if (if (face == null) current != null else !face.sameFace(current)) {
@@ -806,7 +809,7 @@ class AndroidTerminal(context: Context, preferences: Preferences, private val in
         if (!closed) view.evaluateJavascript("window.setTerminalFont(${terminalFont?.first?.let(JSONObject::quote) ?: "null"})", null)
     }
     private fun applyConfiguration() {
-        if (!closed) view.evaluateJavascript("window.configure(${font.effective},$scrollback,${JSONObject.quote(keyboardMode)})", null)
+        if (!closed) view.evaluateJavascript("window.configure(${font.effective},$scrollback,${JSONObject.quote(keyboardMode)},${JSONObject.quote(inputCorrection)})", null)
     }
     fun finishFontGesture() {
         if (!consumingPinch) return

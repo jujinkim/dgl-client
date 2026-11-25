@@ -744,6 +744,7 @@ mod tests {
         local.preferences.android_keyboard_mode = "resize".into();
         local.preferences.android_keyboard_always_visible = true;
         local.preferences.android_keyboard_on_touch = false;
+        local.preferences.android_input_correction = "boundary".into();
         local.preferences.agent_launch.insert(
             crate::agent::Agent::Claude,
             crate::launcher::AgentLaunch {
@@ -771,6 +772,7 @@ mod tests {
             "androidKeyboardMode",
             "androidKeyboardAlwaysVisible",
             "androidKeyboardOnTouch",
+            "androidInputCorrection",
             "terminalFontFamily",
             "PRIVATE-FONT",
             "agentLaunch",
@@ -800,6 +802,7 @@ mod tests {
         assert_eq!(other.local.preferences.android_keyboard_mode, "auto");
         assert!(!other.local.preferences.android_keyboard_always_visible);
         assert!(other.local.preferences.android_keyboard_on_touch);
+        assert_eq!(other.local.preferences.android_input_correction, "off");
         assert_eq!(other.local.preferences.terminal_font_family, "");
         assert_eq!(other.local.preferences.desktop_power_saving, "system");
         assert!(!other.local.preferences.desktop_tmux_buffer_clipboard);

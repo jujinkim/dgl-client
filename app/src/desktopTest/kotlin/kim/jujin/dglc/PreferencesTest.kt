@@ -39,6 +39,14 @@ class PreferencesTest {
                 assertEquals(state, restored)
                 assertEquals(if (mode == "future-mode") "auto" else mode, restored.preferences.effectiveAndroidKeyboardMode)
             }
+            assertEquals("off", repository.read().preferences.effectiveAndroidInputCorrection)
+            for (mode in listOf("boundary", "edit", "off", "future")) {
+                val preferences = repository.read().preferences.copy(androidInputCorrection = mode)
+                repository.save(LocalState(preferences = preferences))
+                val restored = LocalRepository(directory).read().preferences
+                assertEquals(mode, restored.androidInputCorrection)
+                assertEquals(if (mode == "future") "off" else mode, restored.effectiveAndroidInputCorrection)
+            }
             // Tapping the terminal opens the keyboard unless turned off; the choice survives a restart.
             assertTrue(repository.read().preferences.androidKeyboardOnTouch)
             val tapOff = repository.read().let { it.copy(preferences = it.preferences.copy(androidKeyboardOnTouch = false)) }

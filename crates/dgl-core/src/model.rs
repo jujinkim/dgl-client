@@ -86,6 +86,7 @@ pub struct Preferences {
     pub mobile_pane_toolbar_visible: bool,
     pub mobile_shortcut_bar_two_rows: bool,
     pub android_keyboard_mode: String,
+    pub android_input_correction: String,
     pub android_keyboard_always_visible: bool,
     /// Android: a finished tap on the terminal opens the soft keyboard. Off leaves only the
     /// keyboard button. Stays on this device.
@@ -126,6 +127,7 @@ impl Default for Preferences {
             mobile_pane_toolbar_visible: true,
             mobile_shortcut_bar_two_rows: true,
             android_keyboard_mode: "auto".into(),
+            android_input_correction: "off".into(),
             android_keyboard_always_visible: false,
             android_keyboard_on_touch: true,
             font_size: 12,
@@ -156,6 +158,7 @@ mod keyboard_tests {
     fn keyboard_modes_round_trip_and_old_settings_use_auto() {
         let mut state = LocalState::decode(br#"{"preferences":{"fontSize":19}}"#).unwrap();
         assert_eq!(state.preferences.android_keyboard_mode, "auto");
+        assert_eq!(state.preferences.android_input_correction, "off");
         assert_eq!(state.preferences.terminal_font_family, "");
         assert_eq!(state.preferences.desktop_power_saving, "system");
         assert!(!state.preferences.desktop_tmux_buffer_clipboard);

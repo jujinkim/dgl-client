@@ -265,6 +265,15 @@ private fun AppModel.editPreferences(change: (Preferences) -> Preferences) = mod
                 else -> "settings.keyboard_automatic_description"
             })) { value -> model.editPreferences { it.copy(androidKeyboardMode = value) } }
     }
+    SettingsGroup(t("settings.input_correction")) {
+        SettingsChoiceRow(null, listOf("off" to t("common.off"), "boundary" to t("settings.input_correction_boundary"),
+            "edit" to t("settings.input_correction_edit")), preferences.effectiveAndroidInputCorrection,
+            description = t(when (preferences.effectiveAndroidInputCorrection) {
+                "boundary" -> "settings.input_correction_boundary_description"
+                "edit" -> "settings.input_correction_edit_description"
+                else -> "settings.input_correction_off_description"
+            })) { value -> model.editPreferences { it.copy(androidInputCorrection = value) } }
+    }
     PlatformInputSettings(preferences) { next -> model.update(model.local.value.copy(preferences = next)) }
 }
 

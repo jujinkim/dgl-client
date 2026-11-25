@@ -906,8 +906,10 @@ test('a replacement snapshot releases its predecessor acknowledgement and reduce
 
 function keyboardRenderer() {
   const clock = createScheduler();
-  class KeyboardTerminal extends FakeTerminal { modes = { applicationCursorKeysMode: false }; }
-  const r = loadTerminal({ Terminal: KeyboardTerminal, setTimeout: clock.setTimeout });
+  class KeyboardTerminal extends FakeTerminal {
+    modes = { applicationCursorKeysMode: false }; options = {}; textarea = { value: '' };
+  }
+  const r = loadTerminal({ Terminal: KeyboardTerminal, setTimeout: clock.setTimeout, requestAnimationFrame: clock.requestAnimationFrame });
   r.messages.length = 0;
   const shell = r.element('shell');
   return { ...r,
@@ -1715,6 +1717,62 @@ test('only the user\'s own input is marked to take the tmux window size, never e
   r.messages.length = 0; r.window.setInputEnabled(false);
   r.key('a', 'a'); r.terminal.data('\x1b[0n');
   assert.deepEqual(r.messages, [{ type: 'blocked-input' }, { type: 'blocked-input' }]);
+});
+
+test('boundary correction sends the key first and clears only the same settled helper', () => {
+  const r = keyboardRenderer(), field = r.terminal.textarea;
+  r.window.configure(12, 5000, 'auto', 'boundary');
+  for (const [key, data] of [[' ', ' '], ['Backspace', '\x7f'], ['Enter', '\r']]) {
+    field.value = '이전 입력';
+    r.key(key, data);
+    assert.equal(field.value, '이전 입력');
+    assert.equal(r.messages.splice(0)[0].key, key === ' ' ? 'space' : key.toLowerCase());
+    r.flushTimers();
+    assert.equal(field.value, '');
+  }
+  // The IME can deliver a whole committed word plus its terminating space.
+  field.value = '한글 ';
+  r.emit('compositionstart'); r.emit('compositionend'); r.terminal.data(field.value);
+  r.flushTimers(); assert.equal(field.value, ''); assert.equal(r.messages.pop().text, '한글 ');
+  // An IME may ask to delete again when its local editor is already empty.
+  const deletion = { inputType: 'deleteContentBackward', target: field, cancelable: true };
+  assert.equal(r.emit('beforeinput', deletion), false);
+  assert.equal(r.messages.pop().key, 'backspace');
+  // Starting a new Korean syllable invalidates the delayed clear even before its value changes.
+  field.value = '가'; r.key(' ', ' '); r.emit('compositionstart'); r.flushTimers();
+  assert.equal(field.value, '가');
+  assert.equal(r.emit('beforeinput', { ...deletion, isComposing: true }), true);
+  r.emit('compositionend'); r.terminal.data('가'); r.flushTimers();
+  r.key(' ', ' '); r.emit('beforeinput', { inputType: 'insertText' }); r.flushTimers();
+  assert.equal(field.value, '가');
+  r.key(' ', ' '); r.window.configure(12, 5000, 'auto', 'off'); r.flushTimers();
+  assert.equal(field.value, '가');
+});
+
+test('edit correction narrows only a matching full-field emission for the current input event', () => {
+  const r = keyboardRenderer(), field = r.terminal.textarea;
+  const type = (value, inserted) => {
+    field.value = value; field.selectionStart = field.selectionEnd = value.length;
+    r.emit('input', { inputType: 'insertReplacementText', data: inserted, target: field });
+  };
+  for (const [mode, expected] of [['off', '기존b'], ['boundary', '기존b'], ['edit', 'b'], ['unknown', '기존b']]) {
+    r.window.configure(12, 5000, 'auto', mode);
+    type('기존b', 'b'); r.terminal.data('기존b');
+    assert.deepEqual(r.messages.splice(0).map(m => m.text), [expected]);
+    r.flushTimers();
+  }
+  r.window.configure(12, 5000, 'auto', 'edit');
+  type('abcabc', 'abc'); r.terminal.data('abc'); // intentional repeat
+  type('사과🍎', '🍎'); r.terminal.data('\x1b[0n'); r.terminal.data('사과🍎');
+  assert.deepEqual(r.messages.splice(0).map(m => m.data ?? m.text), ['abc', '\x1b[0n', '🍎']);
+  type('겹침b', 'b'); r.terminal.data('b'); r.terminal.data('겹침b');
+  assert.deepEqual(r.messages.splice(0).map(m => m.text), ['b'], 'input and 229 can report the same edit');
+  type('word', 'd'); r.flushTimers(); r.terminal.data('word');
+  assert.equal(r.messages.pop().text, 'word', 'a later event must not reuse stale edit evidence');
+  r.emit('compositionstart'); type('한글', '글'); r.emit('compositionend'); r.terminal.data('한글');
+  assert.equal(r.messages.pop().text, '한글');
+  type('abcd', 'd'); r.emit('paste'); r.terminal.data('abcd');
+  assert.equal(r.messages.pop().data, 'abcd');
 });
 
 test('IME text with control characters is the user\'s and consumes its origin', () => {

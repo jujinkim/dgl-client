@@ -5,6 +5,7 @@
   const panes = new Map();
   let output = 'shell', active = 'shell', inputTarget = null, layout = null;
   let fontSize = 12, scrollback = 5000, enabled = true, smooth = false;
+  let inputCorrection = 'off';
   // The WebView default monospace, or an installed face native serves at /fonts/<token>.
   const DEFAULT_FONT = 'monospace';
   let fontFamily = DEFAULT_FONT, fontRequest = 0;
@@ -363,10 +364,24 @@
   term.parser.registerOscHandler(52, () => true);
   // Native WebView focus alone cannot detect the xterm editor losing DOM focus.
   host.addEventListener('focusin', () => post({ type: 'editor-focus', focused: true }));
-  host.addEventListener('focusout', () => post({ type: 'editor-focus', focused: false }));
   let pasteCapture = null;
   let wheelOrigin = null;
   let keyOrigin = null, textOrigin = false, textTarget = null, composing = false, compositionPending = false, compositionVersion = 0, pasting = false;
+  // xterm may inspect the helper again in a zero-delay callback (IME keyCode 229).
+  // Never clear the field under that read or under a newer key/composition.
+  let editVersion = 0, fieldEdit = null;
+  const nextEdit = () => { ++editVersion; fieldEdit = null; };
+  host.addEventListener('focusout', () => { nextEdit(); post({ type: 'editor-focus', focused: false }); });
+  const clearAfterBoundary = target => {
+    const field = term.textarea;
+    if (inputCorrection !== 'boundary' || composing || !field?.value) return;
+    const version = editVersion, value = field.value;
+    setTimeout(() => {
+      if (inputCorrection === 'boundary' && editVersion === version && !composing && !compositionPending &&
+          enabled && pane === active && target === inputTarget && panes.get(pane) === api && field.value === value)
+        field.value = '';
+    }, 0);
+  };
   // `user` marks the user's own keys, IME text, paste and pointer reports; native code may
   // then take the tmux window size back for this screen. xterm emits its replies to
   // DA/DSR/CPR/OSC queries and focus reports through the same onData, always unmarked.
@@ -376,10 +391,14 @@
     post({ type: 'keyboard', user: true, key, text, target, control: modifiers.ctrlKey === true,
       shift: modifiers.shiftKey === true, alt: modifiers.altKey === true,
       applicationCursor: (snapshotInputModes || term.modes)?.applicationCursorKeysMode === true });
+    if (inputCorrection === 'boundary' && !modifiers.ctrlKey && !modifiers.altKey &&
+        (['space', 'enter', 'backspace'].includes(key) || (key === 'text' && text.endsWith(' '))))
+      clearAfterBoundary(target);
   };
   // Public APIs only. onKey runs before the corresponding onData, so that event
   // is encoded from its semantic key rather than transforming terminal bytes.
   term.attachCustomKeyEventHandler?.(event => {
+    if (event.type === 'keydown') nextEdit();
     if (event.type === 'keydown' && (event.isComposing || event.keyCode === 229)) {
       if (!compositionPending) textTarget = pane === active ? inputTarget : null;
       textOrigin = true;
@@ -391,7 +410,7 @@
     if (domEvent.metaKey || (domEvent.ctrlKey && domEvent.shiftKey && ['c', 'v'].includes(domEvent.key.toLowerCase()))) return;
     keyOrigin = { event: domEvent, target: pane === active ? inputTarget : null };
   });
-  host.addEventListener('compositionstart', () => { composing = true; compositionPending = true; ++compositionVersion; textOrigin = true; textTarget = pane === active ? inputTarget : null; keyOrigin = null; }, true);
+  host.addEventListener('compositionstart', () => { nextEdit(); composing = true; compositionPending = true; ++compositionVersion; textOrigin = true; textTarget = pane === active ? inputTarget : null; keyOrigin = null; }, true);
   host.addEventListener('compositionend', () => {
     composing = false; textOrigin = true;
     const version = compositionVersion;
@@ -399,14 +418,39 @@
     // after that callback, without touching a newer composition.
     setTimeout(() => { if (!composing && version === compositionVersion) { compositionPending = false; textOrigin = false; } }, 0);
   });
+  host.addEventListener('beforeinput', event => {
+    nextEdit();
+    // Some IMEs delete through the editor. After a reset there is nothing for
+    // xterm's length comparison to observe. An explicit deletion still counts.
+    if (inputCorrection === 'boundary' && event.inputType === 'deleteContentBackward' && event.cancelable && !event.defaultPrevented &&
+        !event.isComposing && !composing && !compositionPending && !pasting &&
+        event.target === term.textarea && term.textarea?.value === '') {
+      event.preventDefault();
+      keyboard('backspace', null, {}, textOrigin ? textTarget : undefined);
+      textOrigin = false;
+    }
+  }, true);
   host.addEventListener('input', event => {
+    nextEdit();
     if (event.inputType === 'insertFromPaste') return;
+    // A keyboard editing old text can make xterm emit the entire helper value.
+    // Trust the inserted text only for this observed DOM edit, at its actual caret.
+    const field = term.textarea;
+    if (inputCorrection === 'edit' && field && event.target === field && !event.isComposing &&
+        !compositionPending && !pasting && ['insertReplacementText', 'insertText'].includes(event.inputType) &&
+        event.data && !/[\x00-\x1f\x7f-\x9f]/.test(event.data) && field.value.length > event.data.length &&
+        field.selectionStart === field.selectionEnd && field.selectionEnd >= event.data.length &&
+        field.value.slice(field.selectionEnd - event.data.length, field.selectionEnd) === event.data) {
+      const evidence = fieldEdit = { value: field.value, inserted: event.data, sent: false };
+      setTimeout(() => { if (fieldEdit === evidence) fieldEdit = null; }, 0);
+    }
     if (event.data || event.inputType === 'insertText' || event.inputType === 'insertCompositionText') {
       if (!compositionPending) textTarget = pane === active ? inputTarget : null;
       textOrigin = true;
     }
   }, true);
   host.addEventListener('paste', () => {
+    nextEdit();
     pasting = true; keyOrigin = null;
     setTimeout(() => { pasting = false; }, 0);
   }, true);
@@ -426,6 +470,17 @@
       if (snapshotInputModes.bracketedPasteMode) data = '\x1b[200~' + data + '\x1b[201~';
     }
     const captured = keyOrigin, origin = captured?.event; keyOrigin = null;
+    if (inputCorrection === 'edit' && !origin && !pasting && fieldEdit && fieldEdit.value === term.textarea.value) {
+      // xterm's input listener can deliver the insert before its delayed 229
+      // handler examines the same edit. Keep exactly one delivery in that case.
+      if (textOrigin && data === fieldEdit.inserted) fieldEdit.sent = true;
+      else if (data === fieldEdit.value && !/^[\x00-\x1f\x7f-\x9f]/.test(data)) {
+        const { inserted, sent } = fieldEdit;
+        fieldEdit = null;
+        if (sent) return;
+        if (textOrigin) data = inserted;
+      }
+    }
     if (new TextEncoder().encode(data).length > 65536) return;
     if (!pasting && origin) {
       const named = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
@@ -434,8 +489,7 @@
       keyboard(key, [...origin.key].length === 1 ? origin.key : null, origin, captured.target);
       textOrigin = false; compositionPending = false;
     } else if (!pasting && textOrigin && !/[\x00-\x1f\x7f]/.test(data)) {
-      // xterm emits only the finalized composition/textarea delta, once. Never
-      // intercept intermediate IME updates or reinterpret protocol/mouse reports.
+      // Only encode finalized text. Composition updates themselves never send input.
       keyboard('text', data, {}, textTarget); textOrigin = composing; compositionPending = composing;
     } else if (!pasting && textOrigin && ['\r', '\t', '\x7f'].includes(data)) {
       keyboard({ '\r': 'enter', '\t': 'tab', '\x7f': 'backspace' }[data], null, {}, textTarget); textOrigin = composing; compositionPending = composing;
@@ -449,6 +503,7 @@
       if (committed) { textOrigin = composing; compositionPending = composing; }
       if (!pointer || !pointerBlocked()) post({ type: 'input', data, ...(pointer ? { pointer: true } : {}),
         ...(committed ? { target: textTarget } : {}), ...(pointer || pasting || committed ? { user: true } : {}) });
+      if (committed && /[ \r\n]$/.test(data)) clearAfterBoundary(textTarget);
     } else if (!fontGesture) post({ type: 'blocked-input' });
   });
   // Legacy mouse reports can contain bytes above 127; UTF-8 encoding corrupts them.
@@ -1117,7 +1172,8 @@
     else sizeCanvas();
   }
 
-  window.configure = (font, history, mode = keyboardMode) => {
+  window.configure = (font, history, mode = keyboardMode, correction = inputCorrection) => {
+    inputCorrection = ['boundary', 'edit'].includes(correction) ? correction : 'off';
     const nextMode = ['auto', 'pan', 'resize'].includes(mode) ? mode : 'auto';
     if (nextMode !== keyboardMode) {
       keyboardMode = nextMode; keyboardDecisionPending = true; autoPanLocked = false;

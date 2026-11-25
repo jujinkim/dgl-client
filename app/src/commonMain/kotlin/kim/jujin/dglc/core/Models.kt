@@ -39,6 +39,7 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val mobilePaneToolbarVisible: Boolean = true,
     val mobileShortcutBarTwoRows: Boolean = true,
     val androidKeyboardMode: String = "auto",
+    val androidInputCorrection: String = "off",
     val androidKeyboardAlwaysVisible: Boolean = false,
     /** A finished tap on the terminal opens the IME; off leaves only the keyboard button. Not synced. */
     val androidKeyboardOnTouch: Boolean = true,
@@ -55,6 +56,10 @@ class Credential(val password: String = "", val privateKey: String = "", val pas
     val showAllHierarchy: Boolean = false,
     val accent: AccentSettings = AccentSettings(),
 ) {
+    val effectiveAndroidInputCorrection: String get() = when (androidInputCorrection) {
+        "boundary", "edit" -> androidInputCorrection
+        else -> "off"
+    }
     val effectiveAndroidKeyboardMode: String get() = if (androidKeyboardAlwaysVisible) "resize"
         else androidKeyboardMode.takeIf { it in listOf("auto", "pan", "resize") } ?: "auto"
     /** Unknown stored values behave as `auto`, like Rust `ScrollAssist::from_preference`. */
