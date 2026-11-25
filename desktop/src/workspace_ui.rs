@@ -20,6 +20,7 @@ const STATUS_BAR_HEIGHT: f32 = 26.;
 const TAB_BAR_HEIGHT: f32 = 48.;
 const TAB_SCROLLBAR_HEIGHT: f32 = 2.;
 const TAB_SCROLLBAR_MIN_THUMB: f32 = 24.;
+const FILE_PANEL_MIN_WIDTH: f32 = 320.;
 
 /// The thumb's `(left, width)` inside a `viewport`-wide track, or `None` when nothing overflows.
 /// `offset` is the scroll offset, which runs from 0 down to `-max_offset`.
@@ -210,11 +211,40 @@ impl Desktop {
             false,
             cx,
         );
-        let content = if let Some(id) = self.workspace.file_view {
-            self.file_panel(id, cx).into_any_element()
-        } else {
+        let viewport_width = f32::from(window.viewport_size().width);
+        let workspace_width = (viewport_width - SIDEBAR_WIDTH).max(0.);
+        let terminals = !self.tabs.is_empty();
+        let minimum = self.workspace.layout.minimum().0;
+        let side_width = (workspace_width - minimum - 1. >= FILE_PANEL_MIN_WIDTH).then(|| {
+            (workspace_width * 0.44).clamp(FILE_PANEL_MIN_WIDTH, workspace_width - minimum - 1.)
+        });
+        let mut terminal_width = workspace_width;
+        let mut attached = None;
+        let mut bottom = None;
+        if let Some(id) = self.workspace.file_view {
+            if !terminals {
+                attached = Some(self.file_panel(id, workspace_width, window, cx).flex_1());
+            } else if let Some(width) = side_width {
+                terminal_width -= width + 1.;
+                attached = Some(
+                    self.file_panel(id, width, window, cx)
+                        .w(px(width))
+                        .flex_none(),
+                );
+            } else {
+                let height =
+                    (f32::from(window.viewport_size().height) - STATUS_BAR_HEIGHT).max(0.) * 0.45;
+                bottom = Some(
+                    self.file_panel(id, viewport_width, window, cx)
+                        .w_full()
+                        .h(px(height))
+                        .flex_none(),
+                );
+            }
+        }
+        let terminal_area = (terminals || attached.is_none()).then(|| {
             let layout = self.workspace.layout.clone();
-            let workspace = self.render_layout(layout, vec![], preview, cx);
+            let workspace = self.render_layout(layout, vec![], preview, terminal_width, cx);
             // The shortcut bar draws the active terminal's sticky modifiers, which change
             // without a `Desktop` notification.
             let modifiers = self
@@ -240,8 +270,7 @@ impl Desktop {
                         cx,
                     ),
                 )
-                .into_any_element()
-        };
+        });
         div()
             .id("desktop")
             .size_full()
@@ -321,21 +350,17 @@ impl Desktop {
                         s.prompt(t("workspace.create_session"), PromptOp::Session, cx)
                     }
                     Some(NewHost) => s.edit(None, cx),
-                    Some(CloseTab) if s.workspace.file_view.is_some() => s.close_file_view(w, cx),
+                    Some(CloseTab) if s.files_focused(w, cx) => s.close_file_view(w, cx),
                     Some(CloseTab) => {
                         if let Some(id) = s.workspace.selected() {
                             s.close_tab(id);
                         }
                     }
                     Some(Settings) => s.dialog = Some(Dialog::Settings),
-                    Some(Refresh) => match s.workspace.file_view {
-                        Some(id) => s.refresh_files(id, cx),
-                        None => s.refresh(),
-                    },
-                    None if e.keystroke.key == "escape" && s.workspace.file_view.is_some() => {
-                        s.return_to_terminals(w, cx);
-                        w.prevent_default();
+                    Some(Refresh) if s.files_focused(w, cx) => {
+                        s.refresh_files(s.workspace.file_view.unwrap(), cx);
                     }
+                    Some(Refresh) => s.refresh(),
                     Some(SelectTab(n)) => {
                         let Some(id) = s.workspace.groups[&s.workspace.active]
                             .tabs
@@ -423,8 +448,17 @@ impl Desktop {
                             .min_h_0()
                             .flex()
                             .child(sidebar)
-                            .child(content),
+                            .children(terminal_area)
+                            .when(terminals && attached.is_some(), |row| {
+                                row.child(div().w(px(1.)).flex_none().bg(rgb(p.line)))
+                            })
+                            .children(attached),
                     )
+                    .when_some(bottom, |column, panel| {
+                        column
+                            .child(div().h(px(1.)).flex_none().bg(rgb(p.line)))
+                            .child(panel)
+                    })
                     .child(
                         self.chrome(
                             crate::chrome::Part::StatusBar,
@@ -841,18 +875,6 @@ impl Desktop {
                     .items_center()
                     // Preserve the prior focus until the modal records it.
                     .on_mouse_down(MouseButton::Left, |_, w, _| w.prevent_default())
-                    .when(self.workspace.file_view.is_some(), |d| {
-                        d.child(
-                            self.button(
-                                "switch-to-terminal",
-                                t("files.terminal"),
-                                cx,
-                                Self::return_to_terminals,
-                            )
-                            .min_w(px(76.))
-                            .text_center(),
-                        )
-                    })
                     .child(
                         self.button_base("agent-notifications", cx, |s, _, _| {
                             s.dialog = if matches!(s.dialog, Some(Dialog::Notifications)) {
@@ -927,6 +949,7 @@ impl Desktop {
         layout: Layout,
         path: Vec<bool>,
         preview: Option<TabDropTarget>,
+        width: f32,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         match layout {
@@ -941,12 +964,24 @@ impl Desktop {
             } => {
                 let p = self.palette;
                 let horizontal = axis == Axis::Horizontal;
+                let available = (width - DIVIDER).max(0.);
+                let (first_width, second_width, ratio) = if horizontal {
+                    let (a, b) = (first.minimum().0, second.minimum().0);
+                    let ratio = if available >= a + b {
+                        ratio.clamp(a / available, 1. - b / available)
+                    } else {
+                        ratio
+                    };
+                    (available * ratio, available * (1. - ratio), ratio)
+                } else {
+                    (width, width, ratio)
+                };
                 let mut left = path.clone();
                 left.push(false);
                 let mut right = path.clone();
                 right.push(true);
-                let first = self.render_layout(*first, left, preview, cx);
-                let second = self.render_layout(*second, right, preview, cx);
+                let first = self.render_layout(*first, left, preview, first_width, cx);
+                let second = self.render_layout(*second, right, preview, second_width, cx);
                 let entity = cx.entity();
                 let measure = path.clone();
                 let drag = path.clone();

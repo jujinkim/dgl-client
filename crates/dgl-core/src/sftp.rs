@@ -26,6 +26,10 @@ pub enum FilesError {
     Name(String),
     #[error("Unsupported file type: {0}")]
     Type(String),
+    #[error("Only regular files can be transferred. Unsupported source: {0}")]
+    SourceType(String),
+    #[error("{0}")]
+    PromiseBatch(String),
     #[error("Cancelled")]
     Cancelled,
 }
@@ -194,6 +198,26 @@ pub struct Browser {
     pane: Option<String>,
     connection: tokio::sync::Mutex<Option<Arc<Files>>>,
 }
+
+/// Native file promises assign a destination to each item separately. All items
+/// from one drag must pass the same preflight before any promise can write.
+pub struct DownloadBatch {
+    sources: Vec<String>,
+    preflight: tokio::sync::OnceCell<std::result::Result<(), String>>,
+}
+impl DownloadBatch {
+    pub fn new(sources: Vec<String>) -> Self {
+        Self {
+            sources,
+            preflight: Default::default(),
+        }
+    }
+
+    pub fn retry(&self) -> Self {
+        Self::new(self.sources.clone())
+    }
+}
+
 impl Browser {
     pub fn new(
         host: HostProfile,
@@ -224,26 +248,38 @@ impl Browser {
         )
         .await
     }
-    pub async fn browse(&self, path: Option<&str>) -> Result<Listing> {
+    async fn connection(&self) -> Result<Arc<Files>> {
         let mut slot = self.connection.lock().await;
-        if let (Some(files), Some(path)) = (&*slot, path)
-            && !files.disconnected()
+        if slot.as_ref().is_none_or(|files| files.disconnected()) {
+            *slot = Some(Arc::new(self.connect().await?));
+        }
+        Ok(slot.as_ref().unwrap().clone())
+    }
+    async fn forget_connection(&self, files: &Arc<Files>) {
+        let mut slot = self.connection.lock().await;
+        if slot
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, files))
         {
+            *slot = None;
+        }
+    }
+    pub async fn browse(&self, path: Option<&str>) -> Result<Listing> {
+        if let Some(path) = path {
+            let files = self.connection().await?;
             let result = files.list(path).await;
-            if result.is_err() {
-                *slot = None;
+            if matches!(&result, Err(FilesError::Remote(error))
+                if !matches!(error, russh_sftp::client::error::Error::Status(_)))
+            {
+                self.forget_connection(&files).await;
             }
             return result;
         }
+        let mut slot = self.connection.lock().await;
         let mut files = self.connect().await?;
-        let listing = match path {
-            Some(path) => files.list(path).await?,
-            None => {
-                files
-                    .initial(self.session.as_deref(), self.pane.as_deref())
-                    .await?
-            }
-        };
+        let listing = files
+            .initial(self.session.as_deref(), self.pane.as_deref())
+            .await?;
         *slot = Some(Arc::new(files));
         Ok(listing)
     }
@@ -252,27 +288,52 @@ impl Browser {
         local: Arc<dyn LocalTree>,
         request: CopyRequest,
     ) -> Arc<Transfer> {
+        self.start_job(local, request, None)
+    }
+    pub fn start_file_promise(
+        self: &Arc<Self>,
+        local: Arc<dyn LocalTree>,
+        request: CopyRequest,
+        batch: Arc<DownloadBatch>,
+    ) -> Arc<Transfer> {
+        self.start_job(local, request, Some(batch))
+    }
+    fn start_job(
+        self: &Arc<Self>,
+        local: Arc<dyn LocalTree>,
+        request: CopyRequest,
+        batch: Option<Arc<DownloadBatch>>,
+    ) -> Arc<Transfer> {
         let job = Arc::new(Transfer::default());
         let worker = job.clone();
         let browser = self.clone();
         let runtime = tokio::runtime::Handle::current();
         tokio::task::spawn_blocking(move || {
             let result = runtime.block_on(async {
-                let mut slot = browser.connection.lock().await;
-                if slot.as_ref().is_none_or(|files| files.disconnected()) {
-                    *slot = Some(Arc::new(browser.connect().await?));
-                }
-                let files = slot.as_ref().unwrap().clone();
-                drop(slot);
-                let result = files.copy(local.as_ref(), &request, &worker).await;
-                if result.is_err() {
-                    let mut slot = browser.connection.lock().await;
-                    if slot
-                        .as_ref()
-                        .is_some_and(|current| Arc::ptr_eq(current, &files))
-                    {
-                        *slot = None;
+                worker.check()?;
+                let files = browser.connection().await?;
+                if let Some(batch) = batch {
+                    let validated = batch
+                        .preflight
+                        .get_or_init(|| async {
+                            for source in &batch.sources {
+                                remote_source(&files.remote, source)
+                                    .await
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            Ok(())
+                        })
+                        .await;
+                    if let Err(error) = validated {
+                        return Err(FilesError::PromiseBatch(error.clone()));
                     }
+                }
+                let result = files.copy(local.as_ref(), &request, &worker).await;
+                if matches!(
+                    &result,
+                    Err(FilesError::Connection(_) | FilesError::Remote(_))
+                ) {
+                    browser.forget_connection(&files).await;
                 }
                 result
             });

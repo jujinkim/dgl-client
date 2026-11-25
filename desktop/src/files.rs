@@ -1,9 +1,10 @@
 use super::*;
 use crate::workspace::FileId;
 use dgl_core::sftp::{self, Browser, CopyRequest, Listing, LocalPaths, Progress, Transfer};
-use std::collections::BTreeSet;
 
+mod columns;
 mod drag;
+use columns::{BrowseAttempt, Folders, ParentColumn};
 #[cfg(target_os = "linux")]
 pub(crate) use drag::LinuxDrag;
 
@@ -13,13 +14,14 @@ pub(super) struct FileBrowser {
     pane: Option<String>,
     pub(super) title: String,
     browser: Arc<Browser>,
-    listing: Listing,
-    selected: BTreeSet<String>,
-    loading: bool,
+    focus: FocusHandle,
+    folders: Folders,
     error: Option<String>,
     jobs: Vec<Job>,
+    jobs_open: bool,
     outgoing: drag::Outgoing,
-    pressed: Option<(String, Point<Pixels>)>,
+    pressed: Option<(String, String, Point<Pixels>)>,
+    dragged: bool,
     #[cfg(target_os = "linux")]
     bounds: std::rc::Rc<std::cell::Cell<Bounds<Pixels>>>,
 }
@@ -27,6 +29,8 @@ struct Job {
     request: CopyRequest,
     transfer: Arc<Transfer>,
     progress: Progress,
+    #[cfg(target_os = "macos")]
+    promise: Option<Arc<sftp::DownloadBatch>>,
 }
 impl Drop for Job {
     fn drop(&mut self) {
@@ -34,14 +38,8 @@ impl Drop for Job {
     }
 }
 impl FileBrowser {
-    fn selection(&self) -> Vec<String> {
-        self.selected
-            .iter()
-            .filter_map(|name| sftp::child_path(&self.listing.path, name).ok())
-            .collect()
-    }
     fn upload_paths(&mut self, paths: &[PathBuf], runtime: &tokio::runtime::Runtime) -> bool {
-        if self.listing.path.is_empty() || paths.is_empty() {
+        if self.folders.listing.path.is_empty() || paths.is_empty() {
             return false;
         }
         let sources: Option<Vec<_>> = paths
@@ -49,11 +47,12 @@ impl FileBrowser {
             .map(|p| p.to_str().map(str::to_owned))
             .collect();
         if let Some(sources) = sources {
+            self.error = None;
             self.start(
                 CopyRequest {
                     upload: true,
                     sources,
-                    destination: self.listing.path.clone(),
+                    destination: self.folders.listing.path.clone(),
                     name: None,
                 },
                 runtime,
@@ -71,7 +70,10 @@ impl FileBrowser {
             request,
             transfer,
             progress: Progress::default(),
+            #[cfg(target_os = "macos")]
+            promise: None,
         });
+        self.jobs_open = true;
         self.jobs.len() - 1
     }
 }
@@ -121,15 +123,20 @@ impl Desktop {
             let Some(credentials) = self.credentials(&host, cx) else {
                 return;
             };
-            let id = self.create_file_browser(host, session, pane, name, credentials);
+            let id = self.create_file_browser(host, session, pane, name, credentials, cx);
             self.browse_files(id, None, cx);
             id
         };
         self.workspace.file_view = Some(id);
-        window.focus(&self.focus);
+        window.focus(&self.files[&id].focus);
+        cx.notify();
     }
     pub(super) fn return_to_terminals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.workspace.file_view = None;
+        if let Some(id) = self.workspace.file_view.take()
+            && let Some(tab) = self.files.get_mut(&id)
+        {
+            tab.pressed = None;
+        }
         self.group_focus(self.workspace.active, window, cx);
     }
     pub(super) fn close_file_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -145,6 +152,7 @@ impl Desktop {
         pane: Option<String>,
         name: Option<String>,
         credentials: (Credential, Option<String>),
+        cx: &mut Context<Self>,
     ) -> FileId {
         let (credential, trusted) = credentials;
         let id = self.next_file_id;
@@ -172,13 +180,14 @@ impl Desktop {
                 pane,
                 title,
                 browser,
-                listing: Listing::default(),
-                selected: Default::default(),
-                loading: false,
+                focus: cx.focus_handle(),
+                folders: Folders::default(),
                 error: None,
                 jobs: vec![],
+                jobs_open: false,
                 outgoing: Default::default(),
                 pressed: None,
+                dragged: false,
                 #[cfg(target_os = "linux")]
                 bounds: Default::default(),
             },
@@ -187,23 +196,34 @@ impl Desktop {
     }
     pub(super) fn refresh_files(&mut self, id: FileId, cx: &mut Context<Self>) {
         if let Some(tab) = self.files.get(&id) {
-            let path = &tab.listing.path;
-            self.browse_files(id, (!path.is_empty()).then(|| path.clone()), cx);
+            self.browse_files(id, tab.folders.refresh_path(), cx);
         }
     }
     fn browse_files(&mut self, id: FileId, path: Option<String>, cx: &mut Context<Self>) {
         let Some(tab) = self.files.get_mut(&id) else {
             return;
         };
-        if tab.loading {
-            return;
-        }
-        tab.loading = true;
         tab.error = None;
-        let browser = tab.browser.clone();
+        let serial = tab.folders.next_request();
+        let task = self.fetch_folder(id, path.clone(), serial, false, cx);
+        self.files.get_mut(&id).unwrap().folders.attempt =
+            Some(BrowseAttempt::loading(serial, path, task));
+        cx.notify();
+    }
+    fn fetch_folder(
+        &self,
+        id: FileId,
+        path: Option<String>,
+        serial: u64,
+        parent: bool,
+        cx: &mut Context<Self>,
+    ) -> tokio::task::AbortHandle {
+        let browser = self.files[&id].browser.clone();
+        let target = path.clone();
         let task = self
             .runtime
-            .spawn(async move { browser.browse(path.as_deref()).await });
+            .spawn(async move { browser.browse(target.as_deref()).await });
+        let abort = task.abort_handle();
         cx.spawn(async move |view, cx| {
             let result = task
                 .await
@@ -213,30 +233,34 @@ impl Desktop {
                 let Some(tab) = s.files.get_mut(&id) else {
                     return;
                 };
-                tab.loading = false;
-                match result {
-                    Ok(listing) => {
-                        if tab.listing.path != listing.path {
-                            tab.selected.clear();
-                        }
-                        tab.selected
-                            .retain(|n| listing.entries.iter().any(|e| &e.name == n));
-                        tab.listing = listing;
-                    }
-                    Err(e) => tab.error = Some(e),
+                if parent {
+                    tab.folders.finish_parent(path.unwrap(), serial, result);
+                } else if tab.folders.finish(serial, result) {
+                    s.load_parents(id, cx);
                 }
                 cx.notify();
             });
         })
         .detach();
-        cx.notify();
+        abort
+    }
+    fn load_parents(&mut self, id: FileId, cx: &mut Context<Self>) {
+        let folders = &mut self.files.get_mut(&id).unwrap().folders;
+        let requests = folders.missing_parents();
+        for (path, serial) in requests {
+            let task = self.fetch_folder(id, Some(path.clone()), serial, true, cx);
+            self.files.get_mut(&id).unwrap().folders.parents.insert(
+                path.clone(),
+                ParentColumn::Pending(BrowseAttempt::loading(serial, Some(path), task)),
+            );
+        }
     }
     fn trust_files(&mut self, id: FileId, cx: &mut Context<Self>) {
         let tab = &self.files[&id];
         let Some(fingerprint) = tab
             .browser
             .observed()
-            .filter(|_| tab.error.as_deref() == Some("HostKeyUnknown"))
+            .filter(|_| tab.folders.host_key_unknown())
         else {
             return;
         };
@@ -270,7 +294,7 @@ impl Desktop {
             tab.session.clone(),
             tab.pane.clone(),
         ));
-        self.browse_files(id, None, cx);
+        self.refresh_files(id, cx);
     }
     pub(super) fn tick_files(&mut self, cx: &mut Context<Self>) -> bool {
         let mut changed = false;
@@ -280,17 +304,23 @@ impl Desktop {
         }
         let mut refresh = Vec::new();
         for (&id, tab) in &mut self.files {
-            changed |= tab.outgoing.poll(&mut tab.jobs);
+            if tab.outgoing.poll(&mut tab.jobs) {
+                tab.jobs_open = true;
+                changed = true;
+            }
             for job in &mut tab.jobs {
                 let progress = job.transfer.progress();
                 if progress != job.progress {
                     if progress.done
                         && progress.error.is_none()
                         && job.request.upload
-                        && job.request.destination == tab.listing.path
+                        && tab.folders.attempt.is_none()
+                        && job.request.destination == tab.folders.listing.path
                     {
-                        refresh.push((id, tab.listing.path.clone()));
+                        refresh.push((id, tab.folders.listing.path.clone()));
                     }
+                    tab.jobs_open |=
+                        progress.conflict.is_some() && progress.conflict != job.progress.conflict;
                     job.progress = progress;
                     changed = true;
                 }
@@ -303,11 +333,11 @@ impl Desktop {
     }
     fn file_picker(&mut self, id: FileId, upload: bool, cx: &mut Context<Self>) {
         let tab = &self.files[&id];
-        let destination = tab.listing.path.clone();
-        let sources = tab.selection();
+        let destination = tab.folders.listing.path.clone();
+        let sources = tab.folders.selection();
         let picker = cx.prompt_for_paths(PathPromptOptions {
             files: upload,
-            directories: true,
+            directories: !upload,
             multiple: upload,
             prompt: None,
         });
@@ -344,6 +374,7 @@ impl Desktop {
                                     name: None,
                                 }
                             };
+                            tab.error = None;
                             tab.start(request, &s.runtime);
                         } else {
                             tab.error = Some(t("files.invalid_path").into());
@@ -357,72 +388,105 @@ impl Desktop {
         })
         .detach();
     }
-    pub(super) fn file_panel(&self, id: FileId, cx: &mut Context<Self>) -> Stateful<Div> {
+    pub(super) fn files_focused(&self, window: &Window, cx: &App) -> bool {
+        self.workspace
+            .file_view
+            .and_then(|id| self.files.get(&id))
+            .is_some_and(|tab| {
+                tab.focus.is_focused(window) || tab.focus.contains_focused(window, cx)
+            })
+    }
+
+    pub(super) fn file_panel(
+        &self,
+        id: FileId,
+        width: f32,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let tab = &self.files[&id];
-        let path = tab.listing.path.clone();
-        let mut tools = div()
+        let p = self.palette;
+        let focused = self.files_focused(window, cx);
+        let tools = div()
             .flex()
             .flex_wrap()
-            .gap_1()
+            .flex_none()
             .items_center()
+            .gap_1()
             .child(self.button(
                 format!("files-refresh-{id}"),
                 UiIcon::Refresh,
                 cx,
                 move |s, _, cx| s.refresh_files(id, cx),
+            ))
+            .child(self.file_picker_button(id, true, cx))
+            .child(self.file_picker_button(id, false, cx));
+        let header = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_1()
+            .flex_none()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(115.))
+                    .truncate()
+                    .text_sm()
+                    .child(tab.title.clone()),
+            )
+            .child(self.button(
+                "collapse-files",
+                t("files.collapse"),
+                cx,
+                Self::return_to_terminals,
+            ))
+            .child(self.button(
+                format!("close-files-{id}"),
+                t("common.close"),
+                cx,
+                Self::close_file_view,
             ));
-        if !path.is_empty() {
-            let parent = path
-                .rsplit_once('/')
-                .map(|(p, _)| if p.is_empty() { "/" } else { p })
-                .unwrap_or("/")
-                .to_string();
-            tools = tools
-                .child(self.button(
-                    format!("files-up-{id}"),
-                    t("files.up"),
-                    cx,
-                    move |s, _, cx| s.browse_files(id, Some(parent.clone()), cx),
-                ))
-                .child(self.button(
-                    format!("files-upload-{id}"),
-                    t("files.upload"),
-                    cx,
-                    move |s, _, cx| s.file_picker(id, true, cx),
-                ));
-            if !tab.selected.is_empty() {
-                tools = tools.child(self.button(
-                    format!("files-download-{id}"),
-                    t("files.download"),
-                    cx,
-                    move |s, _, cx| s.file_picker(id, false, cx),
-                ));
-            }
-        }
-        tools = tools.child(self.button(
-            format!("close-files-{id}"),
-            t("common.close"),
-            cx,
-            Self::close_file_view,
-        ));
         let mut panel = div()
-            .id(SharedString::from(format!("files-{id}")))
+            .id(("files", id))
             .debug_selector(|| "file-panel".into())
+            .track_focus(&tab.focus)
             .relative()
             .min_w_0()
-            .flex_1()
             .min_h_0()
             .flex()
             .flex_col()
             .gap_1()
             .p_2()
+            .bg(rgb(p.panel))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |s, _, w, cx| {
+                    if s.dialog.is_none() {
+                        let tab = s.files.get_mut(&id).unwrap();
+                        tab.dragged = false;
+                        w.focus(&tab.focus);
+                        cx.notify();
+                    }
+                }),
+            )
+            .on_key_down(cx.listener(move |s, e: &KeyDownEvent, w, cx| {
+                if s.dialog.is_some() {
+                    return;
+                }
+                if e.keystroke.key == "escape" {
+                    s.return_to_terminals(w, cx);
+                } else if !s.file_arrows(id, width, &e.keystroke, cx) {
+                    return;
+                }
+                w.prevent_default();
+                cx.stop_propagation();
+                cx.notify();
+            }))
+            .child(header)
+            .child(self.file_breadcrumbs(id, cx))
             .child(tools)
-            .child(div().child(path.clone()))
-            .when(tab.loading, |d| d.child(t("files.loading")))
-            .when_some(tab.listing.fallback.as_ref(), |d, reason| {
-                d.child(tr!("files.fallback", reason))
-            })
-            .when_some(tab.error.clone(), |d, e| d.child(e));
+            .when_some(tab.error.clone(), |d, e| d.child(div().text_xs().child(e)));
         #[cfg(target_os = "linux")]
         {
             let bounds = tab.bounds.clone();
@@ -432,7 +496,7 @@ impl Desktop {
                     .inset_0(),
             );
         }
-        if tab.error.as_deref() == Some("HostKeyUnknown")
+        if tab.folders.host_key_unknown()
             && let Some(key) = tab.browser.observed()
         {
             panel = panel
@@ -448,63 +512,126 @@ impl Desktop {
                     move |s, _, cx| s.trust_files(id, cx),
                 ));
         }
-        let mut rows = div()
-            .id(SharedString::from(format!("files-rows-{id}")))
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scroll();
-        for (i, entry) in tab.listing.entries.iter().enumerate() {
-            let name = entry.name.clone();
-            let selected = tab.selected.contains(&name);
-            let source = sftp::child_path(&path, &name).expect("validated directory entry");
-            let press_name = name.clone();
-            let mut row = div()
-                .id(SharedString::from(format!("file-{id}-{i}")))
-                .flex()
-                .items_center()
-                .gap_2()
-                .when(selected, |d| d.bg(rgb(self.palette.selection)))
-                .child(self.button(
-                    format!("file-select-{id}-{i}"),
-                    if selected { "☑" } else { "☐" },
+        panel = panel.child(self.file_panel_folders(id, width, focused, cx));
+        if !tab.jobs.is_empty() {
+            panel = panel.child(
+                self.button(
+                    "file-transfers",
+                    tr!("files.transfers", tab.jobs.len()),
                     cx,
                     move |s, _, _| {
                         let tab = s.files.get_mut(&id).unwrap();
-                        if !tab.selected.remove(&name) {
-                            tab.selected.insert(name.clone());
-                        }
+                        tab.jobs_open = !tab.jobs_open;
                     },
-                ))
-                .child(div().flex_1().child(format!(
-                    "{}{}",
-                    entry.name,
-                    if entry.directory { "/" } else { "" }
-                )))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |s, e: &MouseDownEvent, _, _| {
-                        s.files.get_mut(&id).unwrap().pressed =
-                            Some((press_name.clone(), e.position));
-                    }),
-                );
-            if entry.directory {
-                row = row.child(self.button(
-                    format!("file-enter-{id}-{i}"),
-                    UiIcon::ChevronRight,
-                    cx,
-                    move |s, _, cx| s.browse_files(id, Some(source.clone()), cx),
-                ));
+                )
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    if tab.jobs_open {
+                        UiIcon::ChevronDown
+                    } else {
+                        UiIcon::ChevronRight
+                    }
+                    .render(p.fg),
+                ),
+            );
+            if tab.jobs_open {
+                panel = panel.child(self.file_jobs(id, cx));
             }
-            rows = rows.child(row);
         }
+        panel
+            .capture_any_mouse_up(cx.listener(move |s, e: &MouseUpEvent, _, _| {
+                if e.button == MouseButton::Left
+                    && let Some(tab) = s.files.get_mut(&id)
+                {
+                    #[cfg(not(target_os = "macos"))]
+                    tab.outgoing.release();
+                    tab.pressed = None;
+                }
+            }))
+            .on_mouse_move(cx.listener(move |s, e: &MouseMoveEvent, w, cx| {
+                let tab = s.files.get_mut(&id).unwrap();
+                if !e.dragging() {
+                    tab.pressed = None;
+                } else if tab
+                    .pressed
+                    .as_ref()
+                    .is_some_and(|(_, _, p)| (e.position - *p).magnitude() > 3.0)
+                {
+                    let (path, name, _) = tab.pressed.take().unwrap();
+                    tab.dragged = true;
+                    s.drag_files(id, &path, &name, w, cx);
+                }
+            }))
+            .on_drop(cx.listener(move |s, files: &ExternalPaths, _, cx| {
+                #[cfg(target_os = "linux")]
+                if s.linux_file_drag.handles_drops() {
+                    return;
+                }
+                if s.workspace.file_view == Some(id)
+                    && s.dialog.is_none()
+                    && let Some(tab) = s.files.get_mut(&id)
+                {
+                    tab.upload_paths(files.paths(), &s.runtime);
+                }
+                cx.notify();
+            }))
+    }
+
+    fn file_picker_button(
+        &self,
+        id: FileId,
+        upload: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let folders = &self.files[&id].folders;
+        let (label, key, enabled) = if upload {
+            (
+                t("files.upload"),
+                "files-upload",
+                !folders.listing.path.is_empty(),
+            )
+        } else {
+            (
+                t("files.download"),
+                "files-download",
+                !folders.selection().is_empty(),
+            )
+        };
+        let name = format!("{key}-{id}");
+        if enabled {
+            self.button(name, label, cx, move |s, _, cx| {
+                s.file_picker(id, upload, cx)
+            })
+        } else {
+            div()
+                .id(SharedString::from(name.clone()))
+                .debug_selector(move || name.clone())
+                .px_2()
+                .py_1()
+                .border_1()
+                .rounded_sm()
+                .border_color(rgb(self.palette.line))
+                .text_color(rgb(self.palette.muted))
+                .child(label)
+        }
+    }
+
+    fn file_jobs(&self, id: FileId, cx: &mut Context<Self>) -> Stateful<Div> {
+        let tab = &self.files[&id];
         let mut jobs = div()
             .id(SharedString::from(format!("file-jobs-{id}")))
-            .max_h(px(170.))
+            .max_h(relative(0.35))
             .overflow_y_scroll();
         for (index, job) in tab.jobs.iter().enumerate().rev() {
             let p = &job.progress;
             let label = if let Some(err) = &p.error {
-                format!("{} · {err}", p.item)
+                if p.item.is_empty() {
+                    err.clone()
+                } else {
+                    format!("{} · {err}", p.item)
+                }
             } else if p.done {
                 tr!("files.completed", p.completed)
             } else {
@@ -533,14 +660,32 @@ impl Desktop {
                 ));
             }
             if p.error.is_some() {
-                let req = job.request.clone();
                 line = line.child(self.button(
                     format!("retry-{id}-{index}"),
                     t("files.retry"),
                     cx,
                     move |s, _, _| {
                         let tab = s.files.get_mut(&id).unwrap();
-                        let _next = tab.start(req.clone(), &s.runtime);
+                        let request = tab.jobs[index].request.clone();
+                        #[cfg(target_os = "macos")]
+                        if let Some(previous) = &tab.jobs[index].promise {
+                            let batch = Arc::new(previous.retry());
+                            let _guard = s.runtime.enter();
+                            let transfer = tab.browser.start_file_promise(
+                                Arc::new(LocalPaths),
+                                request.clone(),
+                                batch.clone(),
+                            );
+                            tab.jobs.push(Job {
+                                request,
+                                transfer,
+                                progress: Progress::default(),
+                                promise: Some(batch),
+                            });
+                            tab.jobs_open = true;
+                            return;
+                        }
+                        let _next = tab.start(request, &s.runtime);
                         #[cfg(not(target_os = "macos"))]
                         tab.outgoing
                             .retry(&tab.jobs[index].transfer, tab.jobs[_next].transfer.clone());
@@ -549,60 +694,20 @@ impl Desktop {
             }
             jobs = jobs.child(line);
         }
-        #[cfg(not(target_os = "macos"))]
-        {
-            panel = panel.capture_any_mouse_up(cx.listener(move |s, e: &MouseUpEvent, _, _| {
-                if e.button == MouseButton::Left
-                    && let Some(tab) = s.files.get_mut(&id)
-                {
-                    tab.outgoing.release();
-                    tab.pressed = None;
-                }
-            }));
-        }
-        panel = panel.on_mouse_move(cx.listener(move |s, e: &MouseMoveEvent, w, cx| {
-            let tab = s.files.get_mut(&id).unwrap();
-            if !e.dragging() {
-                tab.pressed = None;
-            } else if tab
-                .pressed
-                .as_ref()
-                .is_some_and(|(_, p)| (e.position - *p).magnitude() > 3.0)
-            {
-                let (name, _) = tab.pressed.take().unwrap();
-                s.drag_files(id, &name, w, cx);
-            }
-        }));
-        panel.child(rows).child(jobs).on_drop(cx.listener(
-            move |s, files: &ExternalPaths, _, cx| {
-                #[cfg(target_os = "linux")]
-                if s.linux_file_drag.handles_drops() {
-                    return;
-                }
-                if s.workspace.file_view == Some(id)
-                    && s.dialog.is_none()
-                    && let Some(tab) = s.files.get_mut(&id)
-                {
-                    tab.upload_paths(files.paths(), &s.runtime);
-                }
-                cx.notify();
-            },
-        ))
+        jobs
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Credential, HostProfile};
+    use super::{Credential, HostProfile, Listing, ParentColumn};
     use crate::ui_tests::{redraw, setup};
-    use gpui::{Modifiers, TestAppContext};
+    use crate::workspace;
+    use dgl_core::sftp::Entry;
+    use gpui::{Focusable, Modifiers, TestAppContext, VisualTestContext, point, px, size};
 
-    #[gpui::test]
-    fn host_file_menu_preserves_terminal_tabs_and_resumes_the_selected_browser(
-        cx: &mut TestAppContext,
-    ) {
-        let (view, ui) = setup(cx);
-        let host = HostProfile {
+    fn fixture_host() -> HostProfile {
+        HostProfile {
             id: "remote".into(),
             alias: "remote".into(),
             hostname: "127.0.0.1".into(),
@@ -614,94 +719,270 @@ mod tests {
             last_connected: 0,
             last_session: None,
             last_pane: None,
-        };
-        let (terminal, host_files, session_files) = view.update(ui, |s, cx| {
+        }
+    }
+
+    fn listing(path: &str, entries: &[(&str, bool, bool)]) -> Listing {
+        Listing {
+            path: path.into(),
+            entries: entries
+                .iter()
+                .map(|&(name, directory, regular)| Entry {
+                    name: name.into(),
+                    directory,
+                    regular,
+                    size: None,
+                })
+                .collect(),
+            fallback: None,
+        }
+    }
+
+    fn click(ui: &mut VisualTestContext, selector: &'static str) {
+        let point = ui.debug_bounds(selector).unwrap().center();
+        ui.simulate_click(point, Modifiers::default());
+        redraw(ui);
+    }
+
+    fn open_host(ui: &mut VisualTestContext) {
+        click(ui, "host-menu-remote");
+        click(ui, "open-files-remote-None");
+    }
+
+    #[gpui::test]
+    fn file_panel_resizes_around_existing_splits_and_preserves_both_focus_paths(
+        cx: &mut TestAppContext,
+    ) {
+        let (view, ui) = setup(cx);
+        ui.simulate_resize(size(px(1500.), px(800.)));
+        let (id, first, second, tabs) = view.update(ui, |s, cx| {
+            let host = fixture_host();
             s.local.hosts.push(host.clone());
             s.reconcile_hosts();
-            let host_files = s.create_file_browser(
+            let id = s.create_file_browser(
                 host.clone(),
                 None,
                 None,
                 None,
                 (Credential::default(), None),
-            );
-            s.files.get_mut(&host_files).unwrap().listing.path = "/home/fixture".into();
-            let session = Some("$1".to_string());
-            let session_files = s.create_file_browser(
-                host.clone(),
-                session.clone(),
-                None,
-                None,
-                (Credential::default(), None),
-            );
-            s.files.get_mut(&session_files).unwrap().listing.path = "/work".into();
-            let terminal = s.create_tab(
-                HostProfile {
-                    last_session: session,
-                    ..host
-                },
-                Credential::default(),
-                None,
                 cx,
             );
-            cx.notify();
-            (terminal, host_files, session_files)
+            let folders = &mut s.files.get_mut(&id).unwrap().folders;
+            folders.listing = listing("/home/work", &[("document", false, true)]);
+            folders.parents.insert(
+                "/home".into(),
+                ParentColumn::Ready(listing("/home", &[("work", true, false)])),
+            );
+            folders.parents.insert(
+                "/".into(),
+                ParentColumn::Ready(listing("/", &[("home", true, false)])),
+            );
+            let first = s.create_tab(host.clone(), Credential::default(), None, cx);
+            let other = s.create_tab(host.clone(), Credential::default(), None, cx);
+            assert!(
+                s.workspace
+                    .split_tab(other, 1, workspace::DockEdge::Right, 1100., 800.)
+            );
+            let second = s.workspace.active;
+            let third = s.create_tab(host, Credential::default(), None, cx);
+            (id, first, second, [first, other, third])
         });
         redraw(ui);
-        assert!(ui.debug_bounds("switch-to-sftp").is_none());
-        assert!(ui.debug_bounds("switch-to-terminal").is_none());
-        let open_host_files = |ui: &mut gpui::VisualTestContext| {
-            let menu = ui.debug_bounds("host-menu-remote").unwrap().center();
-            ui.simulate_click(menu, Modifiers::default());
-            redraw(ui);
-            let button = ui.debug_bounds("open-files-remote-None").unwrap().center();
-            ui.simulate_click(button, Modifiers::default());
-            redraw(ui);
-        };
-        for showing_files in [true, false, true] {
-            if showing_files {
-                open_host_files(ui);
-                let panel = ui.debug_bounds("file-panel").unwrap();
-                assert!(panel.left() >= ui.debug_bounds("session-sidebar").unwrap().right());
-                assert!(panel.bottom() <= ui.debug_bounds("status-bar").unwrap().top());
-            } else {
-                let button = ui.debug_bounds("switch-to-terminal").unwrap().center();
-                ui.simulate_click(button, Modifiers::default());
-                redraw(ui);
+        open_host(ui);
+        let sidebar = ui.debug_bounds("session-sidebar").unwrap();
+        let panel = ui.debug_bounds("file-panel").unwrap();
+        let status = ui.debug_bounds("status-bar").unwrap();
+        assert_eq!(panel.top(), sidebar.top());
+        assert!(
+            (f32::from(panel.size.width) - 0.44 * (1500. - f32::from(sidebar.size.width))).abs()
+                < 1.,
+            "side panel {panel:?}, sidebar {sidebar:?}"
+        );
+        assert_eq!(panel.bottom(), status.top());
+        assert!(ui.debug_bounds("file-column-2").is_some());
+        view.read_with(ui, |s, cx| {
+            assert_eq!(s.workspace.visible_tabs(), vec![first, tabs[2]]);
+            for group in &s.workspace.layout.groups() {
+                assert!(
+                    f32::from(s.pointer.group_bounds[group].size.width) >= workspace::MIN_WIDTH
+                );
             }
-            view.read_with(ui, |s, cx| {
-                assert!(s.menu.is_none());
-                assert_eq!(s.tabs[0].terminal.read(cx).enabled, !showing_files);
-                assert_eq!(s.workspace.groups[&s.workspace.active].tabs, vec![terminal]);
-                assert_eq!(s.workspace.file_view, showing_files.then_some(host_files));
-                assert_eq!(s.workspace.selected(), (!showing_files).then_some(terminal));
-                assert_eq!(s.workspace.visible_tabs().is_empty(), showing_files);
-                assert_eq!(s.files[&host_files].listing.path, "/home/fixture");
-                assert_eq!(s.files[&session_files].listing.path, "/work");
-            });
-        }
-        ui.simulate_keystrokes("escape");
-        redraw(ui);
-        view.read_with(ui, |s, _| {
-            assert_eq!(s.workspace.selected(), Some(terminal))
+            assert!(s.tabs.iter().all(|t| t.terminal.read(cx).enabled));
         });
 
-        // A saved host also has a file view when no terminal is open.
+        click(ui, "file-row-/home/work/document");
+        click(ui, "tab-2");
+        let terminal = view.read_with(ui, |s, _| s.active_tab().unwrap().terminal.clone());
+        ui.simulate_keystrokes("escape");
+        redraw(ui);
+        assert_eq!(
+            terminal.read_with(ui, |t, cx| t.captured_inputs(cx).clone()),
+            vec![vec![0x1b]]
+        );
+        view.read_with(ui, |s, _| {
+            assert_eq!(s.workspace.file_view, Some(id));
+            assert_eq!(s.workspace.active, second);
+            assert_eq!(s.workspace.selected(), Some(tabs[1]));
+            assert_eq!(
+                s.files[&id].folders.selection(),
+                vec!["/home/work/document"]
+            );
+        });
+
+        ui.simulate_resize(size(px(850.), px(720.)));
+        redraw(ui);
+        let panel = ui.debug_bounds("file-panel").unwrap();
+        let sidebar = ui.debug_bounds("session-sidebar").unwrap();
+        let status = ui.debug_bounds("status-bar").unwrap();
+        assert_eq!(panel.left(), sidebar.left());
+        assert_eq!(panel.right(), status.right());
+        assert!(panel.top() >= sidebar.bottom());
+        assert_eq!(panel.bottom(), status.top());
+        assert!((f32::from(panel.size.height) - f32::from(status.top()) * 0.45).abs() < 1.);
+
+        open_host(ui);
+        ui.simulate_keystrokes("left");
+        view.read_with(ui, |s, _| {
+            assert_eq!(s.files[&id].folders.cursor_path, "/home")
+        });
+        ui.simulate_keystrokes("right down");
+        view.read_with(ui, |s, _| {
+            assert_eq!(s.files[&id].folders.cursor_path, "/home/work")
+        });
+        assert_eq!(
+            terminal.read_with(ui, |t, cx| t.captured_inputs(cx).len()),
+            1
+        );
+        ui.simulate_keystrokes("escape");
+        redraw(ui);
+        view.read_with(ui, |s, _| assert_eq!(s.workspace.file_view, None));
+        assert!(ui.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+
+        open_host(ui);
+        click(ui, "collapse-files");
         view.update(ui, |s, cx| {
-            s.close_tab(terminal);
+            for tab in tabs {
+                s.close_tab(tab);
+            }
             cx.notify();
         });
         redraw(ui);
-        open_host_files(ui);
-        ui.update(|w, cx| {
-            view.update(cx, |s, cx| {
-                assert_eq!(s.workspace.file_view, Some(host_files));
-                assert!(s.workspace.groups[&s.workspace.active].tabs.is_empty());
-                s.close_file_view(w, cx);
-                assert!(s.workspace.file_view.is_none());
-                assert!(!s.files.contains_key(&host_files));
-                assert!(s.files.contains_key(&session_files));
-            })
+        open_host(ui);
+        let panel = ui.debug_bounds("file-panel").unwrap();
+        assert_eq!(
+            panel.left(),
+            ui.debug_bounds("session-sidebar").unwrap().right()
+        );
+        assert_eq!(panel.bottom(), ui.debug_bounds("status-bar").unwrap().top());
+        view.read_with(ui, |s, _| {
+            assert_eq!(
+                s.files[&id].folders.selection(),
+                vec!["/home/work/document"]
+            )
         });
+        click(ui, "close-files-1");
+        view.read_with(ui, |s, _| assert!(!s.files.contains_key(&id)));
+    }
+
+    #[gpui::test]
+    fn file_rows_select_to_their_end_and_only_the_latest_folder_response_applies(
+        cx: &mut TestAppContext,
+    ) {
+        let (view, ui) = setup(cx);
+        ui.simulate_resize(size(px(1200.), px(700.)));
+        let id = view.update(ui, |s, cx| {
+            let host = fixture_host();
+            s.local.hosts.push(host.clone());
+            s.reconcile_hosts();
+            let id =
+                s.create_file_browser(host, None, None, None, (Credential::default(), None), cx);
+            s.files.get_mut(&id).unwrap().folders.listing = listing(
+                "/work",
+                &[
+                    ("first", true, false),
+                    ("next", true, false),
+                    ("a", false, true),
+                    ("link", false, false),
+                    ("b", false, true),
+                    ("c", false, true),
+                ],
+            );
+            id
+        });
+        redraw(ui);
+        open_host(ui);
+        let row_end = |ui: &mut VisualTestContext, selector, modifiers| {
+            let bounds = ui.debug_bounds(selector).unwrap();
+            ui.simulate_click(point(bounds.right() - px(3.), bounds.center().y), modifiers);
+            redraw(ui);
+        };
+        row_end(ui, "file-row-/work/a", Modifiers::default());
+        row_end(
+            ui,
+            "file-row-/work/c",
+            Modifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
+        let selection = |ui: &mut VisualTestContext| {
+            view.read_with(ui, |s, _| s.files[&id].folders.selection())
+        };
+        assert_eq!(selection(ui), ["/work/a", "/work/b", "/work/c"]);
+        row_end(
+            ui,
+            "file-row-/work/b",
+            Modifiers {
+                control: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(selection(ui), ["/work/a", "/work/c"]);
+        row_end(
+            ui,
+            "file-row-/work/b",
+            Modifiers {
+                platform: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(selection(ui), ["/work/a", "/work/b", "/work/c"]);
+        row_end(ui, "file-row-/work/link", Modifiers::default());
+        assert_eq!(selection(ui), ["/work/a", "/work/b", "/work/c"]);
+
+        let pending = |ui: &mut VisualTestContext| {
+            view.read_with(ui, |s, _| {
+                let attempt = s.files[&id].folders.attempt.as_ref().unwrap();
+                (attempt.serial, attempt.path.clone().unwrap())
+            })
+        };
+        row_end(ui, "file-row-/work/first", Modifiers::default());
+        let (first, path) = pending(ui);
+        assert_eq!(path, "/work/first");
+        row_end(ui, "file-row-/work/next", Modifiers::default());
+        let (next, path) = pending(ui);
+        assert_eq!(path, "/work/next");
+        view.update(ui, |s, cx| {
+            let folders = &mut s.files.get_mut(&id).unwrap().folders;
+            assert!(folders.finish(next, Ok(listing("/work/next", &[("readme", false, true)]))));
+            assert!(!folders.finish(first, Ok(listing("/work/first", &[]))));
+            cx.notify();
+        });
+        redraw(ui);
+        assert!(ui.debug_bounds("file-row-/work/next/readme").is_some());
+        assert!(selection(ui).is_empty());
+
+        row_end(ui, "file-row-/work/first", Modifiers::default());
+        let (failed, _) = pending(ui);
+        view.update(ui, |s, cx| {
+            let folders = &mut s.files.get_mut(&id).unwrap().folders;
+            assert!(!folders.finish(failed, Err("Denied".into())));
+            assert_eq!(folders.listing.path, "/work/next");
+            assert_eq!(folders.refresh_path().as_deref(), Some("/work/first"));
+            cx.notify();
+        });
+        redraw(ui);
+        assert!(ui.debug_bounds("file-row-/work/next/readme").is_some());
+        assert!(ui.debug_bounds("file-column-status-2").is_some());
     }
 }

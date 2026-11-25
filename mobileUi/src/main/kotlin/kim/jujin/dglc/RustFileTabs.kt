@@ -4,6 +4,8 @@ import android.content.Context
 import kim.jujin.dglc.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import uniffi.dgl_core.CoreException
 import uniffi.dgl_core.NativeFileTransfer
@@ -26,6 +28,8 @@ class RustFileTabs(context: Context, private val model: AppModel) : FileTabs {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private class Tab(val host: HostProfile, val pane: String?) {
         var native: NativeFiles? = null
+        val opening = Mutex()
+        var navigation = 0L
         val jobs = mutableMapOf<Long, NativeFileTransfer>()
         val requests = mutableMapOf<Long, FileCopy>()
     }
@@ -49,7 +53,9 @@ class RustFileTabs(context: Context, private val model: AppModel) : FileTabs {
     }
     override fun select(key: FileTabKey?) { selected.value = key }
     override fun toggle(key: FileTabKey, name: String) = change(key) { state ->
-        state.copy(selected = if (name in state.selected) state.selected - name else state.selected + name)
+        if (state.listing.entries.any { it.name == name && it.regular }) {
+            state.copy(selected = if (name in state.selected) state.selected - name else state.selected + name)
+        } else state
     }
     private fun native(tab: Tab, key: FileTabKey): NativeFiles {
         val host = tab.host
@@ -62,27 +68,33 @@ class RustFileTabs(context: Context, private val model: AppModel) : FileTabs {
     }
     override fun browse(key: FileTabKey, path: String?) {
         val tab = owners[key] ?: return
-        if (tabs.value[key]?.loading == true) return
-        change(key) { it.copy(loading = true, error = null, fingerprint = null) }
+        val request = ++tab.navigation
+        fun current() = owners[key] === tab && tab.navigation == request
+        change(key) { it.copy(loading = true, browsePath = path, error = null, fingerprint = null) }
         scope.launch {
             try {
-                val client = tab.native ?: withContext(Dispatchers.IO) { native(tab, key) }.also {
-                    if (owners[key] !== tab) { it.close(); return@launch }
-                    tab.native = it
+                val client = tab.opening.withLock {
+                    if (!current()) return@launch
+                    tab.native ?: withContext(Dispatchers.IO) { native(tab, key) }.also {
+                        if (owners[key] !== tab) { it.close(); return@launch }
+                        tab.native = it
+                    }
                 }
+                if (!current()) return@launch
                 val list = withContext(Dispatchers.IO) { json.decodeFromString(FileListing.serializer(), client.list(path)) }
-                if (owners[key] === tab) change(key) { it.copy(listing = list, loading = false,
-                    selected = if (list.path == it.listing.path) it.selected.intersect(list.entries.map { e -> e.name }.toSet()) else emptySet()) }
+                if (current()) change(key) { it.copy(listing = list, loading = false, browsePath = null,
+                    selected = if (list.path == it.listing.path) it.selected.intersect(list.entries.filter(FileEntry::regular).map(FileEntry::name).toSet()) else emptySet()) }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                if (owners[key] === tab) change(key) { it.copy(loading = false, error = e.message,
+                if (current()) change(key) { it.copy(loading = false, error = e.message,
                     fingerprint = if ((e as? CoreException.Failure)?.code == "HostKeyUnknown") tab.native?.fingerprint() else null) }
             }
         }
     }
     override fun trust(key: FileTabKey) {
         val tab = owners[key] ?: return
-        val fingerprint = tabs.value[key]?.fingerprint ?: return
+        val state = tabs.value[key] ?: return
+        val fingerprint = state.fingerprint ?: return
         try {
             val host = tab.host
             model.modify { old ->
@@ -92,7 +104,7 @@ class RustFileTabs(context: Context, private val model: AppModel) : FileTabs {
                 old.copy(trust = old.trust + (host.endpoint to fingerprint))
             }
             tab.native?.close(); tab.native = null
-            browse(key, null)
+            browse(key, state.browsePath)
         } catch (e: Exception) { change(key) { it.copy(error = e.message) } }
     }
     override fun copy(key: FileTabKey, request: FileCopy) {
@@ -109,7 +121,8 @@ class RustFileTabs(context: Context, private val model: AppModel) : FileTabs {
                     if (p.done) {
                         if (p.error == null) {
                             tab.requests.remove(id)
-                            if (request.upload && tabs.value[key]?.listing?.path == request.destination) browse(key, request.destination)
+                            val state = tabs.value[key]
+                            if (request.upload && state?.loading == false && state.listing.path == request.destination) browse(key, request.destination)
                         }
                         break
                     }

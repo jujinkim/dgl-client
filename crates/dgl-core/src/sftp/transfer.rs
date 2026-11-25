@@ -1,7 +1,7 @@
-use super::{Entry, FilesError, Result, child_path, list};
+use super::{Entry, FilesError, Result, child_path};
 use russh_sftp::{
     client::{SftpSession, error::Error as SftpError},
-    protocol::{FileAttributes, FileType, OpenFlags, StatusCode},
+    protocol::{FileAttributes, OpenFlags, StatusCode},
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path, sync::Mutex};
@@ -13,9 +13,8 @@ use tokio::{
 /// IDs are opaque. Android supplies document URIs, the desktop supplies absolute paths.
 pub trait LocalTree: Send + Sync {
     fn entry(&self, id: &str) -> io::Result<Entry>;
-    fn children(&self, id: &str) -> io::Result<Vec<String>>;
     fn find(&self, parent: &str, name: &str) -> io::Result<Option<String>>;
-    fn create(&self, parent: &str, name: &str, directory: bool) -> io::Result<String>;
+    fn create_file(&self, parent: &str, name: &str) -> io::Result<String>;
     fn open(&self, id: &str, write: bool) -> io::Result<fs::File>;
     fn publish(
         &self,
@@ -66,18 +65,13 @@ impl LocalTree for LocalPaths {
         let name = Path::new(id)
             .file_name()
             .and_then(|s| s.to_str())
-            .ok_or_else(|| io::Error::other("Invalid file name"))?;
+            .unwrap_or("");
         Ok(Entry {
             name: name.to_owned(),
             directory: m.is_dir(),
             regular: m.is_file(),
             size: Some(m.len()),
         })
-    }
-    fn children(&self, id: &str) -> io::Result<Vec<String>> {
-        fs::read_dir(id)?
-            .map(|item| path_id(&item?.path()))
-            .collect()
     }
     fn find(&self, parent: &str, name: &str) -> io::Result<Option<String>> {
         let id = local_child(parent, name)?;
@@ -87,19 +81,15 @@ impl LocalTree for LocalPaths {
             Err(e) => Err(e),
         }
     }
-    fn create(&self, parent: &str, name: &str, directory: bool) -> io::Result<String> {
+    fn create_file(&self, parent: &str, name: &str) -> io::Result<String> {
         let id = local_child(parent, name)?;
-        if directory {
-            fs::create_dir(&id)?
-        } else {
-            let mut options = fs::OpenOptions::new();
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.mode(0o600);
-            }
-            options.write(true).create_new(true).open(&id)?;
+        let mut options = fs::OpenOptions::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
         }
+        options.write(true).create_new(true).open(&id)?;
         Ok(id)
     }
     fn open(&self, id: &str, write: bool) -> io::Result<fs::File> {
@@ -203,7 +193,7 @@ impl Transfer {
         self.state.lock().unwrap().progress.conflict = None;
         Ok(())
     }
-    fn check(&self) -> Result<()> {
+    pub(super) fn check(&self) -> Result<()> {
         if *self.cancel.borrow() {
             Err(FilesError::Cancelled)
         } else {
@@ -238,67 +228,28 @@ impl Transfer {
             } => result,
         }
     }
-    /// Snapshot the tree before creating any destination entries. This also bounds a
-    /// copy between two views of the same filesystem when the destination is inside the source.
+    /// Validate the entire request before creating any destination entries.
     async fn snapshot(
         &self,
         remote: &SftpSession,
         local: &dyn LocalTree,
         req: &CopyRequest,
     ) -> Result<Vec<SourceItem>> {
-        let mut items = Vec::new();
-        let mut pending: Vec<_> = req
-            .sources
-            .iter()
-            .rev()
-            .map(|id| (id.clone(), None))
-            .collect();
-        let mut seen_dirs = std::collections::HashSet::new();
+        let mut items = Vec::with_capacity(req.sources.len());
         let mut total = Some(0_u64);
-        while let Some((id, parent)) = pending.pop() {
+        for id in &req.sources {
             self.check()?;
             let entry = if req.upload {
-                local.entry(&id)?
+                regular_source(id, local.entry(id)?)?
             } else {
-                let name = id.rsplit('/').next().unwrap_or("");
-                Entry::remote(name.into(), &remote.symlink_metadata(&id).await?)
+                remote_source(remote, id).await?
             };
-            let name = if parent.is_none() {
-                req.name.clone().unwrap_or(entry.name)
-            } else {
-                entry.name
-            };
+            let name = req.name.clone().unwrap_or(entry.name);
             child_path("", &name)?;
-            if entry.directory {
-                if !seen_dirs.insert(id.clone()) {
-                    return Err(FilesError::Type(id));
-                }
-                let children = if req.upload {
-                    local.children(&id)?
-                } else {
-                    list(remote, &id)
-                        .await?
-                        .entries
-                        .iter()
-                        .map(|e| child_path(&id, &e.name))
-                        .collect::<Result<_>>()?
-                };
-                pending.extend(
-                    children
-                        .into_iter()
-                        .rev()
-                        .map(|child| (child, Some(items.len()))),
-                );
-            } else if entry.regular {
-                total = total.zip(entry.size).and_then(|(a, b)| a.checked_add(b));
-            } else {
-                return Err(FilesError::Type(id));
-            }
+            total = total.zip(entry.size).and_then(|(a, b)| a.checked_add(b));
             items.push(SourceItem {
-                id,
-                parent,
+                id: id.clone(),
                 name,
-                directory: entry.directory,
                 size: entry.size,
             });
         }
@@ -312,21 +263,13 @@ impl Transfer {
         req: &CopyRequest,
     ) -> Result<()> {
         let items = self.snapshot(&files.remote, local, req).await?;
-        let mut folders = std::collections::HashMap::<usize, String>::new();
-        for (index, item) in items.into_iter().enumerate() {
+        for item in items {
             self.check()?;
-            let parent = item
-                .parent
-                .map(|i| folders[&i].as_str())
-                .unwrap_or(&req.destination);
             self.state.lock().unwrap().progress.item = item.name.clone();
-            let dir = if req.upload {
-                self.upload(files, local, parent, &item).await?
+            if req.upload {
+                self.upload(files, local, &req.destination, &item).await?;
             } else {
-                self.download(files, local, parent, &item).await?
-            };
-            if let Some(dir) = dir {
-                folders.insert(index, dir);
+                self.download(files, local, &req.destination, &item).await?;
             }
             self.state.lock().unwrap().progress.completed += 1;
         }
@@ -338,7 +281,7 @@ impl Transfer {
         local: &dyn LocalTree,
         parent: &str,
         item: &SourceItem,
-    ) -> Result<Option<String>> {
+    ) -> Result<()> {
         let remote = &files.remote;
         let path = child_path(parent, &item.name)?;
         let existing = match remote.symlink_metadata(&path).await {
@@ -346,20 +289,14 @@ impl Transfer {
             Err(SftpError::Status(s)) if s.status_code == StatusCode::NoSuchFile => None,
             Err(e) => return Err(e.into()),
         };
-        if item.directory {
-            match existing {
-                Some(FileType::Dir) => {}
-                Some(_) => return Err(FilesError::Type(path)),
-                None => remote.create_dir(&path).await?,
-            }
-            return Ok(Some(path));
-        }
         if let Some(kind) = existing {
             if !kind.is_file() {
                 return Err(FilesError::Type(path));
             }
             self.confirm(&path, files).await?;
         }
+        self.check()?;
+        regular_source(&item.id, local.entry(&item.id)?)?;
         let input = tokio::fs::File::from_std(local.open(&item.id, false)?);
         let temp = child_path(parent, &temp_name())?;
         let mut attrs = FileAttributes::empty();
@@ -381,7 +318,7 @@ impl Transfer {
         if result.is_err() {
             let _ = remote.remove_file(&temp).await;
         }
-        result.map(|_| None)
+        result
     }
     async fn download(
         &self,
@@ -389,24 +326,18 @@ impl Transfer {
         local: &dyn LocalTree,
         parent: &str,
         item: &SourceItem,
-    ) -> Result<Option<String>> {
+    ) -> Result<()> {
         let existing = local.find(parent, &item.name)?;
-        if item.directory {
-            let dir = match existing {
-                Some(id) if local.entry(&id)?.directory => id,
-                Some(id) => return Err(FilesError::Type(id)),
-                None => local.create(parent, &item.name, true)?,
-            };
-            return Ok(Some(dir));
-        }
         if let Some(id) = &existing {
             if !local.entry(id)?.regular {
                 return Err(FilesError::Type(id.clone()));
             }
             self.confirm(&item.id, files).await?;
         }
+        self.check()?;
+        remote_source(&files.remote, &item.id).await?;
         let mut file = files.remote.open(&item.id).await?;
-        let temp = local.create(parent, &temp_name(), false)?;
+        let temp = local.create_file(parent, &temp_name())?;
         let result: Result<()> = async {
             let writer = tokio::fs::File::from_std(local.open(&temp, true)?);
             self.stream(&mut file, writer, item.size).await?;
@@ -419,16 +350,29 @@ impl Transfer {
         if result.is_err() {
             let _ = local.discard(&temp);
         }
-        result.map(|_| None)
+        result
     }
 }
 
 struct SourceItem {
     id: String,
-    parent: Option<usize>,
     name: String,
-    directory: bool,
     size: Option<u64>,
+}
+
+fn regular_source(id: &str, entry: Entry) -> Result<Entry> {
+    if !entry.regular || entry.directory {
+        return Err(FilesError::SourceType(id.into()));
+    }
+    Ok(entry)
+}
+
+pub(super) async fn remote_source(remote: &SftpSession, id: &str) -> Result<Entry> {
+    let attrs = remote.symlink_metadata(id).await?;
+    regular_source(
+        id,
+        Entry::remote(id.rsplit('/').next().unwrap_or("").into(), &attrs),
+    )
 }
 
 async fn publish_remote(

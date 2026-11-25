@@ -10,7 +10,8 @@ data class FileTabKey(val host: String, val session: String?)
 @Serializable data class FileProgress(val item: String = "", val bytes: Long = 0, val size: Long? = null, val completed: Long = 0,
     val conflict: String? = null, val done: Boolean = false, val error: String? = null)
 data class FileTabState(val title: String, val listing: FileListing = FileListing(), val loading: Boolean = true,
-    val error: String? = null, val fingerprint: String? = null, val selected: Set<String> = emptySet(), val transfers: Map<Long, FileProgress> = emptyMap())
+    val browsePath: String? = null, val error: String? = null, val fingerprint: String? = null,
+    val selected: Set<String> = emptySet(), val transfers: Map<Long, FileProgress> = emptyMap())
 data class FileCopy(val upload: Boolean, val sources: List<String>, val destination: String)
 
 interface FileTabs {

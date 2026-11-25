@@ -30,9 +30,6 @@ import kim.jujin.dglc.core.*
     val uploadFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) files.copy(key, FileCopy(true, uris.map(Uri::toString), uploadTo))
     }
-    val uploadFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        uri?.let { files.copy(key, FileCopy(true, listOf(it.toString()), uploadTo)) }
-    }
     val download = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let { files.copy(key, FileCopy(false, downloadFrom, it.toString())) }
     }
@@ -48,17 +45,20 @@ import kim.jujin.dglc.core.*
             TextButton({ files.close(key) }) { Text(t("common.close")) }
         }
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton({ files.browse(key, path.substringBeforeLast('/').ifEmpty { "/" }) }, enabled = path.isNotEmpty() && !state.loading) { Text(t("files.up")) }
-            TextButton({ files.browse(key, path.takeIf(String::isNotEmpty)) }, enabled = !state.loading) { Text(t("common.refresh")) }
+            TextButton({ files.browse(key, path.substringBeforeLast('/').ifEmpty { "/" }) }, enabled = path.isNotEmpty() && path != "/") { Text(t("files.up")) }
+            TextButton({ files.browse(key, state.browsePath ?: path.takeIf(String::isNotEmpty)) }) { Text(t("common.refresh")) }
             TextButton({ uploadTo = path; uploadFiles.launch(arrayOf("*/*")) }, enabled = path.isNotEmpty()) { Text(t("files.upload")) }
-            TextButton({ uploadTo = path; uploadFolder.launch(null) }, enabled = path.isNotEmpty()) { Text(t("files.upload_folder")) }
             TextButton({ downloadFrom = ArrayList(state.selected.map { path.trimEnd('/') + "/" + it }); download.launch(null) },
                 enabled = state.selected.isNotEmpty()) { Text(t("files.download")) }
         }
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Column(Modifier.padding(horizontal = 8.dp)) {
             state.listing.fallback?.let { Text(tr("files.fallback", it)) }
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (state.loading) state.browsePath?.let { Text(tr("files.loading_path", it)) }
+            state.error?.let { error ->
+                Text(state.browsePath?.let { tr("files.path_error", it, error) } ?: error, color = MaterialTheme.colorScheme.error)
+            }
+            if (path.isNotEmpty() && state.listing.entries.isEmpty()) Text(t("files.empty"))
             state.fingerprint?.let { fp ->
                 Text(fp)
                 TextButton({ files.trust(key) }) { Text(t("workspace.trust_after_verify")) }
@@ -72,9 +72,10 @@ import kim.jujin.dglc.core.*
                     } else Modifier
                     Row(Modifier.fillMaxWidth().then(openFolder).padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(entry.name in state.selected, { files.toggle(key, entry.name) },
-                            modifier = Modifier.width(44.dp).semantics { contentDescription = entry.name },
-                            enabled = entry.directory || entry.regular)
+                        if (entry.regular) {
+                            Checkbox(entry.name in state.selected, { files.toggle(key, entry.name) },
+                                modifier = Modifier.width(44.dp).semantics { contentDescription = entry.name })
+                        } else Spacer(Modifier.width(44.dp))
                         Text(if (entry.directory) entry.name + "/" else entry.name,
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (entry.directory) MaterialTheme.colorScheme.primary else LocalContentColor.current)

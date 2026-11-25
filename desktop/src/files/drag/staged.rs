@@ -30,7 +30,6 @@ impl Outgoing {
         runtime: Arc<tokio::runtime::Runtime>,
         jobs: &mut Vec<Job>,
         _window: &mut Window,
-        _dirs: Vec<bool>,
     ) -> Result<(), String> {
         if let Some(stage) = &mut self.stage {
             if !stage.transfer.progress().done {

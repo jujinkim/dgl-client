@@ -2,14 +2,13 @@ use super::*;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     ffi::{CStr, CString, c_char, c_void},
-    sync::mpsc,
+    sync::{Mutex, Weak, mpsc},
 };
 
 unsafe extern "C" {
     fn dgl_file_drag(
         view: *mut c_void,
         names: *const *const c_char,
-        dirs: *const bool,
         count: usize,
         context: *const c_void,
     ) -> bool;
@@ -17,18 +16,27 @@ unsafe extern "C" {
 }
 struct Promise {
     sources: Vec<String>,
-    browser: Arc<Browser>,
-    runtime: Arc<tokio::runtime::Runtime>,
-    sender: mpsc::Sender<Job>,
+    browser: Weak<Browser>,
+    runtime: Weak<tokio::runtime::Runtime>,
+    batch: Arc<sftp::DownloadBatch>,
+    sender: Arc<Mutex<Option<mpsc::Sender<Job>>>>,
 }
 pub(in crate::files) struct Outgoing {
-    sender: mpsc::Sender<Job>,
+    sender: Arc<Mutex<Option<mpsc::Sender<Job>>>>,
     receiver: mpsc::Receiver<Job>,
 }
 impl Default for Outgoing {
     fn default() -> Self {
         let (sender, receiver) = mpsc::channel();
-        Self { sender, receiver }
+        Self {
+            sender: Arc::new(Mutex::new(Some(sender))),
+            receiver,
+        }
+    }
+}
+impl Drop for Outgoing {
+    fn drop(&mut self) {
+        self.sender.lock().unwrap().take();
     }
 }
 impl Outgoing {
@@ -44,7 +52,6 @@ impl Outgoing {
         runtime: Arc<tokio::runtime::Runtime>,
         _: &mut Vec<Job>,
         window: &mut Window,
-        dirs: Vec<bool>,
     ) -> Result<(), String> {
         let RawWindowHandle::AppKit(handle) = HasWindowHandle::window_handle(window)
             .map_err(|e| e.to_string())?
@@ -59,16 +66,16 @@ impl Outgoing {
             .map_err(|e| e.to_string())?;
         let pointers = names.iter().map(|s| s.as_ptr()).collect::<Vec<_>>();
         let context = Arc::new(Promise {
+            batch: Arc::new(sftp::DownloadBatch::new(sources.clone())),
             sources,
-            browser,
-            runtime,
+            browser: Arc::downgrade(&browser),
+            runtime: Arc::downgrade(&runtime),
             sender: self.sender.clone(),
         });
         let ok = unsafe {
             dgl_file_drag(
                 handle.ns_view.as_ptr(),
                 pointers.as_ptr(),
-                dirs.as_ptr(),
                 names.len(),
                 Arc::as_ptr(&context).cast(),
             )
@@ -113,21 +120,29 @@ unsafe extern "C" fn dgl_file_write(
         destination: dest.into(),
         name: Some(name.into()),
     };
-    let _runtime = ctx.runtime.enter();
-    let transfer = ctx.browser.start(Arc::new(LocalPaths), request.clone());
-    if ctx
-        .sender
-        .send(Job {
+    let (Some(browser), Some(runtime)) = (ctx.browser.upgrade(), ctx.runtime.upgrade()) else {
+        unsafe { dgl_file_written(completion, c"Cancelled".as_ptr()) };
+        return;
+    };
+    let transfer = {
+        let sender = ctx.sender.lock().unwrap();
+        let Some(sender) = sender.as_ref() else {
+            unsafe { dgl_file_written(completion, c"Cancelled".as_ptr()) };
+            return;
+        };
+        let _runtime = runtime.enter();
+        let transfer =
+            browser.start_file_promise(Arc::new(LocalPaths), request.clone(), ctx.batch.clone());
+        let _ = sender.send(Job {
             request,
             transfer: transfer.clone(),
             progress: Default::default(),
-        })
-        .is_err()
-    {
-        transfer.cancel();
-    }
+            promise: Some(ctx.batch.clone()),
+        });
+        transfer
+    };
     crate::cadence::wake();
-    ctx.runtime.spawn(async move {
+    runtime.spawn(async move {
         loop {
             let p = transfer.progress();
             if p.done {

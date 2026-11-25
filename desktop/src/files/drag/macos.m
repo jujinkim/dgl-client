@@ -19,7 +19,7 @@ extern void dgl_file_write(const void *, size_t, const char *, uintptr_t);
 - (NSDragOperation)draggingSession:(NSDraggingSession *)session sourceOperationMaskForDraggingContext:(NSDraggingContext)context { return NSDragOperationCopy; }
 @end
 
-bool dgl_file_drag(void *viewPtr, const char **names, const bool *dirs, size_t count, const void *context) {
+bool dgl_file_drag(void *viewPtr, const char **names, size_t count, const void *context) {
     NSView *view = (__bridge NSView *)viewPtr;
     NSEvent *event = NSApp.currentEvent;
     if (!event || !count || !view.window || event.window != view.window) return false;
@@ -33,10 +33,10 @@ bool dgl_file_drag(void *viewPtr, const char **names, const bool *dirs, size_t c
         dgl_file_retain(context);
         delegate.context = context;
         if (!source) source = delegate;
-        NSFilePromiseProvider *provider = [[NSFilePromiseProvider alloc] initWithFileType:dirs[i] ? @"public.folder" : @"public.data" delegate:delegate];
+        NSFilePromiseProvider *provider = [[NSFilePromiseProvider alloc] initWithFileType:@"public.data" delegate:delegate];
         provider.userInfo = delegate; // The provider's delegate property is weak.
         NSDraggingItem *item = [[NSDraggingItem alloc] initWithPasteboardWriter:provider];
-        NSImage *image = [NSImage imageWithSystemSymbolName:dirs[i] ? @"folder" : @"doc" accessibilityDescription:delegate.name];
+        NSImage *image = [NSImage imageWithSystemSymbolName:@"doc" accessibilityDescription:delegate.name];
         [item setDraggingFrame:NSMakeRect(point.x, point.y, 32, 32) contents:image];
         [items addObject:item];
     }

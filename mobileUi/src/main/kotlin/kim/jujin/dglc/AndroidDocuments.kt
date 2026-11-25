@@ -17,12 +17,15 @@ internal class AndroidDocuments(private val resolver: ContentResolver) : Documen
         else uri
     }
     private fun entry(uri: Uri): FileEntry {
-        val columns = arrayOf(Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE)
+        val columns = arrayOf(Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE, Document.COLUMN_FLAGS)
         return resolver.query(uri, columns, null, null, null)?.use { c ->
             if (!c.moveToFirst()) throw IOException("Missing document")
-            val directory = c.getString(1) == Document.MIME_TYPE_DIR
+            val mime = c.getString(1)
+            val directory = mime == Document.MIME_TYPE_DIR
+            val regular = !directory && !mime.isNullOrBlank() && !mime.startsWith("inode/") &&
+                (c.getInt(3) and Document.FLAG_VIRTUAL_DOCUMENT) == 0
             val size = if (c.isNull(2)) null else c.getLong(2).takeIf { it >= 0 }
-            FileEntry(c.getString(0), directory, !directory, size)
+            FileEntry(c.getString(0), directory, regular, size)
         } ?: throw IOException("Document unavailable")
     }
     override fun entryJson(id: String) = Json.encodeToString(FileEntry.serializer(), entry(document(id)))
@@ -35,17 +38,10 @@ internal class AndroidDocuments(private val resolver: ContentResolver) : Documen
             }
         } ?: throw IOException("Folder unavailable")
     }
-    override fun children(id: String) = entries(id).map { it.second }
     override fun find(parent: String, name: String) = entries(parent).firstOrNull { it.first == name }?.second
-    override fun create(parent: String, name: String, directory: Boolean): String {
-        val mime = if (directory) Document.MIME_TYPE_DIR else "application/octet-stream"
-        val created = DocumentsContract.createDocument(resolver, document(parent), mime, name) ?: throw IOException("Cannot create $name")
-        if (directory && entry(created).name != name) {
-            discard(created.toString())
-            throw IOException("Name already exists: $name")
-        }
-        return created.toString()
-    }
+    override fun createFile(parent: String, name: String): String =
+        DocumentsContract.createDocument(resolver, document(parent), "application/octet-stream", name)?.toString()
+            ?: throw IOException("Cannot create $name")
     override fun openFd(id: String, write: Boolean): Int =
         resolver.openFileDescriptor(document(id), if (write) "w" else "r")?.use { it.detachFd() }
             ?: throw IOException("Cannot open document")

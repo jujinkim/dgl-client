@@ -18,35 +18,27 @@ impl Desktop {
     pub(super) fn drag_files(
         &mut self,
         id: FileId,
+        path: &str,
         name: &str,
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let tab = self.files.get_mut(&id).unwrap();
-        if !tab.selected.contains(name) {
-            tab.selected.clear();
-            tab.selected.insert(name.to_owned());
+        if !tab.folders.select_for_drag(path, name) {
+            return;
         }
-        let sources = tab.selection();
-        let dirs = tab
-            .selected
-            .iter()
-            .map(|name| {
-                tab.listing
-                    .entries
-                    .iter()
-                    .any(|e| &e.name == name && e.directory)
-            })
-            .collect();
+        tab.error = None;
+        let sources = tab.folders.selection();
         if let Err(error) = tab.outgoing.begin(
             sources,
             tab.browser.clone(),
             self.runtime.clone(),
             &mut tab.jobs,
             w,
-            dirs,
         ) {
             tab.error = Some(error);
+        } else {
+            tab.jobs_open = true;
         }
         cx.notify();
     }

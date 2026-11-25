@@ -18,6 +18,10 @@ Android Debug APK는 `androidApp/build/outputs/apk/debug/androidApp-debug.apk` �
 수동 실행(`workflow_dispatch`)하는 **Build and verify** 기본 job이 위 검사를 실행합니다. GPUI 데스크톱 검사는 macOS 로컬,
 Windows는 `build_windows.ps1 -Test`로 별도 실행합니다.
 
+SFTP 기본 검사는 GPUI에서 창 폭에 따른 패널 배치, 터미널 분할, 행 클릭·다중 선택, 연속 폴더 이동과 키 포커스를 확인합니다.
+Rust의 로컬 SFTP fixture는 일반 파일 왕복, 폴더·링크가 섞인 요청의 쓰기 전 거절, Finder 파일 약속의 일괄 검사와 덮어쓰기·취소·재시도를 확인합니다.
+네이티브 파일 관리자 드래그와 Android 시스템 선택기는 [기능 인수](../TASKS.md#기능-인수)에 남아 있습니다.
+
 ## 기본 범위 밖
 
 | 항목 | 실행 조건 |

@@ -7,9 +7,8 @@ use std::{io, sync::Arc};
 #[uniffi::export(callback_interface)]
 pub trait Documents: Send + Sync {
     fn entry_json(&self, id: String) -> Result<String, CoreError>;
-    fn children(&self, id: String) -> Result<Vec<String>, CoreError>;
     fn find(&self, parent: String, name: String) -> Result<Option<String>, CoreError>;
-    fn create(&self, parent: String, name: String, directory: bool) -> Result<String, CoreError>;
+    fn create_file(&self, parent: String, name: String) -> Result<String, CoreError>;
     fn open_fd(&self, id: String, write: bool) -> Result<i32, CoreError>;
     fn publish(
         &self,
@@ -34,17 +33,14 @@ impl LocalTree for DocumentTree {
             &self.0.entry_json(id.into()).map_err(io::Error::other)?,
         )?)
     }
-    fn children(&self, id: &str) -> io::Result<Vec<String>> {
-        self.0.children(id.into()).map_err(io::Error::other)
-    }
     fn find(&self, parent: &str, name: &str) -> io::Result<Option<String>> {
         self.0
             .find(parent.into(), name.into())
             .map_err(io::Error::other)
     }
-    fn create(&self, parent: &str, name: &str, directory: bool) -> io::Result<String> {
+    fn create_file(&self, parent: &str, name: &str) -> io::Result<String> {
         self.0
-            .create(parent.into(), name.into(), directory)
+            .create_file(parent.into(), name.into())
             .map_err(io::Error::other)
     }
     fn open(&self, id: &str, write: bool) -> io::Result<std::fs::File> {

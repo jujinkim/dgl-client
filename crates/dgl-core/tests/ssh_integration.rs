@@ -1982,18 +1982,14 @@ async fn sftp_session_folder_and_streaming_round_trip() {
         .canonicalize()
         .unwrap();
     let remote = root.join("sftp work");
-    let source = root.join("source").join("project");
+    let source = root.join("source").join("data.bin");
+    let empty = remote.join("empty");
     let download = root.join("downloads");
-    for dir in [
-        &remote,
-        &source.join("empty"),
-        &source.join("nested"),
-        &download,
-    ] {
+    for dir in [&empty, source.parent().unwrap(), download.as_path()] {
         std::fs::create_dir_all(dir).unwrap();
     }
     let data = (0..180_001).map(|i| (i % 251) as u8).collect::<Vec<_>>();
-    std::fs::write(source.join("nested/data.bin"), &data).unwrap();
+    std::fs::write(&source, &data).unwrap();
     let output = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())
         .args([
             "new-session",
@@ -2023,6 +2019,20 @@ async fn sftp_session_folder_and_streaming_round_trip() {
     let listing = files.browse(None).await.unwrap();
     assert_eq!(listing.path, remote.to_str().unwrap());
     assert_eq!(listing.fallback, None);
+    assert!(
+        listing
+            .entries
+            .iter()
+            .any(|e| e.directory && e.name == "empty")
+    );
+    assert!(
+        files
+            .browse(empty.to_str())
+            .await
+            .unwrap()
+            .entries
+            .is_empty()
+    );
     let default = Browser::new(host, credential, Some(key), None, None)
         .browse(None)
         .await
@@ -2058,28 +2068,38 @@ async fn sftp_session_folder_and_streaming_round_trip() {
     assert_eq!(send.progress().error, None);
     let fetch = CopyRequest {
         upload: false,
-        sources: vec![remote.join("project").display().to_string()],
+        sources: vec![remote.join("data.bin").display().to_string()],
         destination: download.display().to_string(),
         name: None,
     };
+    let mixed = files.start(
+        Arc::new(LocalPaths),
+        CopyRequest {
+            sources: vec![fetch.sources[0].clone(), empty.display().to_string()],
+            ..fetch.clone()
+        },
+    );
+    wait(&mixed, false).await;
+    assert_eq!(mixed.progress().completed, 0);
+    assert!(
+        mixed
+            .progress()
+            .error
+            .unwrap()
+            .contains("Unsupported source")
+    );
+    assert_eq!(std::fs::read_dir(&download).unwrap().count(), 0);
     let get = files.start(Arc::new(LocalPaths), fetch.clone());
     wait(&get, false).await;
     assert_eq!(get.progress().error, None);
-    assert!(download.join("project/empty").is_dir());
-    assert_eq!(
-        std::fs::read(download.join("project/nested/data.bin")).unwrap(),
-        data
-    );
-    std::fs::write(source.join("nested/data.bin"), b"replacement").unwrap();
+    assert_eq!(std::fs::read(download.join("data.bin")).unwrap(), data);
+    std::fs::write(&source, b"replacement").unwrap();
     let cancelled = files.start(Arc::new(LocalPaths), upload.clone());
     wait(&cancelled, true).await;
     cancelled.cancel();
     wait(&cancelled, false).await;
     assert_eq!(cancelled.progress().error.as_deref(), Some("Cancelled"));
-    assert_eq!(
-        std::fs::read(remote.join("project/nested/data.bin")).unwrap(),
-        data
-    );
+    assert_eq!(std::fs::read(remote.join("data.bin")).unwrap(), data);
     for req in [upload, fetch] {
         let job = files.start(Arc::new(LocalPaths), req);
         wait(&job, true).await;
@@ -2091,7 +2111,7 @@ async fn sftp_session_folder_and_streaming_round_trip() {
         assert_eq!(job.progress().error, None);
     }
     assert_eq!(
-        std::fs::read(download.join("project/nested/data.bin")).unwrap(),
+        std::fs::read(download.join("data.bin")).unwrap(),
         b"replacement"
     );
     let cleanup = std::process::Command::new(std::env::var("DGL_TEST_TMUX_WRAPPER").unwrap())

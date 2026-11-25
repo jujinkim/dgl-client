@@ -175,7 +175,7 @@ pub struct Workspace {
     pub layout: Layout,
     pub groups: BTreeMap<GroupId, Group>,
     pub active: GroupId,
-    /// A single file view temporarily covers the terminal groups, preserving their selections.
+    /// The open file panel shares the workspace with the terminal groups.
     pub file_view: Option<FileId>,
     next_group: GroupId,
     next_tab: TabId,
@@ -193,21 +193,13 @@ impl Workspace {
         }
     }
     pub fn title_updates_enabled(&self, tab: TabId, foreground: bool) -> bool {
-        self.file_view.is_none()
-            && foreground
-            && self.groups.values().any(|g| g.selected == Some(tab))
+        foreground && self.groups.values().any(|g| g.selected == Some(tab))
     }
     pub fn selected(&self) -> Option<TabId> {
-        if self.file_view.is_some() {
-            return None;
-        }
         self.groups.get(&self.active)?.selected
     }
     /// Each group shows its selected tab; the others are hidden.
     pub fn visible_tabs(&self) -> Vec<TabId> {
-        if self.file_view.is_some() {
-            return Vec::new();
-        }
         self.layout
             .groups()
             .into_iter()
@@ -221,7 +213,6 @@ impl Workspace {
             .map(|(id, _)| *id)
     }
     pub fn add_tab(&mut self) -> TabId {
-        self.file_view = None;
         let id = self.next_tab;
         self.next_tab += 1;
         let group = self.groups.get_mut(&self.active).unwrap();
@@ -233,7 +224,6 @@ impl Workspace {
         if let Some(g) = self.groups.get_mut(&group)
             && g.tabs.contains(&tab)
         {
-            self.file_view = None;
             g.selected = Some(tab);
             self.active = group;
         }

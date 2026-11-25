@@ -1073,7 +1073,7 @@ impl Render for Desktop {
         self.shortcut_target = shortcut_target;
         for tab in &self.tabs {
             tab.terminal.update(cx, |t, cx| {
-                t.enabled = self.dialog.is_none() && self.workspace.file_view.is_none();
+                t.enabled = self.dialog.is_none();
                 if clear_modifiers {
                     t.clear_modifiers(cx);
                 }
