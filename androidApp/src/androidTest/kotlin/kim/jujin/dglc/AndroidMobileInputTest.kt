@@ -83,9 +83,10 @@ class AndroidMobileInputTest {
                 scenario.onActivity { renderer.view.evaluateJavascript(script) { reply.complete(it) } }
                 return withTimeout(5000) { reply.await() }
             }
+            // The two-pane navigation column can scroll too; the settings detail is the last scrollable node.
             suspend fun scrollTo(label: String) = withTimeout(5000) {
                 while (node(label)?.isVisibleToUser != true) {
-                    find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }!!
+                    findAll(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }.last()
                         .performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(100)
                 }
@@ -103,7 +104,8 @@ class AndroidMobileInputTest {
                 eventually { first.surface != null }
                 val renderer = first.surface as kim.jujin.dglc.ui.AndroidTerminal
                 stage = "enable in settings"
-                openConnectionMenu(); click("설정"); scrollTo("키보드 항상 보이기"); click("키보드 항상 보이기")
+                openConnectionMenu(); click("설정"); awaitNode("닫기"); click("키보드·입력")
+                scrollTo("키보드 항상 보이기"); click("키보드 항상 보이기")
                 scrollTo("리사이즈")
                 for (label in listOf("자동", "위로 이동", "리사이즈")) {
                     val chip = generateSequence(awaitNode(label)) { it.parent }.first { it.isClickable }
@@ -151,7 +153,8 @@ class AndroidMobileInputTest {
                 scenario.onActivity { app.selectConnection(first) }
                 eventually { renderer.view.hasFocus() && !secondRenderer.view.hasFocus() }
                 stage = "disable restores mode and manual hiding"
-                click("설정"); scrollTo("키보드 항상 보이기"); click("키보드 항상 보이기"); scrollTo("위로 이동")
+                click("설정"); awaitNode("닫기"); click("키보드·입력")
+                scrollTo("키보드 항상 보이기"); click("키보드 항상 보이기"); scrollTo("위로 이동")
                 val pan = generateSequence(awaitNode("위로 이동")) { it.parent }.first { it.isClickable }
                 assertTrue(pan.isEnabled); assertTrue(pan.isSelected || pan.isChecked)
                 click("닫기")
@@ -896,7 +899,8 @@ class AndroidMobileInputTest {
                 }
                 delay(100)
                 assertEquals(sent + 1, client.writes.size)
-                click("뒤로"); awaitNode("닫기")
+                // Back from a category opened straight from the menu shows the category list.
+                click("뒤로"); awaitGone("뒤로"); awaitNode("닫기")
                 click("닫기")
                 withTimeout(5000) { while (app.inputBlocked()) delay(25) }
                 assertSame(renderer, client.surface)
@@ -1058,7 +1062,8 @@ class AndroidMobileInputTest {
                 assertTrue(app.inputBlocked()); assertTrue(client.writes.isEmpty())
                 stage = "back to settings"
                 instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-                awaitNode("닫기")
+                // "닫기" stays on the detail page as well; the list is back once "뒤로" is gone.
+                awaitGone("뒤로")
                 assertEquals(entry, bounds(awaitNode("내보내기 및 동기화")))
                 assertNull(node("내보내기…"))
             } catch (failure: Throwable) {
@@ -1106,12 +1111,17 @@ class AndroidMobileInputTest {
                 stage = "open settings"
                 openConnectionMenu(); click("설정"); awaitNode("닫기")
                 stage = "scroll to About app"
+                // About is the last row. Scroll the list to its end so the row is fully visible; a clipped row
+                // would be scrolled into view by focus restore and its recorded bounds would no longer match.
                 withTimeout(5000) {
-                    while (node("앱 정보")?.isVisibleToUser != true) {
-                        val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable }!!
-                        scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); delay(100)
+                    while (true) {
+                        instrumentation.uiAutomation.clearCache()
+                        val scroll = find(instrumentation.uiAutomation.rootInActiveWindow) { it.isScrollable } ?: break
+                        if (!scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) break
+                        delay(100)
                     }
                 }
+                assertTrue(awaitNode("앱 정보").isVisibleToUser)
                 val entry = bounds(awaitNode("앱 정보"))
                 instrumentation.addMonitor(monitor)
                 for (hardwareBack in listOf(false, true)) {
@@ -1140,7 +1150,7 @@ class AndroidMobileInputTest {
                     stage = "return from About app, hardwareBack=$hardwareBack"
                     if (hardwareBack) instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
                     else click("뒤로")
-                    awaitNode("닫기")
+                    awaitGone("뒤로")
                     assertEquals(entry, bounds(awaitNode("앱 정보")))
                     withTimeout(5000) {
                         while (true) {
@@ -1252,6 +1262,11 @@ class AndroidMobileInputTest {
     private suspend fun awaitNode(text: String): AccessibilityNodeInfo = withTimeout(5000) {
         while (true) { node(text)?.let { return@withTimeout it }; delay(25) }
         error("unreachable")
+    }
+    private suspend fun awaitGone(text: String) = withTimeout(5000) { while (node(text) != null) delay(25) }
+    private fun findAll(node: AccessibilityNodeInfo?, predicate: (AccessibilityNodeInfo) -> Boolean): List<AccessibilityNodeInfo> {
+        if (node == null) return emptyList()
+        return (if (predicate(node)) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { findAll(node.getChild(it), predicate) }
     }
     private suspend fun awaitAction(text: String, action: Int): AccessibilityNodeInfo = withTimeout(5000) {
         while (true) {

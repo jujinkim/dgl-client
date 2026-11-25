@@ -342,27 +342,26 @@ private fun categoryColor(category: String, dark: Boolean, scheme: ColorScheme):
     }
 }
 
-/** Settings card body: where the HUD shows and which items it lists. Device-local. */
+/** Settings groups: where the HUD shows and which items it lists. Device-local. */
 @Composable internal fun AgentStatusSettingsUi(model: AppModel) {
     val local by model.local.collectAsState()
     val settings = local.preferences.agentStatus
     fun update(next: AgentStatusSettings) = model.modify { it.copy(preferences = it.preferences.copy(agentStatus = next)) }
-    @Composable fun option(label: String, checked: Boolean, change: (Boolean) -> AgentStatusSettings) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(checked, role = Role.Checkbox) { update(change(it)) },
-            verticalAlignment = Alignment.CenterVertically) {
-            AccentCheckbox(checked, null)
-            Text(label, Modifier.padding(start = 4.dp))
-        }
+    SettingsGroup(t("agent_status.title"), t("agent_status.description")) {
+        SettingsToggleRow(t("agent_status.show_status_bar"), settings.statusBar) { update(settings.copy(statusBar = it)) }
+        SettingsDivider()
+        SettingsToggleRow(t("agent_status.show_sidebar"), settings.sidebar) { update(settings.copy(sidebar = it)) }
     }
-    option(t("agent_status.show_status_bar"), settings.statusBar) { settings.copy(statusBar = it) }
-    option(t("agent_status.show_sidebar"), settings.sidebar) { settings.copy(sidebar = it) }
-    Text(t("agent_status.fields"), style = MaterialTheme.typography.titleSmall)
-    option(t("agent_status.field.account"), settings.account) { settings.copy(account = it) }
-    option(t("agent_status.field.usage"), settings.usage) { settings.copy(usage = it) }
-    option(t("agent_status.field.context"), settings.context) { settings.copy(context = it) }
-    option(t("agent_status.field.breakdown"), settings.breakdown) { settings.copy(breakdown = it) }
-    option(t("agent_status.field.cache"), settings.cache) { settings.copy(cache = it) }
-    option(t("agent_status.field.model"), settings.model) { settings.copy(model = it) }
-    option(t("agent_status.field.effort"), settings.effort) { settings.copy(effort = it) }
-    option(t("agent_status.field.cost"), settings.cost) { settings.copy(cost = it) }
+    SettingsGroup(t("agent_status.fields")) {
+        listOf<Pair<String, Pair<Boolean, (Boolean) -> AgentStatusSettings>>>(
+            t("agent_status.field.account") to (settings.account to { v -> settings.copy(account = v) }),
+            t("agent_status.field.usage") to (settings.usage to { v -> settings.copy(usage = v) }),
+            t("agent_status.field.context") to (settings.context to { v -> settings.copy(context = v) }),
+            t("agent_status.field.breakdown") to (settings.breakdown to { v -> settings.copy(breakdown = v) }),
+            t("agent_status.field.cache") to (settings.cache to { v -> settings.copy(cache = v) }),
+            t("agent_status.field.model") to (settings.model to { v -> settings.copy(model = v) }),
+            t("agent_status.field.effort") to (settings.effort to { v -> settings.copy(effort = v) }),
+            t("agent_status.field.cost") to (settings.cost to { v -> settings.copy(cost = v) }),
+        ).forEach { (label, field) -> SettingsCheckRow(label, field.first) { update(field.second(it)) } }
+    }
 }

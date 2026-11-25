@@ -146,12 +146,14 @@ import kotlinx.serialization.json.*
 @Composable internal fun AgentNotificationSettingsUi(model: AppModel) {
     val local by model.local.collectAsState()
     val settings = local.preferences.agentNotifications
-    Text(t("agent.notifications"), style = MaterialTheme.typography.titleSmall)
-    listOf(t("agent.questions_approval_requests") to settings.questions, t("agent.response_end_signals") to settings.responses, t("agent.explicit_errors") to settings.errors, t("agent.os_notifications") to settings.os).forEachIndexed { i, (label, enabled) ->
-        Row { AccentCheckbox(enabled, { value ->
-            val next = when (i) { 0 -> settings.copy(questions = value); 1 -> settings.copy(responses = value); 2 -> settings.copy(errors = value); else -> settings.copy(os = value) }
-            model.modify { it.copy(preferences = it.preferences.copy(agentNotifications = next)) }
-        }); Text(label, Modifier.padding(top = 12.dp)) }
+    SettingsGroup(t("agent.notifications"), t("settings.notifications_description")) {
+        listOf(t("agent.questions_approval_requests") to settings.questions, t("agent.response_end_signals") to settings.responses,
+            t("agent.explicit_errors") to settings.errors, t("agent.os_notifications") to settings.os).forEachIndexed { i, (label, enabled) ->
+            SettingsCheckRow(label, enabled) { value ->
+                val next = when (i) { 0 -> settings.copy(questions = value); 1 -> settings.copy(responses = value); 2 -> settings.copy(errors = value); else -> settings.copy(os = value) }
+                model.modify { it.copy(preferences = it.preferences.copy(agentNotifications = next)) }
+            }
+        }
+        SettingsNote(t("agent.in_app_notifications_note_running"), Modifier.padding(bottom = 6.dp))
     }
-    Text(t("agent.in_app_notifications_note_running"), style = MaterialTheme.typography.labelSmall)
 }

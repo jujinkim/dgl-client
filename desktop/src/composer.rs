@@ -232,24 +232,23 @@ impl Desktop {
     }
 
     pub(super) fn dismiss_dialog(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.dialog, Some(Dialog::LaunchEditor(_))) {
-            self.dialog = Some(Dialog::LaunchSettings);
-            cx.notify();
-            return;
-        }
-        if matches!(
-            self.dialog,
-            Some(
-                Dialog::LaunchSettings
-                    | Dialog::Shortcuts
-                    | Dialog::TerminalFont
-                    | Dialog::About
-                    | Dialog::ExportSync
-            )
-        ) {
-            self.settings_back();
-            cx.notify();
-            return;
+        // Second-level settings pages return to their category; settings close.
+        match self.dialog {
+            Some(Dialog::LaunchEditor(_)) => {
+                self.return_from_launch_editor();
+                cx.notify();
+                return;
+            }
+            Some(Dialog::TerminalFont) => {
+                self.settings_back();
+                cx.notify();
+                return;
+            }
+            Some(Dialog::Settings) => {
+                self.cancel_import_preview();
+                self.clear_shortcut_drag();
+            }
+            _ => {}
         }
         if let Some(Dialog::Compose(id)) = self.dialog
             && let Some(composer) = self.composers.get(&id)

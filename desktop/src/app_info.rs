@@ -19,29 +19,44 @@ impl Desktop {
         }
     }
 
+    /// The about page: the app identity and its links.
     pub(super) fn about_app(&self, cx: &mut Context<Self>) -> Div {
-        let mut content = div()
+        let hero = div()
             .flex()
             .flex_col()
             .items_center()
-            .gap_4()
-            .child(div().text_xl().child(t("settings.about")))
-            .child(self.button("about-back", t("common.back"), cx, |s, _, _| {
-                s.settings_back()
-            }))
+            .gap_2()
+            .py_4()
             .child(img("app-icon.png").size(px(80.)).rounded_xl())
-            .child(div().text_2xl().child("DaGaLi"))
-            .child(tr!("settings.about_version", VERSION))
-            .child("Reconnect less. Resume more.");
-        for (id, label, url) in [
+            .child(
+                div()
+                    .text_2xl()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("DaGaLi"),
+            )
+            .child(
+                div()
+                    .text_size(px(settings_ui::BODY))
+                    .child(tr!("settings.about_version", VERSION)),
+            )
+            .child(self.settings_note("Reconnect less. Resume more."));
+        let links = [
             ("about-website", t("settings.about_website"), WEBSITE),
             ("about-repository", t("settings.about_github"), REPOSITORY),
-        ] {
-            content = content.child(
-                self.button(id, label, cx, move |_, _, cx| cx.open_url(url))
-                    .child(div().text_xs().child(url)),
-            );
-        }
-        content
+        ]
+        .into_iter()
+        .map(|(id, label, url)| {
+            self.settings_link(id, label, Some(url.into()), cx, move |_, _, cx| {
+                cx.open_url(url)
+            })
+            .into_any_element()
+        })
+        .collect();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(settings_ui::PAGE_GAP))
+            .child(hero)
+            .child(self.settings_group("about-links", None, None, links))
     }
 }

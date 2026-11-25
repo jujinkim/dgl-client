@@ -75,73 +75,107 @@ impl Desktop {
         };
         self.dialog = Some(Dialog::LaunchEditor(edit));
     }
+    /// The quick launch settings page: one group per agent.
     pub(super) fn launch_settings(&self, cx: &mut Context<Self>) -> Div {
-        let mut list = div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(div().text_xl().child(t("launcher.settings")));
+        use settings_ui::ActionKind;
+        let mut list = div().flex().flex_col().gap(px(settings_ui::PAGE_GAP));
         for agent in LAUNCH_AGENTS {
             let config = self.agent_launch(agent);
-            let mut section = div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .p_3()
-                .border_1()
-                .border_color(rgb(self.palette.line))
-                .child(div().text_lg().child(agent.launch_label()))
-                .child(div().child(t("launcher.bypass_arguments")))
-                .child(
+            let bypass_id = format!("launch-bypass-edit-{agent:?}");
+            let entry = bypass_id.clone();
+            let mut rows = vec![
+                self.settings_row_with(
                     div()
+                        .flex_1()
+                        .min_w_0()
                         .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(div().flex_1().min_w_0().child(config.bypass.clone()))
-                        .child(self.button(
-                            format!("launch-bypass-edit-{agent:?}"),
-                            t("common.edit"),
-                            cx,
-                            move |s, _, cx| {
-                                let value = s.launch_field(&s.agent_launch(agent).bypass, cx);
-                                s.dialog =
-                                    Some(Dialog::LaunchEditor(Editor::Bypass { agent, value }));
-                            },
-                        )),
-                );
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .text_size(px(settings_ui::BODY))
+                                .child(t("launcher.bypass_arguments")),
+                        )
+                        .when(!config.bypass.is_empty(), |d| {
+                            d.child(
+                                self.settings_note(config.bypass.clone())
+                                    .font_family(platform::TERMINAL_FONT),
+                            )
+                        }),
+                    self.settings_action(
+                        bypass_id,
+                        t("common.edit"),
+                        ActionKind::Normal,
+                        cx,
+                        move |s, _, cx| {
+                            s.remember_settings_entry(entry.clone());
+                            let value = s.launch_field(&s.agent_launch(agent).bypass, cx);
+                            s.dialog = Some(Dialog::LaunchEditor(Editor::Bypass { agent, value }));
+                        },
+                    ),
+                )
+                .into_any_element(),
+            ];
             for (index, opt) in config.options.iter().enumerate() {
-                section = section.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(div().flex_1().min_w_0().truncate().child(opt.name.clone()))
-                        .child(self.button(
-                            format!("launch-option-edit-{agent:?}-{index}"),
-                            t("common.edit"),
-                            cx,
-                            move |s, _, cx| {
-                                s.open_launch_option(agent, Some(index), cx);
-                            },
-                        ))
-                        .child(self.button(
-                            format!("launch-option-delete-{agent:?}-{index}"),
-                            t("common.delete"),
-                            cx,
-                            move |s, _, _| {
-                                s.update_agent_launch(agent, |config| {
-                                    config.options.remove(index);
-                                });
-                            },
-                        )),
+                let edit_id = format!("launch-option-edit-{agent:?}-{index}");
+                let entry = edit_id.clone();
+                rows.push(
+                    self.settings_row(
+                        opt.name.clone(),
+                        (!opt.description.is_empty()).then(|| opt.description.clone().into()),
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(self.settings_action(
+                                edit_id,
+                                t("common.edit"),
+                                ActionKind::Normal,
+                                cx,
+                                move |s, _, cx| {
+                                    s.remember_settings_entry(entry.clone());
+                                    s.open_launch_option(agent, Some(index), cx);
+                                },
+                            ))
+                            .child(self.settings_action(
+                                format!("launch-option-delete-{agent:?}-{index}"),
+                                t("common.delete"),
+                                ActionKind::Danger,
+                                cx,
+                                move |s, _, _| {
+                                    s.update_agent_launch(agent, |config| {
+                                        config.options.remove(index);
+                                    });
+                                },
+                            )),
+                    )
+                    .into_any_element(),
                 );
             }
-            list = list.child(section.child(self.button(
-                format!("launch-option-add-{agent:?}"),
-                t("launcher.add_option"),
-                cx,
-                move |s, _, cx| s.open_launch_option(agent, None, cx),
-            )));
+            let add_id = format!("launch-option-add-{agent:?}");
+            let entry = add_id.clone();
+            rows.push(
+                div()
+                    .flex()
+                    .px(px(settings_ui::ROW_PX))
+                    .py(px(settings_ui::ROW_PY))
+                    .child(self.settings_action(
+                        add_id,
+                        t("launcher.add_option"),
+                        ActionKind::Normal,
+                        cx,
+                        move |s, _, cx| {
+                            s.remember_settings_entry(entry.clone());
+                            s.open_launch_option(agent, None, cx);
+                        },
+                    ))
+                    .into_any_element(),
+            );
+            list = list.child(self.settings_group(
+                agent.executable(),
+                Some(agent.launch_label().into()),
+                None,
+                rows,
+            ));
         }
         list
     }
@@ -170,16 +204,10 @@ impl Desktop {
                     (OptionKind::Environment, "launcher.environment"),
                     (OptionKind::Argument, "launcher.argument"),
                 ] {
-                    types = types.child(self.button(
+                    types = types.child(self.settings_choice(
                         format!("launch-kind-{choice:?}"),
-                        (
-                            if *kind == choice {
-                                UiIcon::RadioSelected
-                            } else {
-                                UiIcon::Radio
-                            },
-                            t(key),
-                        ),
+                        t(key),
+                        *kind == choice,
                         cx,
                         move |s, _, _| {
                             if let Some(Dialog::LaunchEditor(Editor::Option { kind, .. })) =
@@ -229,7 +257,7 @@ impl Desktop {
             }
         };
         if saved {
-            self.dialog = Some(Dialog::LaunchSettings);
+            self.return_from_launch_editor();
         }
         cx.notify();
     }

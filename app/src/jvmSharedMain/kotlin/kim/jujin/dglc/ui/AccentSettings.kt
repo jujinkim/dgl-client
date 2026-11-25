@@ -7,6 +7,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
@@ -40,29 +41,32 @@ val LocalAccentFill = staticCompositionLocalOf { Color(0xff2468c9) to Color.Whit
     fun apply() {
         normalizeAccentHex(draft)?.let { value -> draft = value; update(settings.copy(mode = "custom", customColor = value)) }
     }
-    Text(t("accent.accent_color"), style = MaterialTheme.typography.titleSmall)
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf("system" to t("common.system"), "default" to t("accent.dagali_default"), "custom" to t("accent.custom")).forEach { (mode, label) ->
-            FilterChip(settings.mode == mode, { update(settings.copy(mode = mode)) }, label = { Text(label) })
-        }
-    }
+    // Rendered inside a settings group titled with the accent color.
+    SettingsChoiceRow(null, listOf("system" to t("common.system"), "default" to t("accent.dagali_default"), "custom" to t("accent.custom")),
+        settings.mode) { mode -> update(settings.copy(mode = mode)) }
+    SettingsDivider()
     // Retain the draft when changing mode. Presets always apply and save immediately.
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        accentPresets.forEach { (label, hex) ->
-                FilterChip(settings.mode == "custom" && settings.customColor == hex,
-                    { draft = hex; update(settings.copy(mode = "custom", customColor = hex)) },
-                    label = { Text(label) }, leadingIcon = {
-                        Box(Modifier.size(12.dp).background(Color(0xff000000 or parseAccentHex(hex)!!.toLong())))
-                    })
+    Box(Modifier.fillMaxWidth().padding(horizontal = SettingsSpacing.rowH, vertical = SettingsSpacing.rowV)) {
+        SettingsChips {
+            accentPresets.forEach { (label, hex) ->
+                SettingsChip(label, settings.mode == "custom" && settings.customColor == hex, leadingIcon = {
+                    Box(Modifier.size(14.dp).background(Color(0xff000000 or parseAccentHex(hex)!!.toLong()), SettingsShapes.control))
+                }) { draft = hex; update(settings.copy(mode = "custom", customColor = hex)) }
+            }
         }
     }
-    OutlinedTextField(draft, { draft = it }, singleLine = true, label = { Text("#RRGGBB") }, isError = color == null,
-        supportingText = { if (color == null) Text(t("accent.invalid_hex")) },
-        trailingIcon = { Box(Modifier.size(24.dp).border(1.dp, MaterialTheme.colorScheme.outline)
-            .background(color?.let { Color(0xff000000 or it.toLong()) } ?: Color.Transparent)) },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { apply() }),
-        modifier = Modifier.fillMaxWidth().onPreviewKeyEvent {
-            if (it.key == Key.Enter && it.type == KeyEventType.KeyUp) { apply(); true } else false
-        })
-    BorderedButton({ apply() }, enabled = color != null) { Text(t("accent.apply_color")) }
+    SettingsDivider()
+    Row(Modifier.fillMaxWidth().padding(horizontal = SettingsSpacing.rowH, vertical = SettingsSpacing.rowV),
+        verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(SettingsSpacing.controlGap)) {
+        OutlinedTextField(draft, { draft = it }, singleLine = true, label = { Text("#RRGGBB") }, isError = color == null,
+            supportingText = { if (color == null) Text(t("accent.invalid_hex")) }, shape = SettingsShapes.control,
+            trailingIcon = { Box(Modifier.size(24.dp).border(1.dp, MaterialTheme.colorScheme.outline)
+                .background(color?.let { Color(0xff000000 or it.toLong()) } ?: Color.Transparent)) },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { apply() }),
+            modifier = Modifier.weight(1f).onPreviewKeyEvent {
+                if (it.key == Key.Enter && it.type == KeyEventType.KeyUp) { apply(); true } else false
+            })
+        SettingsActionButton(t("accent.apply_color"), { apply() }, enabled = color != null, style = SettingsActionStyle.Primary,
+            modifier = Modifier.padding(top = 8.dp))
+    }
 }

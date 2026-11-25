@@ -14,43 +14,49 @@ import kim.jujin.dglc.*
     val state by sync.status.collectAsState()
     DisposableEffect(sync) { onDispose { sync.cancelImport() } }
     val busy = state.busy || state.pendingImportCount != null
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(t("sync.description"))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BorderedButton({ model.chooseSettingsFile(SettingsFileAction.Export) }, enabled = !busy) { Text(t("sync.export_ellipsis")) }
-            BorderedButton({ model.chooseSettingsFile(SettingsFileAction.Import) }, enabled = !busy) { Text(t("sync.import_ellipsis")) }
+    // The page header already shows the sync description. The detail column scrolls.
+    SettingsGroup(t("sync.file_transfer")) {
+        SettingsActions {
+            SettingsActionButton(t("sync.export_ellipsis"), { model.chooseSettingsFile(SettingsFileAction.Export) }, enabled = !busy)
+            SettingsActionButton(t("sync.import_ellipsis"), { model.chooseSettingsFile(SettingsFileAction.Import) }, enabled = !busy)
         }
         state.pendingImportCount?.let { count ->
-            Text(tr("sync.import_confirm", count))
-            Text(t("sync.import_note"), style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BorderedButton({ sync.confirmImport() }, enabled = !state.busy) { Text(t("common.import")) }
-                BorderedButton({ sync.cancelImport() }, enabled = !state.busy) { Text(t("common.cancel")) }
+            SettingsDivider()
+            Text(tr("sync.import_confirm", count), Modifier.fillMaxWidth().padding(start = SettingsSpacing.rowH, end = SettingsSpacing.rowH, top = SettingsSpacing.rowV),
+                style = MaterialTheme.typography.bodyLarge)
+            SettingsNote(t("sync.import_note"))
+            SettingsActions {
+                SettingsActionButton(t("common.import"), { sync.confirmImport() }, enabled = !state.busy, style = SettingsActionStyle.Primary)
+                SettingsActionButton(t("common.cancel"), { sync.cancelImport() }, enabled = !state.busy)
             }
         }
-        HorizontalDivider()
-        Text(t("sync.file_sync"), style = MaterialTheme.typography.titleSmall)
-        Text(t("sync.connect_hint"))
-        Text(t("sync.first_connection_note"), style = MaterialTheme.typography.bodySmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BorderedButton({ model.chooseSettingsFile(SettingsFileAction.OpenSync) }, enabled = !busy) { Text(t("sync.connect_file")) }
-            BorderedButton({ model.chooseSettingsFile(SettingsFileAction.CreateSync) }, enabled = !busy) { Text(t("sync.new_sync_file")) }
+    }
+    SettingsGroup(t("sync.file_sync"), t("sync.connect_hint")) {
+        SettingsNote(t("sync.first_connection_note"), Modifier.padding(top = 6.dp))
+        SettingsActions {
+            SettingsActionButton(t("sync.connect_file"), { model.chooseSettingsFile(SettingsFileAction.OpenSync) }, enabled = !busy)
+            SettingsActionButton(t("sync.new_sync_file"), { model.chooseSettingsFile(SettingsFileAction.CreateSync) }, enabled = !busy)
         }
-        Text(t("sync.shared_items_note"), style = MaterialTheme.typography.bodySmall)
+        SettingsNote(t("sync.shared_items_note"))
         if (state.connected) {
-            Text(state.location, style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BorderedButton({ sync.sync() }, enabled = !busy) { Text(t("sync.sync_now")) }
-                BorderedButton({ sync.disconnect() }, enabled = !busy) { Text(t("sync.disconnect")) }
+            SettingsDivider()
+            SettingsNote(state.location, Modifier.padding(top = 6.dp))
+            SettingsActions {
+                SettingsActionButton(t("sync.sync_now"), { sync.sync() }, enabled = !busy, style = SettingsActionStyle.Primary)
+                SettingsActionButton(t("sync.disconnect"), { sync.disconnect() }, enabled = !busy, style = SettingsActionStyle.Danger)
             }
         }
-        Text(t(state.message), style = MaterialTheme.typography.bodySmall)
+        SettingsDivider()
+        SettingsNote(t(state.message), Modifier.padding(top = 6.dp))
         state.conflicts.forEach { conflict ->
-            Text(t("sync.conflicts_title"), style = MaterialTheme.typography.titleSmall)
-            conflict.choices.forEach { choice ->
-                OutlinedButton({ sync.sync(SyncResolution(conflict.key, choice.revision)) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(choice.label) }
+            SettingsSubheading(t("sync.conflicts_title"), Modifier.fillMaxWidth().padding(horizontal = SettingsSpacing.rowH, vertical = 6.dp))
+            Column(Modifier.fillMaxWidth().padding(horizontal = SettingsSpacing.rowH), verticalArrangement = Arrangement.spacedBy(SettingsSpacing.controlGap)) {
+                conflict.choices.forEach { choice ->
+                    SettingsActionButton(choice.label, { sync.sync(SyncResolution(conflict.key, choice.revision)) }, enabled = !busy,
+                        modifier = Modifier.fillMaxWidth())
+                }
             }
         }
-        Text(t("sync.provider_note"), style = MaterialTheme.typography.bodySmall)
+        SettingsNote(t("sync.provider_note"), Modifier.padding(bottom = 6.dp))
     }
 }

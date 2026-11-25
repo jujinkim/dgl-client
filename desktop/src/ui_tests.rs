@@ -1,6 +1,6 @@
 use super::{
     AuthKind, Connection, Credential, Desktop, Dialog, HostProfile, PromptOp, Tab, Terminal,
-    TextInput, text_input,
+    TextInput, settings::SettingsCategory, text_input,
 };
 use gpui::{
     AppContext, Entity, EntityInputHandler, Focusable, Modifiers, ScrollDelta, ScrollWheelEvent,
@@ -111,113 +111,98 @@ fn app_title_tracks_selected_tab_group_remote_metadata_and_last_close(cx: &mut T
     view.read_with(ui, |s, _| assert_eq!(s.window_title, base));
 }
 
+fn click_id(cx: &mut VisualTestContext, id: &'static str) {
+    let center = cx
+        .debug_bounds(id)
+        .unwrap_or_else(|| panic!("{id}"))
+        .center();
+    cx.simulate_click(center, Modifiers::default());
+    redraw(cx);
+}
+fn is_focused(view: &Entity<Desktop>, cx: &mut VisualTestContext, id: &str) -> bool {
+    cx.update(|w, cx| view.update(cx, |s, cx| s.modal.button(id, cx).is_focused(w)))
+}
+/// Scrolls the settings detail so `id` ends inside it and returns the offset.
+fn scroll_detail_to(
+    view: &Entity<Desktop>,
+    cx: &mut VisualTestContext,
+    id: &'static str,
+) -> gpui::Point<gpui::Pixels> {
+    let entry = cx.debug_bounds(id).unwrap();
+    view.update(cx, |s, cx| {
+        let body = s.modal.scroll.bounds();
+        let offset = s.modal.scroll.offset();
+        s.modal.scroll.set_offset(point(
+            px(0.),
+            offset.y - (entry.bottom() - body.bottom() + px(16.)).max(px(0.)),
+        ));
+        cx.notify();
+    });
+    redraw(cx);
+    view.read_with(cx, |s, _| s.modal.scroll.offset())
+}
+
 #[gpui::test]
-fn export_sync_is_a_second_settings_page_with_back_scroll_and_focus(cx: &mut TestAppContext) {
+fn export_sync_category_runs_pickers_keeps_nav_focus_and_closes(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     let terminal = add_terminal(&view, ui);
     view.update(ui, |s, cx| {
-        s.dialog = Some(Dialog::Settings);
+        s.open_settings(SettingsCategory::General);
         cx.notify();
     });
     redraw(ui);
     assert!(ui.debug_bounds("export-settings").is_none());
-    let entry = ui.debug_bounds("export-sync").unwrap();
-    view.update(ui, |s, cx| {
-        let body = s.modal.scroll.bounds();
-        s.modal.scroll.set_offset(point(
-            px(0.),
-            -(entry.bottom() - body.bottom() + px(16.)).max(px(0.)),
-        ));
-        cx.notify();
+    click_id(ui, "settings-nav-sync");
+    view.read_with(ui, |s, _| {
+        assert!(matches!(s.dialog, Some(Dialog::Settings)));
+        assert_eq!(s.settings.category, SettingsCategory::Sync);
     });
-    redraw(ui);
-    let saved = view.read_with(ui, |s, _| s.modal.scroll.offset());
-    for back in ["export-sync-back", "cancel-dialog", "escape"] {
-        let entry = ui.debug_bounds("export-sync").unwrap().center();
-        ui.simulate_click(entry, Modifiers::default());
-        redraw(ui);
-        view.read_with(ui, |s, _| {
-            assert!(matches!(s.dialog, Some(Dialog::ExportSync)))
-        });
-        terminal.read_with(ui, |t, _| assert!(!t.enabled));
-        for control in ["export-settings", "import-settings", "sync-folder"] {
-            assert!(ui.debug_bounds(control).is_some(), "{control}");
-        }
-        assert!(ui.debug_bounds("sync-GoogleDrive").is_none());
-        assert!(ui.debug_bounds("sync-ICloudDrive").is_none());
-        let export = ui.debug_bounds("export-settings").unwrap().center();
-        ui.simulate_click(export, Modifiers::default());
-        redraw(ui);
-        assert!(ui.did_prompt_for_new_path());
-        ui.simulate_new_path_selection(|_| None);
-        redraw(ui);
-        assert!(ui.debug_bounds("export-settings").is_some());
-        if back == "escape" {
-            ui.simulate_keystrokes("escape");
-        } else {
-            let button = ui.debug_bounds(back).unwrap().center();
-            ui.simulate_click(button, Modifiers::default());
-        }
-        redraw(ui);
-        view.read_with(ui, |s, _| {
-            assert!(matches!(s.dialog, Some(Dialog::Settings)));
-            assert_eq!(s.modal.scroll.offset(), saved);
-        });
-        ui.update(|w, cx| {
-            view.update(cx, |s, cx| {
-                assert!(s.modal.button("export-sync", cx).is_focused(w))
-            })
-        });
+    assert!(is_focused(&view, ui, "settings-nav-sync"));
+    terminal.read_with(ui, |t, _| assert!(!t.enabled));
+    for control in ["export-settings", "import-settings", "sync-folder"] {
+        assert!(ui.debug_bounds(control).is_some(), "{control}");
     }
+    assert!(ui.debug_bounds("sync-GoogleDrive").is_none());
+    assert!(ui.debug_bounds("sync-ICloudDrive").is_none());
+    let export = ui.debug_bounds("export-settings").unwrap().center();
+    ui.simulate_click(export, Modifiers::default());
+    redraw(ui);
+    assert!(ui.did_prompt_for_new_path());
+    ui.simulate_new_path_selection(|_| None);
+    redraw(ui);
+    assert!(ui.debug_bounds("export-settings").is_some());
+    view.read_with(ui, |s, _| {
+        assert_eq!(s.settings.category, SettingsCategory::Sync)
+    });
+    ui.simulate_keystrokes("escape");
+    redraw(ui);
+    view.read_with(ui, |s, _| assert!(s.dialog.is_none()));
+    terminal.read_with(ui, |t, _| assert!(t.enabled));
 }
 
 #[gpui::test]
-fn about_app_returns_to_settings_scroll_and_entry_focus_and_blocks_terminal(
-    cx: &mut TestAppContext,
-) {
+fn about_category_shows_links_keeps_nav_focus_and_blocks_terminal(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     let terminal = add_terminal(&view, ui);
     view.update(ui, |s, cx| {
-        s.dialog = Some(Dialog::Settings);
+        s.open_settings(SettingsCategory::General);
         cx.notify();
     });
     redraw(ui);
-    let entry = ui.debug_bounds("about-app").unwrap();
-    view.update(ui, |s, cx| {
-        let body = s.modal.scroll.bounds();
-        s.modal.scroll.set_offset(point(
-            px(0.),
-            -(entry.bottom() - body.bottom() + px(16.)).max(px(0.)),
-        ));
-        cx.notify();
+    assert!(ui.debug_bounds("about-website").is_none());
+    click_id(ui, "settings-nav-about");
+    view.read_with(ui, |s, _| {
+        assert!(matches!(s.dialog, Some(Dialog::Settings)));
+        assert_eq!(s.settings.category, SettingsCategory::About);
     });
-    redraw(ui);
-    let saved = view.read_with(ui, |s, _| s.modal.scroll.offset());
-    for back in ["about-back", "cancel-dialog", "escape"] {
-        let entry = ui.debug_bounds("about-app").unwrap().center();
-        ui.simulate_click(entry, Modifiers::default());
-        redraw(ui);
-        view.read_with(ui, |s, _| assert!(matches!(s.dialog, Some(Dialog::About))));
-        terminal.read_with(ui, |t, _| assert!(!t.enabled));
-        assert!(ui.debug_bounds("about-website").is_some());
-        assert!(ui.debug_bounds("about-repository").is_some());
-        if back == "escape" {
-            ui.simulate_keystrokes("escape");
-        } else {
-            let button = ui.debug_bounds(back).unwrap().center();
-            ui.simulate_click(button, Modifiers::default());
-        }
-        redraw(ui);
-        view.read_with(ui, |s, _| {
-            assert!(matches!(s.dialog, Some(Dialog::Settings)));
-            assert_eq!(s.modal.scroll.offset(), saved);
-        });
-        ui.update(|w, cx| {
-            view.update(cx, |s, cx| {
-                assert!(s.modal.button("about-app", cx).is_focused(w))
-            })
-        });
+    assert!(is_focused(&view, ui, "settings-nav-about"));
+    terminal.read_with(ui, |t, _| assert!(!t.enabled));
+    let body = ui.debug_bounds("dialog-body").unwrap();
+    for link in ["about-website", "about-repository"] {
+        let bounds = ui.debug_bounds(link).unwrap();
+        assert!(bounds.left() >= body.left() && bounds.right() <= body.right());
     }
+    cx_input_is_blocked(ui, &terminal);
     ui.simulate_keystrokes("escape");
     redraw(ui);
     view.read_with(ui, |s, _| assert!(s.dialog.is_none()));
@@ -2080,7 +2065,9 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
     cx.simulate_click(settings.center(), Modifiers::default());
     redraw(cx);
     assert!(view.read_with(cx, |s, _| {
-        s.launcher.opened.is_none() && matches!(s.dialog, Some(Dialog::Shortcuts))
+        s.launcher.opened.is_none()
+            && matches!(s.dialog, Some(Dialog::Settings))
+            && s.settings.category == SettingsCategory::Shortcuts
     }));
     assert!(terminal.read_with(cx, |t, cx| t.captured_inputs(cx).is_empty()));
     for selector in [
@@ -2110,11 +2097,11 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
                 .contains(&TerminalShortcut::Key(TerminalKey::Enter))
         );
     });
+    // The close button leaves settings in one step.
     let close = cx.debug_bounds("cancel-dialog").unwrap();
     cx.simulate_click(close.center(), Modifiers::default());
     redraw(cx);
-    cx.simulate_keystrokes("escape");
-    redraw(cx);
+    assert!(view.read_with(cx, |s, _| s.dialog.is_none()));
     assert!(cx.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
     // Removed keys no longer occupy the front of the bar.
     let bar = cx.debug_bounds("shortcut-bar").unwrap();
@@ -2126,7 +2113,7 @@ fn shortcut_settings_change_the_bar_and_survive_reload(cx: &mut TestAppContext) 
         vec![b"\x03".to_vec()]
     );
     view.update(cx, |s, cx| {
-        s.dialog = Some(Dialog::Shortcuts);
+        s.open_settings(SettingsCategory::Shortcuts);
         cx.notify();
     });
     redraw(cx);
@@ -2600,7 +2587,7 @@ fn launcher_settings_edit_options_bypass_and_delete_the_default(cx: &mut TestApp
     use dgl_core::{agent::Agent, launcher::OptionKind, model::LocalState};
     let (view, cx) = setup(cx);
     view.update(cx, |s, cx| {
-        s.dialog = Some(Dialog::LaunchSettings);
+        s.open_settings(SettingsCategory::Launch);
         cx.notify();
     });
     redraw(cx);
@@ -3006,7 +2993,7 @@ fn shortcut_editor_drag_cancel_remove_readd_and_back_restore(cx: &mut TestAppCon
         view.update(cx, |s, cx| {
             s.local.preferences.theme = theme.into();
             s.local.preferences.terminal_shortcuts = original.clone();
-            s.dialog = Some(Dialog::Shortcuts);
+            s.open_settings(SettingsCategory::Shortcuts);
             cx.notify();
         });
         redraw(cx);
@@ -3078,42 +3065,24 @@ fn shortcut_editor_drag_cancel_remove_readd_and_back_restore(cx: &mut TestAppCon
                 Some(&S::Key(TerminalKey::Enter))
             )
         });
-        // Esc from detail returns to main, then the next Esc closes settings.
-        cx.simulate_keystrokes("escape");
-        redraw(cx);
-        view.read_with(cx, |s, _| {
-            assert!(matches!(s.dialog, Some(Dialog::Settings)))
-        });
+        // The shortcuts are a category page, so one Esc closes settings.
         cx.simulate_keystrokes("escape");
         redraw(cx);
         view.read_with(cx, |s, _| assert!(s.dialog.is_none()));
     }
+    // Reaching the editor from the navigation starts it at the top with the entry focused.
     view.update(cx, |s, cx| {
-        s.dialog = Some(Dialog::Settings);
+        s.open_settings(SettingsCategory::General);
         cx.notify();
     });
     redraw(cx);
-    let entry = cx.debug_bounds("edit-shortcuts").unwrap();
-    view.update(cx, |s, cx| {
-        let body = s.modal.scroll.bounds();
-        s.modal
-            .scroll
-            .set_offset(point(px(0.), -(entry.bottom() - body.bottom() + px(16.))));
-        cx.notify();
+    click_id(cx, "settings-nav-shortcuts");
+    view.read_with(cx, |s, _| {
+        assert_eq!(s.settings.category, SettingsCategory::Shortcuts);
+        assert_eq!(s.modal.scroll.offset(), point(px(0.), px(0.)));
     });
-    redraw(cx);
-    let saved = view.read_with(cx, |s, _| s.modal.scroll.offset());
-    let point = cx.debug_bounds("edit-shortcuts").unwrap().center();
-    cx.simulate_click(point, Modifiers::default());
-    redraw(cx);
-    cx.simulate_keystrokes("escape");
-    redraw(cx);
-    view.read_with(cx, |s, _| assert_eq!(s.modal.scroll.offset(), saved));
-    cx.update(|w, cx| {
-        view.update(cx, |s, cx| {
-            assert!(s.modal.button("edit-shortcuts", cx).is_focused(w));
-        })
-    });
+    assert!(is_focused(&view, cx, "settings-nav-shortcuts"));
+    assert!(cx.debug_bounds("shortcut-row-0").is_some());
 }
 
 #[test]
@@ -3402,6 +3371,7 @@ fn tmux_buffer_clipboard_is_an_opt_in_saved_setting(cx: &mut TestAppContext) {
         cx.notify();
     });
     redraw(ui);
+    click_id(ui, "settings-nav-terminal");
     for expected in [true, false] {
         let entry = ui.debug_bounds("tmux-buffer-clipboard").unwrap();
         view.update(ui, |s, cx| {
@@ -3442,6 +3412,7 @@ fn scroll_assist_choice_is_saved_and_reaches_pane_terminals(cx: &mut TestAppCont
         cx.notify();
     });
     redraw(ui);
+    click_id(ui, "settings-nav-terminal");
     for (id, expected) in [
         ("scroll-assist-off", dgl_core::scroll::ScrollAssist::Off),
         ("scroll-assist-on", dgl_core::scroll::ScrollAssist::On),
@@ -3729,23 +3700,27 @@ fn agent_status_chip_fits_and_opens_details(cx: &mut TestAppContext) {
         assert!(ui.debug_bounds(selector).is_some(), "{selector}");
     }
     // The breakdown is its own setting: it stays without the context figures, which leave
-    // the popover (debug bounds outlive removed elements, so the bar's move is the proof).
-    let with_figures = ui.debug_bounds("agent-status-breakdown").unwrap();
-    view.update(ui, |s, cx| {
-        s.local.preferences.agent_status.context = false;
-        cx.notify();
-    });
-    redraw(ui);
-    let alone = ui.debug_bounds("agent-status-breakdown").unwrap();
+    // the popover. The popover opens above the chip, so its rows keep their distance from
+    // the bottom; debug bounds outlive removed elements, so the popover's height is the
+    // proof: it shrinks once without the figures and again without the breakdown.
+    let with_figures = ui.debug_bounds("agent-status-popover").unwrap();
+    let set = |ui: &mut VisualTestContext, context: bool, breakdown: bool| {
+        view.update(ui, |s, cx| {
+            s.local.preferences.agent_status.context = context;
+            s.local.preferences.agent_status.breakdown = breakdown;
+            cx.notify();
+        });
+        redraw(ui);
+        ui.debug_bounds("agent-status-popover").unwrap()
+    };
+    let alone = set(ui, false, true);
+    let neither = set(ui, false, false);
     assert!(
-        alone.top() < with_figures.top(),
-        "{alone:?} {with_figures:?}"
+        neither.size.height < alone.size.height && alone.size.height < with_figures.size.height,
+        "{neither:?} {alone:?} {with_figures:?}"
     );
-    view.update(ui, |s, cx| {
-        s.local.preferences.agent_status.context = true;
-        cx.notify();
-    });
-    redraw(ui);
+    assert_eq!(alone.bottom(), with_figures.bottom());
+    set(ui, true, true);
     cx_input_is_blocked(ui, &terminal);
     ui.simulate_keystrokes("escape");
     redraw(ui);
@@ -3812,12 +3787,13 @@ fn agent_status_sidebar_panel_folds_and_settings_toggle_fields(cx: &mut TestAppC
     ui.simulate_click(close.center(), Modifiers::default());
     redraw(ui);
     assert!(view.read_with(ui, |s, _| s.dialog.is_none()));
-    // The settings card flips each field and saves it on this device.
+    // The agents category flips each field and saves it on this device.
     view.update(ui, |s, cx| {
         s.dialog = Some(Dialog::Settings);
         cx.notify();
     });
     redraw(ui);
+    click_id(ui, "settings-nav-agents");
     let entry = ui.debug_bounds("agent-status-setting-9").unwrap();
     view.update(ui, |s, cx| {
         let body = s.modal.scroll.bounds();
@@ -3851,4 +3827,345 @@ fn agent_status_sidebar_panel_folds_and_settings_toggle_fields(cx: &mut TestAppC
     redraw(ui);
     let hosts = ui.debug_bounds("host-section").unwrap();
     assert_eq!(hosts.bottom(), sidebar.bottom());
+}
+
+#[gpui::test]
+fn settings_nav_switches_categories_keeps_nav_focus_and_resets_detail_scroll(
+    cx: &mut TestAppContext,
+) {
+    let (view, ui) = setup(cx);
+    view.update(ui, |s, cx| {
+        s.open_settings(SettingsCategory::General);
+        cx.notify();
+    });
+    redraw(ui);
+    // A fresh dialog focuses its close button; the categories come next in the ring.
+    assert!(is_focused(&view, ui, "cancel-dialog"));
+    ui.simulate_keystrokes("tab");
+    assert!(is_focused(&view, ui, "settings-nav-general"));
+    ui.simulate_keystrokes("shift-tab");
+    assert!(is_focused(&view, ui, "cancel-dialog"));
+    click_id(ui, "settings-nav-agents");
+    let scrolled = scroll_detail_to(&view, ui, "agent-status-setting-9");
+    assert!(scrolled.y < px(0.), "the agents page scrolls");
+    assert!(is_focused(&view, ui, "settings-nav-agents"));
+    for category in [
+        SettingsCategory::Shortcuts,
+        SettingsCategory::Power,
+        SettingsCategory::Agents,
+    ] {
+        let nav: &'static str = category.nav_id();
+        click_id(ui, nav);
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::Settings)));
+            assert_eq!(s.settings.category, category);
+            assert_eq!(s.modal.scroll.offset(), point(px(0.), px(0.)));
+        });
+        assert!(is_focused(&view, ui, nav), "{nav}");
+    }
+    // Clicking the shown category keeps its page and scroll.
+    let scrolled = scroll_detail_to(&view, ui, "agent-status-setting-9");
+    click_id(ui, "settings-nav-agents");
+    view.read_with(ui, |s, _| assert_eq!(s.modal.scroll.offset(), scrolled));
+}
+
+#[gpui::test]
+fn settings_categories_render_only_their_controls(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    view.update(ui, |s, _| {
+        s.local
+            .trust
+            .insert("fixture:22".into(), "SHA256:fixture".into());
+    });
+    // Controls by focus id: debug bounds outlive removed elements.
+    let table: [(SettingsCategory, &[&str]); 9] = [
+        (
+            SettingsCategory::General,
+            &[
+                "language-system",
+                "theme-dark",
+                "accent-custom",
+                "apply-accent",
+                "show-all-hierarchy",
+            ],
+        ),
+        (
+            SettingsCategory::Terminal,
+            &[
+                "font-size-1",
+                "terminal-font",
+                "scroll-assist-auto",
+                "tmux-buffer-clipboard",
+            ],
+        ),
+        (
+            SettingsCategory::Shortcuts,
+            &[
+                "shortcut-drag-Ctrl",
+                "shortcut-setting-Ctrl",
+                "reset-shortcuts",
+            ],
+        ),
+        (SettingsCategory::Power, &["power-saving-off"]),
+        (
+            SettingsCategory::Agents,
+            &[
+                "notification-setting-0",
+                "agent-status-setting-0",
+                "agent-status-setting-9",
+            ],
+        ),
+        (
+            SettingsCategory::Launch,
+            &["launch-bypass-edit-Claude", "launch-option-add-Grok"],
+        ),
+        (SettingsCategory::Sync, &["export-settings", "sync-folder"]),
+        (SettingsCategory::Security, &["forget-fixture:22"]),
+        (
+            SettingsCategory::About,
+            &["about-website", "about-repository"],
+        ),
+    ];
+    for (category, _) in &table {
+        view.update(ui, |s, cx| {
+            s.open_settings(*category);
+            cx.notify();
+        });
+        redraw(ui);
+        view.read_with(ui, |s, _| {
+            assert!(s.modal.built("cancel-dialog"));
+            for nav in SettingsCategory::ALL {
+                assert!(s.modal.built(nav.nav_id()), "{}", nav.nav_id());
+            }
+            for (other, ids) in &table {
+                for &id in *ids {
+                    assert_eq!(s.modal.built(id), other == category, "{id} on {category:?}");
+                }
+            }
+        });
+    }
+    // Rows without controls are on their own pages too.
+    for (category, id) in [
+        (SettingsCategory::Terminal, "scrollback-setting"),
+        (SettingsCategory::Shortcuts, "settings-group-app-shortcuts"),
+        (SettingsCategory::Security, "settings-storage"),
+    ] {
+        view.update(ui, |s, cx| {
+            s.open_settings(category);
+            cx.notify();
+        });
+        redraw(ui);
+        let page: &'static str =
+            Box::leak(format!("settings-page-{}", category.id()).into_boxed_str());
+        let page = ui.debug_bounds(page).unwrap();
+        let row = ui.debug_bounds(id).unwrap();
+        assert!(
+            row.top() >= page.top() && row.bottom() <= page.bottom(),
+            "{id}"
+        );
+    }
+}
+
+#[gpui::test]
+fn settings_nav_is_fixed_and_narrow_windows_stack_it_above_the_detail(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    ui.simulate_resize(gpui::size(px(1200.), px(800.)));
+    view.update(ui, |s, cx| {
+        s.open_settings(SettingsCategory::Agents);
+        cx.notify();
+    });
+    redraw(ui);
+    let nav = ui.debug_bounds("settings-nav").unwrap();
+    let body = ui.debug_bounds("dialog-body").unwrap();
+    let general = ui.debug_bounds("settings-nav-general").unwrap();
+    assert!(nav.right() <= body.left());
+    assert!(nav.top() <= body.top() + px(1.) && nav.bottom() >= body.bottom() - px(1.));
+    let panel = ui.debug_bounds("dialog-panel").unwrap();
+    assert_eq!(panel.size.width, px(crate::settings_ui::PANEL_WIDTH));
+    scroll_detail_to(&view, ui, "agent-status-setting-9");
+    assert!(view.read_with(ui, |s, _| s.modal.scroll.offset().y < px(0.)));
+    assert_eq!(ui.debug_bounds("settings-nav").unwrap(), nav);
+    assert_eq!(ui.debug_bounds("settings-nav-general").unwrap(), general);
+    // The panel keeps its height when the category changes.
+    click_id(ui, "settings-nav-power");
+    assert_eq!(ui.debug_bounds("dialog-panel").unwrap(), panel);
+    for (width, height) in [(640., 480.), (400., 300.)] {
+        ui.simulate_resize(gpui::size(px(width), px(height)));
+        redraw(ui);
+        let nav = ui.debug_bounds("settings-nav").unwrap();
+        let body = ui.debug_bounds("dialog-body").unwrap();
+        let panel = ui.debug_bounds("dialog-panel").unwrap();
+        assert!(nav.bottom() <= body.top(), "{width}x{height}");
+        assert!(body.size.height > px(0.), "{width}x{height}");
+        assert!(nav.left() >= panel.left() && nav.right() <= panel.right());
+        assert!(body.left() >= panel.left() && body.right() <= panel.right());
+        assert!(panel.left() >= px(0.) && panel.right() <= px(width));
+        assert!(panel.top() >= px(0.) && panel.bottom() <= px(height));
+        let close = ui.debug_bounds("cancel-dialog").unwrap();
+        assert!(close.top() >= body.bottom() && close.bottom() <= panel.bottom());
+        // The strip scrolls sideways instead of wrapping.
+        let first = ui.debug_bounds("settings-nav-general").unwrap();
+        let second = ui.debug_bounds("settings-nav-terminal").unwrap();
+        assert_eq!(first.top(), second.top());
+    }
+}
+
+#[gpui::test]
+fn tab_reveals_each_settings_category_in_the_navigation_scroll(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    // A narrow strip and a wide but short column both hide later categories.
+    for (width, height) in [(400., 300.), (640., 480.), (1200., 420.)] {
+        ui.simulate_resize(gpui::size(px(width), px(height)));
+        view.update(ui, |s, cx| {
+            s.open_settings(SettingsCategory::General);
+            cx.notify();
+        });
+        redraw(ui);
+        assert!(is_focused(&view, ui, "cancel-dialog"), "{width}x{height}");
+        let about = ui.debug_bounds("settings-nav-about").unwrap();
+        let nav = ui.debug_bounds("settings-nav").unwrap();
+        assert!(
+            about.right() > nav.right() || about.bottom() > nav.bottom(),
+            "{width}x{height}: the last category starts hidden"
+        );
+        for category in SettingsCategory::ALL {
+            ui.simulate_keystrokes("tab");
+            redraw(ui);
+            let id = category.nav_id();
+            assert!(is_focused(&view, ui, id), "{width}x{height} {id}");
+            let nav = ui.debug_bounds("settings-nav").unwrap();
+            let item = ui.debug_bounds(id).unwrap();
+            assert!(
+                item.left() >= nav.left()
+                    && item.right() <= nav.right()
+                    && item.top() >= nav.top()
+                    && item.bottom() <= nav.bottom(),
+                "{width}x{height} {id} {item:?} {nav:?}"
+            );
+        }
+        // Revealing a category leaves the detail scroll alone.
+        view.read_with(ui, |s, _| {
+            assert_eq!(s.modal.scroll.offset(), point(px(0.), px(0.)))
+        });
+        ui.simulate_keystrokes("escape");
+        redraw(ui);
+        view.read_with(ui, |s, _| assert!(s.dialog.is_none()));
+    }
+}
+
+#[gpui::test]
+fn terminal_font_and_launch_editor_return_to_their_category_entry(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    ui.simulate_resize(gpui::size(px(1200.), px(560.)));
+    view.update(ui, |s, cx| {
+        s.open_settings(SettingsCategory::Terminal);
+        cx.notify();
+    });
+    redraw(ui);
+    let saved = scroll_detail_to(&view, ui, "terminal-font");
+    for back in [
+        "escape",
+        "terminal-font-back",
+        "cancel-dialog",
+        "settings-nav-terminal",
+    ] {
+        click_id(ui, "terminal-font");
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::TerminalFont)))
+        });
+        // The navigation stays, with the terminal category still selected.
+        assert!(ui.debug_bounds("settings-nav-terminal").is_some());
+        assert!(ui.debug_bounds("terminal-font-preview").is_some());
+        assert!(!view.read_with(ui, |s, _| s.modal.built("font-size-1")));
+        if back == "escape" {
+            ui.simulate_keystrokes("escape");
+            redraw(ui);
+        } else {
+            click_id(ui, back);
+        }
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::Settings)), "{back}");
+            assert_eq!(s.settings.category, SettingsCategory::Terminal);
+            assert_eq!(s.modal.scroll.offset(), saved, "{back}");
+        });
+        assert!(is_focused(&view, ui, "terminal-font"), "{back}");
+    }
+    // Another category from the font list starts at its top.
+    click_id(ui, "terminal-font");
+    click_id(ui, "settings-nav-power");
+    view.read_with(ui, |s, _| {
+        assert!(matches!(s.dialog, Some(Dialog::Settings)));
+        assert_eq!(s.settings.category, SettingsCategory::Power);
+    });
+    click_id(ui, "settings-nav-launch");
+    let saved = scroll_detail_to(&view, ui, "launch-option-add-Grok");
+    assert!(saved.y < px(0.));
+    for back in ["escape", "cancel-dialog", "save-launch-editor"] {
+        click_id(ui, "launch-option-add-Grok");
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::LaunchEditor(_))))
+        });
+        match back {
+            "escape" => {
+                ui.simulate_keystrokes("escape");
+                redraw(ui);
+            }
+            "save-launch-editor" => {
+                ui.simulate_input("Option");
+                ui.simulate_keystrokes("tab tab");
+                ui.simulate_input("--flag");
+                redraw(ui);
+                click_id(ui, back);
+            }
+            _ => click_id(ui, back),
+        }
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::Settings)), "{back}");
+            assert_eq!(s.settings.category, SettingsCategory::Launch);
+            // A saved option adds a row above the entry, which is then revealed.
+            if back == "save-launch-editor" {
+                assert!(s.modal.scroll.offset().y <= saved.y);
+            } else {
+                assert_eq!(s.modal.scroll.offset(), saved, "{back}");
+            }
+        });
+        assert!(is_focused(&view, ui, "launch-option-add-Grok"), "{back}");
+        redraw(ui);
+        let body = ui.debug_bounds("dialog-body").unwrap();
+        let entry = ui.debug_bounds("launch-option-add-Grok").unwrap();
+        assert!(
+            entry.top() >= body.top() && entry.bottom() <= body.bottom(),
+            "{back} {entry:?} {body:?}"
+        );
+    }
+    view.read_with(ui, |s, _| {
+        let options = &s.agent_launch(dgl_core::agent::Agent::Grok).options;
+        assert_eq!(options.last().unwrap().value, "--flag");
+    });
+}
+
+#[gpui::test]
+fn settings_reopen_on_general_and_escape_closes_from_any_category(cx: &mut TestAppContext) {
+    let (view, ui) = setup(cx);
+    let terminal = add_terminal(&view, ui);
+    redraw(ui);
+    ui.update(|w, cx| w.focus(&terminal.focus_handle(cx)));
+    for category in SettingsCategory::ALL {
+        click_id(ui, "settings");
+        view.read_with(ui, |s, _| {
+            assert!(matches!(s.dialog, Some(Dialog::Settings)));
+            assert_eq!(s.settings.category, SettingsCategory::General);
+        });
+        assert!(is_focused(&view, ui, "cancel-dialog"));
+        assert!(ui.debug_bounds("language-system").is_some());
+        if category != SettingsCategory::General {
+            click_id(ui, category.nav_id());
+        }
+        view.read_with(ui, |s, _| assert_eq!(s.settings.category, category));
+        ui.simulate_keystrokes("escape");
+        redraw(ui);
+        view.read_with(ui, |s, _| assert!(s.dialog.is_none(), "{category:?}"));
+        assert!(ui.update(|w, cx| terminal.focus_handle(cx).is_focused(w)));
+    }
+    assert!(terminal.read_with(ui, |t, cx| t.captured_inputs(cx).is_empty()));
 }

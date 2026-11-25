@@ -15,6 +15,8 @@ pub struct Palette {
     /// Weak hover tint between the panel and `selection`, for a hovered container.
     pub hover: u32,
     pub input: u32,
+    /// Destructive actions and errors; at least 4.5:1 against the app surfaces.
+    pub danger: u32,
 }
 impl Palette {
     pub fn new(dark: bool) -> Self {
@@ -33,6 +35,7 @@ impl Palette {
                 selection: 0x2b4264,
                 hover: dgl_core::accent::blend(0x2b4264, 0x25262a, 0.5),
                 input: 0x202125,
+                danger: 0xf2777e,
             }
         } else {
             Self {
@@ -49,6 +52,7 @@ impl Palette {
                 selection: 0xdbe9ff,
                 hover: dgl_core::accent::blend(0xdbe9ff, 0xeeeef0, 0.5),
                 input: 0xffffff,
+                danger: 0xc4314b,
             }
         }
     }
@@ -72,6 +76,10 @@ mod tests {
                 assert_eq!(system.panel, base.panel);
                 assert_eq!(system.input, base.input);
                 assert_eq!(system.fg, base.fg);
+                assert_eq!(system.danger, base.danger);
+                for bg in [system.bg, system.panel] {
+                    assert!(contrast(system.danger, bg) >= 4.5);
+                }
                 assert_eq!(system.accent_fill, color);
                 // The sidebar divider must stay visible on both sidebar surfaces.
                 for bg in [system.panel, system.bg] {

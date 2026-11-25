@@ -326,10 +326,11 @@ class AndroidAppFlowTest {
                 stage = "font setting and renderer replacement"
                 var previousView: WebView? = null
                 scenario.onActivity { previousView = findWebView(it.window.decorView) }
-                clickText("설정"); clickText("부드러운 터미널 화면 전환"); clickText("닫기")
+                // "터미널" also labels the main window; open the category once the settings dialog is active.
+                clickText("설정"); awaitText("닫기"); clickText("터미널"); clickText("부드러운 터미널 화면 전환"); clickText("닫기")
                 assertTrue(app.local.value.preferences.smoothTerminalTransitions)
                 scenario.onActivity { assertSame("Animation settings must not replace the WebView", previousView, findWebView(it.window.decorView)) }
-                clickText("설정"); clickText("크게"); clickText("닫기")
+                clickText("설정"); awaitText("닫기"); clickText("터미널"); clickText("크게"); clickText("닫기")
                 withTimeout(10000) {
                     while (true) {
                         var replaced = false
@@ -505,6 +506,10 @@ class AndroidAppFlowTest {
         if (predicate(node)) return node
         for (i in 0 until node.childCount) findNode(node.getChild(i), predicate)?.let { return it }
         return null
+    }
+    private suspend fun awaitText(value: String) = withTimeout(5000) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        while (true) { automation.clearCache(); if (findText(automation.rootInActiveWindow, value) != null) break; delay(50) }
     }
     private suspend fun clickText(value: String) = clickMatching { it.text?.toString() == value || it.contentDescription?.toString() == value }
     private suspend fun clickMatching(predicate: (android.view.accessibility.AccessibilityNodeInfo) -> Boolean) {

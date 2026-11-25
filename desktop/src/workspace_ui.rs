@@ -356,7 +356,7 @@ impl Desktop {
                             s.close_tab(id);
                         }
                     }
-                    Some(Settings) => s.dialog = Some(Dialog::Settings),
+                    Some(Settings) => s.open_settings(settings::SettingsCategory::General),
                     Some(Refresh) if s.files_focused(w, cx) => {
                         s.refresh_files(s.workspace.file_view.unwrap(), cx);
                     }
@@ -932,7 +932,7 @@ impl Desktop {
                     )
                     .child(
                         self.button("settings", UiIcon::Settings, cx, |s, _, _| {
-                            s.dialog = Some(Dialog::Settings);
+                            s.open_settings(settings::SettingsCategory::General);
                         })
                         .w(px(28.))
                         .h(px(24.))

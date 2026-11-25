@@ -13,28 +13,27 @@ import kim.jujin.dglc.core.*
 
 @Composable internal fun LaunchSettings(preferences: Preferences, update: (LaunchAgent, (AgentLaunch) -> AgentLaunch) -> Unit) {
     var editor by remember { mutableStateOf<LaunchEditor?>(null) }
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        for (agent in LaunchAgent.entries) {
-            val config = preferences.launchFor(agent)
-            Text(agent.label, style = MaterialTheme.typography.titleMedium)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(t("launcher.bypass_arguments"), style = MaterialTheme.typography.labelMedium)
-                    Text(config.bypass)
-                }
-                BorderedButton({ editor = LaunchEditor.Bypass(agent, config.bypass) }) { Text(t("common.edit")) }
+    // One group per agent. The settings detail column scrolls, so this adds no scroll of its own.
+    for (agent in LaunchAgent.entries) {
+        val config = preferences.launchFor(agent)
+        SettingsGroup(agent.label) {
+            SettingsRow(t("launcher.bypass_arguments"), config.bypass.takeIf { it.isNotEmpty() }) {
+                SettingsActionButton(t("common.edit"), { editor = LaunchEditor.Bypass(agent, config.bypass) })
             }
             config.options.forEachIndexed { index, option ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(option.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    BorderedButton({ editor = LaunchEditor.Option(agent, index, option) }) { Text(t("common.edit")) }
-                    BorderedButton({ update(agent) { it.copy(options = it.options.filterIndexed { i, _ -> i != index }) } }) {
-                        Text(t("common.delete"))
-                    }
+                SettingsDivider()
+                Row(Modifier.fillMaxWidth().heightIn(min = SettingsSpacing.rowMinHeight).padding(horizontal = SettingsSpacing.rowH, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SettingsSpacing.controlGap)) {
+                    Text(option.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    SettingsActionButton(t("common.edit"), { editor = LaunchEditor.Option(agent, index, option) })
+                    SettingsActionButton(t("common.delete"), { update(agent) { it.copy(options = it.options.filterIndexed { i, _ -> i != index }) } },
+                        style = SettingsActionStyle.Danger)
                 }
             }
-            BorderedButton({ editor = LaunchEditor.Option(agent, null, LaunchOption()) }) { Text(t("launcher.add_option")) }
-            HorizontalDivider()
+            SettingsDivider()
+            SettingsActions {
+                SettingsActionButton(t("launcher.add_option"), { editor = LaunchEditor.Option(agent, null, LaunchOption()) })
+            }
         }
     }
     editor?.let { initial ->
@@ -49,9 +48,12 @@ import kim.jujin.dglc.core.*
                     val value = option.value
                     LaunchField(t("common.name"), value.name) { draft = option.copy(value = value.copy(name = it)) }
                     LaunchField(t("launcher.description"), value.description) { draft = option.copy(value = value.copy(description = it)) }
-                    for (kind in OptionKind.entries) {
-                        FilterChip(selected = value.kind == kind, onClick = { draft = option.copy(value = value.copy(kind = kind)) },
-                            label = { Text(t(if (kind == OptionKind.Environment) "launcher.environment" else "launcher.argument")) })
+                    SettingsChips {
+                        for (kind in OptionKind.entries) {
+                            SettingsChip(t(if (kind == OptionKind.Environment) "launcher.environment" else "launcher.argument"), value.kind == kind) {
+                                draft = option.copy(value = value.copy(kind = kind))
+                            }
+                        }
                     }
                     LaunchField(t(if (value.kind == OptionKind.Environment) "launcher.env_value" else "launcher.argument_value"), value.value) {
                         draft = option.copy(value = value.copy(value = it))

@@ -3,7 +3,7 @@
 데스크톱(macOS·Windows·Linux) GPUI 탐색기와 Android 대화면 탐색기·좁은 창 tmux 관리 시트는 **세션 → 창**까지만 표시한다.
 어떤 표시 설정에서도 pane 행은 만들지 않는다. 창을 선택하면 보이는 pane 전체를 터미널 영역에 표시한다.
 
-설정의 **단일 창도 표시**는 기존 `showAllHierarchy` / `show_all_hierarchy` 저장 키를 그대로 사용한다.
+**설정 → 일반 → 작업 공간 → 단일 창도 표시**는 기존 `showAllHierarchy` / `show_all_hierarchy` 저장 키를 그대로 사용한다.
 기본은 꺼짐이며 기기별로 저장한다. 이전 true 값은 단일 창 행을 표시하고, false 값은 세션 행과 합친다.
 Drive 동기화 항목에는 추가하지 않는다.
 

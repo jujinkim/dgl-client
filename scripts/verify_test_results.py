@@ -13,6 +13,8 @@ TESTS = {
                                        'reattachToLastPresentedWindowPreviewsUntilPresented',
                                        'selectingCurtainAsksForASessionInsteadOfRestoring'],
     'MobileChromeTest': ['notificationPositionRespectsAnchorScreenInsetsAndKeyboard'],
+    'SettingsNavigationTest': ['compactBackReturnsToTheListThenCloses', 'directShortcutEntryBacksToTheList',
+                               'twoPaneShowsGeneralAndBackCloses', 'categoryTextKeysExistInEveryLanguage'],
     'SnackbarStateTest': ['defaultPresetsAndCustomMillisecondsExpireAtTheirBoundary',
                           'sameTextRestartsAndOldExpiryOrDismissCannotRemoveReplacement',
                           'indefiniteHasNoGaugeOrExpiryAndCanBeClosedOrReplaced'],

@@ -34,6 +34,7 @@ mod power;
 mod resume;
 mod session_tabs;
 mod settings;
+mod settings_ui;
 mod size_claim;
 mod snackbar;
 mod storage;
@@ -140,13 +141,11 @@ enum Dialog {
         title: String,
         operation: DeleteOp,
     },
+    /// Settings on `SettingsState::category`.
     Settings,
-    ExportSync,
-    Shortcuts,
-    LaunchSettings,
     LaunchEditor(launch_settings::Editor),
+    /// The terminal category's font list.
     TerminalFont,
-    About,
     Agents(Arc<Connection>, String, Option<String>),
     AgentHooks(Arc<Connection>, String),
     Notifications,
@@ -899,6 +898,9 @@ impl Desktop {
         let id = id.into();
         let palette = self.palette;
         let focus = self.modal.building.then(|| self.modal.button(&id, cx));
+        // The settings navigation sits outside the tracked detail scroll and reveals
+        // its items in its own scroll.
+        let nav = id.starts_with("settings-nav-");
         let reveal = focus.clone().filter(|_| {
             !matches!(
                 id.as_ref(),
@@ -907,7 +909,11 @@ impl Desktop {
         });
         div()
             .when_some(reveal, |d, focus| {
-                d.on_children_prepainted(self.modal.reveal_on_focus(focus))
+                if nav {
+                    d.on_children_prepainted(self.settings.reveal_nav_on_focus(focus))
+                } else {
+                    d.on_children_prepainted(self.modal.reveal_on_focus(focus))
+                }
             })
             .id(ElementId::Name(id.clone()))
             .debug_selector(|| id.to_string())
@@ -1087,13 +1093,9 @@ impl Render for Desktop {
                 } => ("host", host_dialog::focus_inputs(fields, *key_auth)),
                 Dialog::Prompt { input, .. } => ("prompt", vec![input.clone()]),
                 Dialog::Delete { .. } => ("delete", vec![]),
-                Dialog::Settings => ("settings", vec![]),
-                Dialog::ExportSync => ("export-sync", vec![]),
-                Dialog::Shortcuts => ("shortcuts", vec![]),
-                Dialog::LaunchSettings => ("launch-settings", vec![]),
+                Dialog::Settings => (self.settings.category.kind(), vec![]),
                 Dialog::LaunchEditor(edit) => ("launch-editor", edit.inputs()),
                 Dialog::TerminalFont => ("terminal-font", vec![]),
-                Dialog::About => ("about", vec![]),
                 Dialog::Agents(..) => ("agents", vec![]),
                 Dialog::AgentHooks(..) => ("agent-hooks", vec![]),
                 Dialog::Notifications => ("notifications", vec![]),
@@ -1114,36 +1116,35 @@ impl Render for Desktop {
             } else if matches!(dialog, Dialog::AgentStatus) {
                 root = root.child(self.render_agent_status_panel(window, cx));
             } else {
+                let viewport = window.viewport_size();
+                let max_h = (f32::from(viewport.height) - 180.).clamp(100., 620.);
+                let settings_page = matches!(dialog, Dialog::Settings | Dialog::TerminalFont);
                 let mut body = div()
                     .id("dialog-body")
                     .debug_selector(|| "dialog-body".into())
                     .track_scroll(&self.modal.scroll)
                     .overflow_y_scroll()
-                    .max_h(px(
-                        (f32::from(window.viewport_size().height) - 180.).clamp(100., 620.)
-                    ))
+                    .max_h(px(max_h))
                     .flex()
                     .flex_col()
                     .gap_3();
+                // Built before the body so it stays first in the focus ring. Settings
+                // save as they change, so their button closes them.
                 let mut footer = div().flex().gap_2().justify_end().child(self.button(
                     "cancel-dialog",
-                    if matches!(
-                        &dialog,
-                        Dialog::Shortcuts
-                            | Dialog::LaunchSettings
-                            | Dialog::TerminalFont
-                            | Dialog::About
-                            | Dialog::ExportSync
-                    ) {
-                        t("common.back")
-                    } else if matches!(&dialog, Dialog::Compose(_) | Dialog::LaunchEditor(_)) {
-                        t("common.cancel")
-                    } else {
-                        t("common.cancel_close")
+                    match &dialog {
+                        Dialog::Settings => t("common.close"),
+                        Dialog::TerminalFont => t("common.back"),
+                        Dialog::Compose(_) | Dialog::LaunchEditor(_) => t("common.cancel"),
+                        _ => t("common.cancel_close"),
                     },
                     cx,
                     |s, _, cx| s.dismiss_dialog(cx),
                 ));
+                let shell = settings_page.then(|| {
+                    let narrow = f32::from(viewport.width) < settings_ui::NARROW_BELOW;
+                    self.settings_shell(matches!(dialog, Dialog::TerminalFont), max_h, narrow, cx)
+                });
                 match dialog {
                     dialog @ Dialog::Host { .. } => {
                         body = body.child(self.render_host_dialog(dialog, cx));
@@ -1213,15 +1214,7 @@ impl Render for Desktop {
                             .when(!enabled, |d| d.opacity(0.35).cursor_default()),
                         );
                     }
-                    Dialog::Settings => {
-                        body = body.child(self.settings_main(cx));
-                    }
-                    Dialog::ExportSync => {
-                        body = body.child(self.export_sync_settings(cx));
-                    }
-                    Dialog::LaunchSettings => {
-                        body = body.child(self.launch_settings(cx));
-                    }
+                    Dialog::Settings | Dialog::TerminalFont => {}
                     Dialog::LaunchEditor(edit) => {
                         body = body.child(self.launch_editor(&edit, cx));
                         footer = footer.child(
@@ -1230,15 +1223,6 @@ impl Render for Desktop {
                             })
                             .when(!edit.valid(cx), |d| d.opacity(0.35).cursor_default()),
                         );
-                    }
-                    Dialog::Shortcuts => {
-                        body = body.child(self.shortcut_settings(cx));
-                    }
-                    Dialog::TerminalFont => {
-                        body = body.child(self.terminal_font_settings(cx));
-                    }
-                    Dialog::About => {
-                        body = body.child(self.about_app(cx));
                     }
                 }
                 root = root.child(
@@ -1257,23 +1241,12 @@ impl Render for Desktop {
                         .p_6()
                         .child(
                             div()
-                                .w(px(
-                                    if matches!(
-                                        self.dialog,
-                                        Some(
-                                            Dialog::Settings
-                                                | Dialog::ExportSync
-                                                | Dialog::LaunchSettings
-                                                | Dialog::Shortcuts
-                                                | Dialog::TerminalFont
-                                                | Dialog::About
-                                        )
-                                    ) {
-                                        720.
-                                    } else {
-                                        520.
-                                    },
-                                ))
+                                .debug_selector(|| "dialog-panel".into())
+                                .w(px(if settings_page {
+                                    settings_ui::PANEL_WIDTH
+                                } else {
+                                    520.
+                                }))
                                 .max_w_full()
                                 .p_4()
                                 .border_1()
@@ -1282,7 +1255,10 @@ impl Render for Desktop {
                                 .flex()
                                 .flex_col()
                                 .gap_4()
-                                .child(body)
+                                .map(|d| match shell {
+                                    Some(shell) => d.child(shell),
+                                    None => d.child(body),
+                                })
                                 .child(footer),
                         ),
                 );
@@ -1341,7 +1317,7 @@ impl Render for Desktop {
             if self.settings.restore && matches!(self.dialog, Some(Dialog::Settings)) {
                 self.settings.restore = false;
                 self.modal.scroll.set_offset(self.settings.main_offset());
-                self.modal.restore_button(self.settings.entry, window);
+                self.modal.restore_button(&self.settings.entry, window);
             }
             self.modal.finish(window);
         }

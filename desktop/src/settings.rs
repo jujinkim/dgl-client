@@ -1,13 +1,117 @@
 use super::*;
 use dgl_core::i18n::Language;
 use dgl_core::input::{TerminalShortcut, move_shortcut};
+use settings_ui::{ActionKind, NAV_STRIP_H, NAV_WIDTH, PAGE_GAP};
 use terminal::fonts::TerminalFace;
+
+/// The settings categories in navigation order. Each one is a detail page of the
+/// single settings dialog; only the font list and the launch editor go deeper.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub(super) enum SettingsCategory {
+    #[default]
+    General,
+    Terminal,
+    Shortcuts,
+    Power,
+    Agents,
+    Launch,
+    Sync,
+    Security,
+    About,
+}
+impl SettingsCategory {
+    pub const ALL: [Self; 9] = [
+        Self::General,
+        Self::Terminal,
+        Self::Shortcuts,
+        Self::Power,
+        Self::Agents,
+        Self::Launch,
+        Self::Sync,
+        Self::Security,
+        Self::About,
+    ];
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::General => "general",
+            Self::Terminal => "terminal",
+            Self::Shortcuts => "shortcuts",
+            Self::Power => "power",
+            Self::Agents => "agents",
+            Self::Launch => "launch",
+            Self::Sync => "sync",
+            Self::Security => "security",
+            Self::About => "about",
+        }
+    }
+    /// The navigation button's element and focus id.
+    pub fn nav_id(self) -> &'static str {
+        match self {
+            Self::General => "settings-nav-general",
+            Self::Terminal => "settings-nav-terminal",
+            Self::Shortcuts => "settings-nav-shortcuts",
+            Self::Power => "settings-nav-power",
+            Self::Agents => "settings-nav-agents",
+            Self::Launch => "settings-nav-launch",
+            Self::Sync => "settings-nav-sync",
+            Self::Security => "settings-nav-security",
+            Self::About => "settings-nav-about",
+        }
+    }
+    /// The modal kind; a new kind starts the detail scroll at the top.
+    pub fn kind(self) -> &'static str {
+        match self {
+            Self::General => "settings-general",
+            Self::Terminal => "settings-terminal",
+            Self::Shortcuts => "settings-shortcuts",
+            Self::Power => "settings-power",
+            Self::Agents => "settings-agents",
+            Self::Launch => "settings-launch",
+            Self::Sync => "settings-sync",
+            Self::Security => "settings-security",
+            Self::About => "settings-about",
+        }
+    }
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::General => "settings.category_general",
+            Self::Terminal => "settings.category_terminal",
+            Self::Shortcuts => "settings.category_shortcuts",
+            Self::Power => "settings.category_power",
+            Self::Agents => "settings.category_agents",
+            Self::Launch => "settings.category_launch",
+            Self::Sync => "sync.export_and_sync",
+            Self::Security => "settings.security_storage",
+            Self::About => "settings.about",
+        }
+    }
+    pub fn description(self) -> Option<&'static str> {
+        match self {
+            Self::General => Some("settings.general_description"),
+            Self::Terminal => Some("settings.terminal_description"),
+            Self::Shortcuts => Some("settings.shortcuts_description"),
+            Self::Power => Some("settings.power_saving_description"),
+            Self::Agents => Some("settings.agents_description"),
+            Self::Launch => Some("launcher.settings"),
+            Self::Sync => Some("sync.description"),
+            Self::Security => Some("settings.security_description"),
+            Self::About => None,
+        }
+    }
+    /// Whether a spacer separates this category from the previous cluster.
+    pub fn cluster_start(self) -> bool {
+        matches!(self, Self::Agents | Self::Sync)
+    }
+}
 
 #[derive(Default)]
 pub(super) struct SettingsState {
+    pub category: SettingsCategory,
+    /// Detail scroll offset to restore when a second-level page returns.
     main_offset: Point<Pixels>,
     pub restore: bool,
-    pub entry: &'static str,
+    /// The control focused again when `restore` is set.
+    pub entry: SharedString,
     pub dragging: Option<TerminalShortcut>,
     destination: Option<usize>,
     pointer: Option<Point<Pixels>>,
@@ -15,133 +119,317 @@ pub(super) struct SettingsState {
     /// Installed monospace families, read when the font page first opens.
     fonts: Option<Vec<String>>,
     loading_fonts: bool,
+    /// The category list keeps its own scroll; the tracked modal scroll is the detail.
+    nav: ScrollHandle,
+    nav_reveal: crate::modal::RevealState,
+    /// Whether the last build laid the category list out as a horizontal strip.
+    nav_narrow: bool,
 }
 impl SettingsState {
     pub fn main_offset(&self) -> Point<Pixels> {
         self.main_offset
     }
+    /// Scrolls the category list so its focused item is visible: sideways in the
+    /// narrow strip, vertically in the column.
+    pub fn reveal_nav_on_focus(
+        &self,
+        focus: FocusHandle,
+    ) -> impl Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static {
+        crate::modal::reveal_on_focus_in(
+            self.nav.clone(),
+            self.nav_reveal.clone(),
+            focus,
+            if self.nav_narrow {
+                crate::modal::RevealAxis::Horizontal
+            } else {
+                crate::modal::RevealAxis::Vertical
+            },
+        )
+    }
 }
 #[derive(Clone)]
 struct DragShortcut(TerminalShortcut);
 impl Desktop {
-    fn settings_card(&self, title: &'static str, description: &'static str) -> Div {
-        div()
+    /// Opens settings on `category` with fresh focus; the font list stays cached.
+    pub(super) fn open_settings(&mut self, category: SettingsCategory) {
+        self.cancel_import_preview();
+        self.clear_shortcut_drag();
+        self.settings.category = category;
+        self.settings.main_offset = Point::default();
+        self.settings.restore = false;
+        self.settings.entry = SharedString::default();
+        self.settings.nav.set_offset(Point::default());
+        self.settings.nav_reveal.reset();
+        self.dialog = Some(Dialog::Settings);
+    }
+    /// Shows another category, keeping focus on its navigation button.
+    pub(super) fn select_settings_category(&mut self, category: SettingsCategory) {
+        match self.dialog {
+            Some(Dialog::Settings) if self.settings.category == category => return,
+            Some(Dialog::TerminalFont) if category == SettingsCategory::Terminal => {
+                self.settings_back();
+                return;
+            }
+            _ => {}
+        }
+        if self.settings.category == SettingsCategory::Sync {
+            self.cancel_import_preview();
+        }
+        self.clear_shortcut_drag();
+        self.settings.category = category;
+        self.settings.main_offset = Point::default();
+        self.settings.entry = category.nav_id().into();
+        self.settings.restore = true;
+        self.dialog = Some(Dialog::Settings);
+    }
+    pub(super) fn clear_shortcut_drag(&mut self) {
+        self.settings.dragging = None;
+        self.settings.destination = None;
+        self.settings.pointer = None;
+    }
+    /// Remembers the detail scroll and the control that opens a second-level page.
+    pub(super) fn remember_settings_entry(&mut self, entry: impl Into<SharedString>) {
+        self.settings.main_offset = self.modal.scroll.offset();
+        self.settings.entry = entry.into();
+    }
+    /// Returns from the font list to the terminal category.
+    pub(super) fn settings_back(&mut self) {
+        self.clear_shortcut_drag();
+        self.settings.category = SettingsCategory::Terminal;
+        self.settings.entry = "terminal-font".into();
+        self.settings.restore = true;
+        self.dialog = Some(Dialog::Settings);
+    }
+    /// Returns from the launch editor to the quick launch category and its entry.
+    pub(super) fn return_from_launch_editor(&mut self) {
+        self.settings.category = SettingsCategory::Launch;
+        self.settings.restore = true;
+        self.dialog = Some(Dialog::Settings);
+    }
+    /// The settings dialog body: category navigation beside (or, in narrow windows,
+    /// above) the scrolling detail. Navigation is built first so the focus ring runs
+    /// close → categories → detail.
+    pub(super) fn settings_shell(
+        &mut self,
+        font_page: bool,
+        max_h: f32,
+        narrow: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let p = self.palette;
+        let current = if font_page {
+            SettingsCategory::Terminal
+        } else {
+            self.settings.category
+        };
+        if self.settings.nav_narrow != narrow {
+            self.settings.nav.set_offset(Point::default());
+            self.settings.nav_reveal.reset();
+        }
+        self.settings.nav_narrow = narrow;
+        let mut nav = div()
+            .id("settings-nav")
+            .debug_selector(|| "settings-nav".into())
+            .track_scroll(&self.settings.nav)
+            .flex()
+            .gap_1()
+            .flex_shrink_0();
+        nav = if narrow {
+            nav.flex_row()
+                .items_center()
+                .h(px(NAV_STRIP_H))
+                .overflow_x_scroll()
+        } else {
+            nav.flex_col().w(px(NAV_WIDTH)).h_full().overflow_y_scroll()
+        };
+        for category in SettingsCategory::ALL {
+            if category.cluster_start() {
+                nav = nav.child(if narrow {
+                    div().w(px(8.)).flex_shrink_0()
+                } else {
+                    div().h(px(10.)).flex_shrink_0()
+                });
+            }
+            nav = nav.child(self.settings_nav_item(category, category == current, narrow, cx));
+        }
+        let header = if font_page {
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    self.button_base("terminal-font-back", cx, |s, _, _| s.settings_back())
+                        .size(px(settings_ui::CONTROL_H))
+                        .p_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_md()
+                        .border_color(rgb(p.control_border))
+                        .native_tooltip(t("common.back"))
+                        .child(UiIcon::ArrowLeft.render(p.fg)),
+                )
+                .child(self.settings_page(
+                    format!(
+                        "{} › {}",
+                        t(SettingsCategory::Terminal.title()),
+                        t("font.terminal_font")
+                    ),
+                    None,
+                ))
+        } else {
+            self.settings_page(
+                t(current.title()),
+                current.description().map(|key| t(key).into()),
+            )
+        };
+        let page = if font_page {
+            self.terminal_font_settings(cx)
+        } else {
+            match current {
+                SettingsCategory::General => self.settings_general(cx),
+                SettingsCategory::Terminal => self.settings_terminal(cx),
+                SettingsCategory::Shortcuts => self.shortcut_settings(cx),
+                SettingsCategory::Power => self.settings_power(cx),
+                SettingsCategory::Agents => div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(PAGE_GAP))
+                    .child(self.agent_settings(cx))
+                    .child(self.agent_status_settings(cx)),
+                SettingsCategory::Launch => self.launch_settings(cx),
+                SettingsCategory::Sync => self.export_sync_settings(cx),
+                SettingsCategory::Security => self.settings_security(cx),
+                SettingsCategory::About => self.about_app(cx),
+            }
+        };
+        let detail = div()
+            .id("dialog-body")
+            .debug_selector(|| "dialog-body".into())
+            .track_scroll(&self.modal.scroll)
+            .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap_3()
-            .p_4()
-            .rounded_lg()
-            .border_1()
-            .border_color(rgb(self.palette.line))
-            .bg(rgb(self.palette.panel))
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
             .child(
                 div()
-                    .id(SharedString::from(format!("settings-title-{title}")))
-                    .text_lg()
-                    .text_color(rgb(self.palette.accent))
-                    .native_tooltip(t(description))
-                    .child(t(title)),
-            )
+                    .debug_selector(move || format!("settings-page-{}", current.id()))
+                    .flex()
+                    .flex_col()
+                    .flex_shrink_0()
+                    .gap(px(PAGE_GAP))
+                    .pr_2()
+                    .pb_2()
+                    .child(header)
+                    .child(page),
+            );
+        if narrow {
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .h(px(max_h))
+                .child(nav)
+                .child(detail)
+        } else {
+            div()
+                .flex()
+                .h(px(max_h))
+                .child(nav)
+                .child(
+                    div()
+                        .w(px(1.))
+                        .h_full()
+                        .flex_shrink_0()
+                        .mx_4()
+                        .bg(rgb(p.line)),
+                )
+                .child(detail.h_full())
+        }
     }
-    pub(super) fn settings_main(&mut self, cx: &mut Context<Self>) -> Div {
+    fn settings_general(&mut self, cx: &mut Context<Self>) -> Div {
         let choice =
             Language::from_code(&self.local.preferences.language).map_or("system", Language::code);
-        let mut languages = div().flex().flex_wrap().gap_2();
-        let options = std::iter::once(("system", t("common.system")))
-            .chain(Language::all().map(|language| (language.code(), language.native_name())));
-        for (value, label) in options {
-            languages = languages.child(self.button(
-                format!("language-{value}"),
-                (
-                    if choice == value {
-                        UiIcon::RadioSelected
-                    } else {
-                        UiIcon::Radio
-                    },
+        let languages = std::iter::once(("system", t("common.system")))
+            .chain(Language::all().map(|language| (language.code(), language.native_name())))
+            .map(|(value, label)| {
+                self.settings_choice(
+                    format!("language-{value}"),
                     label,
-                ),
-                cx,
-                move |s, _, cx| s.language(value, cx),
-            ));
-        }
-        let mut themes = div().flex().flex_wrap().gap_2();
-        for (value, label) in [
+                    choice == value,
+                    cx,
+                    move |s, _, cx| s.language(value, cx),
+                )
+                .into_any_element()
+            })
+            .collect();
+        let themes = [
             ("system", t("common.system")),
             ("light", t("settings.theme_light")),
             ("dark", t("settings.theme_dark")),
-        ] {
-            let selected = self.local.preferences.theme == value;
-            themes = themes.child(self.button(
+        ]
+        .into_iter()
+        .map(|(value, label)| {
+            self.settings_choice(
                 format!("theme-{value}"),
-                (
-                    if selected {
-                        UiIcon::RadioSelected
-                    } else {
-                        UiIcon::Radio
-                    },
-                    label,
-                ),
+                label,
+                self.local.preferences.theme == value,
                 cx,
                 move |s, _, cx| s.theme(value, cx),
-            ));
-        }
-        let appearance = self
-            .settings_card(
-                "settings.appearance_language",
-                "settings.appearance_description",
             )
-            .child(t("settings.language"))
-            .child(languages)
-            .child(t("settings.theme"))
-            .child(themes)
-            .child(self.accent_settings(cx));
-        let assist_mode = dgl_core::scroll::ScrollAssist::from_preference(
-            &self.local.preferences.terminal_scroll_assist,
+            .into_any_element()
+        })
+        .collect();
+        let appearance = self.settings_group(
+            "appearance",
+            None,
+            None,
+            vec![
+                self.settings_stack(Some(t("settings.language").into()), None, languages)
+                    .into_any_element(),
+                self.settings_stack(Some(t("settings.theme").into()), None, themes)
+                    .into_any_element(),
+            ],
         );
-        let mut scroll_assist = div().flex().flex_wrap().gap_2();
-        for (mode, label) in [
-            (
-                dgl_core::scroll::ScrollAssist::Auto,
-                t("settings.scroll_assist_auto"),
-            ),
-            (
-                dgl_core::scroll::ScrollAssist::On,
-                t("settings.scroll_assist_on"),
-            ),
-            (
-                dgl_core::scroll::ScrollAssist::Off,
-                t("settings.scroll_assist_off"),
-            ),
-        ] {
-            scroll_assist = scroll_assist.child(self.button(
-                format!("scroll-assist-{}", mode.preference()),
-                (
-                    if assist_mode == mode {
-                        UiIcon::RadioSelected
-                    } else {
-                        UiIcon::Radio
+        let accent = self.accent_settings(cx);
+        let workspace = self.settings_group(
+            "workspace",
+            Some(t("settings.workspace").into()),
+            None,
+            vec![
+                self.settings_toggle(
+                    "show-all-hierarchy",
+                    t("settings.show_single_windows_too"),
+                    Some(t("settings.show_single_windows_description").into()),
+                    self.local.preferences.show_all_hierarchy,
+                    true,
+                    cx,
+                    |s, _, _| {
+                        s.local.preferences.show_all_hierarchy =
+                            !s.local.preferences.show_all_hierarchy;
+                        s.save();
                     },
-                    label,
-                ),
-                cx,
-                move |s, _, _| {
-                    s.local.preferences.terminal_scroll_assist = mode.preference().into();
-                    s.save();
-                },
-            ));
-        }
-        let mut font = div()
+                )
+                .into_any_element(),
+            ],
+        );
+        div()
             .flex()
-            .items_center()
-            .gap_2()
-            .child(div().flex_1().child(tr!(
-                "settings.terminal_font_size",
-                self.local.preferences.font_size
-            )));
+            .flex_col()
+            .gap(px(PAGE_GAP))
+            .child(appearance)
+            .child(accent)
+            .child(workspace)
+    }
+    fn settings_terminal(&self, cx: &mut Context<Self>) -> Div {
+        let mut stepper = div().flex().items_center().gap_2();
         for (delta, label) in [(-1, t("settings.smaller")), (1, t("settings.larger"))] {
-            font = font.child(self.button(
+            stepper = stepper.child(self.settings_action(
                 format!("font-size-{delta}"),
                 label,
+                ActionKind::Normal,
                 cx,
                 move |s, _, cx| {
                     s.local.preferences.font_size =
@@ -163,45 +451,106 @@ impl Desktop {
         } else {
             tr!("font.missing_using_default", stored)
         };
-        let terminal = self
-            .settings_card(
-                "settings.terminal_input",
-                "settings.terminal_input_description",
-            )
-            .child(font)
-            .child(self.button(
-                "terminal-font",
-                (
-                    UiIcon::ChevronRight,
-                    tr!("font.terminal_font_value", family),
-                ),
-                cx,
-                |s, _, cx| s.open_terminal_fonts(cx),
-            ))
-            .child(
-                div()
-                    .id("scrollback-setting")
-                    .text_xs()
-                    .native_tooltip(tr!(
+        let text = self.settings_group(
+            "text",
+            Some(t("settings.group_text").into()),
+            None,
+            vec![
+                self.settings_row(
+                    tr!(
+                        "settings.terminal_font_size",
+                        self.local.preferences.font_size
+                    ),
+                    None,
+                    stepper,
+                )
+                .into_any_element(),
+                self.settings_link(
+                    "terminal-font",
+                    t("font.terminal_font"),
+                    Some(family.into()),
+                    cx,
+                    |s, _, cx| s.open_terminal_fonts(cx),
+                )
+                .into_any_element(),
+            ],
+        );
+        let display = self.settings_group(
+            "display",
+            Some(t("settings.group_display").into()),
+            None,
+            vec![
+                self.settings_row(
+                    tr!(
                         "settings.scrollback_description",
                         self.local.preferences.scrollback
-                    ))
-                    .child(tr!(
-                        "settings.scrollback_lines",
-                        self.local.preferences.scrollback
-                    )),
-            )
-            .child(
-                self.button(
-                    "tmux-buffer-clipboard",
-                    (
-                        if self.local.preferences.desktop_tmux_buffer_clipboard {
-                            UiIcon::CheckboxChecked
-                        } else {
-                            UiIcon::Checkbox
-                        },
-                        t("settings.copy_tmux_buffers"),
                     ),
+                    None,
+                    div(),
+                )
+                .id("scrollback-setting")
+                .debug_selector(|| "scrollback-setting".into())
+                .into_any_element(),
+            ],
+        );
+        let assist_mode = dgl_core::scroll::ScrollAssist::from_preference(
+            &self.local.preferences.terminal_scroll_assist,
+        );
+        let choices = [
+            (
+                dgl_core::scroll::ScrollAssist::Auto,
+                t("settings.scroll_assist_auto"),
+            ),
+            (
+                dgl_core::scroll::ScrollAssist::On,
+                t("settings.scroll_assist_on"),
+            ),
+            (
+                dgl_core::scroll::ScrollAssist::Off,
+                t("settings.scroll_assist_off"),
+            ),
+        ]
+        .into_iter()
+        .map(|(mode, label)| {
+            self.settings_choice(
+                format!("scroll-assist-{}", mode.preference()),
+                label,
+                assist_mode == mode,
+                cx,
+                move |s, _, _| {
+                    s.local.preferences.terminal_scroll_assist = mode.preference().into();
+                    s.save();
+                },
+            )
+            .into_any_element()
+        })
+        .collect();
+        let mode_note = t(match assist_mode {
+            dgl_core::scroll::ScrollAssist::Auto => "settings.scroll_assist_auto_description",
+            dgl_core::scroll::ScrollAssist::On => "settings.scroll_assist_on_description",
+            dgl_core::scroll::ScrollAssist::Off => "settings.scroll_assist_off_description",
+        });
+        let scroll_assist = self.settings_group(
+            "scroll-assist",
+            Some(t("settings.scroll_assist_title").into()),
+            Some(t("settings.scroll_assist_description").into()),
+            vec![
+                self.settings_stack(None, None, choices)
+                    .child(self.settings_note(mode_note))
+                    .into_any_element(),
+            ],
+        );
+        let clipboard = self.settings_group(
+            "clipboard",
+            Some(t("settings.group_clipboard").into()),
+            None,
+            vec![
+                self.settings_toggle(
+                    "tmux-buffer-clipboard",
+                    t("settings.copy_tmux_buffers"),
+                    Some(t("settings.copy_tmux_buffers_description").into()),
+                    self.local.preferences.desktop_tmux_buffer_clipboard,
+                    true,
                     cx,
                     |s, _, _| {
                         s.local.preferences.desktop_tmux_buffer_clipboard =
@@ -209,45 +558,22 @@ impl Desktop {
                         s.save();
                     },
                 )
-                .native_tooltip(t("settings.copy_tmux_buffers_description")),
-            )
-            .child(
-                div()
-                    .id("scroll-assist-title")
-                    .native_tooltip(t("settings.scroll_assist_description"))
-                    .child(t("settings.scroll_assist_title")),
-            )
+                .into_any_element(),
+            ],
+        );
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(PAGE_GAP))
+            .child(text)
+            .child(display)
             .child(scroll_assist)
-            .child(self.button(
-                "edit-shortcuts",
-                (
-                    UiIcon::ChevronRight,
-                    tr!(
-                        "settings.bottom_shortcuts_summary",
-                        self.local.preferences.terminal_shortcuts.len()
-                    ),
-                ),
-                cx,
-                |s, _, _| {
-                    s.settings.main_offset = s.modal.scroll.offset();
-                    s.settings.entry = "edit-shortcuts";
-                    s.dialog = Some(Dialog::Shortcuts);
-                },
-            ));
-        let terminal = terminal.child(self.button(
-            "edit-launch-settings",
-            (UiIcon::ChevronRight, t("launcher.settings")),
-            cx,
-            |s, _, _| {
-                s.settings.main_offset = s.modal.scroll.offset();
-                s.settings.entry = "edit-launch-settings";
-                s.dialog = Some(Dialog::LaunchSettings);
-            },
-        ));
+            .child(clipboard)
+    }
+    fn settings_power(&self, cx: &mut Context<Self>) -> Div {
         let power_mode =
             crate::power::Mode::from_preference(&self.local.preferences.desktop_power_saving);
-        let mut power = div().flex().flex_wrap().gap_2();
-        for (mode, label) in [
+        let choices = [
             (
                 crate::power::Mode::System,
                 t("settings.power_saving_follow_os"),
@@ -257,130 +583,162 @@ impl Desktop {
                 t("settings.power_saving_always"),
             ),
             (crate::power::Mode::Off, t("settings.power_saving_off")),
-        ] {
-            power = power.child(self.button(
+        ]
+        .into_iter()
+        .map(|(mode, label)| {
+            self.settings_choice(
                 format!("power-saving-{}", mode.preference()),
-                (
-                    if power_mode == mode {
-                        UiIcon::RadioSelected
-                    } else {
-                        UiIcon::Radio
-                    },
-                    label,
-                ),
+                label,
+                power_mode == mode,
                 cx,
                 move |s, _, _| {
                     s.local.preferences.desktop_power_saving = mode.preference().into();
                     s.save();
                 },
-            ));
-        }
-        let workspace = self
-            .settings_card("settings.workspace", "settings.workspace_description")
-            .child(self.button(
-                "show-all-hierarchy",
-                (
-                    if self.local.preferences.show_all_hierarchy {
-                        UiIcon::CheckboxChecked
-                    } else {
-                        UiIcon::Checkbox
-                    },
-                    t("settings.show_single_windows_too"),
-                ),
-                cx,
-                |s, _, _| {
-                    s.local.preferences.show_all_hierarchy =
-                        !s.local.preferences.show_all_hierarchy;
-                    s.save();
-                },
-            ))
-            .child(
-                div()
-                    .id("power-saving-title")
-                    .native_tooltip(t("settings.power_saving_description"))
-                    .child(t("settings.power_saving_pacing")),
             )
-            .child(power);
-        let alerts = self
-            .settings_card("common.notifications", "settings.notifications_description")
-            .child(self.agent_settings(cx));
-        let agent_status = self
-            .settings_card("agent_status.title", "agent_status.description")
-            .child(self.agent_status_settings(cx));
-        let sync = self
-            .button(
-                "export-sync",
-                (UiIcon::ChevronRight, t("sync.export_and_sync")),
-                cx,
-                |s, _, _| {
-                    s.settings.main_offset = s.modal.scroll.offset();
-                    s.settings.entry = "export-sync";
-                    s.dialog = Some(Dialog::ExportSync);
-                },
-            )
-            .native_tooltip(t("settings.sync_description"));
-        let mut security = self
-            .settings_card("settings.security_storage", platform::SHORTCUT_HELP)
-            .child(t("settings.trusted_servers"));
-        for (endpoint, fingerprint) in &self.local.trust {
-            let e = endpoint.clone();
-            security = security
-                .child(format!("{endpoint}\n{fingerprint}"))
-                .child(self.button(
-                    format!("forget-{endpoint}"),
-                    t("settings.remove_trust"),
-                    cx,
-                    move |s, _, _| {
-                        s.dialog = Some(Dialog::Delete {
-                            title: tr!("settings.remove_trust_named", e),
-                            operation: DeleteOp::Trust(e.clone()),
-                        });
-                    },
-                ));
-        }
-        security = security.child(div().text_xs().child(platform::STORAGE_LABEL));
+            .into_any_element()
+        })
+        .collect();
         div()
             .flex()
             .flex_col()
-            .gap_4()
-            .child(div().text_xl().child(t("common.settings")))
-            .child(appearance)
-            .child(terminal)
-            .child(workspace)
-            .child(alerts)
-            .child(agent_status)
-            .child(sync)
-            .child(security)
-            .child(
-                self.button("about-app", t("settings.about"), cx, |s, _, _| {
-                    s.settings.main_offset = s.modal.scroll.offset();
-                    s.settings.entry = "about-app";
-                    s.dialog = Some(Dialog::About);
-                }),
-            )
+            .gap(px(PAGE_GAP))
+            .child(self.settings_group(
+                "power-saving",
+                Some(t("settings.power_saving_pacing").into()),
+                None,
+                vec![self.settings_stack(None, None, choices).into_any_element()],
+            ))
     }
-    pub(super) fn settings_back(&mut self) {
-        self.cancel_import_preview();
-        self.settings.entry = match self.dialog {
-            Some(Dialog::About) => "about-app",
-            Some(Dialog::LaunchSettings) => "edit-launch-settings",
-            Some(Dialog::ExportSync) => "export-sync",
-            Some(Dialog::TerminalFont) => "terminal-font",
-            _ => "edit-shortcuts",
+    fn settings_security(&self, cx: &mut Context<Self>) -> Div {
+        let p = self.palette;
+        let mut servers = vec![];
+        for (endpoint, fingerprint) in &self.local.trust {
+            let e = endpoint.clone();
+            servers.push(
+                self.settings_row_with(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .text_size(px(settings_ui::BODY))
+                                .child(endpoint.clone()),
+                        )
+                        .child(
+                            self.settings_note(fingerprint.clone())
+                                .font_family(platform::TERMINAL_FONT),
+                        ),
+                    self.settings_action(
+                        format!("forget-{endpoint}"),
+                        t("settings.remove_trust"),
+                        ActionKind::Danger,
+                        cx,
+                        move |s, _, _| {
+                            s.dialog = Some(Dialog::Delete {
+                                title: tr!("settings.remove_trust_named", e),
+                                operation: DeleteOp::Trust(e.clone()),
+                            });
+                        },
+                    ),
+                )
+                .into_any_element(),
+            );
+        }
+        if servers.is_empty() {
+            servers.push(
+                div()
+                    .px(px(settings_ui::ROW_PX))
+                    .py(px(settings_ui::ROW_PY))
+                    .child(self.settings_note(t("settings.no_trusted_servers")))
+                    .into_any_element(),
+            );
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(PAGE_GAP))
+            .child(self.settings_group(
+                "trusted-servers",
+                Some(t("settings.trusted_servers").into()),
+                None,
+                servers,
+            ))
+            .child(self.settings_group(
+                "storage",
+                None,
+                None,
+                vec![
+                    self.settings_row(
+                        t("settings.storage_location"),
+                        None,
+                        div()
+                            .text_size(px(settings_ui::BODY))
+                            .text_color(rgb(p.muted))
+                            .child(platform::STORAGE_LABEL),
+                    )
+                    .id("settings-storage")
+                    .debug_selector(|| "settings-storage".into())
+                    .into_any_element(),
+                ],
+            ))
+    }
+    /// The app's own keyboard shortcuts, read-only.
+    fn settings_app_shortcuts(&self) -> Stateful<Div> {
+        let p = self.palette;
+        let help = t(platform::SHORTCUT_HELP);
+        let parsed: Option<Vec<(&str, &str)>> = help
+            .split(" · ")
+            .map(|entry| entry.split_once(' '))
+            .collect();
+        let rows = match parsed {
+            Some(pairs) => pairs
+                .into_iter()
+                .map(|(key, action)| {
+                    self.settings_row(
+                        action.to_owned(),
+                        None,
+                        div()
+                            .px_2()
+                            .py(px(2.))
+                            .rounded_md()
+                            .border_1()
+                            .border_color(rgb(p.control_border))
+                            .bg(rgb(p.bg))
+                            .text_size(px(settings_ui::BODY))
+                            .font_family(platform::TERMINAL_FONT)
+                            .child(key.to_owned()),
+                    )
+                    .into_any_element()
+                })
+                .collect(),
+            None => vec![
+                div()
+                    .px(px(settings_ui::ROW_PX))
+                    .py(px(settings_ui::ROW_PY))
+                    .child(self.settings_note(help))
+                    .into_any_element(),
+            ],
         };
-        self.settings.dragging = None;
-        self.settings.destination = None;
-        self.settings.restore = true;
-        self.dialog = Some(Dialog::Settings);
+        self.settings_group(
+            "app-shortcuts",
+            Some(t("settings.app_shortcuts").into()),
+            None,
+            rows,
+        )
     }
     pub(super) fn tick_shortcut_drag(&mut self, cx: &mut Context<Self>) {
         if self.settings.dragging.is_none() {
             return;
         }
-        if !cx.has_active_drag() || !matches!(self.dialog, Some(Dialog::Shortcuts)) {
-            self.settings.dragging = None;
-            self.settings.destination = None;
-            self.settings.pointer = None;
+        if !cx.has_active_drag()
+            || !matches!(self.dialog, Some(Dialog::Settings))
+            || self.settings.category != SettingsCategory::Shortcuts
+        {
+            self.clear_shortcut_drag();
             cx.notify();
             return;
         }
@@ -424,30 +782,16 @@ impl Desktop {
     }
     pub(super) fn shortcut_settings(&self, cx: &mut Context<Self>) -> Div {
         let p = self.palette;
-        let mut active = div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(
-                div()
-                    .id("shortcut-settings-title")
-                    .text_xl()
-                    .child(t("settings.bottom_shortcuts"))
-                    .native_tooltip(format!(
-                        "{}\n{}",
-                        t("shortcut.drag_hint"),
-                        t("shortcut.modifiers_once")
-                    )),
-            )
-            .child(
-                self.button("shortcuts-back", t("common.back"), cx, |s, _, _| {
-                    s.settings_back()
-                }),
-            )
-            .child(div().text_lg().child(t("shortcut.active")));
         let keys = &self.local.preferences.terminal_shortcuts;
+        let mut active = vec![];
         if keys.is_empty() {
-            active = active.child(t("shortcut.none_active"));
+            active.push(
+                div()
+                    .px(px(settings_ui::ROW_PX))
+                    .py(px(settings_ui::ROW_PY))
+                    .child(self.settings_note(t("shortcut.none_active")))
+                    .into_any_element(),
+            );
         }
         for (index, &key) in keys.iter().enumerate() {
             let view = cx.entity();
@@ -456,7 +800,7 @@ impl Desktop {
                 self.settings.dragging.is_some() && self.settings.destination == Some(index);
             let dragging = self.settings.dragging == Some(key);
             let count = keys.len();
-            active = active.child(
+            active.push(
                 div()
                     .id(SharedString::from(format!("shortcut-row-{index}")))
                     .debug_selector(move || format!("shortcut-row-{index}"))
@@ -464,10 +808,10 @@ impl Desktop {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(rgb(p.line))
-                    .bg(rgb(if dragging { p.selection } else { p.panel }))
+                    .px(px(8.))
+                    .py(px(5.))
+                    .min_h(px(40.))
+                    .when(dragging, |d| d.bg(rgb(p.selection)))
                     .on_drag_move::<DragShortcut>(cx.listener(
                         move |s, e: &DragMoveEvent<DragShortcut>, _, cx| {
                             s.settings.pointer = Some(e.event.position);
@@ -502,9 +846,7 @@ impl Desktop {
                                 move_shortcut(&s.local.preferences.terminal_shortcuts, from, to);
                             s.save();
                         }
-                        s.settings.dragging = None;
-                        s.settings.destination = None;
-                        s.settings.pointer = None;
+                        s.clear_shortcut_drag();
                         cx.notify();
                         cx.stop_propagation();
                     }))
@@ -521,7 +863,7 @@ impl Desktop {
                         .size_full(),
                     )
                     .child(
-                        self.button(
+                        self.settings_icon(
                             format!("shortcut-drag-{}", key.label()),
                             UiIcon::Grip,
                             cx,
@@ -541,9 +883,15 @@ impl Desktop {
                             },
                         ),
                     )
-                    .child(div().flex_1().child(key.label()))
                     .child(
-                        self.button(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(px(settings_ui::BODY))
+                            .child(key.label()),
+                    )
+                    .child(
+                        self.settings_icon(
                             format!("shortcut-up-{}", key.label()),
                             UiIcon::ArrowUp,
                             cx,
@@ -561,7 +909,7 @@ impl Desktop {
                         .when(index == 0, |d| d.opacity(0.35)),
                     )
                     .child(
-                        self.button(
+                        self.settings_icon(
                             format!("shortcut-down-{}", key.label()),
                             UiIcon::ArrowDown,
                             cx,
@@ -578,9 +926,10 @@ impl Desktop {
                         )
                         .when(index + 1 == count, |d| d.opacity(0.35)),
                     )
-                    .child(self.button(
+                    .child(self.settings_action(
                         format!("shortcut-setting-{}", key.label()),
                         t("shortcut.exclude"),
+                        ActionKind::Normal,
                         cx,
                         move |s, _, _| {
                             if s.settings.dragging.is_some() {
@@ -600,22 +949,21 @@ impl Desktop {
                                 .h(px(3.))
                                 .bg(rgb(p.accent)),
                         )
-                    }),
+                    })
+                    .into_any_element(),
             );
         }
-        active = active.child(div().mt_4().text_lg().child(t("shortcut.excluded")));
-        for key in TerminalShortcut::all()
+        let excluded: Vec<AnyElement> = TerminalShortcut::all()
             .into_iter()
             .filter(|k| !keys.contains(k))
-        {
-            active = active.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .child(div().flex_1().child(key.label()))
-                    .child(self.button(
+            .map(|key| {
+                self.settings_row(
+                    key.label(),
+                    None,
+                    self.settings_action(
                         format!("shortcut-setting-{}", key.label()),
                         t("common.add"),
+                        ActionKind::Normal,
                         cx,
                         move |s, _, _| {
                             if s.settings.dragging.is_some() {
@@ -624,25 +972,66 @@ impl Desktop {
                             s.local.preferences.terminal_shortcuts.push(key);
                             s.save();
                         },
-                    )),
-            );
+                    ),
+                )
+                .into_any_element()
+            })
+            .collect();
+        let mut page = div()
+            .flex()
+            .flex_col()
+            .gap(px(PAGE_GAP))
+            .child(self.settings_app_shortcuts())
+            .child(
+                div()
+                    .id("shortcut-settings-title")
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .px_1()
+                    .child(
+                        div()
+                            .text_size(px(settings_ui::GROUP_TITLE))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(self.palette.fg))
+                            .child(t("settings.bottom_shortcuts")),
+                    )
+                    .child(self.settings_note(t("shortcut.drag_hint")))
+                    .child(self.settings_note(t("shortcut.modifiers_once"))),
+            )
+            .child(self.settings_group(
+                "shortcut-active",
+                Some(t("shortcut.active").into()),
+                None,
+                active,
+            ));
+        if !excluded.is_empty() {
+            page = page.child(self.settings_group(
+                "shortcut-excluded",
+                Some(t("shortcut.excluded").into()),
+                None,
+                excluded,
+            ));
         }
-        active.child(
-            self.button("reset-shortcuts", t("shortcut.reset"), cx, |s, _, _| {
+        page.child(div().flex().child(self.settings_action(
+            "reset-shortcuts",
+            t("shortcut.reset"),
+            ActionKind::Normal,
+            cx,
+            |s, _, _| {
                 if s.settings.dragging.is_some() {
                     return;
                 }
                 s.local.preferences.terminal_shortcuts = TerminalShortcut::defaults();
                 s.save();
-            }),
-        )
+            },
+        )))
     }
 }
 impl Desktop {
     /// Opens the family list; the system font collection is read off the UI thread.
     pub(super) fn open_terminal_fonts(&mut self, cx: &mut Context<Self>) {
-        self.settings.main_offset = self.modal.scroll.offset();
-        self.settings.entry = "terminal-font";
+        self.remember_settings_entry("terminal-font");
         self.dialog = Some(Dialog::TerminalFont);
         if self.settings.fonts.is_some() || self.settings.loading_fonts {
             return;
@@ -681,20 +1070,13 @@ impl Desktop {
     pub(super) fn terminal_font_settings(&self, cx: &mut Context<Self>) -> Div {
         let p = self.palette;
         let face = cx.try_global::<TerminalFace>().cloned().unwrap_or_default();
-        let mut page = div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(div().text_xl().child(t("font.terminal_font")))
-            .child(
-                self.button("terminal-font-back", t("common.back"), cx, |s, _, _| {
-                    s.settings_back()
-                }),
-            )
-            .child(div().text_xs().child(t("font.description")))
+        let preview = div()
+            .px(px(settings_ui::ROW_PX))
+            .py(px(settings_ui::ROW_PY))
             .child(
                 div()
                     .id("terminal-font-preview")
+                    .debug_selector(|| "terminal-font-preview".into())
                     .p_3()
                     .rounded_md()
                     .border_1()
@@ -705,42 +1087,52 @@ impl Desktop {
                     .text_size(px(self.local.preferences.font_size as f32))
                     .child("$ ls -la ~/src  0O 1lI {}[]() 한글"),
             );
+        let page = div().flex().flex_col().gap(px(PAGE_GAP));
         let Some(fonts) = &self.settings.fonts else {
-            return page.child(t("font.loading_fonts"));
+            return page.child(self.settings_group(
+                "terminal-font",
+                None,
+                Some(t("font.description").into()),
+                vec![
+                    preview.into_any_element(),
+                    div()
+                        .px(px(settings_ui::ROW_PX))
+                        .py(px(settings_ui::ROW_PY))
+                        .child(self.settings_note(t("font.loading_fonts")))
+                        .into_any_element(),
+                ],
+            ));
         };
         let option =
             |id: String, label: String, selected: bool, family: String, cx: &mut Context<Self>| {
-                self.button(
-                    id,
-                    (
-                        if selected {
-                            UiIcon::RadioSelected
-                        } else {
-                            UiIcon::Radio
-                        },
-                        label,
-                    ),
-                    cx,
-                    move |s, _, cx| s.set_terminal_font(&family, cx),
-                )
+                self.settings_choice(id, label, selected, cx, move |s, _, cx| {
+                    s.set_terminal_font(&family, cx)
+                })
+                .w_full()
             };
-        page = page.child(option(
-            "terminal-font-default".into(),
-            tr!("font.default", platform::TERMINAL_FONT),
-            face.selected.is_empty(),
-            String::new(),
-            cx,
-        ));
+        let mut list = div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .px(px(settings_ui::ROW_PX))
+            .py(px(settings_ui::ROW_PY))
+            .child(option(
+                "terminal-font-default".into(),
+                tr!("font.default", platform::TERMINAL_FONT),
+                face.selected.is_empty(),
+                String::new(),
+                cx,
+            ));
         // The default family is already the first choice.
         let installed: Vec<_> = fonts
             .iter()
             .filter(|f| f.as_str() != platform::TERMINAL_FONT)
             .collect();
         if installed.is_empty() {
-            page = page.child(div().text_xs().child(t("font.none_found")));
+            list = list.child(self.settings_note(t("font.none_found")));
         }
         for family in installed {
-            page = page.child(option(
+            list = list.child(option(
                 format!("terminal-font-{family}"),
                 family.clone(),
                 face.selected.as_ref() == family.as_str(),
@@ -748,6 +1140,46 @@ impl Desktop {
                 cx,
             ));
         }
-        page
+        page.child(self.settings_group(
+            "terminal-font",
+            None,
+            Some(t("font.description").into()),
+            vec![preview.into_any_element(), list.into_any_element()],
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Not `super::*`: GPUI's `test` attribute would replace the standard one.
+    use super::SettingsCategory;
+    use dgl_core::i18n::t;
+    use std::collections::HashSet;
+
+    #[test]
+    fn categories_have_unique_ids_kinds_and_known_texts() {
+        let mut seen = HashSet::new();
+        for category in SettingsCategory::ALL {
+            for value in [
+                category.id(),
+                category.nav_id(),
+                category.kind(),
+                category.title(),
+            ] {
+                assert!(seen.insert(value), "{value}");
+            }
+            assert_eq!(category.nav_id(), format!("settings-nav-{}", category.id()));
+            assert_eq!(category.kind(), format!("settings-{}", category.id()));
+            for key in std::iter::once(category.title()).chain(category.description()) {
+                assert_ne!(t(key), key, "{key}");
+            }
+        }
+        assert_eq!(SettingsCategory::default(), SettingsCategory::General);
+        assert_eq!(SettingsCategory::ALL.len(), seen.len() / 4);
+        let clusters: Vec<_> = SettingsCategory::ALL
+            .into_iter()
+            .filter(|c| c.cluster_start())
+            .collect();
+        assert_eq!(clusters, [SettingsCategory::Agents, SettingsCategory::Sync]);
     }
 }

@@ -16,7 +16,7 @@ GPUI의 기존 창·작업 표시줄 아이콘 로더가 사용한다.
 원본·변환 절차는 [앱 아이콘 안내](../assets/app-icon/README.md)에 있으며 일반 Windows 빌드에는
 Pillow나 이미지 생성·변환 도구가 필요하지 않다. 네이티브 표시 검증은 사용자 확인 범위다.
 
-설정 → 내보내기 및 동기화에서는 파일 내보내기·가져오기와 폴더 동기화를 제공한다.
+**설정 → 내보내기 및 동기화**에서는 파일 내보내기·가져오기와 폴더 동기화를 제공한다.
 동기화는 Google Drive·iCloud Drive 등의 로컬 동기화 폴더를 하나의 선택 버튼으로 지정해
 `dgl-sync.json`을 읽고 쓰는 공통 파일 구현이다. OAuth·클라우드 SDK·추가 빌드 도구는
 필요하지 않다. Windows 실제 Drive 폴더 연동은 미검증이며 [사용 방법](CLOUD_SYNC.md)을 따른다.
@@ -115,7 +115,7 @@ MSVC CRT 정적 링크 플래그는 이 실행 파일 빌드에만 적용한다.
 | 빌드 정보 | `artifacts/rust-candidate/windows/build.json` |
 | 패키지 SHA-256 | `artifacts/rust-candidate/windows/SHA256SUMS` |
 
-버전은 루트 `Cargo.toml`의 workspace 값에서 상속합니다. 타이틀바·설정 마지막의 `앱 정보`와
+버전은 루트 `Cargo.toml`의 workspace 값에서 상속합니다. 타이틀바·설정의 `앱 정보` 카테고리와
 ZIP의 `build.json`에 같은 버전을 사용합니다. 패키지 버전 비교 절차는 [개발 안내](DEVELOPMENT.md#앱-버전-관리)를 따릅니다.
 
 `CARGO_TARGET_DIR`를 지정하면 실행 파일 경로는 Cargo metadata에서 가져온다.
@@ -229,7 +229,7 @@ Windows 알림은 WinRT 네이티브 토스트이며 PowerShell이나 다른 앱
 ZIP·MSIX 배포와 기존 빌드 진입점은 유지한다. 추가 빌드 도구는 없으며 `windows` crate의
 알림·COM·레지스트리·패키지 API를 사용한다. 실행 중 패키지 ID가 있으면 MSIX, 없으면 ZIP 방식으로 동작한다.
 
-**ZIP판**은 설정에서 **OS 알림**을 켜면 현재 사용자에게 아래 항목을 등록한다. 관리자 권한은 필요하지 않다.
+**ZIP판**은 **설정 → 에이전트**에서 **OS 알림**을 켜면 현재 사용자에게 아래 항목을 등록한다. 관리자 권한은 필요하지 않다.
 이후 OS 알림이 켜진 앱 시작에도 등록 경로를 갱신하므로 ZIP 폴더를 옮긴 뒤에는 앱을 직접 실행한다.
 
 - AUMID: `kim.jujin.dglc`

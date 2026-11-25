@@ -854,23 +854,46 @@ impl Desktop {
         Some(panel)
     }
 
-    /// The settings card body: where the HUD shows and which values it lists.
+    /// The agent status groups of the agents settings page: where the HUD shows and
+    /// which values it lists.
     pub(crate) fn agent_status_settings(&self, cx: &mut Context<Self>) -> Div {
         let s = &self.local.preferences.agent_status;
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .child(self.muted_line(t("agent_status.description")));
-        let check = |on: bool| {
-            if on {
-                UiIcon::CheckboxChecked
-            } else {
-                UiIcon::Checkbox
-            }
+        let toggle = |s: &mut Desktop, i: usize| {
+            let settings = &mut s.local.preferences.agent_status;
+            let field = match i {
+                0 => &mut settings.status_bar,
+                1 => &mut settings.sidebar,
+                2 => &mut settings.account,
+                3 => &mut settings.usage,
+                4 => &mut settings.context,
+                5 => &mut settings.breakdown,
+                6 => &mut settings.cache,
+                7 => &mut settings.model,
+                8 => &mut settings.effort,
+                _ => &mut settings.cost,
+            };
+            *field = !*field;
+            s.save();
         };
-        let rows = [
+        let placement = [
             (0, t("agent_status.show_status_bar"), s.status_bar),
             (1, t("agent_status.show_sidebar"), s.sidebar),
+        ]
+        .into_iter()
+        .map(|(i, label, on)| {
+            self.settings_toggle(
+                format!("agent-status-setting-{i}"),
+                label,
+                None,
+                on,
+                true,
+                cx,
+                move |s, _, _| toggle(s, i),
+            )
+            .into_any_element()
+        })
+        .collect();
+        let fields = [
             (2, t("agent_status.field.account"), s.account),
             (3, t("agent_status.field.usage"), s.usage),
             (4, t("agent_status.field.context"), s.context),
@@ -879,35 +902,35 @@ impl Desktop {
             (7, t("agent_status.field.model"), s.model),
             (8, t("agent_status.field.effort"), s.effort),
             (9, t("agent_status.field.cost"), s.cost),
-        ];
-        for (i, label, enabled) in rows {
-            if i == 2 {
-                body = body.child(div().pt_2().child(t("agent_status.fields")));
-            }
-            body = body.child(self.button(
+        ]
+        .into_iter()
+        .map(|(i, label, on)| {
+            self.settings_check(
                 format!("agent-status-setting-{i}"),
-                (check(enabled), label),
+                label,
+                on,
                 cx,
-                move |s, _, _| {
-                    let settings = &mut s.local.preferences.agent_status;
-                    let field = match i {
-                        0 => &mut settings.status_bar,
-                        1 => &mut settings.sidebar,
-                        2 => &mut settings.account,
-                        3 => &mut settings.usage,
-                        4 => &mut settings.context,
-                        5 => &mut settings.breakdown,
-                        6 => &mut settings.cache,
-                        7 => &mut settings.model,
-                        8 => &mut settings.effort,
-                        _ => &mut settings.cost,
-                    };
-                    *field = !*field;
-                    s.save();
-                },
-            ));
-        }
-        body
+                move |s, _, _| toggle(s, i),
+            )
+            .into_any_element()
+        })
+        .collect();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(settings_ui::PAGE_GAP))
+            .child(self.settings_group(
+                "agent-status",
+                Some(t("agent_status.title").into()),
+                Some(t("agent_status.description").into()),
+                placement,
+            ))
+            .child(self.settings_group(
+                "agent-status-fields",
+                Some(t("agent_status.fields").into()),
+                None,
+                fields,
+            ))
     }
 
     /// The integration dialog's choice to install the detailed status collectors.
@@ -952,8 +975,8 @@ pub(crate) fn collection_state(config: &serde_json::Value) -> Option<String> {
 mod tests {
     // Not `super::*`: GPUI's `test` attribute would replace the standard one.
     use super::{
-        Agent, AgentStatus, AgentStatusSettings, Field, Observation, Snapshot, UsageLimit,
-        collection_state, focused, installed_collection, missing, status_summary, t,
+        Agent, AgentStatus, AgentStatusSettings, Observation, Snapshot, UsageLimit, agent,
+        collection_state, focused, installed_collection, status_summary, t,
     };
     use dgl_core::agent::{AccountInfo, CacheUsage, ContextUsage, ModelInfo};
     use dgl_core::tr;

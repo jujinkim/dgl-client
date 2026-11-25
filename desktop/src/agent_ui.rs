@@ -618,14 +618,10 @@ impl Desktop {
         }
         body
     }
+    /// The agent notification group of the agents settings page.
     pub fn agent_settings(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let settings = &self.local.preferences.agent_notifications;
-        let mut body = div()
-            .id("agent-settings")
-            .flex()
-            .flex_col()
-            .native_tooltip(t("agent.in_app_notifications_note"));
-        for (i, label, enabled) in [
+        let mut rows: Vec<AnyElement> = [
             (
                 0,
                 t("agent.questions_approval_requests"),
@@ -634,17 +630,13 @@ impl Desktop {
             (1, t("agent.response_end_signals"), settings.responses),
             (2, t("agent.explicit_errors"), settings.errors),
             (3, t("agent.os_notifications"), settings.os),
-        ] {
-            body = body.child(self.button(
+        ]
+        .into_iter()
+        .map(|(i, label, enabled)| {
+            self.settings_check(
                 format!("notification-setting-{i}"),
-                (
-                    if enabled {
-                        UiIcon::CheckboxChecked
-                    } else {
-                        UiIcon::Checkbox
-                    },
-                    label,
-                ),
+                label,
+                enabled,
                 cx,
                 move |s, _, _| {
                     let settings = &mut s.local.preferences.agent_notifications;
@@ -662,9 +654,28 @@ impl Desktop {
                     }
                     s.save();
                 },
-            ));
+            )
+            .into_any_element()
+        })
+        .collect();
+        let mut notes = div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .px(px(settings_ui::ROW_PX))
+            .py(px(settings_ui::ROW_PY))
+            .child(self.settings_note(t("agent.in_app_notifications_note")));
+        let status = t(&self.agents.status);
+        if !status.is_empty() {
+            notes = notes.child(self.settings_note(status.to_owned()));
         }
-        body.child(t(&self.agents.status).to_owned())
+        rows.push(notes.into_any_element());
+        div().id("agent-settings").child(self.settings_group(
+            "agent-notifications",
+            Some(t("agent.notifications").into()),
+            Some(t("settings.notifications_description").into()),
+            rows,
+        ))
     }
 }
 

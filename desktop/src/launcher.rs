@@ -237,8 +237,7 @@ impl Desktop {
             Control::Settings => {
                 self.dismiss_launcher(window, cx);
                 self.menu = None;
-                self.settings = settings::SettingsState::default();
-                self.dialog = Some(Dialog::Shortcuts);
+                self.open_settings(settings::SettingsCategory::Shortcuts);
             }
         }
         cx.notify();

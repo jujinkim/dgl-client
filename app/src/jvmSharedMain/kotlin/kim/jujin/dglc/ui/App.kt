@@ -13,8 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Rect
@@ -35,7 +33,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.window.Dialog
@@ -82,7 +79,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
     val dark = when (local.preferences.theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
     var edit by remember { mutableStateOf<HostProfile?>(null) }
     var adding by remember { mutableStateOf(false) }
-    var settings by remember { mutableStateOf<SettingsPage?>(null) }
+    var settings by remember { mutableStateOf<SettingsLaunch?>(null) }
     var agentDetails by remember { mutableStateOf<Pair<ClientConnection, String?>?>(null) }
     var notifications by remember { mutableStateOf(false) }
     var agentStatus by remember { mutableStateOf<AgentStatusTarget?>(null) }
@@ -180,7 +177,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                                         })
                                         addAll(hostConnectionActions(client, model))
                                     }
-                                    add(t("common.settings") to { settings = SettingsPage.Main })
+                                    add(t("common.settings") to { settings = SettingsLaunch(null) })
                                 }
                                 MobileHeaderMenu(client?.let { tr("mobile.connection_menu", it.host.alias) } ?: t("common.more_options"), actions)
                             }
@@ -269,14 +266,14 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                         if (wide || (selected != null && !explorer)) {
                             Box(Modifier.weight(1f).fillMaxHeight()) {
                                 if (workspaceMode) WorkspaceContent(model, local.preferences, { client, pane -> agentDetails = client to pane },
-                                    openShortcutSettings = { settings = SettingsPage.Shortcuts })
+                                    openShortcutSettings = { settings = SettingsLaunch(SettingsCategory.Shortcuts) })
                                 else if (selected != null) key(selected) {
                                     val client = selected!!
                                     ConnectionScreen(client, local.preferences, model, { agentDetails = client to it },
                                         mobileTabs = { MobileConnectionTabs(connections, selected, mobileTabState,
                                             { model.selectConnection(it); explorer = false }, model::removeConnection) },
                                         openNavigation = tmuxNavigationClient === client, onNavigationOpened = { tmuxNavigationClient = null },
-                                        openShortcutSettings = { settings = SettingsPage.Shortcuts }) {
+                                        openShortcutSettings = { settings = SettingsLaunch(SettingsCategory.Shortcuts) }) {
                                         model.selected.value === client && (wide || !explorer) &&
                                             !notifications && agentStatus == null && agentError == null && agentDetails == null && settings == null && !adding && edit == null && deletion == null && error == null
                                     }
@@ -308,7 +305,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
                         HostConnectionMenu(client, model)
                     }
                     BorderedButton({ notifications = true }) { Text(tr("mobile.notifications_count", agentNotices.count { !it.read })) }
-                    BorderedButton({ settings = SettingsPage.Main }) { Text(t("common.settings")) }
+                    BorderedButton({ settings = SettingsLaunch(null) }) { Text(t("common.settings")) }
                 }
             }
         if (fileKey != null || selected == null || explorer || settings != null || notifications || agentStatus != null || agentDetails != null) SideEffect { model.visibleConnection = null }
@@ -320,7 +317,7 @@ private data class AgentStatusTarget(val client: ClientConnection, val fromSideb
         }
         agentError?.let { message -> AlertDialog(onDismissRequest = { model.agentNavigationError.value = null }, text = { Text(message) }, confirmButton = { BorderedButton({ model.agentNavigationError.value = null }) { Text(t("common.close")) } }) }
         if (adding || edit != null) HostEditor(model, edit, mobileLayout, { adding = false; edit = null })
-        settings?.let { SettingsDialog(model, mobileLayout, it) { settings = null } }
+        settings?.let { SettingsScreen(model, mobileLayout, it.category) { settings = null } }
         deletion?.let { host -> ConfirmDialog(t("host.delete"), tr("host.delete_confirm", host.alias), {
             try {
                 model.credentials.delete(host.credentialRef)
@@ -686,167 +683,6 @@ private fun FileTabs.openFor(client: ClientConnection) {
     }, dismissButton = { BorderedButton(dismiss) { Text(t("common.cancel")) } })
 }
 
-private enum class SettingsPage { Main, Shortcuts, Launch, About, ExportSync }
-
-@Composable private fun SettingsDialog(model: AppModel, mobileLayout: Boolean, initialPage: SettingsPage, dismiss: () -> Unit) {
-    val local by model.local.collectAsState()
-    var forget by remember { mutableStateOf<String?>(null) }
-    var page by remember { mutableStateOf(initialPage) }
-    var restoreFocus by remember { mutableStateOf(false) }
-    val mainScroll = rememberScrollState()
-    val shortcutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    val launchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    val syncFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    val aboutFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    var entryFocus by remember { mutableStateOf(shortcutFocus) }
-    val back = { if (page == SettingsPage.ExportSync) model.cloudSync?.cancelImport(); if (page != SettingsPage.Main) { page = SettingsPage.Main; restoreFocus = true } else dismiss() }
-    LaunchedEffect(page) {
-        if (page == SettingsPage.Main && restoreFocus) { withFrameNanos { }; entryFocus.requestFocus(); restoreFocus = false }
-    }
-    EditorDialog(mobileLayout, settingsLayout = true, onDismissRequest = back, title = {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (page != SettingsPage.Main) BorderedButton(back) { Text(t("common.back")) }
-            Text(when (page) { SettingsPage.Main -> t("common.settings"); SettingsPage.Shortcuts -> t("settings.bottom_shortcuts"); SettingsPage.Launch -> t("launcher.settings"); SettingsPage.About -> t("settings.about"); SettingsPage.ExportSync -> t("sync.export_and_sync") })
-        }
-    }, text = {
-        if (page == SettingsPage.ExportSync) Column(Modifier.verticalScroll(rememberScrollState())) { CloudSyncSettings(model) }
-        else if (page == SettingsPage.About) AboutApp()
-        else if (page == SettingsPage.Launch) LaunchSettings(local.preferences) { agent, edit ->
-            model.modify { it.copy(preferences = it.preferences.updateLaunch(agent, edit)) }
-        }
-        else if (page == SettingsPage.Shortcuts) TerminalShortcutSettings(local.preferences.terminalShortcuts) { shortcuts ->
-            model.modify { it.copy(preferences = it.preferences.copy(terminalShortcuts = shortcuts)) }
-        } else Column(Modifier.verticalScroll(mainScroll), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsCard(t("settings.appearance_language"), t("settings.appearance_description")) {
-                Text(t("settings.language"), style = MaterialTheme.typography.titleSmall)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    (listOf("system" to t("common.system")) + UiLanguage.all.map { it.code to it.nativeName }).forEach { (value, label) ->
-                        val choice = UiLanguage.of(local.preferences.language)?.code ?: "system"
-                        FilterChip(choice == value, { model.modify { it.copy(preferences = it.preferences.copy(language = value)) } }, label = { Text(label) })
-                    }
-                }
-                Text(t("settings.theme"), style = MaterialTheme.typography.titleSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("system" to t("common.system"), "light" to t("settings.theme_light"), "dark" to t("settings.theme_dark")).forEach { (value, label) ->
-                        FilterChip(local.preferences.theme == value, { model.modify { it.copy(preferences = it.preferences.copy(theme = value)) } }, label = { Text(label) })
-                    }
-                }
-                AccentSettingsUi(local.preferences.accent) { accent -> model.modify { it.copy(preferences = it.preferences.copy(accent = accent)) } }
-            }
-            SettingsCard(t("settings.terminal_input"), t("settings.terminal_input_description")) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("settings.terminal_font_size", local.preferences.fontSize), Modifier.weight(1f))
-                    Spacer(Modifier.width(8.dp))
-                    BorderedButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize - 1).coerceAtLeast(10))) } }) { Text(t("settings.smaller")) }
-                    Spacer(Modifier.width(8.dp))
-                    BorderedButton({ model.modify { it.copy(preferences = it.preferences.copy(fontSize = (it.preferences.fontSize + 1).coerceAtMost(28))) } }) { Text(t("settings.larger")) }
-                }
-                PlatformTerminalFontSettings(local.preferences.terminalFontFamily) { family ->
-                    model.modify { it.copy(preferences = it.preferences.copy(terminalFontFamily = family)) }
-                }
-                Text(tr("settings.scrollback_description", local.preferences.scrollback), style = MaterialTheme.typography.bodySmall)
-                BorderedButton({ entryFocus = shortcutFocus; page = SettingsPage.Shortcuts }, modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(shortcutFocus)) {
-                    Text(t("settings.bottom_shortcuts"), Modifier.weight(1f)); Text(tr("settings.shortcuts_count_edit", local.preferences.terminalShortcuts.size)); UiGlyph(UiIcons.chevronRight)
-                }
-                BorderedButton({ entryFocus = launchFocus; page = SettingsPage.Launch }, modifier = Modifier.fillMaxWidth().focusRequester(launchFocus)) {
-                    Text(t("launcher.settings"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
-                }
-                SettingsSwitch(t("launcher.always_show_keyboard"), local.preferences.androidKeyboardAlwaysVisible) { enabled ->
-                    model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardAlwaysVisible = enabled)) }
-                }
-                Text(t("settings.keyboard_always_description"), style = MaterialTheme.typography.bodySmall)
-                // Moot while the keyboard always shows.
-                SettingsSwitch(t("settings.keyboard_on_touch"), local.preferences.androidKeyboardOnTouch,
-                    enabled = !local.preferences.androidKeyboardAlwaysVisible) { enabled ->
-                    model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardOnTouch = enabled)) }
-                }
-                Text(t("settings.keyboard_on_touch_description"), style = MaterialTheme.typography.bodySmall)
-                Text(t("settings.keyboard_when_opens"), style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("auto" to t("settings.keyboard_automatic"), "pan" to t("common.move_up"), "resize" to t("settings.keyboard_resize")).forEach { (value, label) ->
-                        FilterChip(local.preferences.effectiveAndroidKeyboardMode == value,
-                            { model.modify { it.copy(preferences = it.preferences.copy(androidKeyboardMode = value)) } },
-                            enabled = !local.preferences.androidKeyboardAlwaysVisible, label = { Text(label) })
-                    }
-                }
-                Text(t(when (local.preferences.effectiveAndroidKeyboardMode) {
-                    "pan" -> "settings.keyboard_pan_description"
-                    "resize" -> "settings.keyboard_resize_description"
-                    else -> "settings.keyboard_automatic_description"
-                }), style = MaterialTheme.typography.bodySmall)
-                Text(t("settings.scroll_assist_title"), style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("auto" to t("settings.scroll_assist_auto"), "on" to t("settings.scroll_assist_on"), "off" to t("settings.scroll_assist_off")).forEach { (value, label) ->
-                        FilterChip(local.preferences.effectiveTerminalScrollAssist == value,
-                            { model.modify { it.copy(preferences = it.preferences.copy(terminalScrollAssist = value)) } }, label = { Text(label) })
-                    }
-                }
-                Text(t("settings.scroll_assist_description") + " " + t(when (local.preferences.effectiveTerminalScrollAssist) {
-                    "on" -> "settings.scroll_assist_on_description"
-                    "off" -> "settings.scroll_assist_off_description"
-                    else -> "settings.scroll_assist_auto_description"
-                }), style = MaterialTheme.typography.bodySmall)
-                SettingsSwitch(t("settings.bottom_shortcuts_two_rows"), local.preferences.mobileShortcutBarTwoRows) { enabled ->
-                    model.modify { it.copy(preferences = it.preferences.copy(mobileShortcutBarTwoRows = enabled)) }
-                }
-                Text(t("settings.narrow_screen_note"), style = MaterialTheme.typography.bodySmall)
-                PlatformInputSettings(local.preferences) { preferences -> model.update(model.local.value.copy(preferences = preferences)) }
-            }
-            SettingsCard(t("settings.workspace"), t("settings.workspace_description")) {
-                SettingsSwitch(t("settings.show_single_windows_too"), local.preferences.showAllHierarchy) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(showAllHierarchy = enabled)) } }
-                SettingsSwitch(t("settings.smooth_transitions"), local.preferences.smoothTerminalTransitions) { enabled -> model.modify { it.copy(preferences = it.preferences.copy(smoothTerminalTransitions = enabled)) } }
-                Text(t("settings.smooth_transitions_description"), style = MaterialTheme.typography.bodySmall)
-            }
-            SettingsCard(t("settings.connection"), t("settings.connection_description")) { PlatformConnectionSettings(model) }
-            SettingsCard(t("common.notifications"), t("settings.notifications_description")) { AgentNotificationSettingsUi(model) }
-            SettingsCard(t("agent_status.title"), t("agent_status.description")) { AgentStatusSettingsUi(model) }
-            BorderedButton({ entryFocus = syncFocus; page = SettingsPage.ExportSync },
-                modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(syncFocus)) {
-                Text(t("sync.export_and_sync"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
-            }
-            SettingsCard(t("settings.security_storage"), t("settings.security_description")) {
-                Text(t("settings.trusted_servers"), style = MaterialTheme.typography.titleSmall)
-                local.trust.forEach { (endpoint, fingerprint) ->
-                    Column { Text(endpoint); SelectionContainer { Text(fingerprint, style = MaterialTheme.typography.labelSmall) }; BorderedButton({ forget = endpoint }) { Text(t("settings.remove_trusted_key")) } }
-                }
-                Text(model.storageDescription, style = MaterialTheme.typography.bodySmall)
-            }
-            BorderedButton({ entryFocus = aboutFocus; page = SettingsPage.About },
-                modifier = Modifier.fillMaxWidth().focusProperties { canFocus = true }.focusRequester(aboutFocus)) {
-                Text(t("settings.about"), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
-            }
-        }
-    }, confirmButton = { BorderedButton(back) { Text(t(if (page != SettingsPage.Main) "common.back" else "common.close")) } })
-    forget?.let { endpoint -> ConfirmDialog(t("settings.remove_trusted_key"), tr("settings.remove_trust_confirm", endpoint), { model.modify { it.copy(trust = it.trust - endpoint) }; forget = null }, { forget = null }) }
-}
-
-@Composable private fun AboutApp() {
-    val uri = LocalUriHandler.current
-    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Image(AppIcon, contentDescription = "DaGaLi", modifier = Modifier.size(80.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)))
-        Text("DaGaLi", style = MaterialTheme.typography.headlineMedium)
-        Text(tr("settings.about_version", APP_VERSION), style = MaterialTheme.typography.bodyLarge)
-        Text("Reconnect less. Resume more.", style = MaterialTheme.typography.bodyLarge)
-        listOf(t("settings.about_website") to "https://ddal.ggak.life", t("settings.about_github") to "https://github.com/jujinkim/dgl-client").forEach { (label, url) ->
-            BorderedButton({ uri.openUri(url) }) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(label); Text(url, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-}
-
-@Composable private fun SettingsSwitch(label: String, selected: Boolean, enabled: Boolean = true, change: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(selected, enabled = enabled, role = Role.Switch, onValueChange = change),
-        verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), color = if (enabled) Color.Unspecified else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
-        AccentSwitch(selected, null, enabled = enabled)
-    }
-}
-
 /** A name dialog's title, the name it starts from (a rename's current name) and its action. */
 internal class NamePrompt(val title: String, val initial: String = "", val accept: (String) -> Unit)
 @Composable internal fun NameDialog(title: String, accept: (String) -> Unit, dismiss: () -> Unit, initial: String = "") {
@@ -862,25 +698,13 @@ internal class NamePrompt(val title: String, val initial: String = "", val accep
 
 @Composable private fun EditorDialog(
     fullscreen: Boolean,
-    settingsLayout: Boolean = false,
     onDismissRequest: () -> Unit,
     title: @Composable () -> Unit,
     text: @Composable () -> Unit,
     confirmButton: @Composable () -> Unit,
     dismissButton: @Composable () -> Unit = {},
 ) {
-    if (!fullscreen && !settingsLayout) AlertDialog(onDismissRequest = onDismissRequest, title = title, text = text, confirmButton = confirmButton, dismissButton = dismissButton)
-    else if (!fullscreen) Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(24.dp), contentAlignment = Alignment.Center) {
-            Surface(Modifier.widthIn(max = 720.dp).fillMaxWidth().heightIn(max = maxHeight), shape = MaterialTheme.shapes.large) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    ProvideTextStyle(MaterialTheme.typography.titleLarge) { title() }
-                    Box(Modifier.weight(1f, fill = false).fillMaxWidth()) { text() }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) { dismissButton(); confirmButton() }
-                }
-            }
-        }
-    }
+    if (!fullscreen) AlertDialog(onDismissRequest = onDismissRequest, title = title, text = text, confirmButton = confirmButton, dismissButton = dismissButton)
     else Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

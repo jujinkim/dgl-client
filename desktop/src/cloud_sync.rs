@@ -174,10 +174,12 @@ impl Desktop {
             return;
         }
         // Do not replace host forms while the user is editing them.
+        // Nor merge remote shortcuts into a list that is being dragged.
         if self
             .dialog
             .as_ref()
-            .is_some_and(|d| !matches!(d, Dialog::Settings | Dialog::ExportSync))
+            .is_some_and(|d| !matches!(d, Dialog::Settings))
+            || self.settings.dragging.is_some()
         {
             return;
         }
@@ -353,7 +355,9 @@ impl Desktop {
                         self.cloud_sync.status = "sync.export_complete".into()
                     }
                     TransferResult::Imported(bytes, count) => {
-                        if matches!(self.dialog, Some(Dialog::ExportSync)) {
+                        if matches!(self.dialog, Some(Dialog::Settings))
+                            && self.settings.category == settings::SettingsCategory::Sync
+                        {
                             self.cloud_sync.pending_import = Some((bytes, count));
                             self.cloud_sync.status = "sync.import_review".into();
                         } else {
@@ -452,132 +456,200 @@ impl Desktop {
         }
         .into();
     }
+    /// The export and sync settings page: file transfer and file sync groups.
     pub(super) fn export_sync_settings(&self, cx: &mut Context<Self>) -> Div {
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        self.button("export-sync-back", t("common.back"), cx, |s, _, _| {
-                            s.settings_back()
-                        }),
-                    )
-                    .child(div().text_xl().child(t("sync.export_and_sync"))),
-            )
-            .child(t("sync.description"));
+        use settings_ui::ActionKind;
+        let mut transfer = vec![];
         if !self.cloud_sync.busy() && !self.cloud_sync.blocked {
-            body = body.child(
+            transfer.push(
                 div()
                     .flex()
                     .flex_wrap()
                     .gap_2()
-                    .child(self.button(
+                    .px(px(settings_ui::ROW_PX))
+                    .py(px(settings_ui::ROW_PY))
+                    .child(self.settings_action(
                         "export-settings",
                         t("sync.export_ellipsis"),
+                        ActionKind::Normal,
                         cx,
                         |s, _, cx| s.select_settings_file(true, cx),
                     ))
-                    .child(self.button(
+                    .child(self.settings_action(
                         "import-settings",
                         t("sync.import_ellipsis"),
+                        ActionKind::Normal,
                         cx,
                         |s, _, cx| s.select_settings_file(false, cx),
-                    )),
+                    ))
+                    .into_any_element(),
             );
         }
         if let Some((_, count)) = &self.cloud_sync.pending_import {
-            body = body.child(
+            transfer.push(
                 div()
                     .id("import-preview")
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(tr!("sync.import_confirm", count))
-                    .child(t("sync.import_note"))
+                    .px(px(settings_ui::ROW_PX))
+                    .py(px(settings_ui::ROW_PY))
                     .child(
-                        self.button("confirm-import", t("common.import"), cx, |s, _, cx| {
-                            s.confirm_settings_import(cx)
-                        }),
+                        div()
+                            .text_size(px(settings_ui::BODY))
+                            .child(tr!("sync.import_confirm", count)),
                     )
+                    .child(self.settings_note(t("sync.import_note")))
                     .child(
-                        self.button("cancel-import", t("common.cancel"), cx, |s, _, _| {
-                            s.cloud_sync.pending_import = None;
-                            s.cloud_sync.status = "sync.import_canceled".into();
-                        }),
-                    ),
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(self.settings_action(
+                                "confirm-import",
+                                t("common.import"),
+                                ActionKind::Primary,
+                                cx,
+                                |s, _, cx| s.confirm_settings_import(cx),
+                            ))
+                            .child(self.settings_action(
+                                "cancel-import",
+                                t("common.cancel"),
+                                ActionKind::Normal,
+                                cx,
+                                |s, _, _| {
+                                    s.cloud_sync.pending_import = None;
+                                    s.cloud_sync.status = "sync.import_canceled".into();
+                                },
+                            )),
+                    )
+                    .into_any_element(),
             );
         }
-        body.child(div().text_lg().child(t("sync.file_sync")))
-            .child(t("sync.choose_folder_hint"))
-            .child(self.cloud_sync_settings(cx))
+        let mut page = div().flex().flex_col().gap(px(settings_ui::PAGE_GAP));
+        if !transfer.is_empty() {
+            page = page.child(self.settings_group(
+                "file-transfer",
+                Some(t("sync.file_transfer").into()),
+                None,
+                transfer,
+            ));
+        }
+        page.child(self.settings_group(
+            "file-sync",
+            Some(t("sync.file_sync").into()),
+            Some(t("sync.choose_folder_hint").into()),
+            vec![self.cloud_sync_settings(cx).into_any_element()],
+        ))
     }
     pub(super) fn cloud_sync_settings(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        use settings_ui::ActionKind;
+        let padded = || {
+            div()
+                .px(px(settings_ui::ROW_PX))
+                .py(px(settings_ui::ROW_PY))
+        };
         if self.cloud_sync.blocked {
-            return div()
+            return padded()
                 .id("cloud-sync-blocked")
+                .text_size(px(settings_ui::BODY))
                 .child(t(&self.cloud_sync.status).to_owned());
         }
         let busy = self.cloud_sync.busy();
-        let mut body = div()
-            .id("cloud-sync-settings")
-            .flex()
-            .flex_col()
-            .gap_2()
-            .native_tooltip(t("sync.theme_note"))
-            .child(t("sync.select_same_file_hint"));
-        if !busy {
-            body = body.child(self.button(
-                "sync-folder",
-                t("sync.choose_folder_ellipsis"),
-                cx,
-                |s, _, cx| s.select_cloud_folder(cx),
-            ));
-        }
+        let mut rows = vec![
+            self.settings_row(
+                t("sync.select_same_file_hint"),
+                None,
+                div().when(!busy, |d| {
+                    d.child(self.settings_action(
+                        "sync-folder",
+                        t("sync.choose_folder_ellipsis"),
+                        ActionKind::Normal,
+                        cx,
+                        |s, _, cx| s.select_cloud_folder(cx),
+                    ))
+                }),
+            )
+            .into_any_element(),
+        ];
         if let Some(config) = &self.cloud_sync.config {
-            body = body.child(config.file.display().to_string());
-            if !busy {
-                body = body
-                    .child(self.button("sync-now", t("sync.sync_now"), cx, |s, _, cx| {
-                        s.start_cloud_sync(vec![], false, cx)
-                    }))
-                    .child(
-                        self.button("sync-disconnect", t("sync.disconnect"), cx, |s, _, _| {
-                            match checkpoint(&s.sync_path(), &None) {
-                                Ok(()) => {
-                                    s.cloud_sync.config = None;
-                                    s.cloud_sync.conflicts.clear();
-                                    s.cloud_sync.status = "sync.disconnected_file_kept".into();
-                                }
-                                Err(e) => s.cloud_sync.status = e.into(),
+            let controls = div().when(!busy, |d| {
+                d.flex()
+                    .gap_2()
+                    .child(self.settings_action(
+                        "sync-now",
+                        t("sync.sync_now"),
+                        ActionKind::Primary,
+                        cx,
+                        |s, _, cx| s.start_cloud_sync(vec![], false, cx),
+                    ))
+                    .child(self.settings_action(
+                        "sync-disconnect",
+                        t("sync.disconnect"),
+                        ActionKind::Danger,
+                        cx,
+                        |s, _, _| match checkpoint(&s.sync_path(), &None) {
+                            Ok(()) => {
+                                s.cloud_sync.config = None;
+                                s.cloud_sync.conflicts.clear();
+                                s.cloud_sync.status = "sync.disconnected_file_kept".into();
                             }
-                        }),
-                    );
-            }
+                            Err(e) => s.cloud_sync.status = e.into(),
+                        },
+                    ))
+            });
+            rows.push(
+                self.settings_row_with(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(settings_ui::BODY))
+                        .child(config.file.display().to_string()),
+                    controls,
+                )
+                .into_any_element(),
+            );
         }
-        body = body.child(t(&self.cloud_sync.status).to_owned());
+        rows.push(
+            padded()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .text_size(px(settings_ui::BODY))
+                        .child(t(&self.cloud_sync.status).to_owned()),
+                )
+                .child(self.settings_note(t("sync.theme_note")))
+                .into_any_element(),
+        );
         if !busy {
             for conflict in &self.cloud_sync.conflicts {
-                body = body.child(t("sync.conflicts_title"));
+                let mut choices = vec![];
                 for choice in &conflict.choices {
                     let resolution = Resolution {
                         key: conflict.key.clone(),
                         revision: choice.revision.clone(),
                     };
-                    body = body.child(self.button(
-                        format!("sync-resolve-{}", choice.revision),
-                        choice.label.clone(),
-                        cx,
-                        move |s, _, cx| s.start_cloud_sync(vec![resolution.clone()], false, cx),
-                    ));
+                    choices.push(
+                        self.settings_action(
+                            format!("sync-resolve-{}", choice.revision),
+                            choice.label.clone(),
+                            ActionKind::Normal,
+                            cx,
+                            move |s, _, cx| s.start_cloud_sync(vec![resolution.clone()], false, cx),
+                        )
+                        .into_any_element(),
+                    );
                 }
+                rows.push(
+                    self.settings_stack(Some(t("sync.conflicts_title").into()), None, choices)
+                        .into_any_element(),
+                );
             }
         }
-        body
+        div()
+            .id("cloud-sync-settings")
+            .child(self.settings_rows(rows))
     }
 }
 
@@ -596,7 +668,8 @@ mod tests {
         let file = dir.path().join(sync::FILE_NAME);
         std::fs::write(&file, Document::default().encode().unwrap()).unwrap();
         view.update(ui, |s, cx| {
-            s.dialog = Some(Dialog::ExportSync);
+            s.dialog = Some(Dialog::Settings);
+            s.settings.category = crate::settings::SettingsCategory::Sync;
             s.cloud_sync.config = Some(Config { file, cache: None });
             s.tick_cloud_sync(cx);
             assert!(
@@ -627,6 +700,40 @@ mod tests {
             assert_eq!(s.local, before);
             std::fs::remove_dir(&s.path).unwrap();
         });
+    }
+
+    #[gpui::test]
+    fn leaving_the_sync_category_or_closing_settings_cancels_an_import_preview(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use crate::settings::SettingsCategory;
+        let (view, ui) = crate::ui_tests::setup(cx);
+        for leave in ["settings-nav-general", "escape"] {
+            view.update(ui, |s, cx| {
+                s.open_settings(SettingsCategory::Sync);
+                s.cloud_sync.pending_import = Some((vec![], 0));
+                cx.notify();
+            });
+            crate::ui_tests::redraw(ui);
+            assert!(view.read_with(ui, |s, _| s.modal.built("confirm-import")));
+            if leave == "escape" {
+                ui.simulate_keystrokes("escape");
+            } else {
+                let nav = ui.debug_bounds(leave).unwrap().center();
+                ui.simulate_click(nav, gpui::Modifiers::default());
+            }
+            crate::ui_tests::redraw(ui);
+            view.read_with(ui, |s, _| {
+                assert!(s.cloud_sync.pending_import.is_none(), "{leave}");
+                assert_eq!(s.cloud_sync.status, "sync.import_canceled");
+                if leave == "escape" {
+                    assert!(s.dialog.is_none());
+                } else {
+                    assert_eq!(s.settings.category, SettingsCategory::General);
+                }
+            });
+            assert!(!view.read_with(ui, |s, _| s.modal.built("confirm-import")));
+        }
     }
 
     #[::core::prelude::v1::test]

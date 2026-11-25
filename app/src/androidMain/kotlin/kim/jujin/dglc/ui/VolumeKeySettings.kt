@@ -3,14 +3,12 @@ package kim.jujin.dglc.ui
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kim.jujin.dglc.core.*
@@ -23,18 +21,17 @@ private val VolumeAction.label: String get() = when (this) {
 
 @Composable actual fun PlatformInputSettings(preferences: Preferences, update: (Preferences) -> Unit) {
     var editing by remember { mutableStateOf<Boolean?>(null) }
-    Row(Modifier.fillMaxWidth().toggleable(preferences.volumeKeysEnabled, role = Role.Switch,
-        onValueChange = { update(preferences.copy(volumeKeysEnabled = it)) })
-        .semantics { contentDescription = t("volume_key.enable") }, verticalAlignment = Alignment.CenterVertically) {
-        Text(t("volume_key.enable"), Modifier.weight(1f))
-        AccentSwitch(preferences.volumeKeysEnabled, onCheckedChange = null)
-    }
-    Text(t("volume_key.foreground_note"), style = MaterialTheme.typography.bodySmall)
-    listOf(true to preferences.volumeUp, false to preferences.volumeDown).forEach { (up, binding) ->
-        BorderedButton({ editing = up }) {
+    // Emitted into the Keyboard settings page. Each binding row keeps one combined label.
+    SettingsGroup(null) {
+        SettingsToggleRow(t("volume_key.enable"), preferences.volumeKeysEnabled, t("volume_key.foreground_note")) {
+            update(preferences.copy(volumeKeysEnabled = it))
+        }
+        listOf(true to preferences.volumeUp, false to preferences.volumeDown).forEach { (up, binding) ->
+            SettingsDivider()
             val summary = if (binding.action == VolumeAction.Shortcut) (binding.steps.singleOrNull() as? MacroStep.Key)?.key?.label
                 else if (binding.action == VolumeAction.Macro) tr("volume_key.step", binding.steps.size) else null
-            Text(tr("volume_key.summary", if (up) t("volume_key.up") else t("volume_key.down"), binding.action.label) + (summary?.let { " · $it" } ?: ""))
+            SettingsNavRow(tr("volume_key.summary", if (up) t("volume_key.up") else t("volume_key.down"), binding.action.label) + (summary?.let { " · $it" } ?: ""),
+                { editing = up })
         }
     }
     editing?.let { up ->
@@ -65,9 +62,9 @@ private val VolumeAction.label: String get() = when (this) {
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SettingsChips {
                 VolumeAction.entries.forEach { choice ->
-                    FilterChip(action == choice, { action = choice; error = null }, label = { Text(choice.label) })
+                    SettingsChip(choice.label, action == choice) { action = choice; error = null }
                 }
             }
             when (action) {

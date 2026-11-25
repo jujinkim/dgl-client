@@ -25,9 +25,9 @@ import kim.jujin.dglc.core.*
         missing -> tr("font.missing_using_default", family)
         else -> family
     }
-    BorderedButton({ choosing = true }, Modifier.fillMaxWidth()) {
-        Text(tr("font.terminal_font_value", label), Modifier.weight(1f)); UiGlyph(UiIcons.chevronRight)
-    }
+    // Emitted after the font size row inside the Terminal text group.
+    SettingsDivider()
+    SettingsNavRow(tr("font.terminal_font_value", label), { choosing = true })
     if (!choosing) return
     val choose = { value: String -> select(value); choosing = false }
     AlertDialog(onDismissRequest = { choosing = false }, title = { Text(t("font.terminal_font")) }, text = {

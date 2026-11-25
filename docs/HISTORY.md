@@ -294,6 +294,14 @@ macOS GPUI 자동 검사는 Command Line Tools와 런타임 셰이더로 실행�
 Android Debug APK 빌드·서명·네 ABI, 번역 카탈로그, 대시보드 등록을 확인했습니다.
 네이티브 파일 관리자와 Android 시스템 선택기 인수는 [TASKS.md](../TASKS.md#기능-인수)에 남겼습니다.
 
+## 2026-11-25: 설정 화면 개편
+
+데스크톱과 Android 설정을 카드 나열에서 카테고리 탐색과 상세 화면 구조로 바꿨습니다. 카테고리는 일반부터 앱 정보까지이고, 하위 화면은 최대 2단입니다.
+데스크톱은 넓은 창에서 좌측 카테고리와 우측 상세를, 좁은 창에서 가로 카테고리 줄을 씁니다. Android는 폰에서 목록과 상세를, 840dp 이상에서 두 칸 화면을 씁니다.
+설정 전용 컴포넌트(`desktop/src/settings_ui.rs`, `SettingsComponents.kt`)로 행·선택·토글·버튼 크기와 여백을 통일하고, 설명을 툴팁 대신 화면에 표시했습니다.
+macOS GPUI 자동 검사(Command Line Tools와 런타임 셰이더)와 Rust 코어·UniFFI 검사, JVM 검사, Android Debug·계측 APK 빌드와 lint, 번역 카탈로그 검사를 통과했습니다.
+`-D warnings` clippy는 기존 경고로 실패하고, `verify_lint.py`는 기한이 지난 OldTargetApi 검토로 실패했습니다. Android 계측 실행과 실제 화면 확인은 [TASKS.md](../TASKS.md#기능-인수)에 남겼습니다.
+
 ## 과거 파일 찾기
 
 정리 직전 기준 커밋은 `5fa6b99`입니다.
