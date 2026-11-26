@@ -1,4 +1,5 @@
-//! Device-local quick launch options. Arguments are shell fragments, environment values are literals.
+//! Quick launch options. Arguments are shell fragments, environment values are literals.
+//! Definitions sync through `sync::SharedLaunch`; check states stay on each device.
 use crate::agent::Agent;
 use serde::{Deserialize, Serialize};
 

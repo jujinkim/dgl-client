@@ -142,7 +142,7 @@ JNA·UniFFI 바인딩과 검사기가 이름으로 확인하는 Rust 진입 클�
 컴파일 시점 문자열로 이름을 기록하므로 난독화의 영향을 받지 않습니다. `-adaptclassstrings`는 추가하지 않고, 바인딩을 리플렉션으로
 새로 노출하면 keep 규칙을 함께 갱신합니다. AAB에는 mapping 파일이 포함되어 Play Console이 스택을 복원하며, 다른 경로로 받은 스택은
 `androidApp/build/outputs/mapping/release/mapping.txt`와 SDK `retrace`로 복원합니다.
-앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.2.4` / `204`입니다.
+앱 ID는 `kim.jujin.dglc`, versionName/code는 `0.2.5` / `205`입니다.
 
 ### Google Play 내부 테스트 수동 배포
 
@@ -180,7 +180,7 @@ Google Play Console에 DGL 앱과 첫 AAB를 먼저 등록하고 Play App Signin
 
 ### 앱 버전 관리
 
-루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.2.4`입니다.
+루트 `Cargo.toml`의 `[workspace.package].version`이 단일 기준입니다. 현재 `0.2.5`입니다.
 Rust 코어·데스크톱은 workspace 버전을 상속하고 표시에는 빌드 시 `CARGO_PKG_VERSION`을 사용합니다.
 Gradle은 같은 값을 Android `versionName`과 `app/build/generated/appVersion/`의 Kotlin `APP_VERSION`으로 생성합니다.
 생성 디렉터리는 Git에 추가하지 않습니다. macOS 번들 두 버전 필드·`build.json`과 Windows ZIP의

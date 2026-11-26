@@ -1,8 +1,10 @@
 //! Provider-independent file synchronization. The shared document is an allowlist,
 //! never a serialized LocalState. An append-only causal journal survives delayed
 //! cloud writes; concurrent values remain explicit until the user resolves them.
+use crate::agent::Agent;
 use crate::{
     Error, Result,
+    launcher::{AgentLaunch, LAUNCH_AGENTS, LaunchOption, OptionKind},
     model::{AuthKind, HostProfile, LocalState},
 };
 use crate::{i18n::t, tr};
@@ -64,6 +66,92 @@ impl SharedHost {
     }
 }
 
+/// Launch option definitions shared per agent. Check states, including Bypass, stay on
+/// each device: a shared file must never enable an argument on another device by itself.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharedOption {
+    pub name: String,
+    pub description: String,
+    pub kind: OptionKind,
+    pub value: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharedLaunch {
+    pub bypass: String,
+    pub options: Vec<SharedOption>,
+}
+impl SharedLaunch {
+    fn from_local(launch: &AgentLaunch) -> Self {
+        // Hand-edited invalid entries are never launched; do not let them stop syncing.
+        Self {
+            bypass: if crate::launcher::single_line(&launch.bypass) {
+                launch.bypass.clone()
+            } else {
+                String::new()
+            },
+            options: launch
+                .options
+                .iter()
+                .filter(|o| o.valid())
+                .map(|o| SharedOption {
+                    name: o.name.clone(),
+                    description: o.description.clone(),
+                    kind: o.kind,
+                    value: o.value.clone(),
+                })
+                .collect(),
+        }
+    }
+    fn local(&self, previous: Option<&AgentLaunch>) -> AgentLaunch {
+        let checked = |o: &SharedOption| {
+            previous.is_some_and(|p| {
+                p.options.iter().any(|l| {
+                    l.checked && l.name == o.name && l.kind == o.kind && l.value == o.value
+                })
+            })
+        };
+        AgentLaunch {
+            bypass: self.bypass.clone(),
+            bypass_checked: previous.is_some_and(|p| p.bypass_checked),
+            options: self
+                .options
+                .iter()
+                .map(|o| LaunchOption {
+                    name: o.name.clone(),
+                    description: o.description.clone(),
+                    kind: o.kind,
+                    value: o.value.clone(),
+                    checked: checked(o),
+                })
+                .collect(),
+        }
+    }
+    fn valid(&self) -> bool {
+        crate::launcher::single_line(&self.bypass)
+            && self.options.iter().all(|o| {
+                LaunchOption {
+                    name: o.name.clone(),
+                    description: o.description.clone(),
+                    kind: o.kind,
+                    value: o.value.clone(),
+                    checked: false,
+                }
+                .valid()
+            })
+    }
+}
+fn launch_key(agent: Agent) -> String {
+    format!("launch/{}", agent.executable())
+}
+fn launch_agent(key: &str) -> Option<Agent> {
+    LAUNCH_AGENTS.into_iter().find(|a| launch_key(*a) == key)
+}
+fn default_launch(agent: Agent) -> Value {
+    Value::Launch(SharedLaunch::from_local(&AgentLaunch::defaults(agent)))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", deny_unknown_fields)]
 pub enum Value {
@@ -75,8 +163,15 @@ pub enum Value {
     Questions(bool),
     Responses(bool),
     Errors(bool),
+    /// Requires document version 3.
+    Launch(SharedLaunch),
 }
 impl Value {
+    /// Untouched launch options are not a local edit; publishing them would race
+    /// another device's customization and old clients cannot read version 3.
+    fn untouched_launch(&self, key: &str) -> bool {
+        launch_agent(key).is_some_and(|a| *self == default_launch(a))
+    }
     fn valid(&self, key: &str) -> bool {
         match self {
             Self::Host(host) => key.strip_prefix("host/").is_some_and(|id| {
@@ -92,9 +187,10 @@ impl Value {
             Self::Questions(_) => key == "questions",
             Self::Responses(_) => key == "responses",
             Self::Errors(_) => key == "errors",
+            Self::Launch(v) => launch_agent(key).is_some() && v.valid(),
         }
     }
-    pub fn label(&self) -> String {
+    pub fn label(&self, key: &str) -> String {
         match self {
             Self::Host(Some(h)) => format!(
                 "{} · {}@{}:{} · {:?}{}",
@@ -121,6 +217,15 @@ impl Value {
             Self::Questions(v) => tr!("sync.field_question_notifications", v),
             Self::Responses(v) => tr!("sync.field_response_notifications", v),
             Self::Errors(v) => tr!("sync.field_error_notifications", v),
+            Self::Launch(v) => {
+                let mut parts: Vec<&str> = vec![&v.bypass];
+                parts.extend(v.options.iter().map(|o| o.name.as_str()));
+                tr!(
+                    "sync.field_launch",
+                    launch_agent(key).map_or("", |a| a.launch_label()),
+                    parts.join(" · ")
+                )
+            }
         }
     }
 }
@@ -142,6 +247,17 @@ fn snapshot(local: &LocalState) -> Snapshot {
         ),
         ("errors".into(), Value::Errors(p.agent_notifications.errors)),
     ]);
+    for agent in LAUNCH_AGENTS {
+        let launch = p
+            .agent_launch
+            .get(&agent)
+            .cloned()
+            .unwrap_or_else(|| AgentLaunch::defaults(agent));
+        result.insert(
+            launch_key(agent),
+            Value::Launch(SharedLaunch::from_local(&launch)),
+        );
+    }
     for h in &local.hosts {
         result.insert(
             format!("host/{}", h.id),
@@ -184,12 +300,12 @@ impl Document {
         }
         let mut doc: Self = serde_json::from_slice(bytes).map_err(|_| Error::InvalidArgument)?;
         doc.validate()?;
-        doc.version = 2;
+        doc.version = doc.version.max(2);
         Ok(doc)
     }
     fn validate(&self) -> Result<()> {
         if self.format != "dgl-sync"
-            || ![1, 2].contains(&self.version)
+            || ![1, 2, 3].contains(&self.version)
             || !crate::model::valid_id(&self.dataset)
             || self.changes.len() > MAX_CHANGES
         {
@@ -200,6 +316,7 @@ impl Document {
                 || c.clock == 0
                 || !c.value.valid(&c.key)
                 || (self.version == 1 && matches!(c.value, Value::Accent(_)))
+                || (self.version < 3 && matches!(c.value, Value::Launch(_)))
                 || c.parents.len() > MAX_CHANGES
             {
                 return Err(Error::InvalidArgument);
@@ -231,6 +348,7 @@ impl Document {
             }
             self.changes.insert(id, c);
         }
+        self.version = self.version.max(other.version);
         self.validate()
     }
     fn heads(&self) -> BTreeMap<String, Vec<String>> {
@@ -263,6 +381,10 @@ impl Document {
             .checked_add(1)
             .ok_or(Error::InvalidArgument)?;
         let id = format!("{device}-{}", identity());
+        if matches!(value, Value::Launch(_)) {
+            // Only a document that carries launch options locks out older clients.
+            self.version = 3;
+        }
         self.changes.insert(
             id.clone(),
             Change {
@@ -326,10 +448,16 @@ impl Cache {
         {
             return Err(Error::InvalidArgument);
         }
-        self.document.version = 2;
+        self.document.version = self.document.version.max(2);
         self.observed
             .entry("accent".into())
             .or_insert_with(|| Value::Accent(Default::default()));
+        // Caches from before launch options were shared observed only the defaults.
+        for agent in LAUNCH_AGENTS {
+            self.observed
+                .entry(launch_key(agent))
+                .or_insert_with(|| default_launch(agent));
+        }
         Ok(self)
     }
     pub fn encode(&self) -> Result<String> {
@@ -362,7 +490,9 @@ pub fn export_settings(local: &LocalState) -> Result<String> {
     let mut document = Document::default();
     let device = identity();
     for (key, value) in snapshot(local) {
-        document.add(&device, key, value, vec![])?;
+        if !value.untouched_launch(&key) {
+            document.add(&device, key, value, vec![])?;
+        }
     }
     document.encode()
 }
@@ -409,6 +539,12 @@ fn apply_value(next: &mut LocalState, key: &str, value: &Value) -> Result<()> {
         Value::Questions(v) => next.preferences.agent_notifications.questions = *v,
         Value::Responses(v) => next.preferences.agent_notifications.responses = *v,
         Value::Errors(v) => next.preferences.agent_notifications.errors = *v,
+        Value::Launch(v) => {
+            let agent = launch_agent(key).ok_or(Error::InvalidArgument)?;
+            let launch = &mut next.preferences.agent_launch;
+            let value = v.local(launch.get(&agent));
+            launch.insert(agent, value);
+        }
     }
     Ok(())
 }
@@ -465,6 +601,9 @@ pub fn exchange(
         if key == "accent" && parents.is_empty() && value == Value::Accent(Default::default()) {
             continue;
         }
+        if parents.is_empty() && value.untouched_launch(&key) {
+            continue;
+        }
         if !first && cache.observed.get(&key) == current.get(&key) {
             continue;
         }
@@ -505,16 +644,14 @@ pub fn exchange(
             .iter()
             .any(|id| &cache.document.changes[id].value != first)
         {
-            conflicts.push(Conflict {
-                key,
-                choices: heads
-                    .iter()
-                    .map(|id| Choice {
-                        revision: id.clone(),
-                        label: cache.document.changes[id].value.label(),
-                    })
-                    .collect(),
-            });
+            let choices = heads
+                .iter()
+                .map(|id| Choice {
+                    revision: id.clone(),
+                    label: cache.document.changes[id].value.label(&key),
+                })
+                .collect();
+            conflicts.push(Conflict { key, choices });
             continue;
         }
         apply_value(&mut next, &key, first)?;
@@ -621,7 +758,8 @@ mod tests {
             "PRIVATE-FINGERPRINT",
             "PRIVATE-FONT",
             "agentLaunch",
-            "PRIVATE-LAUNCH-ARG",
+            "bypassChecked",
+            "checked",
             "credentialRef",
             "lastSession",
             "language",
@@ -631,7 +769,15 @@ mod tests {
         }
         let doc = Document::decode(encoded.as_bytes()).unwrap();
         assert_ne!(doc.dataset, a.cache.document.dataset);
-        assert_eq!(doc.changes.len(), snapshot(&local).len());
+        assert!(encoded.contains("PRIVATE-LAUNCH-ARG"));
+        assert_eq!(
+            doc.changes.len(),
+            snapshot(&local)
+                .iter()
+                .filter(|(k, v)| !v.untouched_launch(k))
+                .count()
+        );
+        assert_eq!(doc.version, 3);
         assert!(doc.changes.values().all(|c| c.parents.is_empty()));
         let restored = import_settings(&LocalState::default(), encoded.as_bytes()).unwrap();
         assert_eq!(snapshot(&restored), snapshot(&local));
@@ -776,7 +922,7 @@ mod tests {
             "terminalFontFamily",
             "PRIVATE-FONT",
             "agentLaunch",
-            "PRIVATE-LAUNCH-ARG",
+            "bypassChecked",
             "desktopPowerSaving",
             "desktopTmuxBufferClipboard",
             "terminalScrollAssist",
@@ -807,6 +953,9 @@ mod tests {
         assert_eq!(other.local.preferences.desktop_power_saving, "system");
         assert!(!other.local.preferences.desktop_tmux_buffer_clipboard);
         assert_eq!(other.local.preferences.terminal_scroll_assist, "auto");
+        let launch = &other.local.preferences.agent_launch[&crate::agent::Agent::Claude];
+        assert_eq!(launch.bypass, "PRIVATE-LAUNCH-ARG");
+        assert!(!launch.bypass_checked);
     }
     #[test]
     fn offline_disjoint_changes_and_late_cloud_overwrite_converge() {
@@ -917,7 +1066,7 @@ mod tests {
             assert!(Document::decode(source.as_bytes()).is_err());
         }
         let mut value: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        value["version"] = 3.into();
+        value["version"] = 4.into();
         assert!(Document::decode(value.to_string().as_bytes()).is_err());
         let other = Document::default().encode().unwrap();
         assert!(exchange(Some(a.cache), &a.local, other.as_bytes(), &[]).is_err());
@@ -1035,5 +1184,143 @@ mod tests {
         assert_eq!(resolved.local.preferences.accent, lb.preferences.accent);
         assert!(!resolved.document.contains("systemColor"));
         assert!(!resolved.document.contains("resolved"));
+    }
+    fn custom_launch() -> crate::launcher::AgentLaunch {
+        let mut launch = crate::launcher::AgentLaunch::defaults(crate::agent::Agent::Claude);
+        launch.bypass_checked = true;
+        launch.options[0].checked = true;
+        launch.options.push(LaunchOption {
+            name: "Model".into(),
+            description: String::new(),
+            kind: OptionKind::Argument,
+            value: "--model opus".into(),
+            checked: true,
+        });
+        launch.options.push(LaunchOption {
+            name: "Key".into(),
+            description: "env".into(),
+            kind: OptionKind::Environment,
+            value: "FOO=bar baz".into(),
+            checked: false,
+        });
+        launch
+    }
+    #[test]
+    fn launch_option_definitions_sync_but_check_states_stay_on_each_device() {
+        use crate::agent::Agent;
+        let (a, doc) = initial();
+        // Untouched defaults publish nothing and keep older clients compatible.
+        assert_eq!(Document::decode(doc.as_bytes()).unwrap().version, 2);
+        assert!(!doc.contains("launch/"));
+        let b = exchange(None, &LocalState::default(), doc.as_bytes(), &[]).unwrap();
+        let mut b_local = b.local.clone();
+        let mut previous = crate::launcher::AgentLaunch::defaults(Agent::Claude);
+        previous.options[0].checked = true;
+        b_local
+            .preferences
+            .agent_launch
+            .insert(Agent::Claude, previous);
+
+        let mut la = a.local.clone();
+        la.preferences
+            .agent_launch
+            .insert(Agent::Claude, custom_launch());
+        let a = exchange(Some(a.cache), &la, doc.as_bytes(), &[]).unwrap();
+        assert_eq!(Document::decode(a.document.as_bytes()).unwrap().version, 3);
+        assert!(a.document.contains("--model opus"));
+        assert!(a.document.contains("FOO=bar baz"));
+        assert!(!a.document.contains("checked"));
+        assert_eq!(a.local, la);
+
+        let b = exchange(Some(b.cache), &b_local, a.document.as_bytes(), &[]).unwrap();
+        assert!(b.conflicts.is_empty());
+        let got = &b.local.preferences.agent_launch[&Agent::Claude];
+        assert_eq!(
+            SharedLaunch::from_local(got),
+            SharedLaunch::from_local(&custom_launch())
+        );
+        assert!(!got.bypass_checked);
+        // Code Mode keeps this device's check; arriving options arrive unchecked.
+        assert_eq!(
+            got.options.iter().map(|o| o.checked).collect::<Vec<_>>(),
+            [true, false, false]
+        );
+        assert!(!b.local.preferences.agent_launch.contains_key(&Agent::Codex));
+        // Toggling a check is not a shared edit.
+        let mut toggled = b.local.clone();
+        toggled
+            .preferences
+            .agent_launch
+            .get_mut(&Agent::Claude)
+            .unwrap()
+            .options[1]
+            .checked = true;
+        let c = exchange(Some(b.cache), &toggled, b.document.as_bytes(), &[]).unwrap();
+        assert_eq!(c.document, b.document);
+        assert_eq!(c.local, toggled);
+    }
+    #[test]
+    fn upgraded_cache_adopts_remote_launch_options_without_conflict() {
+        use crate::agent::Agent;
+        let (a, doc) = initial();
+        let b = exchange(None, &a.local, doc.as_bytes(), &[]).unwrap();
+        let mut legacy: serde_json::Value =
+            serde_json::from_str(&b.cache.encode().unwrap()).unwrap();
+        let observed = legacy["observed"].as_object_mut().unwrap();
+        observed.retain(|k, _| !k.starts_with("launch/"));
+        let legacy = Cache::decode(legacy.to_string().as_bytes()).unwrap();
+        let mut la = a.local.clone();
+        la.preferences
+            .agent_launch
+            .insert(Agent::Claude, custom_launch());
+        let a = exchange(Some(a.cache), &la, doc.as_bytes(), &[]).unwrap();
+        let b = exchange(Some(legacy), &b.local, a.document.as_bytes(), &[]).unwrap();
+        assert!(b.conflicts.is_empty());
+        assert_eq!(
+            SharedLaunch::from_local(&b.local.preferences.agent_launch[&Agent::Claude]),
+            SharedLaunch::from_local(&custom_launch())
+        );
+        // A version 2 reader rejects launch values instead of silently dropping them.
+        let mut old: serde_json::Value = serde_json::from_str(&a.document).unwrap();
+        old["version"] = 2.into();
+        assert!(Document::decode(old.to_string().as_bytes()).is_err());
+        let mut bad: serde_json::Value = serde_json::from_str(&a.document).unwrap();
+        for c in bad["changes"].as_object_mut().unwrap().values_mut() {
+            if c["key"] == "launch/claude" {
+                c["value"]["value"]["options"][0]["value"] = "1BAD=x".into();
+            }
+        }
+        assert!(Document::decode(bad.to_string().as_bytes()).is_err());
+    }
+    #[test]
+    fn concurrent_launch_edits_conflict_with_agent_labels() {
+        use crate::agent::Agent;
+        let (a, doc) = initial();
+        let b = exchange(None, &a.local, doc.as_bytes(), &[]).unwrap();
+        let mut la = a.local.clone();
+        la.preferences
+            .agent_launch
+            .insert(Agent::Claude, custom_launch());
+        let mut lb = b.local.clone();
+        let mut other = crate::launcher::AgentLaunch::defaults(Agent::Claude);
+        other.bypass = "--other".into();
+        lb.preferences.agent_launch.insert(Agent::Claude, other);
+        let a = exchange(Some(a.cache), &la, doc.as_bytes(), &[]).unwrap();
+        let b = exchange(Some(b.cache), &lb, doc.as_bytes(), &[]).unwrap();
+        let conflict = exchange(Some(a.cache), &a.local, b.document.as_bytes(), &[]).unwrap();
+        assert_eq!(conflict.conflicts.len(), 1);
+        assert_eq!(conflict.conflicts[0].key, "launch/claude");
+        assert!(
+            conflict.conflicts[0]
+                .choices
+                .iter()
+                .all(|c| c.label.contains("Claude Code"))
+        );
+        assert!(
+            conflict.conflicts[0]
+                .choices
+                .iter()
+                .any(|c| c.label.contains("--other"))
+        );
     }
 }
