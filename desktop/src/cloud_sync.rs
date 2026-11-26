@@ -536,7 +536,7 @@ impl Desktop {
         }
         page.child(self.settings_group(
             "file-sync",
-            Some(t("sync.file_sync").into()),
+            Some(format!("{} (experiment)", t("sync.file_sync")).into()),
             Some(t("sync.choose_folder_hint").into()),
             vec![self.cloud_sync_settings(cx).into_any_element()],
         ))

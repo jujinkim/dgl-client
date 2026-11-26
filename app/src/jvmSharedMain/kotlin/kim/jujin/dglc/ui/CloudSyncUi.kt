@@ -31,7 +31,7 @@ import kim.jujin.dglc.*
             }
         }
     }
-    SettingsGroup(t("sync.file_sync"), t("sync.connect_hint")) {
+    SettingsGroup(t("sync.file_sync") + " (experiment)", t("sync.connect_hint")) {
         SettingsNote(t("sync.first_connection_note"), Modifier.padding(top = 6.dp))
         SettingsActions {
             SettingsActionButton(t("sync.connect_file"), { model.chooseSettingsFile(SettingsFileAction.OpenSync) }, enabled = !busy)

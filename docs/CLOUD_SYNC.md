@@ -22,7 +22,9 @@ CloudKit, 자체 서버·계정은 사용하지 않는다. 로그인·클라우�
 - 이미 동기화 중이라면 그 연결과 이력을 유지한다. 가져온 변경도 일반 로컬 편집처럼
   다음 동기화에 반영된다. 일회성 작업과 자동 동기화는 겹쳐 실행하지 않는다.
 
-## 파일 동기화
+## 파일 동기화 (experiment)
+
+실험 기능이다. 설정 화면의 **파일 동기화** 그룹 제목에 `(experiment)`를 표시한다.
 
 서비스별 계정 연결 버튼은 없다. 데스크톱은 **동기화 폴더 선택…** 하나를 사용하고,
 Android는 시스템 파일 선택기로 문서를 연결한다. 동기화 앱이 제공하는 로컬 폴더나
@@ -75,7 +77,8 @@ Android 영속 URI 권한으로 재실행 뒤에도 같은 문서를 연다.
 |  | 데스크톱 호스트 순서(`host-order.json`)·창 크기(`window.json`)·연결 탭 |
 |  | 데스크톱 tmux 버퍼 클립보드 복사(`desktopTmuxBufferClipboard`, 기본 `false`) |
 |  | 언어·터미널 글꼴·하단 단축키·스크롤 보정(`terminalScrollAssist`)·데스크톱 절전 |
-|  | Android 키보드 대응·항상 보이기·화면 터치 시 키보드 열기(`androidKeyboardOnTouch`)·터미널 입력 보정(`androidInputCorrection`)·단축키 두 줄 |
+|  | Android 키보드 대응·항상 보이기·화면 터치 시 키보드 열기(`androidKeyboardOnTouch`)·터미널 입력 보정(`androidInputCorrection`)·단축키 두 줄·pane 도구 막대 |
+|  | CLI 실행 옵션(`agentLaunch`)·에이전트 상태 표시(`agentStatus`)·부드러운 터미널 전환·전체 계층 표시 |
 
 Rust 공통 코어가 허용된 필드만 직렬화한다. 기존 `settings.json`을 그대로 복사하지 않는다.
 강조 색상은 선택 방식(`system/default/custom`)과 마지막 사용자 지정 HEX를 한 항목으로 공유한다.
