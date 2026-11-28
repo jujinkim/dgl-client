@@ -27,6 +27,17 @@ enum TransferResult {
     Failed(&'static str),
 }
 impl CloudSync {
+    /// A sync file is attached, so settings in the shared allowlist leave this device.
+    pub fn connected(&self) -> bool {
+        self.config.is_some()
+    }
+    /// Attach a sync file without running a sync, for rendering checks. The checkpoint
+    /// keeps it attached when a background sync to the missing file fails and reloads.
+    #[cfg(test)]
+    pub fn attach_for_test(&mut self, file: PathBuf, store: &std::path::Path) {
+        self.config = Some(Config { file, cache: None });
+        checkpoint(store, &self.config).unwrap();
+    }
     fn busy(&self) -> bool {
         self.receiver.is_some()
             || self.selecting

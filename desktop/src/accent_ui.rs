@@ -149,7 +149,7 @@ impl Desktop {
                         .text_color(rgb(p.danger)),
                 )
             });
-        self.settings_group(
+        self.settings_group_marked(
             "accent",
             Some(t("accent.accent_color").into()),
             None,
@@ -158,6 +158,7 @@ impl Desktop {
                 self.settings_stack(None, None, presets).into_any_element(),
                 hex.into_any_element(),
             ],
+            true,
         )
     }
 }

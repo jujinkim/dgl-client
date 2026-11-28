@@ -7,6 +7,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,6 +18,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kim.jujin.dglc.core.t
 
 /** Spacing shared by every settings page. The rest of the app keeps its compact sizes. */
 internal object SettingsSpacing {
@@ -54,6 +56,23 @@ internal enum class SettingsActionStyle { Outlined, Primary, Danger }
     }
 }
 
+/** True while a sync file is attached; only then are shared settings marked. */
+internal val LocalSyncConnected = compositionLocalOf { false }
+
+/** A small mark beside a setting the attached sync file shares. Nothing while disconnected. */
+@Composable internal fun SyncedMark(synced: Boolean = true) {
+    if (synced && LocalSyncConnected.current) Icon(UiIcons.sync, t("sync.synced_setting"), Modifier.size(14.dp),
+        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** Text followed by the synced mark, for labels that stay a single text node. */
+@Composable private fun SyncedLabel(synced: Boolean, modifier: Modifier = Modifier, text: @Composable () -> Unit) {
+    if (!synced || !LocalSyncConnected.current) Box(modifier) { text() }
+    else Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        text(); SyncedMark()
+    }
+}
+
 /** Section heading used by groups and by subsections inside a page. */
 @Composable internal fun SettingsSubheading(text: String, modifier: Modifier = Modifier) {
     Text(text, modifier.semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -61,9 +80,9 @@ internal enum class SettingsActionStyle { Outlined, Primary, Danger }
 
 /** A titled card. The title and description sit outside the card so they read as a section heading. */
 @Composable internal fun SettingsGroup(title: String?, description: String? = null, modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit) {
+    synced: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (title != null) SettingsSubheading(title, Modifier.padding(horizontal = 4.dp))
+        if (title != null) SyncedLabel(synced, Modifier.padding(horizontal = 4.dp)) { SettingsSubheading(title) }
         if (description != null) Text(description, Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Surface(Modifier.fillMaxWidth(), shape = SettingsShapes.group, color = MaterialTheme.colorScheme.surfaceContainer,
@@ -99,22 +118,25 @@ internal enum class SettingsActionStyle { Outlined, Primary, Danger }
 }
 
 /** A checkbox row; the whole row toggles. */
-@Composable internal fun SettingsCheckRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+@Composable internal fun SettingsCheckRow(label: String, checked: Boolean, enabled: Boolean = true, synced: Boolean = false,
+    onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = SettingsSpacing.checkRowHeight)
         .toggleable(checked, enabled = enabled, role = Role.Checkbox, onValueChange = onChange)
         .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         AccentCheckbox(checked, null, enabled = enabled)
         Spacer(Modifier.width(8.dp))
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = disabledText(enabled))
+        SyncedLabel(synced, Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = disabledText(enabled))
+        }
     }
 }
 
 /** A single choice among chips. Each chip keeps its own label as its node text. */
 @Composable internal fun SettingsChoiceRow(label: String?, options: List<Pair<String, String>>, selected: String, enabled: Boolean = true,
-    description: String? = null, onSelect: (String) -> Unit) {
+    description: String? = null, synced: Boolean = false, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = SettingsSpacing.rowH, vertical = SettingsSpacing.rowV),
         verticalArrangement = Arrangement.spacedBy(SettingsSpacing.controlGap)) {
-        label?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = disabledText(enabled)) }
+        label?.let { SyncedLabel(synced) { Text(it, style = MaterialTheme.typography.bodyLarge, color = disabledText(enabled)) } }
         SettingsChips {
             options.forEach { (value, text) -> SettingsChip(text, selected == value, enabled) { onSelect(value) } }
         }
@@ -154,12 +176,13 @@ internal enum class SettingsActionStyle { Outlined, Primary, Danger }
 }
 
 /** A label with an optional description on the left and controls on the right. */
-@Composable internal fun SettingsRow(label: String, description: String? = null, trailing: @Composable RowScope.() -> Unit = {}) {
+@Composable internal fun SettingsRow(label: String, description: String? = null, synced: Boolean = false,
+    trailing: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth().heightIn(min = SettingsSpacing.rowMinHeight)
         .padding(horizontal = SettingsSpacing.rowH, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SettingsSpacing.controlGap)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
+            SyncedLabel(synced) { Text(label, style = MaterialTheme.typography.bodyLarge) }
             description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         trailing()

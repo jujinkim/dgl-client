@@ -633,10 +633,12 @@ impl Desktop {
         ]
         .into_iter()
         .map(|(i, label, enabled)| {
-            self.settings_check(
+            // OS notification permission and delivery stay on this device.
+            self.settings_check_marked(
                 format!("notification-setting-{i}"),
                 label,
                 enabled,
+                i < 3,
                 cx,
                 move |s, _, _| {
                     let settings = &mut s.local.preferences.agent_notifications;

@@ -181,6 +181,8 @@ internal fun settingsClusters(): List<List<SettingsCategory>> =
     }
     // A fresh scroll position per category; lazy or scrolling children would crash inside this column.
     val scroll = remember(category) { ScrollState(0) }
+    val syncStatus = model.cloudSync?.status?.collectAsState()
+    CompositionLocalProvider(LocalSyncConnected provides (syncStatus?.value?.connected == true)) {
     Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(padding), verticalArrangement = Arrangement.spacedBy(SettingsSpacing.groupGap)) {
         SettingsPageHeader(title, description)
         when (category) {
@@ -198,6 +200,7 @@ internal fun settingsClusters(): List<List<SettingsCategory>> =
             SettingsCategory.About -> AboutApp()
         }
     }
+    }
 }
 
 private fun AppModel.editPreferences(change: (Preferences) -> Preferences) = modify { it.copy(preferences = change(it.preferences)) }
@@ -208,9 +211,9 @@ private fun AppModel.editPreferences(change: (Preferences) -> Preferences) = mod
             UiLanguage.of(preferences.language)?.code ?: "system") { value -> model.editPreferences { it.copy(language = value) } }
         SettingsDivider()
         SettingsChoiceRow(t("settings.theme"), listOf("system" to t("common.system"), "light" to t("settings.theme_light"), "dark" to t("settings.theme_dark")),
-            preferences.theme) { value -> model.editPreferences { it.copy(theme = value) } }
+            preferences.theme, synced = true) { value -> model.editPreferences { it.copy(theme = value) } }
     }
-    SettingsGroup(t("accent.accent_color")) {
+    SettingsGroup(t("accent.accent_color"), synced = true) {
         AccentSettingsUi(preferences.accent) { accent -> model.editPreferences { it.copy(accent = accent) } }
     }
     SettingsGroup(t("settings.workspace")) {
@@ -223,7 +226,7 @@ private fun AppModel.editPreferences(change: (Preferences) -> Preferences) = mod
 @Composable private fun TerminalSettings(model: AppModel, preferences: Preferences) {
     // Text and display come first so size and transitions are reachable without scrolling.
     SettingsGroup(t("settings.group_text")) {
-        SettingsRow(tr("settings.terminal_font_size", preferences.fontSize)) {
+        SettingsRow(tr("settings.terminal_font_size", preferences.fontSize), synced = true) {
             SettingsActionButton(t("settings.smaller"), { model.editPreferences { it.copy(fontSize = (it.fontSize - 1).coerceAtLeast(10)) } })
             SettingsActionButton(t("settings.larger"), { model.editPreferences { it.copy(fontSize = (it.fontSize + 1).coerceAtMost(28)) } })
         }
@@ -234,7 +237,10 @@ private fun AppModel.editPreferences(change: (Preferences) -> Preferences) = mod
             model.editPreferences { it.copy(smoothTerminalTransitions = enabled) }
         }
         SettingsDivider()
-        SettingsNote(tr("settings.scrollback_description", preferences.scrollback), Modifier.padding(vertical = 6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SettingsNote(tr("settings.scrollback_description", preferences.scrollback), Modifier.weight(1f).padding(vertical = 6.dp))
+            Box(Modifier.padding(end = SettingsSpacing.rowH)) { SyncedMark() }
+        }
     }
     SettingsGroup(t("settings.scroll_assist_title"), t("settings.scroll_assist_description")) {
         SettingsChoiceRow(null, listOf("auto" to t("settings.scroll_assist_auto"), "on" to t("settings.scroll_assist_on"), "off" to t("settings.scroll_assist_off")),

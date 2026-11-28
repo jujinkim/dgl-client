@@ -1948,7 +1948,7 @@ dependencies = [
 
 [[package]]
 name = "dgl-core"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "base64",
  "rand 0.10.3",
@@ -1964,7 +1964,7 @@ dependencies = [
 
 [[package]]
 name = "dgl-desktop"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "accesskit",
  "accesskit_xplat",
@@ -1998,7 +1998,7 @@ dependencies = [
 
 [[package]]
 name = "dgl-uniffi"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "dgl-core",
  "serde_json",

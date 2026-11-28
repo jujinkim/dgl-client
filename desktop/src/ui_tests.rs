@@ -3967,6 +3967,70 @@ fn settings_categories_render_only_their_controls(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn synced_marks_appear_only_on_shared_settings_while_a_sync_file_is_attached(
+    cx: &mut TestAppContext,
+) {
+    let (view, ui) = setup(cx);
+    let pages = [
+        (
+            SettingsCategory::General,
+            &["synced-theme", "synced-accent"][..],
+        ),
+        (
+            SettingsCategory::Terminal,
+            &["synced-font-size", "synced-scrollback"][..],
+        ),
+        (
+            SettingsCategory::Agents,
+            &[
+                "synced-notification-setting-0",
+                "synced-notification-setting-1",
+                "synced-notification-setting-2",
+            ][..],
+        ),
+        (
+            SettingsCategory::Launch,
+            &["synced-claude", "synced-codex", "synced-agy", "synced-grok"][..],
+        ),
+    ];
+    let show = |ui: &mut VisualTestContext, category: SettingsCategory| {
+        view.update(ui, |s, cx| {
+            s.open_settings(category);
+            cx.notify();
+        });
+        redraw(ui);
+    };
+    // Debug bounds outlive removed elements, so check the detached state first.
+    for (category, ids) in pages {
+        show(ui, category);
+        for id in ids {
+            assert!(ui.debug_bounds(id).is_none(), "{id} while detached");
+        }
+    }
+    show(ui, SettingsCategory::Launch);
+    assert!(ui.debug_bounds("launch-plaintext-warning").is_some());
+    view.update(ui, |s, _| {
+        let file = s.path.with_file_name("dgl-sync.json");
+        let store = s.path.with_file_name("cloud-sync.json");
+        s.cloud_sync.attach_for_test(file, &store);
+    });
+    for (category, ids) in pages {
+        show(ui, category);
+        for id in ids {
+            assert!(ui.debug_bounds(id).is_some(), "{id} while attached");
+        }
+    }
+    // Language, font family and OS notifications stay on this device.
+    for id in [
+        "synced-language",
+        "synced-terminal-font",
+        "synced-notification-setting-3",
+    ] {
+        assert!(ui.debug_bounds(id).is_none(), "{id}");
+    }
+}
+
+#[gpui::test]
 fn settings_nav_is_fixed_and_narrow_windows_stack_it_above_the_detail(cx: &mut TestAppContext) {
     let (view, ui) = setup(cx);
     ui.simulate_resize(gpui::size(px(1200.), px(800.)));

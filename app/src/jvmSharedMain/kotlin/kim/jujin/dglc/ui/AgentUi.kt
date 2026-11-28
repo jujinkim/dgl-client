@@ -149,7 +149,8 @@ import kotlinx.serialization.json.*
     SettingsGroup(t("agent.notifications"), t("settings.notifications_description")) {
         listOf(t("agent.questions_approval_requests") to settings.questions, t("agent.response_end_signals") to settings.responses,
             t("agent.explicit_errors") to settings.errors, t("agent.os_notifications") to settings.os).forEachIndexed { i, (label, enabled) ->
-            SettingsCheckRow(label, enabled) { value ->
+            // OS notification permission and delivery stay on this device.
+            SettingsCheckRow(label, enabled, synced = i < 3) { value ->
                 val next = when (i) { 0 -> settings.copy(questions = value); 1 -> settings.copy(responses = value); 2 -> settings.copy(errors = value); else -> settings.copy(os = value) }
                 model.modify { it.copy(preferences = it.preferences.copy(agentNotifications = next)) }
             }

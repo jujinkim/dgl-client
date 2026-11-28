@@ -78,7 +78,16 @@ impl Desktop {
     /// The quick launch settings page: one group per agent.
     pub(super) fn launch_settings(&self, cx: &mut Context<Self>) -> Div {
         use settings_ui::ActionKind;
-        let mut list = div().flex().flex_col().gap(px(settings_ui::PAGE_GAP));
+        let mut list = div()
+            .flex()
+            .flex_col()
+            .gap(px(settings_ui::PAGE_GAP))
+            .child(
+                self.settings_note(t("launcher.plaintext_warning"))
+                    .id("launch-plaintext-warning")
+                    .debug_selector(|| "launch-plaintext-warning".into())
+                    .text_color(rgb(self.palette.danger)),
+            );
         for agent in LAUNCH_AGENTS {
             let config = self.agent_launch(agent);
             let bypass_id = format!("launch-bypass-edit-{agent:?}");
@@ -170,11 +179,13 @@ impl Desktop {
                     ))
                     .into_any_element(),
             );
-            list = list.child(self.settings_group(
+            // Definitions sync; check states stay on this device.
+            list = list.child(self.settings_group_marked(
                 agent.executable(),
                 Some(agent.launch_label().into()),
                 None,
                 rows,
+                true,
             ));
         }
         list

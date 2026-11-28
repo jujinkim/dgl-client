@@ -13,10 +13,13 @@ import kim.jujin.dglc.core.*
 
 @Composable internal fun LaunchSettings(preferences: Preferences, update: (LaunchAgent, (AgentLaunch) -> AgentLaunch) -> Unit) {
     var editor by remember { mutableStateOf<LaunchEditor?>(null) }
+    Text(t("launcher.plaintext_warning"), Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     // One group per agent. The settings detail column scrolls, so this adds no scroll of its own.
+    // Definitions sync; check states stay on this device.
     for (agent in LaunchAgent.entries) {
         val config = preferences.launchFor(agent)
-        SettingsGroup(agent.label) {
+        SettingsGroup(agent.label, synced = true) {
             SettingsRow(t("launcher.bypass_arguments"), config.bypass.takeIf { it.isNotEmpty() }) {
                 SettingsActionButton(t("common.edit"), { editor = LaunchEditor.Bypass(agent, config.bypass) })
             }

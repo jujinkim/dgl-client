@@ -86,6 +86,38 @@ impl Desktop {
         description: Option<SharedString>,
         rows: Vec<AnyElement>,
     ) -> Stateful<Div> {
+        self.settings_group_marked(id, title, description, rows, false)
+    }
+    /// A small mark beside a setting the attached sync file shares. Hidden while no
+    /// sync file is attached; export alone does not show it.
+    pub(super) fn synced_mark(&self, id: impl Into<SharedString>) -> Option<Stateful<Div>> {
+        let id: SharedString = id.into();
+        self.cloud_sync.connected().then(|| {
+            div()
+                .id(SharedString::from(format!("synced-{id}")))
+                .debug_selector(move || format!("synced-{id}"))
+                .flex_shrink_0()
+                .child(UiIcon::Sync.render(self.palette.muted).size(px(12.)))
+                .native_tooltip(t("sync.synced_setting"))
+        })
+    }
+    /// Label text followed by the synced mark when `synced` names the setting.
+    pub(super) fn synced_text(&self, text: impl Into<SharedString>, synced: Option<&str>) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .child(text.into())
+            .children(synced.and_then(|id| self.synced_mark(id.to_owned())))
+    }
+    pub(super) fn settings_group_marked(
+        &self,
+        id: &'static str,
+        title: Option<SharedString>,
+        description: Option<SharedString>,
+        rows: Vec<AnyElement>,
+        synced: bool,
+    ) -> Stateful<Div> {
         let p = self.palette;
         let heading = (title.is_some() || description.is_some()).then(|| {
             div()
@@ -100,7 +132,7 @@ impl Desktop {
                             .text_size(px(GROUP_TITLE))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(p.fg))
-                            .child(title),
+                            .child(self.synced_text(title, synced.then_some(id))),
                     )
                 })
                 .when_some(description, |d, text| d.child(self.settings_note(text)))
@@ -127,13 +159,21 @@ impl Desktop {
         label: impl Into<SharedString>,
         description: Option<SharedString>,
     ) -> Div {
+        self.settings_label_marked(label, description, None)
+    }
+    pub(super) fn settings_label_marked(
+        &self,
+        label: impl Into<SharedString>,
+        description: Option<SharedString>,
+        synced: Option<&str>,
+    ) -> Div {
         div()
             .flex_1()
             .min_w_0()
             .flex()
             .flex_col()
             .gap(px(2.))
-            .child(div().text_size(px(BODY)).child(label.into()))
+            .child(self.synced_text(label, synced).text_size(px(BODY)))
             .when_some(description, |d, text| d.child(self.settings_note(text)))
     }
     /// A row with a custom left side and controls on the right.
@@ -175,6 +215,15 @@ impl Desktop {
         description: Option<SharedString>,
         content: Vec<AnyElement>,
     ) -> Div {
+        self.settings_stack_marked(label, description, content, None)
+    }
+    pub(super) fn settings_stack_marked(
+        &self,
+        label: Option<SharedString>,
+        description: Option<SharedString>,
+        content: Vec<AnyElement>,
+        synced: Option<&str>,
+    ) -> Div {
         div()
             .flex()
             .flex_col()
@@ -182,7 +231,7 @@ impl Desktop {
             .px(px(ROW_PX))
             .py(px(ROW_PY))
             .when_some(label, |d, label| {
-                d.child(div().text_size(px(BODY)).child(label))
+                d.child(self.synced_text(label, synced).text_size(px(BODY)))
             })
             .when_some(description, |d, text| d.child(self.settings_note(text)))
             .child(
@@ -282,7 +331,20 @@ impl Desktop {
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
+        self.settings_check_marked(id, label, on, false, cx, action)
+    }
+    pub(super) fn settings_check_marked(
+        &self,
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        on: bool,
+        synced: bool,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Stateful<Div> {
         let p = self.palette;
+        let id: SharedString = id.into();
+        let mark = synced.then(|| id.to_string());
         self.button_base(id, cx, action)
             .w_full()
             .flex()
@@ -301,7 +363,12 @@ impl Desktop {
                 }
                 .render(if on { p.accent } else { p.fg }),
             )
-            .child(div().flex_1().min_w_0().child(label.into()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(self.synced_text(label, mark.as_deref())),
+            )
     }
     /// A whole-row link to a second-level page or an external page.
     pub(super) fn settings_link(

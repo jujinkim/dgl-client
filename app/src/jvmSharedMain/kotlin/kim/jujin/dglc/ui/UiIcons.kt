@@ -47,6 +47,7 @@ internal object UiIcons {
     val splitVertical: ImageVector by lazy { outline("SplitVertical", "M3 4H21V20H3Z M3 12H21") }
     val starOff: ImageVector by lazy { outline("StarOff", "M12 3L15 9L21 10L17 15L18 21L12 18L6 21L7 15L3 10L9 9Z M4 3L21 21") }
     val star: ImageVector by lazy { outline("Star", "M12 3L15 9L21 10L17 15L18 21L12 18L6 21L7 15L3 10L9 9Z") }
+    val sync: ImageVector by lazy { outline("Sync", "M4 12A8 8 0 0 1 18 6.7 M19 3V7H15 M20 12A8 8 0 0 1 6 17.3 M5 21V17H9") }
     val terminal: ImageVector by lazy { outline("Terminal", "M3 4H21V20H3Z M7 9L10 12L7 15 M13 15H17") }
     val unknown: ImageVector by lazy { outline("Unknown", "M21 12A9 9 0 1 1 3 12A9 9 0 1 1 21 12Z M8 12H16") }
     val unread: ImageVector by lazy { outline("Unread", "M18 12A6 6 0 1 1 6 12A6 6 0 1 1 18 12Z") }

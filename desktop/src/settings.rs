@@ -389,8 +389,13 @@ impl Desktop {
             vec![
                 self.settings_stack(Some(t("settings.language").into()), None, languages)
                     .into_any_element(),
-                self.settings_stack(Some(t("settings.theme").into()), None, themes)
-                    .into_any_element(),
+                self.settings_stack_marked(
+                    Some(t("settings.theme").into()),
+                    None,
+                    themes,
+                    Some("theme"),
+                )
+                .into_any_element(),
             ],
         );
         let accent = self.accent_settings(cx);
@@ -456,12 +461,15 @@ impl Desktop {
             Some(t("settings.group_text").into()),
             None,
             vec![
-                self.settings_row(
-                    tr!(
-                        "settings.terminal_font_size",
-                        self.local.preferences.font_size
+                self.settings_row_with(
+                    self.settings_label_marked(
+                        tr!(
+                            "settings.terminal_font_size",
+                            self.local.preferences.font_size
+                        ),
+                        None,
+                        Some("font-size"),
                     ),
-                    None,
                     stepper,
                 )
                 .into_any_element(),
@@ -480,12 +488,15 @@ impl Desktop {
             Some(t("settings.group_display").into()),
             None,
             vec![
-                self.settings_row(
-                    tr!(
-                        "settings.scrollback_description",
-                        self.local.preferences.scrollback
+                self.settings_row_with(
+                    self.settings_label_marked(
+                        tr!(
+                            "settings.scrollback_description",
+                            self.local.preferences.scrollback
+                        ),
+                        None,
+                        Some("scrollback"),
                     ),
-                    None,
                     div(),
                 )
                 .id("scrollback-setting")
